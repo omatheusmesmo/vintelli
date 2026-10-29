@@ -1,0 +1,100 @@
+name: LSP jdtls
+
+on:
+  pull_request:
+    paths:
+      - vintelli-lsp/**
+      - vintelli-core/**
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  JAVA_VERSION: '25'
+  JDTLS_VERSION: '1.63.0'
+  JDTLS_BUILD: '202610191322'
+  JDTLS_ARCHIVE: jdt-language-server-1.63.0-202610191322.tar.gz
+  JDTLS_URL: https://download.eclipse.org/jdtls/milestones/1.63.0/jdt-language-server-1.63.0-202610191322.tar.gz
+  JDTLS_SHA256: b1f2abe0b3cccb462cf64fb4a5587c7d09df60cf8be7748b152cbd89d018bdc4
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: read
+
+jobs:
+  jdtls-integration:
+    name: LSP client against real jdtls (not required)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: Require a Java 25 runtime for jdtls
+        run: |
+          major=$(java -XshowSettings:properties -version 2>&1 | sed -n 's/^ *java.specification.version = //p')
+          if [ "${major:-0}" -lt 25 ]; then
+            echo "::error title=jdtls needs Java 25::jdt.ls $JDTLS_VERSION does not start on Java ${major:-unknown}; the runtime must be Java 25 or newer (issue #100)"
+            exit 1
+          fi
+          echo "Java runtime $major is accepted for jdt.ls $JDTLS_VERSION"
+
+      - name: Restore the jdtls archive cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/jdtls-download
+          key: jdtls-${{ env.JDTLS_VERSION }}-${{ env.JDTLS_BUILD }}
+
+      - name: Download jdtls and verify its SHA-256
+        run: |
+          set -euo pipefail
+          archive_dir="$RUNNER_TEMP/jdtls-download"
+          archive="$archive_dir/$JDTLS_ARCHIVE"
+          mkdir -p "$archive_dir"
+          if [ ! -s "$archive" ]; then
+            curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location --retry 3 \
+              --output "$archive" "$JDTLS_URL"
+          fi
+          if ! printf '%s  %s\n' "$JDTLS_SHA256" "$archive" | sha256sum --check --strict --status; then
+            rm -f "$archive"
+            echo "::error title=jdtls checksum::$JDTLS_ARCHIVE does not match the SHA-256 pinned in lsp-jdtls.yml"
+            exit 1
+          fi
+
+      - name: Extract jdtls
+        run: |
+          set -euo pipefail
+          home="$RUNNER_TEMP/jdtls"
+          rm -rf "$home"
+          mkdir -p "$home"
+          tar -xzf "$RUNNER_TEMP/jdtls-download/$JDTLS_ARCHIVE" -C "$home"
+          if [ ! -x "$home/bin/jdtls" ]; then
+            echo "::error title=jdtls layout::bin/jdtls is missing or not executable in $JDTLS_ARCHIVE"
+            exit 1
+          fi
+          echo "VINTELLI_JDTLS_HOME=$home" >> "$GITHUB_ENV"
+
+      - name: Run the LSP client against real jdtls
+        run: ./mvnw -B -ntp -pl vintelli-lsp -am verify
+
+      - name: Upload the test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jdtls-it-reports
+          path: |
+            vintelli-lsp/target/surefire-reports
+            vintelli-lsp/target/failsafe-reports
+          if-no-files-found: ignore
