@@ -3,6 +3,7 @@ package dev.omatheusmesmo.vintelli.tui;
 import dev.tamboui.buffer.Buffer;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.terminal.Frame;
+import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
@@ -11,7 +12,8 @@ import jakarta.ws.rs.core.MediaType;
 
 /**
  * REST anchor for inspecting the TUI shell from outside the process. Renders one
- * frame of {@link VintelliShell} into an in-memory buffer, entirely offscreen: no
+ * frame of a fresh {@link VintelliShell}, built from the {@link ToolWindowRegistry}
+ * discovered at startup, into an in-memory buffer, entirely offscreen: no
  * terminal is ever attached, so the endpoint is safe inside integration tests,
  * including against the native runner where the whole render pipeline
  * (layout, widgets, styles) must survive AOT compilation.
@@ -25,6 +27,13 @@ public final class ShellInspectResource {
     private static final int MAIN_AREA_TOP_ROW = 2;
     private static final int STATUS_ROW = 23;
 
+    private final ToolWindowRegistry registry;
+
+    @Inject
+    public ShellInspectResource(ToolWindowRegistry registry) {
+        this.registry = registry;
+    }
+
     /**
      * Renders a single offscreen frame of a fresh shell, so the live TUI state is never touched,
      * and returns the tool window tab row, the main area top row and the status row as plain text.
@@ -34,7 +43,7 @@ public final class ShellInspectResource {
     @Produces(MediaType.APPLICATION_JSON)
     public ShellRenderView render() {
         Buffer buffer = Buffer.empty(VIEWPORT);
-        new VintelliShell().render(Frame.forTesting(buffer));
+        new VintelliShell(registry.toolWindows(), new ShellState()).render(Frame.forTesting(buffer));
         return new ShellRenderView(
                 rowText(buffer, TAB_ROW),
                 rowText(buffer, MAIN_AREA_TOP_ROW),

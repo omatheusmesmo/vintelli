@@ -57,6 +57,14 @@ and a build step that registers the `McpSchema` types for reflection. Only
 `vintelli-idea` and `vintelli-app` depend on it; `vintelli-api` and
 `vintelli-jsonrpc` stay Quarkus-free.
 
+The tool window SPI lives in `vintelli-tui` because its render and key
+handling signatures use TamboUI types: a `ToolWindow` declares an id, a
+title, a `char` shortcut, an `ordinal` position, rendering and key
+handling, implementations are CDI beans, and the shell needs no change when
+a new window appears. The shell state read model stays in `vintelli-api`
+(`ShellStateSnapshot` and `ShellStateView`) without TamboUI, so the MCP
+server can read what the user is looking at.
+
 Keys: `1-4` switch tool windows (Run, Terminal, Problems, ACP Agents),
 `j/k` navigate the project tree, `q` quits.
 
