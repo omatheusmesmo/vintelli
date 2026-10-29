@@ -7,6 +7,8 @@ import com.agentclientprotocol.sdk.client.transport.StdioAcpClientTransport;
 import com.agentclientprotocol.sdk.json.AcpJsonMapper;
 import com.agentclientprotocol.sdk.spec.AcpError;
 import com.agentclientprotocol.sdk.spec.AcpSchema;
+import dev.omatheusmesmo.vintelli.core.acp.AcpAgentGate;
+import dev.omatheusmesmo.vintelli.core.acp.AcpGateException;
 import io.smallrye.common.annotation.Blocking;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -16,22 +18,18 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import org.jboss.resteasy.reactive.RestResponse;
 
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Collections;
+import java.io.IOException;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Headless anchor for the ACP SDK probe, so the integration tests can drive a
- * full client session (initialize, session/new, session/prompt with streamed
- * session/update, cancel, close) over HTTP on the native runner. The agent
- * under test is the tiny stdio echo agent the test resources configure through
+ * Headless anchor for the ACP SDK probe, so the integration tests can drive the
+ * client over HTTP on the native runner. The agent under test is the stdio
+ * twin, or a foreign agent, that the test resources configure through
  * {@code vintelli.acp.probe.agent-command} and {@code vintelli.acp.probe.agent-args}.
  *
  * <p>The endpoint is off unless {@code vintelli.acp.probe.enabled} is
@@ -43,11 +41,9 @@ import java.util.concurrent.TimeUnit;
 @Produces(MediaType.APPLICATION_JSON)
 public final class AcpProbeResource {
 
-    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(20);
-    private static final Duration PROMPT_TIMEOUT = Duration.ofSeconds(30);
+    private static final long CANCEL_WAIT_SECONDS = 20;
     private static final long STREAM_WAIT_MILLIS = 10_000;
     private static final long STREAM_POLL_MILLIS = 50;
-    private static final long CANCEL_WAIT_SECONDS = 20;
 
     private final AcpJsonMapper acpJsonMapper;
     private final boolean enabled;
@@ -66,87 +62,180 @@ public final class AcpProbeResource {
     @Path("/session")
     @Blocking
     public RestResponse<AcpProbeReply> session() {
-        if (!enabled || command.isBlank()) {
-            return disabled();
-        }
-        return RestResponse.ok(runFullSession());
+        return answer(this::runFullSession);
+    }
+
+    @POST
+    @Path("/handshake")
+    @Blocking
+    public RestResponse<AcpProbeReply> handshake() {
+        return answer(this::runHandshake);
     }
 
     @POST
     @Path("/mcp")
     @Blocking
     public RestResponse<AcpProbeReply> mcpGate() {
-        if (!enabled || command.isBlank()) {
-            return disabled();
-        }
-        return RestResponse.ok(runMcpGate());
+        return answer(this::runMcpGate);
     }
 
-    private AcpProbeReply runFullSession() {
-        List<String> phases = new ArrayList<>();
-        Set<String> streamedSessions = ConcurrentHashMap.newKeySet();
-        List<String> chunkTexts = Collections.synchronizedList(new ArrayList<>());
-        AcpSyncClient client = client(streamedSessions, chunkTexts);
+    @POST
+    @Path("/contract")
+    @Blocking
+    public RestResponse<AcpProbeReply> buildContract() {
+        return answer(this::runBuildContract);
+    }
+
+    private RestResponse<AcpProbeReply> answer(ProbeScenario scenario) {
+        if (!enabled || command.isBlank()) {
+            return RestResponse.status(RestResponse.Status.NOT_FOUND, new AcpProbeReply("DISABLED", List.of(), ""));
+        }
+        AcpProbeRun run;
+        try {
+            run = AcpProbeRun.create();
+        } catch (IOException e) {
+            return RestResponse.ok(new AcpProbeReply("ERROR", List.of(), e.getClass().getSimpleName() + ": " + e.getMessage()));
+        }
+        return RestResponse.ok(scenario.run(run));
+    }
+
+    private AcpProbeReply runFullSession(AcpProbeRun run) {
+        AcpSyncClient client = run.client(acpJsonMapper, command, args);
         String state;
         String detail = "";
         try {
-            AcpSchema.InitializeResponse initialize = client.initialize();
-            phases.add("initialize:protocolVersion=" + initialize.protocolVersion());
+            initialize(client, run);
+            AcpSchema.NewSessionResponse session = client.newSession(new AcpSchema.NewSessionRequest(run.root().toString()));
+            run.phases().add("session/new:" + (session.sessionId().isBlank() ? "EMPTY" : "OPENED"));
 
-            AcpSchema.NewSessionResponse session = client.newSession(new AcpSchema.NewSessionRequest("/"));
-            phases.add("session/new:" + (session.sessionId().isBlank() ? "EMPTY" : "OPENED"));
+            AcpSchema.PromptResponse echoed = client.prompt(AcpSchema.PromptRequest.text(session.sessionId(), "echo:hello"));
+            boolean streamed = run.chunks().stream().anyMatch(text -> text.endsWith("echo:hello"));
+            run.phases().add("session/prompt:" + echoed.stopReason() + ":" + (streamed ? "STREAMED" : "NOT_STREAMED"));
 
-            AcpSchema.PromptResponse stopped = client.prompt(AcpSchema.PromptRequest.text(session.sessionId(), "echo:hello"));
-            boolean streamed = chunkTexts.stream().anyMatch(text -> text.endsWith("echo:hello"));
-            phases.add("session/prompt:" + stopped.stopReason() + ":" + (streamed ? "STREAMED" : "NOT_STREAMED"));
+            run.resetUpdateKinds();
+            client.prompt(AcpSchema.PromptRequest.text(session.sessionId(), "kinds"));
+            run.phases().add("updates:" + run.updateKindsObserved());
 
-            AcpSchema.NewSessionResponse cancellable = client.newSession(new AcpSchema.NewSessionRequest("/"));
-            phases.add("session/cancel:" + cancelLongPrompt(client, cancellable.sessionId(), streamedSessions));
+            client.prompt(AcpSchema.PromptRequest.text(session.sessionId(), "permit"));
+            client.prompt(AcpSchema.PromptRequest.text(session.sessionId(), "fs:" + run.root()));
+            run.phases().add("fs/write-on-disk:" + run.readBack("out.txt"));
+            client.prompt(AcpSchema.PromptRequest.text(session.sessionId(), "terminal"));
+            client.prompt(AcpSchema.PromptRequest.text(session.sessionId(), "elicit"));
+
+            AcpSchema.NewSessionResponse cancellable = client.newSession(new AcpSchema.NewSessionRequest(run.root().toString()));
+            run.phases().add("session/cancel:" + cancelLongPrompt(client, cancellable.sessionId(), run));
 
             client.closeSession(new AcpSchema.CloseSessionRequest(session.sessionId()));
-            phases.add("session/close:CLOSED");
+            run.phases().add("session/close:CLOSED");
+            run.phases().addAll(run.chunks().stream().map(text -> "agent:" + text).toList());
             state = "OK";
         } catch (Exception e) {
             state = "ERROR";
             detail = e.getClass().getSimpleName() + ": " + e.getMessage();
         } finally {
             client.close();
-            phases.add("client/close:CLOSED");
+            run.phases().add("client/close:CLOSED");
         }
-        return new AcpProbeReply(state, List.copyOf(phases), detail);
+        return new AcpProbeReply(state, List.copyOf(run.phases()), detail);
     }
 
-    private AcpProbeReply runMcpGate() {
-        List<String> phases = new ArrayList<>();
-        AcpSyncClient client = client(ConcurrentHashMap.newKeySet(), Collections.synchronizedList(new ArrayList<>()));
+    private AcpProbeReply runHandshake(AcpProbeRun run) {
+        AcpSyncClient client = run.client(acpJsonMapper, command, args);
         String state;
         String detail = "";
         try {
-            client.initialize();
-            AcpSchema.McpServerStdio server = new AcpSchema.McpServerStdio("echo-mcp", "echo", List.of("gate"), List.of());
-            client.newSession(new AcpSchema.NewSessionRequest("/", List.of(server)));
-            phases.add("mcp-session:ACCEPTED");
-            state = "OK";
-        } catch (AcpError e) {
-            phases.add("mcp-session:REFUSED:code=" + e.getCode());
+            try {
+                AcpSchema.NewSessionResponse session = openSession(client, run);
+                client.closeSession(new AcpSchema.CloseSessionRequest(session.sessionId()));
+                run.phases().add("session/close:CLOSED");
+            } catch (AcpGateException refusal) {
+                run.phases().add("initialize:REJECTED:" + refusal.getMessage());
+            }
             state = "OK";
         } catch (Exception e) {
             state = "ERROR";
             detail = e.getClass().getSimpleName() + ": " + e.getMessage();
         } finally {
             client.close();
-            phases.add("client/close:CLOSED");
+            run.phases().add("client/close:CLOSED");
         }
-        return new AcpProbeReply(state, List.copyOf(phases), detail);
+        return new AcpProbeReply(state, List.copyOf(run.phases()), detail);
     }
 
-    private String cancelLongPrompt(AcpSyncClient client, String sessionId, Set<String> streamedSessions) {
+    private AcpProbeReply runMcpGate(AcpProbeRun run) {
+        AcpSyncClient client = run.client(acpJsonMapper, command, args);
+        String state;
+        String detail = "";
+        try {
+            initialize(client, run);
+            for (AcpSchema.McpServer server : mcpServers()) {
+                String transport = transportLabel(server);
+                try {
+                    AcpAgentGate.requireMcpServerAdvertised(server, client.getAgentCapabilities());
+                    client.newSession(new AcpSchema.NewSessionRequest(run.root().toString(), List.of(server)));
+                    run.phases().add("mcp:" + transport + ":ACCEPTED");
+                } catch (AcpGateException gated) {
+                    run.phases().add("mcp:" + transport + ":GATED");
+                } catch (AcpError refused) {
+                    run.phases().add("mcp:" + transport + ":REFUSED:code=" + refused.getCode());
+                }
+            }
+            state = "OK";
+        } catch (Exception e) {
+            state = "ERROR";
+            detail = e.getClass().getSimpleName() + ": " + e.getMessage();
+        } finally {
+            client.close();
+            run.phases().add("client/close:CLOSED");
+        }
+        return new AcpProbeReply(state, List.copyOf(run.phases()), detail);
+    }
+
+    private AcpProbeReply runBuildContract(AcpProbeRun run) {
+        List<String> phases = run.phases();
+        phases.add(buildCase("read-without-handler", AcpSchema.ClientCapabilities.builder().readTextFile().build()));
+        phases.add(buildCase("write-without-handler", AcpSchema.ClientCapabilities.builder().writeTextFile().build()));
+        phases.add(buildCase("terminal-without-handler", AcpSchema.ClientCapabilities.builder().terminal().build()));
+        phases.add(buildCase("elicitation-without-handler",
+                AcpSchema.ClientCapabilities.builder().elicitation(AcpSchema.ElicitationCapabilities.formAndUrl()).build()));
+        phases.add(buildCase("no-capabilities", AcpSchema.ClientCapabilities.builder().build()));
+        return new AcpProbeReply("OK", List.copyOf(phases), "");
+    }
+
+    private String buildCase(String name, AcpSchema.ClientCapabilities capabilities) {
+        AgentParameters parameters = AgentParameters.builder(command).args(args).build();
+        StdioAcpClientTransport transport = new StdioAcpClientTransport(parameters, acpJsonMapper);
+        try {
+            AcpClient.sync(transport).clientCapabilities(capabilities).clientInfo(new AcpSchema.Implementation("vintelli", "1.0.0")).build().close();
+            return "build:" + name + ":OK";
+        } catch (RuntimeException rejected) {
+            transport.close();
+            return "build:" + name + ":REJECTED:" + rejected.getClass().getSimpleName();
+        }
+    }
+
+    private AcpSchema.InitializeResponse initialize(AcpSyncClient client, AcpProbeRun run) {
+        AcpSchema.InitializeResponse initialize = client.initialize();
+        AcpAgentGate.requireSupportedVersion(initialize);
+        run.phases().add("initialize:protocolVersion=" + initialize.protocolVersion());
+        return initialize;
+    }
+
+    private AcpSchema.NewSessionResponse openSession(AcpSyncClient client, AcpProbeRun run) {
+        initialize(client, run);
+        AcpSchema.NewSessionResponse session = client.newSession(new AcpSchema.NewSessionRequest(run.root().toString()));
+        run.phases().add("session/new:" + (session.sessionId().isBlank() ? "EMPTY" : "OPENED"));
+        return session;
+    }
+
+    private String cancelLongPrompt(AcpSyncClient client, String sessionId, AcpProbeRun run) {
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
             Future<AcpSchema.PromptResponse> pending = executor.submit(
                     () -> client.prompt(AcpSchema.PromptRequest.text(sessionId, "echo:cancel-me")));
             long deadline = System.currentTimeMillis() + STREAM_WAIT_MILLIS;
-            while (!streamedSessions.contains(sessionId) && System.currentTimeMillis() < deadline) {
+            Set<String> streamed = run.streamedSessions();
+            while (!streamed.contains(sessionId) && System.currentTimeMillis() < deadline) {
                 Thread.sleep(STREAM_POLL_MILLIS);
             }
             client.cancel(new AcpSchema.CancelNotification(sessionId));
@@ -159,25 +248,25 @@ public final class AcpProbeResource {
         }
     }
 
-    private AcpSyncClient client(Set<String> streamedSessions, List<String> chunkTexts) {
-        AgentParameters parameters = AgentParameters.builder(command).args(args).build();
-        StdioAcpClientTransport transport = new StdioAcpClientTransport(parameters, acpJsonMapper);
-        return AcpClient.sync(transport)
-                .requestTimeout(REQUEST_TIMEOUT)
-                .promptTimeout(PROMPT_TIMEOUT)
-                .clientInfo(new AcpSchema.Implementation("vintelli", "1.0.0"))
-                .sessionUpdateHandler(update -> {
-                    streamedSessions.add(update.sessionId());
-                    if (update.update() instanceof AcpSchema.AgentMessageChunk chunk
-                            && chunk.content() instanceof AcpSchema.TextContent content) {
-                        chunkTexts.add(content.text());
-                    }
-                })
-                .build();
+    private static List<AcpSchema.McpServer> mcpServers() {
+        return List.of(
+                new AcpSchema.McpServerStdio("echo-mcp", "echo", List.of("gate"), List.of()),
+                new AcpSchema.McpServerHttp("docs-http", "https://example.invalid/mcp", List.of()),
+                new AcpSchema.McpServerSse("docs-sse", "https://example.invalid/sse", List.of()));
     }
 
-    private static RestResponse<AcpProbeReply> disabled() {
-        return RestResponse.status(RestResponse.Status.NOT_FOUND, new AcpProbeReply("DISABLED", List.of(), ""));
+    private static String transportLabel(AcpSchema.McpServer server) {
+        return switch (server) {
+            case AcpSchema.McpServerStdio _ -> "stdio";
+            case AcpSchema.McpServerHttp _ -> "http";
+            case AcpSchema.McpServerSse _ -> "sse";
+            default -> "unknown";
+        };
+    }
+
+    @FunctionalInterface
+    private interface ProbeScenario {
+        AcpProbeReply run(AcpProbeRun run);
     }
 
     /**
