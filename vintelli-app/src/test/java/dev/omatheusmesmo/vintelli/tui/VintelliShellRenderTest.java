@@ -1,5 +1,8 @@
 package dev.omatheusmesmo.vintelli.tui;
 
+import dev.omatheusmesmo.vintelli.web.InspectEnabledResource;
+import io.quarkus.test.common.TestResourceScope;
+import io.quarkus.test.common.WithTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import org.junit.jupiter.api.Test;
 
@@ -8,9 +11,11 @@ import static org.hamcrest.Matchers.containsString;
 
 /**
  * JVM-level exercise of the offscreen render endpoint; {@link VintelliShellRenderIT}
- * replays the very same assertions against the native runner.
+ * replays the very same assertions against the native runner. Both enable
+ * {@code vintelli.inspect.enabled} through the test resource.
  */
 @QuarkusTest
+@WithTestResource(value = InspectEnabledResource.class, scope = TestResourceScope.RESTRICTED_TO_CLASS)
 class VintelliShellRenderTest {
 
     @Test
