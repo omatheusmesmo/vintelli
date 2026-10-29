@@ -347,8 +347,33 @@ and the status row carry an explicit unavailable reason instead.
 `/lsp/diagnostics?file=...`, `/lsp/callers`, `/lsp/callees`, `/lsp/hover`,
 `/lsp/definition`, `/lsp/references` and `/lsp/completion` expose the session
 over HTTP for the native ITs, which run against the fake language server of
-`vintelli-lsp` (no real server lives on CI); they answer 404 unless
+`vintelli-lsp`; they answer 404 unless
 `vintelli.lsp.debug-endpoint.enabled=true`.
+
+### Real jdtls integration test
+
+`JdtlsFixtureTest` in `vintelli-lsp` runs the `LspClient` against the real jdt.ls
+on the Maven fixture project in `vintelli-lsp/src/test/resources/jdtls-fixture`
+(one clean class and one class with a type mismatch). It checks the initialize
+handshake, the error diagnostic with its range, a hover on a method and a
+shutdown that leaves no server process behind. The test is skipped unless
+`VINTELLI_JDTLS_HOME` points to an extracted jdt.ls archive.
+
+Run it locally with a Java 25 runtime (jdt.ls 1.63.0 does not start on Java 21,
+see issue #100):
+
+```shell
+VINTELLI_JDTLS_HOME=/opt/jdt-language-server ./mvnw -pl vintelli-lsp -am verify
+```
+
+The `LSP jdtls` workflow (`.github/workflows/lsp-jdtls.yml`) runs the test on
+pull requests that touch `vintelli-lsp` or `vintelli-core`, and on demand. It is
+not a required check. It fails early unless the runner has Java 25, downloads
+the pinned jdt.ls 1.63.0 milestone archive from `download.eclipse.org`, checks
+its SHA-256 against the value pinned in the workflow, caches the archive by
+version and extracts it into the runner temp directory. To bump jdt.ls, change
+the version, build, archive name, URL and SHA-256 env values together; take the
+checksum from the `.sha256` file published next to the archive.
 
 ## Status
 
