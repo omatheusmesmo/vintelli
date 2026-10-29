@@ -18,6 +18,7 @@ import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
+import tools.jackson.core.JacksonException;
 
 import java.io.IOException;
 import java.net.ConnectException;
@@ -27,8 +28,11 @@ import java.util.regex.Pattern;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -45,6 +49,14 @@ import java.util.concurrent.TimeoutException;
  * {@code execute_terminal_command}) can outlast a minute: pass an explicit
  * timeout per call and only invoke from a worker thread, never the TUI render
  * thread (issue #3 wires status updates back through the render thread).
+ *
+ * <p>Tool calls run on a dedicated virtual-thread executor owned by the client,
+ * not on the ForkJoin common pool: the MCP SDK transport is built on reactor
+ * and the JDK HTTP client, which need common-pool workers for their own
+ * bookkeeping, so a call parked in {@code Mono.block()} on a common-pool worker
+ * hangs on machines where the pool has a single worker (two vCPUs). A call that
+ * exceeds its timeout is cancelled, which interrupts the blocked thread and
+ * aborts the in-flight request.
  */
 @Singleton
 public final class IdeaMcpClient implements AutoCloseable {
@@ -55,6 +67,7 @@ public final class IdeaMcpClient implements AutoCloseable {
     private static final String PROJECT_PATH_HEADER = "IJ_MCP_SERVER_PROJECT_PATH";
     private static final String AUTH_TOKEN_HEADER = "IJ_MCP_AUTH_TOKEN";
     private static final Duration TRANSPORT_REQUEST_TIMEOUT = Duration.ofSeconds(120);
+    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
     private static final Duration INITIALIZATION_TIMEOUT = Duration.ofSeconds(15);
     private static final Duration DEFAULT_CALL_TIMEOUT = Duration.ofSeconds(60);
 
@@ -64,6 +77,7 @@ public final class IdeaMcpClient implements AutoCloseable {
     private final String clientVersion;
     private final McpJsonMapper jsonMapper;
     private final JsonSchemaValidator schemaValidator;
+    private final ExecutorService callExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
     private volatile McpSyncClient client;
     private volatile ConnectionStatus status = ConnectionStatus.disconnected("not connected yet");
@@ -126,18 +140,27 @@ public final class IdeaMcpClient implements AutoCloseable {
      * unless explicitly requested.
      */
     public IdeaToolCall callIdeaTool(String name, Map<String, Object> arguments, Duration timeout) {
-        McpSyncClient current = ensureConnectedIfMissing();
         Map<String, Object> safeArguments = arguments == null ? Map.of() : arguments;
+        if (callExecutor.isShutdown()) {
+            return IdeaToolCall.failed(name, safeArguments, new IllegalStateException("client is closed"));
+        }
+        McpSyncClient current = ensureConnectedIfMissing();
         if (current == null) {
             return IdeaToolCall.failed(name, safeArguments,
                     new IllegalStateException(status.state() + ": " + status.detail()));
         }
-        CompletableFuture<CallToolResult> pending = CompletableFuture
-                .supplyAsync(() -> current.callTool(new CallToolRequest(name, safeArguments)));
+        Future<CallToolResult> pending;
+        try {
+            pending = callExecutor.submit(() -> current.callTool(new CallToolRequest(name, safeArguments)));
+        } catch (RejectedExecutionException closed) {
+            return IdeaToolCall.failed(name, safeArguments, closed);
+        }
         try {
             CallToolResult result = pending.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+            status = ConnectionStatus.connected();
             return new IdeaToolCall(name, rendered(result), Boolean.TRUE.equals(result.isError()));
         } catch (TimeoutException exceeded) {
+            pending.cancel(true);
             status = ConnectionStatus.timeout("tool '" + name + "' did not finish within "
                     + timeout.toSeconds() + "s; IDEA may still be executing it");
             return IdeaToolCall.failed(name, safeArguments,
@@ -145,6 +168,7 @@ public final class IdeaMcpClient implements AutoCloseable {
         } catch (ExecutionException brokered) {
             return wrappedFailure(name, safeArguments, brokered.getCause());
         } catch (InterruptedException cancelled) {
+            pending.cancel(true);
             Thread.currentThread().interrupt();
             return IdeaToolCall.failed(name, safeArguments, cancelled);
         }
@@ -153,6 +177,7 @@ public final class IdeaMcpClient implements AutoCloseable {
     @Override
     @PreDestroy
     public void close() {
+        callExecutor.shutdownNow();
         disconnectQuietly();
     }
 
@@ -172,6 +197,7 @@ public final class IdeaMcpClient implements AutoCloseable {
             HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport
                     .builder(baseUri)
                     .endpoint(STREAMABLE_ENDPOINT)
+                    .connectTimeout(CONNECT_TIMEOUT)
                     .jsonMapper(jsonMapper)
                     .httpRequestCustomizer(ideaHeaders())
                     .build();
@@ -185,6 +211,7 @@ public final class IdeaMcpClient implements AutoCloseable {
             client = fresh;
             status = ConnectionStatus.connected();
         } catch (Exception e) {
+            LOG.warn("IDEA MCP connect failed", e);
             status = classify(e);
         }
         return status;
@@ -226,6 +253,9 @@ public final class IdeaMcpClient implements AutoCloseable {
         if (statusCode != null) {
             return ConnectionStatus.endpointNotFound("404 on " + STREAMABLE_ENDPOINT
                     + ": re-copy the HTTP Stream Config from IDEA (" + truncated(failure) + ")");
+        }
+        if (chainContains(failure, JacksonException.class)) {
+            return ConnectionStatus.error("IDEA answered with a malformed payload: " + truncated(failure));
         }
         if (chainContains(failure, ConnectException.class)) {
             return ConnectionStatus.unreachable("IDEA not reachable at " + baseUri

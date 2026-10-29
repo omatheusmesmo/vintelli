@@ -77,6 +77,12 @@ renders one offscreen frame of the shell and returns the tool window tab row,
 the main area top row and the status row as JSON; it exists so the render
 pipeline can be validated on the native image and is read-only.
 
+`/idea/reconnect`, `/idea/tools` and `/idea/tool?name=get_...` expose the IDEA
+MCP client over HTTP so the native ITs can drive it against an in-process twin
+of the IDEA server. They answer 404 unless
+`vintelli.idea.debug-endpoint.enabled=true` and only call read-only tools whose
+name matches `get_[a-z_]+`.
+
 ## Status
 
 See the GitHub issues for the implementation plan (IDEA MCP integration, ACP
