@@ -21,6 +21,22 @@
             <version>${project.version}</version>
         </dependency>
         <dependency>
+            <!-- Index capture for the LSP4J registration test: the processor
+                 derives the reflective classes from the Jandex index of the
+                 dependency. -->
+            <groupId>org.eclipse.lsp4j</groupId>
+            <artifactId>org.eclipse.lsp4j</artifactId>
+            <version>${lsp4j.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- Indexed so the test finds the LanguageClient callback class the processor derives. -->
+            <groupId>dev.omatheusmesmo</groupId>
+            <artifactId>vintelli-lsp</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-arc-deployment</artifactId>
         </dependency>

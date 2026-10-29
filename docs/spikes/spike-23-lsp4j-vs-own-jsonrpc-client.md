@@ -1,6 +1,19 @@
 # Spike 23: LSP4J vs own JSON-RPC client
 
-**Status:** The native-build follow-up ([spike 47](spike-47-native-client-comparison.md), issue #47) ran both minimal clients on CI. It measured that a minimal LSP4J 1.0.0 client completes a native session, standalone and inside a Quarkus native image, once the dynamic proxies and the reflected classes are registered (a 181-entry filtered tracing-agent config is enough for that flow); without registration the Quarkus-hosted client fails at launcher creation. Reason 1 below (LSP4J cannot run natively without large manual registration) is therefore not supported by native evidence for the minimal flow. What stays open is the upkeep of that registration over the full 0.1.0 surface and across upgrades (#106). The decision below stands provisionally on the remaining reasons.
+**Status: RESOLVED, superseded.** The decision recorded in the comment on issue
+#20 replaced the provisional choice below: Vintelli ships the LSP4J client
+(`org.eclipse.lsp4j` and `org.eclipse.lsp4j.jsonrpc`) with the native
+registration produced by an `LspClientProcessor` build step in the
+`vintelli-core` extension, which indexes the LSP4J artifacts from Jandex and
+registers the `org.eclipse.lsp4j` types and the four service proxies
+(`LanguageServer`, `TextDocumentService`, `WorkspaceService`,
+`NotebookDocumentService`). Nothing is hand maintained and no registration
+file ships (#106 is thereby reduced to tracking the registration growth over
+the real surface), the shared JSON-RPC transport of #19 is no longer a
+dependency of the LSP client, and #23 is closed by that implementation.
+
+The analysis below stays as the measured record that the decision overrode;
+its reasons are withdrawn together with the decision they supported.
 
 ## Decision
 
@@ -103,6 +116,13 @@ Reconsider LSP4J (or switch modules wholesale) when any of these flips:
 3. Model the record types for the ~30-method 0.1.0 surface, starting with the union variants jdt.ls actually emits, plus one generic raw-JSON escape hatch.
 4. Add protocol-level integration tests against a real jdt.ls (initialize/sync/diagnostics/hover/definition), mirroring jdt.ls and lsp4j test cases and pitfalls from LSP4J's `CHANGELOG.md`.
 5. Track record-class growth in `vintelli-lsp` per capability and the revisit criteria above (upstream #349, intellij-server #22 union needs, defect rate, ACP transport direction).
+
+With the resolved status above, the next steps read differently: the LSP4J
+implementation landed in issue #20 (the integration tests drive the fake
+language server of `vintelli-lsp` on CI, JVM and native, so no real jdt.ls is
+needed in CI); the follow ups that stay open are #106 (registration growth and
+upgrade stability, now measured by the `LspClientProcessor` test) and the
+revisit criteria below.
 
 ## Links
 
