@@ -9,45 +9,109 @@ on:
       - main
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  JAVA_VERSION: '25'
+
+defaults:
+  run:
+    shell: bash
+
 jobs:
-  build-jvm:
-    name: Build and test (JVM, Java 25)
+  discover-tests:
+    name: Discover test shards
     runs-on: ubuntu-latest
+    outputs:
+      classes: ${{ steps.list.outputs.classes }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up JDK 25
+      - name: List test classes
+        id: list
+        run: |
+          TESTS=$(find src/test/java -name '*Test.java' \
+            | sed -e 's#src/test/java/##' -e 's#\.java$##' -e 's#/#.#g' | sort)
+          if [ -z "$TESTS" ]; then
+            JSON='[]'
+          else
+            JSON=$(printf '%s\n' "$TESTS" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          fi
+          echo "classes=$JSON" >> "$GITHUB_OUTPUT"
+
+  test-jvm:
+    name: Test (JVM) ${{ matrix.os }} :: ${{ matrix.test }}
+    needs: discover-tests
+    if: needs.discover-tests.outputs.classes != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        test: ${{ fromJson(needs.discover-tests.outputs.classes) }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '25'
+          java-version: ${{ env.JAVA_VERSION }}
           cache: maven
 
-      - name: Build and test
-        run: ./mvnw -B -ntp verify
+      - name: Test ${{ matrix.test }}
+        run: ./mvnw -B -ntp -T 1C test -Dtest='${{ matrix.test }}' -DfailIfNoTests=false
 
-  build-native:
-    name: Build native image (Mandrel 25)
-    runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
+  package-jvm:
+    name: Package (JVM) ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Mandrel (Java 25)
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: Package
+        run: ./mvnw -B -ntp -T 1C package -DskipTests
+
+  build-native:
+    name: Native image (${{ matrix.os }})
+    if: github.event_name != 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Mandrel (${{ env.JAVA_VERSION }})
         uses: actions/setup-java@v4
         with:
           distribution: mandrel
-          java-version: '25'
+          java-version: ${{ env.JAVA_VERSION }}
           cache: maven
 
       - name: Build native image
-        run: ./mvnw -B -ntp package -Dnative -DskipTests
+        run: ./mvnw -B -ntp -T 1C package -Dnative -DskipTests
 
       - name: Smoke test native runner
         run: |
-          RUNNER=$(ls target/*-runner | head -1)
+          RUNNER=$(find target -maxdepth 1 -type f -name '*-runner*' | head -1)
           "$RUNNER" &
           PID=$!
           sleep 10
