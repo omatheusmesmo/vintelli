@@ -81,3 +81,7 @@ pipeline can be validated on the native image and is read-only.
 
 See the GitHub issues for the implementation plan (IDEA MCP integration, ACP
 agents, offline inspections, WebSocket surface, native smoke test).
+
+## License
+
+Vintelli is licensed under the [Apache License, Version 2.0](LICENSE).
