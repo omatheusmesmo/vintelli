@@ -43,7 +43,7 @@ Indicative only: measured with the scratch program described above, renderer-onl
 
 ### Reproduced numbers from the committed harness
 
-The harness lives under `src/test/java/dev/omatheusmesmo/vintelli/tools/bench/`: `TextAreaBenchmark` (the program used for the original numbers, reconstructed), `LineCachedSyntaxHighlighter` (the prototype incremental highlighter per the Decision above) and `SelectionCursor` (the keyboard-selection state prototype). The class name deliberately does not match the surefire `*Test` pattern, so CI never runs it; it is executed on demand on an idle machine:
+The harness lives under `vintelli-tui/src/test/java/dev/omatheusmesmo/vintelli/tools/bench/`: `TextAreaBenchmark` (the program used for the original numbers, reconstructed), `LineCachedSyntaxHighlighter` (the prototype incremental highlighter per the Decision above) and `SelectionCursor` (the keyboard-selection state prototype). The class name deliberately does not match the surefire `*Test` pattern, so CI never runs it; it is executed on demand on an idle machine:
 
 ```
 ./mvnw test -Dtest=TextAreaBenchmark -Dbench.full=true
