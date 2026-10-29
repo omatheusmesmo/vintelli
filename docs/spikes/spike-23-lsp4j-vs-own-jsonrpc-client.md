@@ -1,6 +1,6 @@
 # Spike 23: LSP4J vs own JSON-RPC client
 
-**Status:** The native build experiment required by issue #23 (a native build of a minimal client with each option) was not run. The decision below rests on static analysis of the LSP4J 1.0.0 and jdt.ls artifacts, not on a native build. A native build of a minimal LSP4J client remains a follow-up.
+**Status:** The native-build follow-up ([spike 47](spike-47-native-client-comparison.md), issue #47) ran both minimal clients on CI. It measured that a minimal LSP4J 1.0.0 client completes a native session, standalone and inside a Quarkus native image, once the dynamic proxies and the reflected classes are registered (a 181-entry filtered tracing-agent config is enough for that flow); without registration the Quarkus-hosted client fails at launcher creation. Reason 1 below (LSP4J cannot run natively without large manual registration) is therefore not supported by native evidence for the minimal flow. What stays open is the upkeep of that registration over the full 0.1.0 surface and across upgrades (#106). The decision below stands provisionally on the remaining reasons.
 
 ## Decision
 
@@ -116,4 +116,4 @@ Verification note: version numbers, jar sizes, reflection/Proxy class counts, Gs
 
 ## Follow-up issues
 
-Work not executed in this spike is tracked in #47.
+The native build follow-up (issue #47) ran as [spike 47](spike-47-native-client-comparison.md) with both minimal clients on CI. Open items from it: #106 (registration growth and upgrade stability), #107 (JVM and native timing methodology), #108 (Mandrel standalone failure), #109 (server-to-client traffic and error paths), #110 (platforms and optimization levels), #111 (removal of the temporary benchmark workflow).
