@@ -16,7 +16,10 @@ This is a Quarkus application. Follow these rules when working on this project.
 - AEsh: model CLI capabilities as first-class commands (CDI beans), not
   hand-parsed strings.
 - Tests use TamboUI Pilot (`TuiTestRunner`) and Quarkus `@QuarkusTest`.
-- Run builds and tests only through the Quarkus agent Dev MCP tools.
+- Run builds and tests only through the Quarkus agent Dev MCP tools. The
+  exception is integration tests and native builds, which the Dev MCP tools do
+  not run: use `./mvnw verify` (JVM) or `./mvnw verify -Dnative
+  -Dquarkus.native.container-build` (native).
 - The JDK is pinned by `.sdkmanrc` (SDKMAN rules; mise does not manage Java);
   `mvnw` stays exactly as upstream ships it.
 
@@ -42,7 +45,30 @@ these exact keywords:
   `TUI shell v1: Tabs, project list and Darcula styling`). Conventional commits
   are used in commit messages only. CI (`pr-title.yml`) rejects prefixed titles.
 
+## Native validation
 
+Vintelli ships as a native binary, so behavior is only validated when it is
+proven on the native runner, not just on the JVM.
+
+- Every change that adds or alters runtime behavior (a provider, client,
+  transport, tool, command) needs a `*IT` class annotated with
+  `@QuarkusIntegrationTest`. Unit tests stay `*Test` and run on the JVM.
+- Integration tests run outside the app process and cannot inject its beans.
+  Make the behavior observable through the headless surface (HTTP, the MCP
+  endpoint, or a CLI command) and assert there. Do not drive `--tui` from ITs.
+- External collaborators (IntelliJ MCP server, jdtls, agents) are replaced by
+  twins: fake servers started by a `QuarkusTestResourceLifecycleManager` in
+  the test JVM, wired to the app through the config properties the manager
+  returns. A twin must cover failure modes, not only the happy path: denied
+  consent, missing or invalid auth, closed port, timeout, malformed payload and
+  a dropped stream. Contract tests against the real service are opt-in and not
+  part of the default CI.
+- The `build-native` CI job runs `./mvnw verify -Dnative
+  -Dquarkus.native.container-build` on every PR and on `main`. Never add
+  `-DskipTests` or `-DskipITs` to it, and do not narrow its triggers.
+- Do not add reflection or resource config only to silence a native failure.
+  First fix the code or pick a native-friendly library; keep any unavoidable
+  config next to the feature that needs it.
 
 ## CRITICAL -- Extension-First Rule (NEVER skip this)
 
