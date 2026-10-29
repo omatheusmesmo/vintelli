@@ -50,10 +50,12 @@ plain libraries built along with it.
 
 `vintelli-core` is a Quarkus extension (parent `vintelli-core-parent` with
 `vintelli-core/runtime` and `vintelli-core/deployment`) and the home of
-Vintelli's build-time glue. Its first content is
+Vintelli's build-time glue. Its content is
 the MCP client support: CDI producers for the MCP SDK JSON mapper and schema
 validator (the SDK's `ServiceLoader` lookup does not work in a native image)
-and a build step that registers the `McpSchema` types for reflection. Only
+and a build step that registers the `McpSchema` types for reflection; the
+Host and Origin guard (`McpEndpointGuard`) that protects the local MCP and
+inspect endpoints is registered there too. Only
 `vintelli-idea` and `vintelli-app` depend on it; `vintelli-api` and
 `vintelli-jsonrpc` stay Quarkus-free.
 
@@ -163,6 +165,36 @@ frame, so no TamboUI type leaks into the MCP tools.
 - `vintelli_diff_view`: renders a `title` and unified `diff` text in the
   editor panel; sizes are capped and control characters are stripped before
   rendering
+
+### Host and Origin guard
+
+A loopback bind does not stop DNS rebinding: a web page served from a hostile
+name that resolves to `127.0.0.1` can still reach the local endpoints from
+the user's browser, with `Host` and `Origin` set to the hostile name. A
+Vert.x guard (`McpEndpointGuard` in `vintelli-core`) closes this vector: it
+rejects requests whose `Host` header is not a loopback name or the configured
+host, and whose `Origin` header is present and not on the allowed list, with
+403 and before anything routes to a tool. It checks every request, whatever
+the path spelling, so the MCP endpoint (`/mcp`), the inspect endpoint
+(`/tui/render`) and every other route get the same policy. Requests without
+an `Origin` header are never rejected for that reason, so MCP clients such as
+IntelliJ IDEA and CLI agents keep working.
+
+- `vintelli.mcp.allowed-hosts`: the trusted `Host` values, default
+  `localhost`, `127.0.0.1` and `[::1]` plus the configured `quarkus.http.host`;
+  the match ignores the port and IPv6 brackets
+- `vintelli.mcp.allowed-origins`: the trusted browser `Origin` values, default
+  empty, so no browser origin is accepted out of the box
+
+The origin check that `quarkus-mcp-server-http` offers
+(`quarkus.mcp.server.http.dns-rebinding-check.enabled`) is turned off in
+`application.properties` because it has no configurable origin list. The
+global Quarkus host validation (`quarkus.http.host-validation.require-localhost`
+and its `allowed-hosts` list) is turned off too: it answers 400 and would
+duplicate the host list above, so this guard is the single host policy and
+answers 403. To accept a browser origin end to end, add it to both
+`vintelli.mcp.allowed-origins` (reach the endpoint) and
+`quarkus.http.cors.origins` (readable responses).
 
 `GET /tui/render` shows the same shell (tool window tab row, editor area,
 status row) as JSON. It draws the live shell offscreen under the shell lock
