@@ -46,6 +46,16 @@
             <version>${project.version}</version>
         </dependency>
         <dependency>
+            <groupId>com.agentclientprotocol</groupId>
+            <artifactId>acp-core</artifactId>
+            <version>${acp.sdk.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.agentclientprotocol</groupId>
+            <artifactId>acp-json-jackson3</artifactId>
+            <version>${acp.sdk.version}</version>
+        </dependency>
+        <dependency>
             <groupId>dev.omatheusmesmo</groupId>
             <artifactId>vintelli-core-deployment</artifactId>
             <version>${project.version}</version>
