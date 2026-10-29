@@ -23,27 +23,31 @@ import io.quarkus.test.junit.QuarkusTest;
 @QuarkusTest
 public class VintelliMcpServerTest {
 
+    private static final List<String> TOOL_NAMES = List.of("vintelli_state", "vintelli_highlight", "vintelli_diff_view");
+
     @TestHTTPResource
     URI baseUri;
 
     @Test
-    public void toolsListContainsVintelliState() {
+    public void toolsListContainsTheShellTools() {
         McpAssured.newStreamableClient()
                 .setBaseUri(baseUri)
                 .build()
                 .connect()
                 .when()
                     .toolsList()
-                    .withAssert(this::assertVintelliStateListed)
+                    .withAssert(this::assertShellToolsListed)
                     .send()
                 .thenAssertResults();
     }
 
-    private void assertVintelliStateListed(McpAssured.ToolsPage toolsPage) {
-        McpAssured.ToolInfo tool = toolsPage.findByName("vintelli_state");
-        assertNotNull(tool, "tools/list must expose vintelli_state");
-        assertNotNull(tool.description());
-        assertFalse(tool.description().isBlank());
+    private void assertShellToolsListed(McpAssured.ToolsPage toolsPage) {
+        for (String name : TOOL_NAMES) {
+            McpAssured.ToolInfo tool = toolsPage.findByName(name);
+            assertNotNull(tool, "tools/list must expose " + name);
+            assertNotNull(tool.description());
+            assertFalse(tool.description().isBlank());
+        }
     }
 
     @Test

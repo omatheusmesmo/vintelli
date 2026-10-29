@@ -63,10 +63,72 @@ title, a `char` shortcut, an `ordinal` position, rendering and key
 handling, implementations are CDI beans, and the shell needs no change when
 a new window appears. The shell state read model stays in `vintelli-api`
 (`ShellStateSnapshot` and `ShellStateView`) without TamboUI, so the MCP
-server can read what the user is looking at.
+server can read what the user is looking at, and the write ports
+`ShellHighlightPort` and `ShellDiffViewPort` (implemented by the shell) let
+it push a highlight and a diff back into the TUI.
 
 Keys: `1-4` switch tool windows (Run, Terminal, Problems, ACP Agents),
 `j/k` navigate the project tree, `q` quits.
+
+## MCP server
+
+Vintelli exposes an MCP server over streamable HTTP at `http://127.0.0.1:8080/mcp`
+(`io.quarkiverse.mcp:quarkus-mcp-server-http`). The HTTP server binds the
+loopback address by default (`quarkus.http.host=127.0.0.1`); set
+`quarkus.http.host` if other machines or containers must reach it.
+
+The HTTP CORS filter is enabled with `quarkus.http.cors.enabled` and no
+`cors.origins` are configured, so the endpoint stays same-origin only and the
+extension logs a startup warning about that policy. Browser-based clients are
+therefore not welcome out of the box; set `quarkus.http.cors.origins` to their
+origin if you need them. Non-browser clients (IDEA, CLI agents, `.mcp.json`
+based tools) never send an origin and are unaffected.
+
+The tools read and write the shell through the plain-Java ports in
+`vintelli-api`: the read-only `ShellStateView` plus the write ports
+`ShellHighlightPort` and `ShellDiffViewPort`. The TUI shell implements the
+write ports and paints what was pushed into the editor panel on the next
+frame, so no TamboUI type leaks into the MCP tools.
+
+- `vintelli_state`: the selected tool window id, the selected file path and
+  the agent session ids as JSON; the ids are always an empty list until the
+  ACP client (issue #6) reports real sessions
+- `vintelli_highlight`: pushes a `file` and a 1-based `line` to the TUI; the
+  path must be relative to the project root and is rejected when absolute or
+  using `..` segments
+- `vintelli_diff_view`: renders a `title` and unified `diff` text in the
+  editor panel; sizes are capped and control characters are stripped before
+  rendering
+
+`GET /tui/render` shows the same shell (tool window tab row, editor area,
+status row) as JSON. It draws the live shell offscreen under the shell lock
+and never routes keys from HTTP, but it is only meant for tests and local
+debugging: it answers 404 unless `vintelli.inspect.enabled=true`.
+
+### Configuring clients
+
+Register the URL in your MCP client configuration with the streamable HTTP
+transport. For IntelliJ IDEA, add the server in the MCP settings of the AI
+plugin (AI Assistant or Junie), choose the `HTTP (Streamable)` type and the
+URL `http://127.0.0.1:8080/mcp`.
+
+Tools that follow the `.mcp.json` convention need a `vintelli` entry like:
+
+```json
+{
+  "mcpServers": {
+    "vintelli": {
+      "type": "http",
+      "url": "http://127.0.0.1:8080/mcp"
+    }
+  }
+}
+```
+
+This repository carries its own `.mcp.json` at the root for the Quarkus agent,
+which is unrelated to Vintelli, so merge the `vintelli` entry into your
+config instead of replacing the file. The port above is the Quarkus default;
+change it with `quarkus.http.port`.
 
 ## Native image
 
@@ -81,9 +143,11 @@ The native runner is written to `vintelli-app/target/`.
 
 Integration tests (`*IT`) run against the native runner in CI with
 `./mvnw verify -Dnative -Dquarkus.native.container-build`. `GET /tui/render`
-renders one offscreen frame of the shell and returns the tool window tab row,
-the main area top row and the status row as JSON; it exists so the render
-pipeline can be validated on the native image and is read-only.
+renders one offscreen frame of the live shell and returns the tool window tab
+row, the editor area and the status row as JSON; it exists so the render
+pipeline can be validated on the native image and is gated behind
+`vintelli.inspect.enabled` (read-only and offscreen, never driving the TUI
+event loop).
 
 `/idea/reconnect`, `/idea/tools` and `/idea/tool?name=get_...` expose the IDEA
 MCP client over HTTP so the native ITs can drive it against an in-process twin

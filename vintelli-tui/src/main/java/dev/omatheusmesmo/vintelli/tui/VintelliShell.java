@@ -1,5 +1,9 @@
 package dev.omatheusmesmo.vintelli.tui;
 
+import dev.omatheusmesmo.vintelli.api.ShellDiffViewPort;
+import dev.omatheusmesmo.vintelli.api.ShellHighlightPort;
+import dev.omatheusmesmo.vintelli.api.ShellHighlightTarget;
+import dev.omatheusmesmo.vintelli.api.ShellUnifiedDiff;
 import dev.tamboui.layout.Constraint;
 import dev.tamboui.layout.Layout;
 import dev.tamboui.layout.Rect;
@@ -30,6 +34,8 @@ import jakarta.inject.Singleton;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.IntStream;
 
 /**
@@ -37,11 +43,23 @@ import java.util.stream.IntStream;
  * status bar. The tab bar and the key routing are built from every
  * {@link ToolWindow} the {@link ToolWindowRegistry} exposes, so adding a tool
  * window never changes this class: the window declares itself, gets discovered
- * as a CDI bean and shows up in tab order. Renders on every frame and answers
+ * as a CDI bean and shows up in tab order. It also implements the write ports
+ * of {@code vintelli-api}: external surfaces such as the MCP server push a
+ * {@link ShellHighlightTarget} and a {@link ShellUnifiedDiff} and the editor
+ * panel paints them on the next frame. Renders on every frame and answers
  * keyboard input through {@link EventHandler}.
+ *
+ * <p>{@link #render(Frame)} and {@link #handle(Event, TuiRunner)} share one
+ * lock: TamboUI widget and layout state is mutated while a frame is drawn,
+ * so the TUI event loop and external threads such as the inspect render
+ * endpoint must never draw or route keys concurrently. The port writes stay
+ * lock-free volatile assignments.
  */
 @Singleton
-public final class VintelliShell implements EventHandler {
+public final class VintelliShell implements EventHandler, ShellHighlightPort, ShellDiffViewPort {
+
+    private static final int MAX_EDITOR_DIFF_LINES = 6;
+    private static final int MAX_EDITOR_LINE_LENGTH = 40;
 
     private static final List<String> MENUS = List.of("File", "Edit", "View", "Navigate", "Code", "Refactor", "Run", "Tools", "VCS", "Help");
     private static final List<String> PROJECT_FILES = List.of(
@@ -77,10 +95,13 @@ public final class VintelliShell implements EventHandler {
 
     private final ShellState state;
     private final List<ToolWindow> toolWindows;
+    private final ReentrantLock frameLock = new ReentrantLock();
     private final Tabs toolTabs;
     private final TabsState tabsState = new TabsState(0);
     private final ListState listState = new ListState();
 
+    private volatile ShellHighlightTarget highlight;
+    private volatile ShellUnifiedDiff diff;
     private volatile String status = "Vintelli ready | IDEA MCP: disconnected | ACP: stopped";
     private volatile boolean inputCaptured;
 
@@ -135,6 +156,15 @@ public final class VintelliShell implements EventHandler {
 
     @Override
     public boolean handle(Event event, TuiRunner runner) {
+        frameLock.lock();
+        try {
+            return route(event, runner);
+        } finally {
+            frameLock.unlock();
+        }
+    }
+
+    private boolean route(Event event, TuiRunner runner) {
         if (!(event instanceof KeyEvent key)) {
             return false;
         }
@@ -204,6 +234,70 @@ public final class VintelliShell implements EventHandler {
         return active.handleKey(key);
     }
 
+    @Override
+    public void highlight(ShellHighlightTarget target) {
+        Objects.requireNonNull(target, "target");
+        highlight = target;
+    }
+
+    @Override
+    public void show(ShellUnifiedDiff unifiedDiff) {
+        Objects.requireNonNull(unifiedDiff, "unifiedDiff");
+        diff = unifiedDiff;
+    }
+
+    private Text editorText() {
+        ShellHighlightTarget pushedHighlight = highlight;
+        ShellUnifiedDiff pushedDiff = diff;
+        List<Line> lines = new ArrayList<>();
+        if (pushedHighlight != null) {
+            lines.add(Line.styled("> highlight: " + pushedHighlight.file() + ":" + pushedHighlight.line(),
+                    Style.create().fg(ACCENT).bold()));
+        }
+        if (pushedDiff != null) {
+            appendDiff(lines, pushedDiff);
+        } else if (pushedHighlight == null) {
+            lines.add(Line.styled(EDITOR_TEXT, Style.create().fg(FOREGROUND)));
+        }
+        return Text.from(lines);
+    }
+
+    private static void appendDiff(List<Line> lines, ShellUnifiedDiff pushedDiff) {
+        lines.add(Line.styled("diff: " + pushedDiff.title(), Style.create().fg(BRIGHT).bold()));
+        String[] split = pushedDiff.unifiedDiff().split("\n", -1);
+        int end = split.length;
+        if (end > 1 && split[end - 1].isEmpty()) {
+            end--;
+        }
+        int shown = Math.min(end, MAX_EDITOR_DIFF_LINES);
+        for (int index = 0; index < shown; index++) {
+            lines.add(Line.styled(clip(split[index]), diffStyle(split[index])));
+        }
+        if (end > shown) {
+            lines.add(Line.styled("... (" + (end - shown) + " more lines)", Style.create().fg(SUBTLE)));
+        }
+    }
+
+    private static String clip(String diffLine) {
+        if (diffLine.length() <= MAX_EDITOR_LINE_LENGTH) {
+            return diffLine;
+        }
+        return diffLine.substring(0, MAX_EDITOR_LINE_LENGTH) + " ...";
+    }
+
+    private static Style diffStyle(String diffLine) {
+        if (diffLine.startsWith("@@") || diffLine.startsWith("diff ")) {
+            return Style.create().fg(ACCENT);
+        }
+        if (diffLine.startsWith("+")) {
+            return Style.create().fg(BRIGHT).bold();
+        }
+        if (diffLine.startsWith("-")) {
+            return Style.create().fg(SUBTLE);
+        }
+        return Style.create().fg(FOREGROUND);
+    }
+
     private void moveSelection(int delta) {
         int selected = fileIndex();
         int target = Math.clamp(selected + delta, 0, PROJECT_FILES.size() - 1);
@@ -215,22 +309,27 @@ public final class VintelliShell implements EventHandler {
     }
 
     public void render(Frame frame) {
-        Rect area = frame.area();
-        frame.renderWidget(paintBackground(), area);
-        List<Rect> vertical = Layout.vertical()
-                .constraints(
-                        Constraint.length(1),
-                        Constraint.length(1),
-                        Constraint.fill(),
-                        Constraint.length(9),
-                        Constraint.length(1))
-                .split(area);
+        frameLock.lock();
+        try {
+            Rect area = frame.area();
+            frame.renderWidget(paintBackground(), area);
+            List<Rect> vertical = Layout.vertical()
+                    .constraints(
+                            Constraint.length(1),
+                            Constraint.length(1),
+                            Constraint.fill(),
+                            Constraint.length(9),
+                            Constraint.length(1))
+                    .split(area);
 
-        renderMenuBar(frame, vertical.get(0));
-        renderToolWindowTabs(frame, vertical.get(1));
-        renderMainArea(frame, vertical.get(2));
-        renderToolWindow(frame, vertical.get(3));
-        renderStatusBar(frame, vertical.get(4));
+            renderMenuBar(frame, vertical.get(0));
+            renderToolWindowTabs(frame, vertical.get(1));
+            renderMainArea(frame, vertical.get(2));
+            renderToolWindow(frame, vertical.get(3));
+            renderStatusBar(frame, vertical.get(4));
+        } finally {
+            frameLock.unlock();
+        }
     }
 
     private Block paintBackground() {
@@ -261,7 +360,7 @@ public final class VintelliShell implements EventHandler {
         frame.renderStatefulWidget(PROJECT_LIST, horizontal.get(0), listState);
         frame.renderWidget(
                 Paragraph.builder()
-                        .text(Text.from(EDITOR_TEXT))
+                        .text(editorText())
                         .style(Style.create().fg(FOREGROUND))
                         .block(darculaBlock("Editor", BorderType.ROUNDED))
                         .build(),
