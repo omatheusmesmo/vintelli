@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<scheme name="Dark" version="142" parent_scheme="Darcula">
+  <!-- excerpt of the `attributes` option blocks for TEXT, the keyword, string, comment, number and constant attributes; taken verbatim from themes/expUI/expUI_darkScheme.xml of IntelliJ IDEA Ultimate 2026.2.3 (build IU-262.10968.63), Apache License, Version 2.0 by JetBrains -->
+  <attributes>
+<option name="TEXT">
+      <value>
+        <option name="FOREGROUND" value="bcbec4" />
+        <option name="BACKGROUND" value="1e1f22" />
+      </value>
+    </option>
+<option name="DEFAULT_KEYWORD">
+      <value>
+        <option name="FOREGROUND" value="cf8e6d" deuteranopia="597cc2" protanopia="597cc2" />
+      </value>
+    </option>
+<option name="DEFAULT_STRING">
+      <value>
+        <option name="FOREGROUND" value="6aab73" deuteranopia="94907F" protanopia="94907F"/>
+        <option name="FONT_TYPE" deuteranopia="bold" protanopia="bold"/>
+      </value>
+    </option>
+<option name="DEFAULT_LINE_COMMENT">
+      <value>
+        <option name="FOREGROUND" value="7a7e85" />
+      </value>
+    </option>
+<option name="DEFAULT_NUMBER">
+      <value>
+        <option name="FOREGROUND" value="2aacb8" deuteranopia="66A6FF" protanopia="66A6FF" />
+      </value>
+    </option>
+<option name="DEFAULT_CONSTANT">
+      <value>
+        <option name="FOREGROUND" value="c77dbb" deuteranopia="828eba" protanopia="828eba" />
+        <option name="FONT_TYPE" value="2" deuteranopia="bold" protanopia="bold"/>
+      </value>
+    </option>
+  </attributes>
+</scheme>

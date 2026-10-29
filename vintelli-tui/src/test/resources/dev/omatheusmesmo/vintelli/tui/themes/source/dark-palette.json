@@ -1,0 +1,96 @@
+{
+  "origin": {
+    "release": "IntelliJ IDEA Ultimate 2026.2.3 (build IU-262.10968.63)",
+    "chrome": "ui and colors excerpt in dark-theme-source.json, from the platform file themes/expUI/expUI_dark.theme.json",
+    "editor": "dark-scheme-source.xml, the New UI Dark editor scheme themes/expUI/expUI_darkScheme.xml; the selection color is inherited from the Darcula editor parent inside darcula-scheme-source.xml",
+    "chosenFrom": {
+      "chrome-fg-strong": "ui['SearchEverywhere'].Tab['selectedForeground'] is a tab text value reused as the strong chrome text role"
+    }
+  },
+  "palette": {
+    "panel": {
+      "file": "dark-theme-source.json",
+      "path": "ui.*.background"
+    },
+    "chrome-fg": {
+      "file": "dark-theme-source.json",
+      "path": "ui.*.foreground"
+    },
+    "chrome-fg-strong": {
+      "file": "dark-theme-source.json",
+      "path": "ui.SearchEverywhere.Tab.selectedForeground"
+    },
+    "muted": {
+      "file": "dark-theme-source.json",
+      "path": "ui.*.infoForeground"
+    },
+    "soft": {
+      "file": "dark-theme-source.json",
+      "path": "ui.SearchEverywhere.Advertiser.foreground"
+    },
+    "selection-bg": {
+      "file": "dark-theme-source.json",
+      "path": "ui.*.selectionBackground"
+    },
+    "selection-fg": {
+      "file": "dark-theme-source.json",
+      "path": "ui.*.selectionForeground"
+    },
+    "tab-selected-bg": {
+      "file": "dark-theme-source.json",
+      "path": "ui.ToolWindow.Button.selectedBackground"
+    },
+    "tab-selected-fg": {
+      "file": "dark-theme-source.json",
+      "path": "ui.ToolWindow.Button.selectedForeground"
+    },
+    "border": {
+      "file": "dark-theme-source.json",
+      "path": "ui.Borders.ContrastBorderColor"
+    },
+    "focus-border": {
+      "file": "dark-theme-source.json",
+      "path": "ui.*.focusColor"
+    },
+    "editor-border": {
+      "file": "dark-theme-source.json",
+      "path": "ui.ToolWindow.Stripe.separatorColor"
+    },
+    "editor-bg": {
+      "file": "dark-scheme-source.xml",
+      "path": "TEXT.BACKGROUND"
+    },
+    "editor-fg": {
+      "file": "dark-scheme-source.xml",
+      "path": "TEXT.FOREGROUND"
+    },
+    "editor-keyword": {
+      "file": "dark-scheme-source.xml",
+      "path": "DEFAULT_KEYWORD.FOREGROUND"
+    },
+    "editor-string": {
+      "file": "dark-scheme-source.xml",
+      "path": "DEFAULT_STRING.FOREGROUND"
+    },
+    "editor-comment": {
+      "file": "dark-scheme-source.xml",
+      "path": "DEFAULT_LINE_COMMENT.FOREGROUND"
+    },
+    "editor-number": {
+      "file": "dark-scheme-source.xml",
+      "path": "DEFAULT_NUMBER.FOREGROUND"
+    },
+    "editor-constant": {
+      "file": "dark-scheme-source.xml",
+      "path": "DEFAULT_CONSTANT.FOREGROUND"
+    },
+    "editor-selection": {
+      "file": "darcula-scheme-source.xml",
+      "path": "SELECTION_BACKGROUND"
+    },
+    "editor-sel-fg": {
+      "file": "dark-scheme-source.xml",
+      "path": "TEXT.FOREGROUND"
+    }
+  }
+}

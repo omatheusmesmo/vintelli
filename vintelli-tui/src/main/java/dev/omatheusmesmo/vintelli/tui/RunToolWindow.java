@@ -1,5 +1,6 @@
 package dev.omatheusmesmo.vintelli.tui;
 
+import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
 /**
@@ -9,8 +10,9 @@ import jakarta.inject.Singleton;
 @Singleton
 public final class RunToolWindow extends PilotToolWindow {
 
-    public RunToolWindow() {
+    @Inject
+    public RunToolWindow(ShellThemes themes) {
         super("run", "Run", '1', 0,
-                "IDEA run configurations will stream here (MCP: execute_run_configuration)");
+                "IDEA run configurations will stream here (MCP: execute_run_configuration)", themes);
     }
 }

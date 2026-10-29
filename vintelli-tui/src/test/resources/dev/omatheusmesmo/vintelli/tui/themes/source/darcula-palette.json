@@ -1,0 +1,98 @@
+{
+  "origin": {
+    "release": "IntelliJ IDEA Ultimate 2026.2.3 (build IU-262.10968.63)",
+    "chrome": "ui excerpt in darcula-theme-source.json, from the platform file themes/darcula.theme.json",
+    "editor": "darcula-scheme-source.xml, the built in Darcula editor scheme inside DefaultColorSchemesManager.xml",
+    "chosenFrom": {
+      "chrome-fg-strong": "ui['*'].selectionForeground is a selection value reused as the strong chrome text role",
+      "tab-selected-bg": "ui['Button'].default.startBackground is a button color reused as the selected tool window tab role",
+      "tab-selected-fg": "ui['*'].selectionForeground is a selection value reused as the selected tab text role"
+    }
+  },
+  "palette": {
+    "panel": {
+      "file": "darcula-theme-source.json",
+      "path": "ui.*.background"
+    },
+    "chrome-fg": {
+      "file": "darcula-theme-source.json",
+      "path": "ui.*.foreground"
+    },
+    "chrome-fg-strong": {
+      "file": "darcula-theme-source.json",
+      "path": "ui.*.selectionForeground"
+    },
+    "muted": {
+      "file": "darcula-theme-source.json",
+      "path": "ui.Component.infoForeground"
+    },
+    "soft": {
+      "file": "darcula-theme-source.json",
+      "path": "ui.SearchEverywhere.Advertiser.foreground"
+    },
+    "selection-bg": {
+      "file": "darcula-theme-source.json",
+      "path": "ui.*.selectionBackground.os.default"
+    },
+    "selection-fg": {
+      "file": "darcula-theme-source.json",
+      "path": "ui.*.selectionForeground"
+    },
+    "tab-selected-bg": {
+      "file": "darcula-theme-source.json",
+      "path": "ui.Button.default.startBackground"
+    },
+    "tab-selected-fg": {
+      "file": "darcula-theme-source.json",
+      "path": "ui.*.selectionForeground"
+    },
+    "border": {
+      "file": "darcula-theme-source.json",
+      "path": "ui.MenuBar.borderColor"
+    },
+    "focus-border": {
+      "file": "darcula-theme-source.json",
+      "path": "ui.Component.focusedBorderColor"
+    },
+    "editor-border": {
+      "file": "darcula-theme-source.json",
+      "path": "ui.MenuBar.borderColor"
+    },
+    "editor-bg": {
+      "file": "darcula-scheme-source.xml",
+      "path": "TEXT.BACKGROUND"
+    },
+    "editor-fg": {
+      "file": "darcula-scheme-source.xml",
+      "path": "TEXT.FOREGROUND"
+    },
+    "editor-keyword": {
+      "file": "darcula-scheme-source.xml",
+      "path": "DEFAULT_KEYWORD.FOREGROUND"
+    },
+    "editor-string": {
+      "file": "darcula-scheme-source.xml",
+      "path": "DEFAULT_STRING.FOREGROUND"
+    },
+    "editor-comment": {
+      "file": "darcula-scheme-source.xml",
+      "path": "DEFAULT_LINE_COMMENT.FOREGROUND"
+    },
+    "editor-number": {
+      "file": "darcula-scheme-source.xml",
+      "path": "DEFAULT_NUMBER.FOREGROUND"
+    },
+    "editor-constant": {
+      "file": "darcula-scheme-source.xml",
+      "path": "DEFAULT_CONSTANT.FOREGROUND"
+    },
+    "editor-selection": {
+      "file": "darcula-scheme-source.xml",
+      "path": "SELECTION_BACKGROUND"
+    },
+    "editor-sel-fg": {
+      "file": "darcula-scheme-source.xml",
+      "path": "TEXT.FOREGROUND"
+    }
+  }
+}

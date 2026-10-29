@@ -1,6 +1,9 @@
 package dev.omatheusmesmo.vintelli.tui.keymap;
 
 import dev.omatheusmesmo.vintelli.tui.AcpAgentsToolWindow;
+import dev.omatheusmesmo.vintelli.tui.ShellThemes;
+import java.io.IOException;
+import java.nio.file.Path;
 import dev.omatheusmesmo.vintelli.tui.ProblemsToolWindow;
 import dev.omatheusmesmo.vintelli.tui.RunToolWindow;
 import dev.omatheusmesmo.vintelli.tui.TerminalToolWindow;
@@ -18,8 +21,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CommandPaletteTest {
 
-    private static final List<ToolWindow> WINDOWS = List.of(
-            new RunToolWindow(), new TerminalToolWindow(), new ProblemsToolWindow(), new AcpAgentsToolWindow());
+    private static final List<ToolWindow> WINDOWS = windowList();
+
+    private static List<ToolWindow> windowList() {
+        ShellThemes themes = themes();
+        return List.of(new RunToolWindow(themes), new TerminalToolWindow(themes), new ProblemsToolWindow(themes),
+                new AcpAgentsToolWindow(themes));
+    }
+
+    private static ShellThemes themes() {
+        return new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
+    }
 
     private final Keymap keymap = Keymap.ofProfile(KeymapProfile.DEFAULT, WINDOWS);
     private final CommandPalette palette = new CommandPalette(keymap.actions(), keymap);

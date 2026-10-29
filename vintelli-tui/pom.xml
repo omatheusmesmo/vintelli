@@ -62,6 +62,13 @@
             <classifier>test-fixtures</classifier>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>dev.tamboui</groupId>
+            <artifactId>tamboui-toolkit</artifactId>
+            <version>${tamboui.version}</version>
+            <classifier>test-fixtures</classifier>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

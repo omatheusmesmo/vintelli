@@ -31,7 +31,8 @@ class VintelliShellRenderTest {
                         "mainAreaTop", containsString("Project"),
                         "mainAreaTop", containsString("Editor"),
                         "mainAreaTop", containsString("╭"),
-                        "status", containsString("Vintelli ready"));
+                        "status", containsString("Vintelli ready"),
+                        "theme", is(ShellThemes.DEFAULT_THEME));
     }
 
     /**
@@ -49,5 +50,57 @@ class VintelliShellRenderTest {
                         "shortcuts.quit", containsString("Ctrl+c"),
                         "shortcuts.SearchEverywhere", equalTo("Ctrl+p"),
                         "shortcuts.ActivateRunToolWindow", containsString("Alt+1"));
+    }
+
+    /**
+     * The runtime theme switch through the gated inspect surface: the switch
+     * returns the frame it painted, and the render endpoint reports the new
+     * theme afterwards, so the stylesheet swap, its validation and the next
+     * full render are all exercised. The native runner replays this without a
+     * restart. The default theme is restored, so the endpoint stays
+     * independent of the order the tests run in.
+     */
+    @Test
+    void switchesTheThemeByNameAndPaintsTheNextFrameInTheNewTheme() {
+        try {
+            given()
+                    .when().post("/tui/theme?name=darcula")
+                    .then()
+                    .statusCode(200)
+                    .body("theme", is("darcula"),
+                            "tabRow", containsString("Run"),
+                            "mainAreaTop", containsString("Project"));
+            given()
+                    .when().get("/tui/render")
+                    .then()
+                    .statusCode(200)
+                    .body("theme", is("darcula"),
+                            "status", containsString("Vintelli ready"));
+        } finally {
+            given()
+                    .when().post("/tui/theme?name=" + ShellThemes.DEFAULT_THEME)
+                    .then()
+                    .statusCode(200)
+                    .body("theme", is(ShellThemes.DEFAULT_THEME));
+        }
+    }
+
+    /**
+     * An unknown name fails like the startup validation does, and the active
+     * theme survives the failed call: the next render still reports the theme
+     * the test sequence left active.
+     */
+    @Test
+    void rejectsAnUnknownThemeNameAndKeepsTheActiveTheme() {
+        given()
+                .when().post("/tui/theme?name=bogus")
+                .then()
+                .statusCode(400)
+                .body("error", containsString("unknown shell theme 'bogus'; available themes:"));
+        given()
+                .when().get("/tui/render")
+                .then()
+                .statusCode(200)
+                .body("theme", is(ShellThemes.DEFAULT_THEME));
     }
 }
