@@ -6,6 +6,7 @@ import dev.tamboui.layout.Rect;
 import dev.tamboui.style.Color;
 import dev.tamboui.terminal.Frame;
 import dev.tamboui.tui.pilot.Pilot;
+import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.pilot.TuiTestRunner;
 import org.junit.jupiter.api.Test;
 
@@ -14,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class VintelliShellTest {
@@ -29,6 +31,7 @@ class VintelliShellTest {
     private static final int TABS_UNHIGHLIGHTED_ZONE = FIRST_TAB_WIDTH + 1 + (" 2. Terminal ".length() - 1);
     private static final int TAB_SWITCH_HIGHLIGHT = " 3. Problems ".length();
     private static final int PROJECT_ROW_HIGHLIGHT = 34 - 2;
+    private static final int TOOL_WINDOW_ROW = 14;
     private static final int EDITOR_PROBE_X = 60;
     private static final int EDITOR_PROBE_Y = 12;
     private static final Color SELECTION = Color.hex("#365880");
@@ -37,7 +40,7 @@ class VintelliShellTest {
 
     @Test
     void selectsToolWindowsByDigitKeys() throws Exception {
-        VintelliShell shell = new VintelliShell();
+        VintelliShell shell = defaultShell();
         try (TuiTestRunner test = TuiTestRunner.runTest(shell, shell::render)) {
             Pilot pilot = test.pilot();
             pilot.pause(STARTUP);
@@ -64,7 +67,7 @@ class VintelliShellTest {
 
     @Test
     void navigatesProjectTreeWithJAndK() throws Exception {
-        VintelliShell shell = new VintelliShell();
+        VintelliShell shell = defaultShell();
         try (TuiTestRunner test = TuiTestRunner.runTest(shell, shell::render)) {
             Pilot pilot = test.pilot();
             pilot.pause(STARTUP);
@@ -87,7 +90,7 @@ class VintelliShellTest {
 
     @Test
     void clampsSelectionAtListBounds() throws Exception {
-        VintelliShell shell = new VintelliShell();
+        VintelliShell shell = defaultShell();
         try (TuiTestRunner test = TuiTestRunner.runTest(shell, shell::render)) {
             Pilot pilot = test.pilot();
             pilot.pause(STARTUP);
@@ -116,7 +119,7 @@ class VintelliShellTest {
 
     @Test
     void separatesMenuEntriesOnFirstRow() {
-        VintelliShell shell = new VintelliShell();
+        VintelliShell shell = defaultShell();
         Buffer buffer = offlineFrame(shell);
 
         String menu = rowText(buffer, MENU_ROW);
@@ -127,7 +130,7 @@ class VintelliShellTest {
 
     @Test
     void highlightsOnlySelectedTabAndRowOnFirstFrame() {
-        VintelliShell shell = new VintelliShell();
+        VintelliShell shell = defaultShell();
         Buffer buffer = offlineFrame(shell);
 
         assertEquals(FIRST_TAB_WIDTH, highlightedCount(buffer, TAB_ROW, SELECTION),
@@ -142,7 +145,7 @@ class VintelliShellTest {
 
     @Test
     void movesHighlightToTab3AndDropsTab1AfterDigitPress() throws Exception {
-        VintelliShell shell = new VintelliShell();
+        VintelliShell shell = defaultShell();
         try (TuiTestRunner test = TuiTestRunner.runTest(shell, shell::render)) {
             Pilot pilot = test.pilot();
             pilot.pause(STARTUP);
@@ -156,6 +159,160 @@ class VintelliShellTest {
                 rowText(buffer, TAB_ROW));
         assertTrue(highlightedColumnsBefore(buffer, TAB_ROW, SELECTION, TABS_UNHIGHLIGHTED_ZONE) == 0,
                 "tabs 1 and 2 must lose the highlight after switching to tab 3: " + rowText(buffer, TAB_ROW));
+    }
+
+    @Test
+    void showsATabForAToolWindowRegisteredWithoutShellChanges() {
+        VintelliShell shell = shellWithFakeWindow(new FakeToolWindow("fake.threads", "Threads", '7', 50, "fake thread dump"));
+        Buffer buffer = offlineFrame(shell);
+
+        String tabRow = rowText(buffer, TAB_ROW);
+        assertTrue(tabRow.contains("1. Run"), tabRow);
+        assertTrue(tabRow.contains("7. Threads"), tabRow);
+    }
+
+    @Test
+    void selectsATabByItsDeclaredShortcutAndRecordsItInState() throws Exception {
+        VintelliShell shell = shellWithFakeWindow(new FakeToolWindow("fake.threads", "Threads", '7', 50, "fake thread dump"));
+        try (TuiTestRunner test = TuiTestRunner.runTest(shell, shell::render)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+
+            press(pilot, '7');
+            assertEquals("fake.threads", shell.state().snapshot().selectedToolWindowId());
+            assertEquals("Tool window: Threads", shell.status());
+            assertEquals(4, shell.toolIndex());
+
+            press(pilot, 'q');
+        }
+    }
+
+    @Test
+    void routesUnclaimedKeysToTheActiveToolWindowBeforeShellShortcuts() throws Exception {
+        FakeToolWindow fake = new FakeToolWindow("fake.notes", "Notes", '6', 60, "fake notes");
+        VintelliShell shell = shellWithFakeWindow(fake);
+        try (TuiTestRunner test = TuiTestRunner.runTest(shell, shell::render)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+
+            press(pilot, '6');
+            press(pilot, 'j');
+            assertEquals(0, shell.fileIndex(), "the active tool window must consume j before the project list");
+            assertTrue(fake.handledKeys().contains("j"), fake.handledKeys().toString());
+
+            press(pilot, 'q');
+        }
+    }
+
+    @Test
+    void capturingActiveWindowReceivesEvenTheShellKeys() throws Exception {
+        FakeToolWindow terminalLike = new FakeToolWindow("fake.terminal", "Fake Terminal", '6', 60, "type away", true);
+        VintelliShell shell = shellWithFakeWindow(terminalLike);
+        try (TuiTestRunner test = TuiTestRunner.runTest(shell, shell::render)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+
+            press(pilot, '6');
+            press(pilot, 'q');
+            press(pilot, 'j');
+            press(pilot, '1');
+            assertEquals(0, shell.fileIndex(), "captured input must not drive the shell");
+            assertEquals(4, shell.toolIndex(), "captured input must not switch tabs");
+            assertTrue(terminalLike.handledKeys().containsAll(List.of("q", "j", "1")),
+                    terminalLike.handledKeys().toString());
+
+            press(pilot, 'q');
+        }
+    }
+
+    @Test
+    void escapeLeavesCapturedInputAndReturnsFocusToShellNavigation() throws Exception {
+        FakeToolWindow terminalLike = new FakeToolWindow("fake.terminal", "Fake Terminal", '6', 60, "type away", true);
+        VintelliShell shell = shellWithFakeWindow(terminalLike);
+        try (TuiTestRunner test = TuiTestRunner.runTest(shell, shell::render)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+
+            press(pilot, '6');
+            press(pilot, 'j');
+            assertEquals(0, shell.fileIndex(), "captured: the window still has the key");
+            pilot.press(KeyCode.ESCAPE);
+            pause(pilot);
+            assertEquals("Focus: shell navigation", shell.status());
+            assertFalse(terminalLike.handledKeys().contains("escape"), "escape stays with the shell");
+            press(pilot, 'j');
+            assertEquals(1, shell.fileIndex(), "after escape the shell navigates again");
+            press(pilot, 'j');
+            assertEquals(2, shell.fileIndex(), "the capturing window must stay out of the shell keys");
+
+            press(pilot, 'q');
+        }
+    }
+
+    @Test
+    void selectsTheCapturingWindowAgainThroughItsShortcutAfterEscape() throws Exception {
+        FakeToolWindow terminalLike = new FakeToolWindow("fake.terminal", "Fake Terminal", '6', 60, "type away", true);
+        VintelliShell shell = shellWithFakeWindow(terminalLike);
+        try (TuiTestRunner test = TuiTestRunner.runTest(shell, shell::render)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+
+            press(pilot, '6');
+            pilot.press(KeyCode.ESCAPE);
+            pause(pilot);
+            assertEquals("Focus: shell navigation", shell.status());
+            press(pilot, '6');
+            press(pilot, 'j');
+            assertEquals(0, shell.fileIndex(), "reselecting the window re-enters captured input");
+            assertTrue(terminalLike.handledKeys().contains("j"), terminalLike.handledKeys().toString());
+
+            press(pilot, 'q');
+        }
+    }
+
+    @Test
+    void movesTheFileSelectionIntoTheShellStateOnJAndK() throws Exception {
+        VintelliShell shell = defaultShell();
+        try (TuiTestRunner test = TuiTestRunner.runTest(shell, shell::render)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+
+            press(pilot, 'j');
+            assertEquals("VintelliMain.java", shell.state().snapshot().selectedFile());
+            assertEquals("run", shell.state().snapshot().selectedToolWindowId());
+
+            press(pilot, 'k');
+            assertEquals("vintelli/pom.xml", shell.state().snapshot().selectedFile());
+
+            press(pilot, 'q');
+        }
+    }
+
+    @Test
+    void rendersTheFallbackTextWhenNoToolWindowIsRegistered() {
+        VintelliShell shell = new VintelliShell(List.of(), new ShellState());
+        Buffer buffer = offlineFrame(shell);
+
+        String contentRow = rowText(buffer, TOOL_WINDOW_ROW);
+        assertTrue(contentRow.contains("no tool window beans registered"), contentRow);
+    }
+
+    private static VintelliShell defaultShell() {
+        ToolWindowRegistry registry = new ToolWindowRegistry(List.of(
+                new RunToolWindow(), new TerminalToolWindow(), new ProblemsToolWindow(), new AcpAgentsToolWindow()));
+        return new VintelliShell(registry.toolWindows(), new ShellState());
+    }
+
+    private static VintelliShell shellWithFakeWindow(FakeToolWindow fake) {
+        ToolWindowRegistry registry = new ToolWindowRegistry(List.of(
+                new RunToolWindow(), new TerminalToolWindow(), new ProblemsToolWindow(), new AcpAgentsToolWindow()));
+        List<ToolWindow> windows = new ArrayList<>(registry.toolWindows());
+        windows.add(fake);
+        return new VintelliShell(new ToolWindowRegistry(windows).toolWindows(), new ShellState());
+    }
+
+    private static void pause(Pilot pilot) {
+        pilot.pause(EVENT_WINDOW);
     }
 
     private static Buffer offlineFrame(VintelliShell shell) {

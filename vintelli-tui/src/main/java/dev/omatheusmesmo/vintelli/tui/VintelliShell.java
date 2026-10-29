@@ -12,6 +12,7 @@ import dev.tamboui.text.Text;
 import dev.tamboui.tui.EventHandler;
 import dev.tamboui.tui.TuiRunner;
 import dev.tamboui.tui.event.Event;
+import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
 import dev.tamboui.widgets.block.Block;
 import dev.tamboui.widgets.block.BorderType;
@@ -24,6 +25,7 @@ import dev.tamboui.widgets.list.ScrollMode;
 import dev.tamboui.widgets.paragraph.Paragraph;
 import dev.tamboui.widgets.tabs.Tabs;
 import dev.tamboui.widgets.tabs.TabsState;
+import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
 import java.util.ArrayList;
@@ -32,13 +34,15 @@ import java.util.stream.IntStream;
 
 /**
  * IntelliJ-like terminal shell: menu bar, tool window tabs, project list and
- * status bar. Renders on every frame and answers keyboard input through
- * {@link EventHandler}.
+ * status bar. The tab bar and the key routing are built from every
+ * {@link ToolWindow} the {@link ToolWindowRegistry} exposes, so adding a tool
+ * window never changes this class: the window declares itself, gets discovered
+ * as a CDI bean and shows up in tab order. Renders on every frame and answers
+ * keyboard input through {@link EventHandler}.
  */
 @Singleton
 public final class VintelliShell implements EventHandler {
 
-    private static final List<String> TOOL_WINDOW_TITLES = List.of("Run", "Terminal", "Problems", "ACP Agents");
     private static final List<String> MENUS = List.of("File", "Edit", "View", "Navigate", "Code", "Refactor", "Run", "Tools", "VCS", "Help");
     private static final List<String> PROJECT_FILES = List.of(
             "vintelli/pom.xml",
@@ -47,25 +51,17 @@ public final class VintelliShell implements EventHandler {
             "VintelliMcpTools.java",
             "VintelliShellTest.java"
     );
+    private static final String EMPTY_TOOL_WINDOWS_TEXT = "no tool window beans registered; implement ToolWindow and expose the bean";
 
     private static final Color BACKGROUND = Color.hex("#2b2b2b");
-    private static final Color PANEL = Color.hex("#3c3f41");
-    private static final Color FOREGROUND = Color.hex("#a9b7c6");
-    private static final Color SUBTLE = Color.hex("#808080");
-    private static final Color ACCENT = Color.hex("#cc7832");
     private static final Color SELECTION = Color.hex("#365880");
-    private static final Color BRIGHT = Color.hex("#ffffff");
+    private static final Color ACCENT = Color.hex("#cc7832");
+    static final Color PANEL = Color.hex("#3c3f41");
+    static final Color FOREGROUND = Color.hex("#a9b7c6");
+    static final Color SUBTLE = Color.hex("#808080");
+    static final Color BRIGHT = Color.hex("#ffffff");
 
     private static final List<Span> MENU_SPANS = menuSpans();
-    private static final List<Line> TOOL_WINDOW_TAB_TITLES = IntStream.range(0, TOOL_WINDOW_TITLES.size())
-            .mapToObj(index -> Line.from(Span.raw(" " + (index + 1) + ". " + TOOL_WINDOW_TITLES.get(index) + " ")))
-            .toList();
-    private static final Tabs TOOL_TABS = Tabs.builder()
-            .titles(TOOL_WINDOW_TAB_TITLES)
-            .style(Style.create().fg(SUBTLE))
-            .highlightStyle(Style.create().fg(BRIGHT).bg(SELECTION).bold())
-            .divider(" ")
-            .build();
     private static final ListWidget PROJECT_LIST = ListWidget.builder()
             .items(PROJECT_FILES.toArray(String[]::new))
             .style(Style.create().fg(FOREGROUND))
@@ -79,13 +75,49 @@ public final class VintelliShell implements EventHandler {
             .build();
     private static final String EDITOR_TEXT = "editor tool window lands with issue #31; vintelli needs no external editor";
 
+    private final ShellState state;
+    private final List<ToolWindow> toolWindows;
+    private final Tabs toolTabs;
     private final TabsState tabsState = new TabsState(0);
     private final ListState listState = new ListState();
 
     private volatile String status = "Vintelli ready | IDEA MCP: disconnected | ACP: stopped";
+    private volatile boolean inputCaptured;
 
-    public VintelliShell() {
+    @Inject
+    public VintelliShell(ToolWindowRegistry registry, ShellState state) {
+        this(registry.toolWindows(), state);
+    }
+
+    /**
+     * Direct construction shell used by tests and the offscreen inspection
+     * surface. The list must already be in deterministic tab order, so it
+     * should come from a {@link ToolWindowRegistry}.
+     */
+    public VintelliShell(List<ToolWindow> toolWindows, ShellState state) {
+        this.state = state;
+        this.toolWindows = List.copyOf(toolWindows);
+        this.toolTabs = Tabs.builder()
+                .titles(toolWindowTabTitles())
+                .style(Style.create().fg(SUBTLE))
+                .highlightStyle(Style.create().fg(BRIGHT).bg(SELECTION).bold())
+                .divider(" ")
+                .build();
         listState.select(0);
+        if (!toolWindows.isEmpty()) {
+            state.selectToolWindow(toolWindows.get(0).id());
+            inputCaptured = toolWindows.get(0).capturesInput();
+        }
+        state.selectFile(PROJECT_FILES.get(0));
+    }
+
+    private List<Line> toolWindowTabTitles() {
+        return IntStream.range(0, toolWindows.size())
+                .mapToObj(index -> {
+                    ToolWindow toolWindow = toolWindows.get(index);
+                    return Line.from(Span.raw(" " + toolWindow.shortcut() + ". " + toolWindow.title() + " "));
+                })
+                .toList();
     }
 
     private static List<Span> menuSpans() {
@@ -103,42 +135,73 @@ public final class VintelliShell implements EventHandler {
 
     @Override
     public boolean handle(Event event, TuiRunner runner) {
-        if (event instanceof KeyEvent key) {
-            if (key.isQuit()) {
-                runner.quit();
+        if (!(event instanceof KeyEvent key)) {
+            return false;
+        }
+        if (inputCaptured) {
+            if (key.isKey(KeyCode.ESCAPE)) {
+                inputCaptured = false;
+                status = "Focus: shell navigation";
                 return true;
             }
-            if (selectToolWindow(key)) {
-                return true;
+            if (!toolWindows.isEmpty()) {
+                toolWindows.get(toolIndex()).handleKey(key);
             }
-            if (key.isUp() || key.isChar('k')) {
-                moveSelection(-1);
-                return true;
-            }
-            if (key.isDown() || key.isChar('j')) {
-                moveSelection(1);
-                return true;
-            }
+            return true;
+        }
+        if (key.isQuit()) {
+            runner.quit();
+            return true;
+        }
+        if (selectToolWindow(key)) {
+            return true;
+        }
+        if (routeToToolWindow(key)) {
+            return true;
+        }
+        if (key.isUp() || key.isChar('k')) {
+            moveSelection(-1);
+            return true;
+        }
+        if (key.isDown() || key.isChar('j')) {
+            moveSelection(1);
+            return true;
         }
         return false;
     }
 
     private boolean selectToolWindow(KeyEvent key) {
-        String text = key.string();
-        if (text.length() != 1) {
+        ToolWindow match = null;
+        for (ToolWindow toolWindow : toolWindows) {
+            if (toolWindow.shortcut() == key.character()) {
+                match = toolWindow;
+                break;
+            }
+        }
+        if (match == null) {
             return false;
         }
-        char digit = text.charAt(0);
-        if (digit < '1' || digit > '9') {
-            return false;
-        }
-        int toolWindow = digit - '1';
-        if (toolWindow >= TOOL_WINDOW_TITLES.size()) {
-            return false;
-        }
-        tabsState.select(toolWindow);
-        status = "Tool window: " + TOOL_WINDOW_TITLES.get(toolWindow);
+        switchToToolWindow(toolWindows.indexOf(match));
         return true;
+    }
+
+    private void switchToToolWindow(int toolWindowIndex) {
+        ToolWindow toolWindow = toolWindows.get(toolWindowIndex);
+        tabsState.select(toolWindowIndex);
+        state.selectToolWindow(toolWindow.id());
+        inputCaptured = toolWindow.capturesInput();
+        status = "Tool window: " + toolWindow.title();
+    }
+
+    private boolean routeToToolWindow(KeyEvent key) {
+        if (toolWindows.isEmpty()) {
+            return false;
+        }
+        ToolWindow active = toolWindows.get(toolIndex());
+        if (active.capturesInput()) {
+            return false;
+        }
+        return active.handleKey(key);
     }
 
     private void moveSelection(int delta) {
@@ -146,6 +209,7 @@ public final class VintelliShell implements EventHandler {
         int target = Math.clamp(selected + delta, 0, PROJECT_FILES.size() - 1);
         if (target != selected) {
             listState.select(target);
+            state.selectFile(PROJECT_FILES.get(target));
             status = "Selected: " + PROJECT_FILES.get(target);
         }
     }
@@ -186,7 +250,7 @@ public final class VintelliShell implements EventHandler {
     }
 
     private void renderToolWindowTabs(Frame frame, Rect area) {
-        frame.renderStatefulWidget(TOOL_TABS, area, tabsState);
+        frame.renderStatefulWidget(toolTabs, area, tabsState);
     }
 
     private void renderMainArea(Frame frame, Rect area) {
@@ -204,28 +268,28 @@ public final class VintelliShell implements EventHandler {
                 horizontal.get(1));
     }
 
-    private static Block darculaBlock(String title, BorderType borderType) {
+    private void renderToolWindow(Frame frame, Rect area) {
+        if (toolWindows.isEmpty()) {
+            frame.renderWidget(emptyToolWindowsParagraph(), area);
+            return;
+        }
+        toolWindows.get(toolIndex()).render(frame, area);
+    }
+
+    private static Paragraph emptyToolWindowsParagraph() {
+        return Paragraph.builder()
+                .text(Text.from(EMPTY_TOOL_WINDOWS_TEXT))
+                .style(Style.create().fg(FOREGROUND))
+                .build();
+    }
+
+    static Block darculaBlock(String title, BorderType borderType) {
         return Block.builder()
                 .title(Title.from(Span.styled(title, Style.create().fg(BRIGHT).bg(PANEL))))
                 .borders(Borders.ALL)
                 .borderType(borderType)
                 .borderColor(SUBTLE)
                 .build();
-    }
-
-    private void renderToolWindow(Frame frame, Rect area) {
-        String content = switch (toolIndex()) {
-            case 0 -> "IDEA run configurations will stream here (MCP: execute_run_configuration)";
-            case 1 -> "IDEA integrated terminal panel (MCP: execute_terminal_command)";
-            case 2 -> "Problems view: offline inspections via idea.sh inspect + MCP analysis tools";
-            default -> "ACP agent sessions: opencode acp / claude-code-acp / pi-acp";
-        };
-        Paragraph toolWindow = Paragraph.builder()
-                .text(Text.from(content))
-                .style(Style.create().fg(FOREGROUND))
-                .block(darculaBlock(TOOL_WINDOW_TITLES.get(toolIndex()), BorderType.ROUNDED))
-                .build();
-        frame.renderWidget(toolWindow, area);
     }
 
     private void renderStatusBar(Frame frame, Rect area) {
@@ -247,5 +311,13 @@ public final class VintelliShell implements EventHandler {
 
     public String status() {
         return status;
+    }
+
+    /**
+     * Read model of this shell; see {@link ShellStateView} for the plain-type
+     * contract other surfaces consume.
+     */
+    public ShellState state() {
+        return state;
     }
 }
