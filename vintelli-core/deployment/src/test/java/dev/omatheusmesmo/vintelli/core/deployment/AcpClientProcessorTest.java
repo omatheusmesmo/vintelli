@@ -10,7 +10,7 @@ import com.agentclientprotocol.sdk.spec.AcpSchema.TextContent;
 import io.quarkus.builder.BuildChainBuilder;
 import io.quarkus.builder.BuildContext;
 import io.quarkus.builder.BuildStep;
-import io.quarkus.deployment.builditem.ServiceStartBuildItem;
+import io.quarkus.deployment.builditem.FeatureBuildItem;
 import io.quarkus.deployment.builditem.nativeimage.ReflectiveClassBuildItem;
 import io.quarkus.test.QuarkusUnitTest;
 import jakarta.inject.Inject;
@@ -134,9 +134,9 @@ class AcpClientProcessorTest {
                         unrestricted.contains(TextContent.class.getName())
                                 && unrestricted.contains(AgentMessageChunk.class.getName())
                                 && unrestricted.contains(NewSessionResponse.class.getName())));
-                context.produce(new ServiceStartBuildItem("vintelli-acp-test"));
+                context.produce(new FeatureBuildItem("vintelli-acp-test"));
             }
-        }).consumes(ReflectiveClassBuildItem.class).produces(ServiceStartBuildItem.class).build();
+        }).consumes(ReflectiveClassBuildItem.class).produces(FeatureBuildItem.class).build();
     }
 
     /**

@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -28,6 +29,7 @@ class ProcessRunnerTest {
 
     private static final Duration GENEROUS = Duration.ofMinutes(5);
     private static final Duration STREAM_SETTLE = Duration.ofSeconds(60);
+    private static final Path MODULE_DIRECTORY = Path.of(System.getProperty("user.dir"));
 
     @TempDir
     Path temp;
@@ -153,21 +155,25 @@ class ProcessRunnerTest {
     }
 
     @Test
-    void cancellationAlsoStopsTheDescendantsOfTheProcess() {
+    void cancellationAlsoStopsTheDescendantsOfTheProcess() throws Exception {
         Path spawner = TestProcesses.extractSource(temp, "Spawner.java");
         Path pumper = TestProcesses.extractSource(temp, "Pumper.java");
         List<String> observed = new CopyOnWriteArrayList<>();
         ProcessRunner runner = new ProcessRunner();
 
-        ProcessRunner.Handle handle = runner.start(plan(command(spawner, pumper.toString())), observed::add);
+        ProcessRunner.CommandPlan spawnerPlan = new ProcessRunner.CommandPlan(
+                command(spawner, pumper.toString()), MODULE_DIRECTORY, Map.of(), GENEROUS);
+        ProcessRunner.Handle handle = runner.start(spawnerPlan, observed::add);
         TestProcesses.awaitUntil(STREAM_SETTLE, () -> observed.stream().anyMatch(line -> line.startsWith("child:")));
-        long childPid = Long.parseLong(observed.stream().filter(line -> line.startsWith("child:"))
-                .findFirst().orElseThrow().substring("child:".length()));
-        assertTrue(ProcessHandle.of(childPid).map(ProcessHandle::isAlive).orElse(false));
+        ProcessHandle spawnerProcess = processNamedBy(observed, "spawner:");
+        ProcessHandle childProcess = processNamedBy(observed, "child:");
+        assertTrue(childProcess.isAlive());
 
         handle.cancel();
 
-        TestProcesses.awaitUntil(STREAM_SETTLE, () -> !ProcessHandle.of(childPid).map(ProcessHandle::isAlive).orElse(false));
+        spawnerProcess.onExit().get(STREAM_SETTLE.toSeconds(), TimeUnit.SECONDS);
+        childProcess.onExit().get(STREAM_SETTLE.toSeconds(), TimeUnit.SECONDS);
+        assertFalse(childProcess.isAlive());
     }
 
     @Test
@@ -188,6 +194,12 @@ class ProcessRunnerTest {
         command.add(source.toString());
         command.addAll(List.of(args));
         return command;
+    }
+
+    private static ProcessHandle processNamedBy(List<String> observed, String prefix) {
+        long pid = Long.parseLong(observed.stream().filter(line -> line.startsWith(prefix))
+                .findFirst().orElseThrow().substring(prefix.length()));
+        return ProcessHandle.of(pid).orElseThrow();
     }
 
     private ProcessRunner.CommandPlan plan(List<String> command) {
