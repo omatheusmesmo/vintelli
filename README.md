@@ -57,6 +57,12 @@ native-ready. Verify with the `native` profile and Mandrel 25 from SDKMAN:
 ./mvnw package -Dnative
 ```
 
+Integration tests (`*IT`) run against the native runner in CI with
+`./mvnw verify -Dnative -Dquarkus.native.container-build`. `GET /tui/render`
+renders one offscreen frame of the shell and returns the tool window tab row,
+the main area top row and the status row as JSON; it exists so the render
+pipeline can be validated on the native image and is read-only.
+
 ## Status
 
 See the GitHub issues for the implementation plan (IDEA MCP integration, ACP
