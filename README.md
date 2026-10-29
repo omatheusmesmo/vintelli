@@ -49,6 +49,46 @@ java -jar vintelli-app/target/quarkus-app/quarkus-run.jar --tui
 The application lives in the `vintelli-app` module; the other modules are
 plain libraries built along with it.
 
+## CLI
+
+Vintelli ships an AEsh 3.18.6 command layer, plain library, no
+`quarkus-aesh` extension (that extension is legacy): the commands are CDI
+beans annotated with `@CommandDefinition`, and the `aesh-processor` module
+generates the command metadata at build time, so there is no reflective
+annotation-scan fallback and the native image needs no extra configuration
+beyond the registry classes derived by the build steps in
+`vintelli-core/deployment`. `VintelliMain` decides the surface: `--tui`
+starts the shell, `--repl` the interactive console, any other argument one
+shot command execution, and no argument the headless server.
+
+Scripted, one command per process (`java -jar vintelli-app/target/quarkus-app/quarkus-run.jar <command>...`):
+
+- `run` lists the detected run configurations; `run maven:compile` starts
+  one and streams the output lines
+- `terminal java --version` executes a command line through the terminal
+  provider; a command the provider gates prints the confirmation hint and
+  can be reissued with `terminal --yes <command>`
+- `problems <file>` lists the problems reported for one file
+- `inspect` prints the shell selection and the capability status rows, the
+  same read model as the HTTP `/capabilities` endpoint and the MCP state tool
+- `agents prompt <text>` sends one prompt to the configured ACP agent over
+  stdio and reports the streamed chunks and the stop reason; the agent
+  process comes from `vintelli.acp.probe.agent-command` and
+  `vintelli.acp.probe.agent-args` (shared with the HTTP probe surface)
+- unknown names fail with exit code 127, failed commands with 1, misuse
+  with 2, so scripts can branch on the outcome
+
+The interactive console, with history and completion:
+
+```bash
+java -jar vintelli-app/target/quarkus-app/quarkus-run.jar --repl
+vintelli> inspect
+vintelli> exit
+```
+
+Keystrokes and commands are the same as the one shot surface; `exit` and
+`quit` leave the console.
+
 `vintelli-core` is a Quarkus extension (parent `vintelli-core-parent` with
 `vintelli-core/runtime` and `vintelli-core/deployment`) and the home of
 Vintelli's build-time glue. Its content is
