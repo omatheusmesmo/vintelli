@@ -40,8 +40,8 @@ class CapabilityRegistrySelectionTest {
         assertEquals("primary-reader", ((CapabilitySelection.Selected<ReadFileCapability>) registry.readFile()).provider().identifier());
 
         CapabilitySelection<RunCapability> run = registry.run();
-        assertFalse(run.isAvailable());
-        assertEquals("no provider is registered for 'run'", ((CapabilitySelection.Unavailable<RunCapability>) run).reason());
+        assertTrue(run.isAvailable());
+        assertEquals("local", ((CapabilitySelection.Selected<RunCapability>) run).provider().identifier());
 
         primary.markUnavailable("lsp process exited");
 

@@ -57,6 +57,18 @@ and a build step that registers the `McpSchema` types for reflection. Only
 `vintelli-idea` and `vintelli-app` depend on it; `vintelli-api` and
 `vintelli-jsonrpc` stay Quarkus-free.
 
+`vintelli-local` is the standalone provider behind the `vintelli-api`
+capability ports: it runs Maven and Gradle goals and tasks through real
+processes (wrapper first, installed command as fallback, always an argument
+list and never a shell command line), executes terminal commands the same
+way with a confirmation gate for system or destructive programs, and reads
+the project files within a configurable project root
+(`vintelli.local.project-root`, the working directory by default) refusing
+every traversal or symlink escape. A timeout
+(`vintelli.local.process-timeout`, minutes) terminates each process tree,
+and cancellation works the same way. Its providers are CDI beans, so the
+capability registry ranks them like every other provider.
+
 The tool window SPI lives in `vintelli-tui` because its render and key
 handling signatures use TamboUI types: a `ToolWindow` declares an id, a
 title, a `char` shortcut, an `ordinal` position, rendering and key
