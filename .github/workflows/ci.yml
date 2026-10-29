@@ -103,7 +103,9 @@ jobs:
           cache: maven
 
       - name: Build native image (in the Mandrel container, langchain4j pattern)
-        run: ./mvnw -B -ntp package -Dnative -DskipTests -Dquarkus.native.container-build
+        run: >
+          ./mvnw -B -ntp package -Dnative -DskipTests -Dquarkus.native.container-build
+          "-Dquarkus.native.additional-build-args=--initialize-at-run-time=org.jline.nativ"
 
       - name: Smoke test native runner
         run: |
