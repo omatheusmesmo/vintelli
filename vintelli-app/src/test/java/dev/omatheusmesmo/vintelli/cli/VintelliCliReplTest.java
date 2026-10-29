@@ -58,6 +58,51 @@ class VintelliCliReplTest {
         }
     }
 
+    @Test
+    void replPrintsEveryRowOfAPipedInspectBeforeExitStopsTheConsole() throws Exception {
+        PipedInputStream consoleIn = new PipedInputStream(8192);
+        PipedOutputStream testInput = new PipedOutputStream(consoleIn);
+        SlowTerminalOutput consoleOutput = new SlowTerminalOutput();
+        CountDownLatch ready = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(1);
+        Thread console = new Thread(() -> {
+            repl.run(VintelliCliRepl.pipedConnection(consoleIn, consoleOutput), ready::countDown);
+            done.countDown();
+        });
+        console.setDaemon(true);
+        console.start();
+        try {
+            assertTrue(ready.await(60, TimeUnit.SECONDS), "the console never accepted input");
+            testInput.write("inspect\nexit\n".getBytes(StandardCharsets.UTF_8));
+            testInput.flush();
+            testInput.close();
+            assertTrue(done.await(60, TimeUnit.SECONDS), "the exit command never stopped the console");
+            String output = consoleOutput.toString(StandardCharsets.UTF_8);
+            assertTrue(output.contains("terminal: local (local shell process)"), output);
+            assertTrue(output.contains("vcs: "), output);
+        } finally {
+            testInput.close();
+        }
+    }
+
+    /**
+     * Stands in for a terminal that takes a moment per write: a command that is
+     * still printing when the console reads the next line is cut short, unless
+     * the console waits for the command to finish.
+     */
+    private static final class SlowTerminalOutput extends ByteArrayOutputStream {
+
+        @Override
+        public synchronized void write(byte[] bytes, int offset, int length) {
+            try {
+                Thread.sleep(25);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+            super.write(bytes, offset, length);
+        }
+    }
+
     private static boolean awaitExport(ByteArrayOutputStream consoleOutput, String expected) throws InterruptedException {
         long deadline = System.currentTimeMillis() + 60_000;
         while (System.currentTimeMillis() < deadline) {

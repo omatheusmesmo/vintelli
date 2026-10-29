@@ -45,6 +45,11 @@ public interface CapabilityRegistry {
     CapabilitySelection<EditorBridge> editorBridge();
 
     /**
+     * @return the current version control provider, or an explicit unavailable state
+     */
+    CapabilitySelection<VersionControlCapability> versionControl();
+
+    /**
      * One status row per capability: the read model a status bar renders (for
      * example the provider identifier of {@link CapabilityType#DIAGNOSTICS} as
      * {@code Problems: jdtls}).

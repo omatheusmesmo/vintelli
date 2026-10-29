@@ -40,7 +40,7 @@ class EditorBridgeCapabilityTest {
     void servesTheBuiltinEditorByDefaultWithoutAnyExternalTooling() {
         FakeEditorProvider builtin = new FakeEditorProvider("builtin", "builtin text area");
         DefaultCapabilityRegistry registry = new DefaultCapabilityRegistry(
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(builtin), orders(NO_ORDER));
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(builtin), List.of(), orders(NO_ORDER));
 
         EditorBridge editor = providerOf(registry.editorBridge());
 
@@ -64,7 +64,7 @@ class EditorBridgeCapabilityTest {
         FakeEditorProvider generic = new FakeEditorProvider("generic", "editor process");
         DefaultCapabilityRegistry registry = new DefaultCapabilityRegistry(
                 List.of(), List.of(), List.of(), List.of(), List.of(), List.of(generic, builtin),
-                orders(Map.of(CapabilityType.EDITOR_BRIDGE, List.of("generic", "builtin"))));
+                List.of(), orders(Map.of(CapabilityType.EDITOR_BRIDGE, List.of("generic", "builtin"))));
 
         EditorBridge editor = providerOf(registry.editorBridge());
 
@@ -85,7 +85,7 @@ class EditorBridgeCapabilityTest {
         FakeEditorProvider generic = new FakeEditorProvider("generic", "editor process");
         DefaultCapabilityRegistry registry = new DefaultCapabilityRegistry(
                 List.of(), List.of(), List.of(), List.of(), List.of(), List.of(builtin, generic),
-                orders(Map.of(CapabilityType.EDITOR_BRIDGE, List.of("builtin", "generic"))));
+                List.of(), orders(Map.of(CapabilityType.EDITOR_BRIDGE, List.of("builtin", "generic"))));
 
         assertEquals("builtin", selectedIdentifierOf(registry.editorBridge()));
         builtin.markUnavailable();
@@ -115,7 +115,7 @@ class EditorBridgeCapabilityTest {
         FakeEditorProvider builtin = new FakeEditorProvider("builtin", "builtin text area");
         DefaultCapabilityRegistry registry = new DefaultCapabilityRegistry(
                 List.of(), List.of(), List.of(), List.of(), List.of(), List.of(nvim, generic, builtin),
-                orders(NO_ORDER));
+                List.of(), orders(NO_ORDER));
 
         assertEquals("builtin", selectedIdentifierOf(registry.editorBridge()));
 
@@ -137,7 +137,7 @@ class EditorBridgeCapabilityTest {
         FakeEditorProvider nvim = new FakeEditorProvider("nvim", "neovim over msgpack-rpc");
         DefaultCapabilityRegistry registry = new DefaultCapabilityRegistry(
                 List.of(), List.of(), List.of(), List.of(), List.of(), List.of(builtin, generic, nvim),
-                orders(Map.of(CapabilityType.EDITOR_BRIDGE, List.of("nvim"))));
+                List.of(), orders(Map.of(CapabilityType.EDITOR_BRIDGE, List.of("nvim"))));
 
         assertEquals("nvim", selectedIdentifierOf(registry.editorBridge()));
 
@@ -155,7 +155,7 @@ class EditorBridgeCapabilityTest {
         FakeEditorProvider generic = new FakeEditorProvider("generic", "editor process");
         DefaultCapabilityRegistry registry = new DefaultCapabilityRegistry(
                 List.of(), List.of(), List.of(), List.of(), List.of(), List.of(generic, builtin),
-                orders(Map.of(CapabilityType.READ_FILE, List.of("generic"),
+                List.of(), orders(Map.of(CapabilityType.READ_FILE, List.of("generic"),
                         CapabilityType.CALL_HIERARCHY, List.of("generic"))));
 
         assertEquals("builtin", selectedIdentifierOf(registry.editorBridge()));
@@ -166,7 +166,7 @@ class EditorBridgeCapabilityTest {
         FakeEditorProvider only = new FakeEditorProvider("builtin", "builtin text area");
         only.markUnavailable();
         DefaultCapabilityRegistry registry = new DefaultCapabilityRegistry(
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(only), orders(NO_ORDER));
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(only), List.of(), orders(NO_ORDER));
 
         CapabilitySelection<EditorBridge> selection = registry.editorBridge();
 
@@ -181,7 +181,7 @@ class EditorBridgeCapabilityTest {
     @Test
     void reportsAnUnavailableSelectionWithAReasonWhenNoAdapterIsRegistered() {
         DefaultCapabilityRegistry registry = new DefaultCapabilityRegistry(
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), orders(NO_ORDER));
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), orders(NO_ORDER));
 
         CapabilitySelection<EditorBridge> selection = registry.editorBridge();
 

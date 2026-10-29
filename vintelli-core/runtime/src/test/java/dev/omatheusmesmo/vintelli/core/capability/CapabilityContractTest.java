@@ -73,7 +73,7 @@ class CapabilityContractTest {
     @Test
     void snapshotRowsAreHandedOutAsAnImmutableList() {
         DefaultCapabilityRegistry registry = new DefaultCapabilityRegistry(
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), new CapabilityOrders(Map.of()));
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), new CapabilityOrders(Map.of()));
 
         List<CapabilityStatus> snapshot = registry.snapshot();
 

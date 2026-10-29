@@ -14,7 +14,7 @@ import jakarta.inject.Inject;
 
 /**
  * The providers of {@code vintelli-local} reach the assembled app as plain CDI
- * beans: the registry serves all three local capabilities through bean
+ * beans: the registry serves the four local capabilities through bean
  * discovery, and removing any of the provider beans breaks this test exactly
  * the way an unregistered provider would in production.
  */
@@ -26,10 +26,11 @@ class LocalCapabilityWiringTest {
     CapabilityRegistry registry;
 
     @Test
-    void servesRunTerminalAndReadFileThroughDiscoveredLocalBeans() {
+    void servesRunTerminalReadFileAndVersionControlThroughDiscoveredLocalBeans() {
         assertSelectedLocal("run", registry.run());
         assertSelectedLocal("terminal", registry.terminal());
         assertSelectedLocal("read-file", registry.readFile());
+        assertSelectedLocal("vcs", registry.versionControl());
     }
 
     @Test
