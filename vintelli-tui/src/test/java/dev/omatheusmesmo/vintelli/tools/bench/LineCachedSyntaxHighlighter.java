@@ -23,15 +23,26 @@ import dev.tamboui.widgets.syntax.TokenType;
  *
  * <ul>
  *   <li>a per-line token cache: untouched lines are reused across frames, so an
- *   edit inside one line re-tokenizes only that line; inserting or removing
- *   lines re-tokenizes every line below them, because the cache is indexed by
- *   row (see the spike 30 document);</li>
+ *   edit inside one line re-tokenizes only that line, and a same-size pass
+ *   never remaps the cache: the loop re-tokenizes a row only when its cached
+ *   text or start state differs. When the row count changes, {@link
+ *   #highlight} realigns the cache against the document text before the
+ *   tokenization loop: the common prefix and suffix rows are mapped onto
+ *   their new positions and only the changed middle block is re-tokenized,
+ *   so inserting or removing lines no longer re-tokenizes every line
+ *   below them (see the spike 30 document);</li>
  *   <li>per-line end-of-line lexical state, so block comments and text blocks
  *   survive across lines and edits re-tokenize forward from the edited line
  *   until the end state matches the cached one;</li>
  *   <li>diagnostic background tint and keyboard selection tint, both driven
  *   from state kept outside {@code TextAreaState}.</li>
  * </ul>
+ *
+ * <p>The {@link Diagnostic} map is keyed by the logical document row and this
+ * class never shifts it: when lines are inserted or removed, remapping those
+ * rows belongs to the editor adapter of issue #31, which does not exist yet.
+ * Until that adapter owns the row bookkeeping, consumers of this prototype
+ * must re-key their diagnostics across insertion and removal themselves.
  *
  * <p>The tokenizer is a hand-rolled scanner with no regex and no reflection.
  * It covers the Java constructs the editor needs (comments, text blocks,
@@ -126,12 +137,7 @@ public final class LineCachedSyntaxHighlighter implements SyntaxHighlighter {
     public List<Line> highlight(String code, String language, Style base, SyntaxTheme theme) {
         String normalized = code.endsWith("\n") ? code.substring(0, code.length() - 1) : code;
         String[] lines = normalized.isEmpty() ? new String[] {""} : normalized.split("\n", -1);
-        if (cache.size() > lines.length) {
-            cache.subList(lines.length, cache.size()).clear();
-        }
-        while (cache.size() < lines.length) {
-            cache.add(null);
-        }
+        realign(cache, lines);
         List<Line> out = new ArrayList<>(lines.length);
         LexState state = LexState.NORMAL;
         int tokenized = 0;
@@ -151,6 +157,48 @@ public final class LineCachedSyntaxHighlighter implements SyntaxHighlighter {
         }
         lastTokenizedLines = tokenized;
         return out;
+    }
+
+    /**
+     * Maps the cached rows whose text still appears in the document onto their
+     * new positions, leaving {@code null} only for the changed middle block so
+     * the tokenization loop rebuilds just that block. It runs only when the
+     * row count changed: a same-size pass keeps the cache in place because the
+     * loop already compares every row text, so re-tokenization there stays
+     * limited to the edited rows plus any rows whose start state changes.
+     * Rows in the common prefix keep their indices; rows in the common suffix
+     * keep their offset from the end. Suffix rows whose start state no longer
+     * matches are re-tokenized by the loop until the end state converges.
+     */
+    private static void realign(List<CachedLine> cache, String[] lines) {
+        int previousSize = cache.size();
+        int newSize = lines.length;
+        if (previousSize == newSize) {
+            return;
+        }
+        int common = Math.min(previousSize, newSize);
+        int prefix = 0;
+        while (prefix < common && cache.get(prefix) != null && cache.get(prefix).text.equals(lines[prefix])) {
+            prefix++;
+        }
+        int suffix = 0;
+        int limit = common - prefix;
+        while (suffix < limit && cache.get(previousSize - 1 - suffix) != null
+            && cache.get(previousSize - 1 - suffix).text.equals(lines[newSize - 1 - suffix])) {
+            suffix++;
+        }
+        List<CachedLine> shifted = new ArrayList<>(newSize);
+        for (int i = 0; i < newSize; i++) {
+            shifted.add(null);
+        }
+        for (int i = 0; i < prefix; i++) {
+            shifted.set(i, cache.get(i));
+        }
+        for (int i = 0; i < suffix; i++) {
+            shifted.set(newSize - 1 - i, cache.get(previousSize - 1 - i));
+        }
+        cache.clear();
+        cache.addAll(shifted);
     }
 
     private Line lineFor(int row, CachedLine cached) {
@@ -405,6 +453,10 @@ public final class LineCachedSyntaxHighlighter implements SyntaxHighlighter {
 
     /**
      * Replaces the diagnostics painted over the document.
+     *
+     * <p>The rows are not re-keyed when lines are inserted or removed; keeping
+     * them aligned with the logical document rows is the caller's job (see the
+     * class Javadoc for the editor adapter of #31).
      *
      * @param diagnostics one diagnostic per logical row; rows without a
      *        diagnostic keep their plain token styles
