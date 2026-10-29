@@ -4,7 +4,7 @@
 
 - Reachable: printable characters, Ctrl+letter (except Ctrl+I, Ctrl+M, Ctrl+J, Ctrl+H and Ctrl+[, which are the same bytes as Tab, Enter, Backspace and Escape), Alt+character via the ESC prefix, navigation keys, Shift+Tab, and F-keys with modifiers.
 - Unreachable: a lone Shift and Double-Shift, Ctrl+Shift+letter (same bytes as Ctrl+letter in legacy mode), Ctrl+Alt+letter (UNKNOWN), Super/Cmd, and key release. Double-Shift needs kitty flag 8 plus CSI-u support, which TamboUI 0.6.0 lacks.
-- Terminal, multiplexer and window manager defaults (Omarchy tmux, ghostty, Hyprland) intercept Alt+digit and Ctrl+Shift+arrow before TamboUI sees them. The per-terminal capture is not done (see its section).
+- Terminal, multiplexer and window manager defaults (Omarchy tmux, ghostty, Hyprland) intercept Alt+digit and Ctrl+Shift+arrow before TamboUI sees them. The per-terminal capture was done afterwards in spike 49 (`docs/spikes/spike-49-per-terminal-capture.md`); its unverified items are tracked as follow-up issues there.
 - Keymap: driven by `Bindings`. Vintelli must build its own quit binding because the built-in presets keep bare `q`. A focused text editor consumes plain text and Tab, so global chords use Ctrl/Alt or F-keys.
 - Colors: three representations per palette slot, with the level chosen from environment variables (not from `CapabilityReport`), a user override, and `NO_COLOR` support.
 
@@ -14,8 +14,8 @@ Scope: all facts below were verified directly against the five TamboUI 0.6.0 jar
 (`~/.m2/repository/dev/tamboui/{tui,core,widgets,jline3-backend,aesh-backend}/0.6.0/*.jar`)
 by disassembling the classes with `javap` and reading the built-in resources inside
 `tamboui-tui-0.6.0.jar`. The panama backend jar was checked from Maven Central. No code was modified.
-Live per-terminal chord capture was not run; the chord matrix is protocol-level, derived from what the
-parser accepts. See "Per-terminal capture: not done".
+The chord matrix below is protocol-level, derived from what the parser accepts; no key was pressed in any
+terminal for this spike. The live per-terminal capture is in spike 49 (see "Per-terminal capture").
 
 Note on the backends: 0.6.0 ships `tamboui-jline3-backend`, `tamboui-aesh-backend` and `tamboui-panama-backend`
 (Maven Central and `tamboui-bom` 0.6.0; the local `~/.m2` only has 0.1.0 and 0.2.0-SNAPSHOT of panama, so the
@@ -138,7 +138,7 @@ Disassembled `parseInput` / `parseControlChar` / `parseEscapeSequence` /
   `ch`, `chIgnoreCase`, `ctrl(char)`, `alt(char)`, with `describe()` producing
   `Ctrl+`, `Alt+`, `Shift+` prefixed strings for help menus.
 
-### Chord matrix (protocol-level, not captured per terminal; see "Per-terminal capture: not done")
+### Chord matrix (protocol-level; the per-terminal capture is in spike 49, see "Per-terminal capture")
 
 | Chord | Reachable in TamboUI 0.6.0 | Notes | Intercepts and caveats |
 |---|---|---|---|
@@ -274,20 +274,14 @@ representations" rule instead of relying on the terminal to degrade hex, and
 never hardcode hex-only colors in widgets. Underline colors (`Color.toAnsiUnderline()`) follow the same
 downgrade rule as foreground and background.
 
-## Per-terminal capture: not done
+## Per-terminal capture
 
-Issue #27 asks for a table of working and unreachable chords per terminal. That table was not produced. The
-chord matrix above is protocol-level only, derived from what the parser accepts, and no key was pressed in any terminal.
-No per-terminal data is claimed in this document.
-
-Follow-up capture, one run per terminal: alacritty, kitty, ghostty, and tmux (run inside one of the three, with
-Omarchy's default config and with a plain config). For each chord in the matrix, record:
-
-- the raw bytes the terminal sends (for example with `cat -v`, `xxd`, `showkey -a` or `kitten show-key`),
-- whether the chord reaches the application or is intercepted (by the terminal, the multiplexer or the window manager),
-- the `KeyEvent` TamboUI produces, once the key echo surface from #29 exists.
-
-Windows Terminal, plain xterm and the panama Windows path are not in this list and remain open.
+Issue #27 asked for a table of working and unreachable chords per terminal. It was produced in the follow-up issue
+#49, committed as `docs/spikes/spike-49-per-terminal-capture.md` (live chord bytes for alacritty, kitty, ghostty and
+foot, plain and inside tmux with `extended-keys off / on / always` (foot: off only), plus one run against the Omarchy
+tmux config, CSI-u, modifyOtherKeys and the color checks). The chord matrix above survives it with two corrections:
+tmux re-encodes Home to `ESC[1~`, and tmux swallows Ctrl+B (its prefix). Several items in that capture are marked
+UNVERIFIED there and each has its own follow-up issue.
 
 ## Key map recommendation
 
@@ -341,4 +335,5 @@ These criteria are not yet in the body of #29 and must be copied there.
 
 ## Follow-up issues
 
-Work not executed in this spike is tracked in #49.
+Work not executed in this spike was tracked in #49; the per-terminal capture was done in spike 49, and its
+unverified items are listed with their issue numbers in the "Follow-up issues" section of that document.
