@@ -163,6 +163,9 @@
                         <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
                         <maven.home>${maven.home}</maven.home>
                     </systemPropertyVariables>
+                    <environmentVariables>
+                        <QUARKUS_CONFIG_LOCATIONS>./src/test/resources/application-it.properties</QUARKUS_CONFIG_LOCATIONS>
+                    </environmentVariables>
                 </configuration>
             </plugin>
         </plugins>
