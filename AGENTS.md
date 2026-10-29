@@ -38,6 +38,9 @@ these exact keywords:
 - Rebase only: no merge commits, ever. Bring `main` into a branch with
   `git rebase` (or `git checkout -B` + `git cherry-pick`).
 - One commit per PR: squash intermediate commits before pushing.
+- PR titles are plain and descriptive, with no `type(scope):` prefix (for example
+  `TUI shell v1: Tabs, project list and Darcula styling`). Conventional commits
+  are used in commit messages only. CI (`pr-title.yml`) rejects prefixed titles.
 
 
 

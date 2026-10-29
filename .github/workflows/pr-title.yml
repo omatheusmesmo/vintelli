@@ -1,0 +1,27 @@
+name: PR title
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  plain-title:
+    name: PR title is plain (no conventional commit prefix)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject conventional commit prefixes in the PR title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        shell: bash
+        run: |
+          shopt -s nocasematch
+          pattern='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)]*\))?!?:'
+          if [[ "$PR_TITLE" =~ $pattern ]]; then
+            echo "::error title=PR title::Use a plain, descriptive title without a type(scope): prefix. Conventional commits belong in commit messages only."
+            echo "Title: $PR_TITLE" >&2
+            exit 1
+          fi
+          echo "PR title is plain: $PR_TITLE"
