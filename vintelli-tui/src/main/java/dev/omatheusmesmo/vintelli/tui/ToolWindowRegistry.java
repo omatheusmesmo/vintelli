@@ -1,5 +1,6 @@
 package dev.omatheusmesmo.vintelli.tui;
 
+import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import io.quarkus.arc.All;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -52,6 +53,7 @@ public final class ToolWindowRegistry {
         List<ToolWindow> sorted = new ArrayList<>(candidates);
         sorted.sort(Comparator.comparingInt(ToolWindow::ordinal).thenComparing(ToolWindow::id));
         ensureUniqueIds(sorted);
+        ensureUniqueActivationActions(sorted);
         ensureValidShortcuts(sorted);
         return List.copyOf(sorted);
     }
@@ -64,6 +66,23 @@ public final class ToolWindowRegistry {
                 throw new IllegalStateException("duplicate tool window id '" + toolWindow.id()
                         + "' implemented by " + previous.getClass().getSimpleName()
                         + " and " + toolWindow.getClass().getSimpleName());
+            }
+        }
+    }
+
+    /**
+     * The keymap derives one activation action id per window, and ids such as
+     * {@code a-b} and {@code a.b} both derive into the same name; a collision
+     * would silently shadow an action of the palette, so it fails fast here.
+     */
+    private static void ensureUniqueActivationActions(List<ToolWindow> sorted) {
+        Map<String, ToolWindow> registered = new HashMap<>();
+        for (ToolWindow toolWindow : sorted) {
+            String actionId = KeyActions.activateToolWindow(toolWindow.id());
+            ToolWindow previous = registered.putIfAbsent(actionId, toolWindow);
+            if (previous != null) {
+                throw new IllegalStateException("tool window ids '" + previous.id() + "' and '" + toolWindow.id()
+                        + "' both derive the activation action '" + actionId + "'");
             }
         }
     }

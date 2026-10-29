@@ -8,6 +8,8 @@ import org.junit.jupiter.api.Test;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.is;
 
 /**
  * JVM-level exercise of the offscreen render endpoint; {@link VintelliShellRenderIT}
@@ -30,5 +32,22 @@ class VintelliShellRenderTest {
                         "mainAreaTop", containsString("Editor"),
                         "mainAreaTop", containsString("╭"),
                         "status", containsString("Vintelli ready"));
+    }
+
+    /**
+     * Loads the TamboUI binding presets through the inspection surface; the
+     * inherited IT replays this on the native runner, where a missing built-in
+     * bindings resource fails this call instead of staying silent.
+     */
+    @Test
+    void exposesTheKeymapWithTheActionResultChords() {
+        given()
+                .when().get("/tui/keymap")
+                .then()
+                .statusCode(200)
+                .body("source", is("intellij"),
+                        "shortcuts.quit", containsString("Ctrl+c"),
+                        "shortcuts.SearchEverywhere", equalTo("Ctrl+p"),
+                        "shortcuts.ActivateRunToolWindow", containsString("Alt+1"));
     }
 }
