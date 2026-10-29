@@ -89,7 +89,6 @@ jobs:
 
   build-native:
     name: Native image (Mandrel container)
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
