@@ -197,10 +197,11 @@ class VintelliShellPushTest {
     }
 
     private static VintelliShell defaultShell() throws IOException {
+        ShellThemes themes = themes();
         ToolWindowRegistry registry = new ToolWindowRegistry(List.of(
-                new RunToolWindow(themes()), new TerminalToolWindow(themes()), new ProblemsToolWindow(themes()),
-                new AcpAgentsToolWindow(themes())));
-        return new VintelliShell(registry.toolWindows(), new ShellState(), themes());
+                new RunToolWindow(() -> themes), new TerminalToolWindow(() -> themes),
+                new ProblemsToolWindow(() -> themes), new AcpAgentsToolWindow(() -> themes)));
+        return new VintelliShell(registry.toolWindows(), new ShellState(), themes);
     }
 
     static ShellThemes themes() {

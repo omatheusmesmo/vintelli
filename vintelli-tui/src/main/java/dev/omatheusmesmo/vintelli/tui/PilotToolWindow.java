@@ -12,6 +12,8 @@ import dev.tamboui.widgets.block.Borders;
 import dev.tamboui.widgets.block.Title;
 import dev.tamboui.widgets.paragraph.Paragraph;
 
+import jakarta.inject.Provider;
+
 /**
  * Common rendering and key handling for the built-in pilot tool windows: a
  * paragraph in a rounded panel titled after the window. Subclasses only
@@ -25,15 +27,19 @@ abstract class PilotToolWindow implements ToolWindow {
     private final char shortcut;
     private final int ordinal;
     private final String content;
-    private final ShellThemes themes;
+    private final Provider<ShellThemes> themes;
 
-    PilotToolWindow(String id, String title, char shortcut, int ordinal, String content, ShellThemes themes) {
+    PilotToolWindow(String id, String title, char shortcut, int ordinal, String content, Provider<ShellThemes> themes) {
         this.id = id;
         this.title = title;
         this.shortcut = shortcut;
         this.ordinal = ordinal;
         this.content = content;
         this.themes = themes;
+    }
+
+    private ShellThemes themes() {
+        return themes.get();
     }
 
     @Override
@@ -67,14 +73,15 @@ abstract class PilotToolWindow implements ToolWindow {
     }
 
     private Paragraph contentBlock(String title, String content) {
-        Style contentStyle = themes.resolver("tool-window").toStyle();
-        Title blockTitle = Title.from(Span.styled(title, themes.resolver("tool-window-title").toStyle()));
+        ShellThemes activeThemes = themes();
+        Style contentStyle = activeThemes.resolver("tool-window").toStyle();
+        Title blockTitle = Title.from(Span.styled(title, activeThemes.resolver("tool-window-title").toStyle()));
         Block.Builder blockBuilder = Block.builder()
                 .title(blockTitle)
                 .borders(Borders.ALL)
                 .borderType(BorderType.ROUNDED)
                 .style(contentStyle);
-        themes.resolver("tool-window").borderColor().ifPresent(blockBuilder::borderColor);
+        activeThemes.resolver("tool-window").borderColor().ifPresent(blockBuilder::borderColor);
         return Paragraph.builder()
                 .text(Text.from(content))
                 .style(contentStyle)

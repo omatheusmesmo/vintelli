@@ -795,16 +795,16 @@ class VintelliShellTest {
     private static List<ToolWindow> defaultWindows() {
         ShellThemes themes = defaultThemes();
         ToolWindowRegistry registry = new ToolWindowRegistry(List.of(
-                new RunToolWindow(themes), new TerminalToolWindow(themes), new ProblemsToolWindow(themes),
-                new AcpAgentsToolWindow(themes)));
+                new RunToolWindow(() -> themes), new TerminalToolWindow(() -> themes), new ProblemsToolWindow(() -> themes),
+                new AcpAgentsToolWindow(() -> themes)));
         return registry.toolWindows();
     }
 
     private static VintelliShell shellWithFakeWindow(FakeToolWindow fake) {
         ShellThemes themes = defaultThemes();
         ToolWindowRegistry registry = new ToolWindowRegistry(List.of(
-                new RunToolWindow(themes), new TerminalToolWindow(themes), new ProblemsToolWindow(themes),
-                new AcpAgentsToolWindow(themes)));
+                new RunToolWindow(() -> themes), new TerminalToolWindow(() -> themes), new ProblemsToolWindow(() -> themes),
+                new AcpAgentsToolWindow(() -> themes)));
         List<ToolWindow> windows = new ArrayList<>(registry.toolWindows());
         windows.add(fake);
         return new VintelliShell(new ToolWindowRegistry(windows).toolWindows(), new ShellState(), themes);

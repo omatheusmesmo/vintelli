@@ -448,6 +448,82 @@ the shortcut string of every named action) as JSON. It is gated by the same
 `vintelli.inspect.enabled` switch and exists so the TamboUI binding presets
 are exercised on every run, including the native runner.
 
+### Browser terminal
+
+The shell can be watched and driven from a terminal in a browser (an xterm.js
+style client) through the `/tui/ws` WebSocket surface
+(`io.quarkus:quarkus-websockets-next`). Every WebSocket connection gets its
+own session: its own screen buffer and viewport, its own render diff against
+the previous frame and its own key stream. The stream is the terminal byte
+protocol in both directions: binary frames carry ANSI screen updates to the
+client and key bytes from the client, and the only text frame is
+`resize COLSxROWS`, which changes the session viewport. Sizes are clamped
+(between `20x5` and `400x200`), shell content is sanitized on the way out, so
+control characters inside a cell can never drive the browser terminal, and
+input is parsed into key events only: the session has no other write path
+into the shell than the key events the shared keymap already accepts.
+
+The surface is a guarded, authenticated, default-off surface:
+
+- `vintelli.web.enabled` (default `false`): the upgrade handshake answers 404
+  until the surface is switched on.
+- Host and Origin validation is done by the loopback guard below
+  (`vintelli.mcp.allowed-hosts` and `vintelli.mcp.allowed-origins`), the same
+  policy every other route answers 403 with; a browser client therefore needs
+  its origin on that list.
+- Basic authentication is enforced on the upgrade by Quarkus HTTP security:
+  `quarkus.http.auth.basic=true` (already set in `application.properties`).
+  Credentials come from the embedded realm that is enabled at build time:
+  at runtime, set `quarkus.security.users.embedded.users.<name>=<password>`
+  and `quarkus.security.users.embedded.roles.<name>=user` (for example from
+  environment variables); no credentials ship with the application, so while
+  none are configured every handshake stays on the 401 challenge. Browsers
+  show their own login prompt once the surface is on.
+
+To use the surface end to end, turn it on and configure one account and one
+browser origin (all runtime config, for example through environment):
+
+```properties
+vintelli.web.enabled=true
+quarkus.security.users.embedded.plain-text=true
+quarkus.security.users.embedded.users.terminal=${VINTELLI_WEB_PASSWORD}
+quarkus.security.users.embedded.roles.terminal=user
+vintelli.mcp.allowed-origins=http://localhost:5173
+quarkus.http.cors.origins=http://localhost:5173
+```
+
+Set `VINTELLI_WEB_PASSWORD` in the environment (or your secret manager) before
+starting; do not commit a literal password.
+
+`quarkus.security.users.embedded.plain-text=true` stores the password as
+written; leave it out to supply a digest instead (see the Quarkus security
+guide). The CORS origin is needed as well: the CORS filter answers 403 to an
+origin it does not list, so the origin has to be on both lists.
+
+Connect a terminal client to `ws://127.0.0.1:8080/tui/ws` with the basic
+credentials of the account above. Sessions of other surfaces (the local TUI
+and every browser terminal) share the shell state, so all of them show the
+same tool windows; the sessions themselves stay independent.
+
+Security notes for the browser terminal:
+
+- Credentials travel as HTTP basic authentication. Over `ws://` or `http://`
+  they are readable on the wire, so bind to loopback only or run behind a
+  TLS-terminating proxy / TLS for any non-loopback address. The default
+  `quarkus.http.host=127.0.0.1` keeps the surface on loopback.
+- There is no brute-force protection on failed upgrades (no lockout, rate
+  limit or delay). Keep the surface on loopback or behind TLS and a
+  reverse proxy that can throttle if needed.
+- The surface inherits every key handler of the shared shell, including any
+  tool window that handles keys. Today every tool window is a placeholder
+  whose `handleKey` returns `false`, so no command runs through it; a
+  follow-up issue (#161) tracks shipping the xterm.js client page, and the
+  per-surface action gate is tracked by #163. Any future command-running
+  tool window must be gated before the surface is enabled.
+- Concurrent sessions are capped by `vintelli.web.max-sessions` (default 4)
+  and idle sessions (no client input) close after `vintelli.web.idle-timeout`
+  (default `PT5M`). Each session costs one thread, one TamboUI runner and
+  two screen buffers, so keep the cap small on constrained hosts.
 ### Configuring clients
 
 Register the URL in your MCP client configuration with the streamable HTTP

@@ -25,8 +25,8 @@ class CommandPaletteTest {
 
     private static List<ToolWindow> windowList() {
         ShellThemes themes = themes();
-        return List.of(new RunToolWindow(themes), new TerminalToolWindow(themes), new ProblemsToolWindow(themes),
-                new AcpAgentsToolWindow(themes));
+        return List.of(new RunToolWindow(() -> themes), new TerminalToolWindow(() -> themes), new ProblemsToolWindow(() -> themes),
+                new AcpAgentsToolWindow(() -> themes));
     }
 
     private static ShellThemes themes() {

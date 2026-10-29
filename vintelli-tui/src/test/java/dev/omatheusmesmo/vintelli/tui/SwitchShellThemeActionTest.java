@@ -12,7 +12,7 @@ class SwitchShellThemeActionTest {
     @Test
     void cyclesThroughTheRegisteredThemesAtRuntime() throws IOException {
         ShellThemes themes = new ShellThemes("dark", (Path) null);
-        SwitchShellThemeAction action = new SwitchShellThemeAction(themes);
+        SwitchShellThemeAction action = new SwitchShellThemeAction(() -> themes);
 
         assertEquals(SwitchShellThemeAction.NAME, action.name());
 

@@ -10,6 +10,8 @@ import java.net.URI;
 
 import org.junit.jupiter.api.Test;
 
+import static io.restassured.RestAssured.given;
+
 import io.quarkus.test.common.http.TestHTTPResource;
 import io.quarkus.test.junit.QuarkusIntegrationTest;
 import io.restassured.RestAssured;
@@ -29,6 +31,12 @@ class CapabilitiesResourceIT {
 
     @TestHTTPResource("/capabilities")
     URI capabilities;
+
+    @Test
+    void wrongOrMissingCredentialsDoNotChallengeCapabilities() {
+        given().when().get(capabilities).then().statusCode(200);
+        given().header("Authorization", "Basic d3Jvbmc6Y3JlZHM=").when().get(capabilities).then().statusCode(200);
+    }
 
     @Test
     void servesTheLocalProvidersAndLeavesTheLspCapabilitiesUnavailableWithoutAProfile() {
