@@ -36,6 +36,22 @@ these exact keywords:
 - Never close an issue manually with a comment; always close it through the
   keyword in a merged PR.
 
+### Spike PRs always use `Closes`
+
+A spike's deliverable is the recorded decision or findings document under
+`docs/spikes/`, not exhaustive experiments. A spike PR therefore carries
+`Closes #N` for its spike issue, in the commit message footer AND in the PR
+description, even when some experiments were not run.
+
+- Anything not executed or not verified must be listed in the document under
+  an explicit "Not verified" or "Follow-ups" section. Never present an
+  inference as a tested result.
+- Each such item gets its own follow-up issue in the same milestone, created
+  before the spike PR merges and linked from that section. No work is left
+  only as prose in a closed issue.
+- Do not use `Refs` on a spike PR to avoid closing the issue; the follow-up
+  issues carry the remaining work.
+
 ## PR hygiene
 
 - Rebase only: no merge commits, ever. Bring `main` into a branch with
