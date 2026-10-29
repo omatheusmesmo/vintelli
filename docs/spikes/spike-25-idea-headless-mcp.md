@@ -1,25 +1,18 @@
 # Spike 25: headless IDEA MCP server
 
-Part of #15. Everything below was verified by reading the JetBrains sources: intellij-community release tags `idea/2025.2.6`, `idea/2025.3.4`, `idea/2026.1.5`, `idea/2026.2.3`, `idea/2026.3-beta`, and branch `master` (fetched 2026-10-28), plus the official help page. The 252 and 253 branches were also checked: the starter is absent in both. Nothing was verified at runtime: no IDEA distribution was launched for this spike, and items that can only be settled by a live run are listed under "Risks and open questions".
+Part of #15. The findings were verified by reading the JetBrains sources, except where a paragraph is marked as a correction from the #48 runtime probe: intellij-community release tags `idea/2025.2.6`, `idea/2025.3.4`, `idea/2026.1.5`, `idea/2026.2.3`, `idea/2026.3-beta`, and branch `master` (fetched 2026-10-28), plus the official help page. The 252 and 253 branches were also checked: the starter is absent in both. The runtime probe on a released 2026.2.3 distribution that this spike called for is now done and recorded in `docs/spikes/spike-48-idea-headless-mcp-probe.md`; the Decision below is updated accordingly.
 
 ## Decision
 
-**PROVISIONAL go** for a `ManagedIdeaProvider` on IDEA 2026.2+ (the first released line where `idea.sh mcpServer` is a headless command), conditional on the runtime probe below.
+**GO** (upgraded from PROVISIONAL go after the runtime probe on a released Ultimate 2026.2.3 build, `IU-262.10968.63`, see `docs/spikes/spike-48-idea-headless-mcp-probe.md`) for a `ManagedIdeaProvider` on IDEA 2026.2+ (the first released line where `idea.sh mcpServer` is a headless command).
 
-Conditions attached to the provisional go:
+Conditions attached to the original PROVISIONAL go, with their runtime status from the probe:
 
-- The spawn command works on a released 2026.2.x distribution (not verified).
-- The recipe keeps brave mode off and uses the narrow tool whitelist by default (see Security).
-- Vintelli sends `IJ_MCP_SERVER_PROJECT_PATH` on the `initialize` request.
+- The spawn command works on a released 2026.2.x distribution - confirmed (Ultimate 2026.2.3, started as a headless command; display availability was not varied).
+- The recipe keeps brave mode off and uses the narrow tool whitelist by default (see Security) - unchanged, the default whitelist was exercised and returned 4 search tools plus `execute_tool`.
+- Vintelli sends `IJ_MCP_SERVER_PROJECT_PATH` on the `initialize` request - confirmed working; note the released 2026.2.3 build also honors the per-call header and a `projectPath` tool argument (see the Headers correction below).
 
-Not verified by execution (all follow-ups, see "Risks and open questions"):
-
-- The `tools/list` capture and the real tool schemas.
-- Whether IDEA Community bundles the MCP server plugin (static evidence only).
-- Startup time and memory.
-- The behavior of `idea.sh inspect` while a headless instance owns the same project.
-- Whether the startup recipe works with a fresh config, and which tools work without UI.
-- Compatibility of the MCP Java SDK 2.1.0 client, and whether brave mode is honored headless.
+Resolved by the #48 runtime probe on released 2026.2.3 (see `docs/spikes/spike-48-idea-headless-mcp-probe.md`): the `tools/list` capture and real tool schemas (`docs/spikes/spike-48-tools-list.json`), startup time and memory for a toy project, `idea.sh inspect` next to a headless instance on the same project, and startup on a machine that already had a JetBrains install. Still open at runtime: the clean-machine first run (#70), whether IDEA Community bundles the MCP server plugin (static evidence only, #61), the `idea.sh mcpServer` behavior of a released 2026.1 build and of a GUI instance on the same project (#69), brave-mode-gated tools and SDK-less tools without UI (#68), and the compatibility of the MCP Java SDK 2.1.0 client (#71; the #48 probe used `curl` against `/stream`, and the SDK turn is #2/#55).
 
 ## Findings
 
@@ -98,7 +91,8 @@ Verified in `plugins/mcp-server/src/com/intellij/mcpserver/impl/util/network/mcp
 
 ### Headers
 
-- **`IJ_MCP_SERVER_PROJECT_PATH`**: read in `McpServerService.startServer` and copied into the session through `HttpCallTransport`, so it survives SDK send and response header dropping. On 2026.2.x only the header of the request that creates the session is used (`projectPathFromInitialRequest`). Per-call reading and project resolution exist on 2026.3 only (`master`): tool-call argument `projectPath`, then the per-call header, then the session header, then the request file roots. Otherwise the tool call fails with a "no suitable project" error. Resolution matches the header value against open projects (`findMostRelevantProject`), so it can only select among projects that the starter opened with repeated `--project=`. Vintelli must send the header on the `initialize` request in all versions.
+- **`IJ_MCP_SERVER_PROJECT_PATH`**: read in `McpServerService.startServer` and copied into the session through `HttpCallTransport`, so it survives SDK send and response header dropping. Per the 2026.2.x tag reading (see the correction below), only the header of the request that creates the session is used (`projectPathFromInitialRequest`). Per-call reading and project resolution are read from the tag as 2026.3 only (`master`); the shipped 2026.2.3 jar also honors them (see the correction below): tool-call argument `projectPath`, then the per-call header, then the session header, then the request file roots. Otherwise the tool call fails with a "no suitable project" error. Resolution matches the header value against open projects (`findMostRelevantProject`), so it can only select among projects that the starter opened with repeated `--project=`. Vintelli must send the header on the `initialize` request in all versions.
+  - **Correction from the #48 runtime probe (released 2026.2.3):** the shipped build behaves like the 2026.3 reading, not like the 2026.2.x sentence above: a per-call `IJ_MCP_SERVER_PROJECT_PATH` on a `tools/call` POST, and a `projectPath` tool argument, both resolved the project on a session created without any project header. The spike-25 tag reading does not match the shipped jar; the source re-read is tracked in #60. The Vintelli-side rule stays the same: send the header on `initialize`.
 - **`IJ_MCP_CLIENT_TAGS`** and **`IJ_MCP_ALLOWED_TOOLS`**: read when a session is created. `IJ_MCP_ALLOWED_TOOLS` is a session-level allow list chosen by the client. It narrows what that session sees but is not an access control, because the server does not require it.
 - **`IJ_MCP_AUTH_TOKEN`**: only consulted on the private, isolated server started by `McpServerService.authorizedSession(...)` (`authCheck = true`, 401 "restricted mode"). The global server, which headless mode uses, is started with `authCheck = false`, so no token is required headless. See Security for why no token is usable from Vintelli.
 
@@ -117,7 +111,7 @@ A client-side capture also exists in the repository at `build/mcp-servers/ij-pro
 
 There are also bundled MCP skills (`com.intellij.mcpServer.bundledSkillsProvider`, `mcpserver.skills` module) whose delivery checks that the tools a skill needs are exposed. This is inferred from source and not verified at runtime.
 
-Community vs Ultimate: the plugin lives inside the `intellij-community` tree (`plugins/mcp-server`), and the help page states it is bundled and enabled by default. Static evidence points the same way: `build/src/org/jetbrains/intellij/build/IdeaCommunityProperties.kt` (`idea/2026.2.3`, `AndroidStudioProperties`) starts from `IDEA_BUNDLED_PLUGINS` and calls `.removing("intellij.mcpserver")`, which implies the Community bundle list includes the module and that Android Studio opts out. This is not a runtime proof; the claim must still be verified on a Community distribution.
+Community vs Ultimate: the plugin lives inside the `intellij-community` tree (`plugins/mcp-server`), and the help page states it is bundled and enabled by default. Static evidence points the same way: `build/src/org/jetbrains/intellij/build/IdeaCommunityProperties.kt` (`idea/2026.2.3`, `AndroidStudioProperties`) starts from `IDEA_BUNDLED_PLUGINS` and calls `.removing("intellij.mcpserver")`, which implies the Community bundle list includes the module and that Android Studio opts out. This is not a runtime proof; the claim must still be verified on a Community distribution (#61).
 
 ## Security
 
@@ -137,7 +131,7 @@ Mitigations to evaluate (none is implemented or tested):
 
 ## Startup recipe
 
-Concrete headless startup recipe, to validate in the runtime spike. It requires 2026.2+. It keeps the narrow default: brave mode is not enabled and `--allowed-tools` is not overridden, so the default whitelist of four search tools applies.
+Concrete headless startup recipe. The #48 probe ran the same shape (see the spike-48 document, "What was run") without the 2026.3-only configuration-timeout line and with a different port and project; this exact text was not executed as written. It requires 2026.2+. It keeps the narrow default: brave mode is not enabled and `--allowed-tools` is not overridden, so the default whitelist of four search tools applies.
 
 The state directory is per user and created with a restrictive umask, so another local user cannot pre-create or tamper with the settings. A persistent `system` directory keeps indexes between runs; the trade-off is that a fresh `system` directory means a cold index on every run.
 
@@ -166,19 +160,19 @@ Notes on the recipe:
 
 ## Risks and open questions
 
-- Whether a **released 2026.2 distribution** accepts `idea.sh mcpServer --project=...` in practice. The starter is `internal="true"` and its KDoc mentions `bazel run build:mcp_server --` for source runs. The `WellKnownCommand` mapping and the `appStarter` registration say yes, but this is the first thing the runtime probe must prove.
-- The exact **stderr and stdout shapes** at runtime (banner with port and SSE URL, timeout messages, JSON lines), and the actual startup time and RSS for a Quarkus project. Not measured.
-- What a **released 2026.1** build does with `idea.sh mcpServer` (GUI start, error or failure without a display). Not verified. Also open: whether `-Djava.awt.headless=true` makes `AppMode.isHeadless` true on 2026.1 (`Boolean.getBoolean`), so that the older starter could run. It has no whitelist, timeouts or `--invocation-mode`, so every tool would be exposed. Not verified.
-- Which tools behave correctly **without UI**. Brave-mode gated: `execute_terminal_command`, `execute_run_configuration`. Not brave-mode gated, with headless behavior unknown because of possible EDT or UI dependencies: `build_project`, `get_file_problems`, `lint_files`, `rename_refactoring`, `xdebug_*`.
-- Fresh-config prerequisites: the isolated config has no JDK table, Maven or Gradle home settings or project SDK. `openOrImportAsync` imports a Maven or Quarkus project, but whether `build_project`, `get_file_problems` and run configurations work without SDK setup is not verified.
-- Real **`tools/list` JSON** payload with the actual schemas. The 58 tool names are documented, but no raw fixture was captured without a live server.
-- Behavior when a GUI IDEA instance already owns the same project. The starter does not obviously check for running instances in source, so a runtime probe is needed.
-- Whether `idea.sh inspect` can run while a headless instance owns the same project. Not checked in source or at runtime. #5 depends on this.
-- Whether the **MCP Java SDK 2.1.0 client** connects cleanly to both `/stream` (Streamable HTTP, `mcp-session-id`, GET, POST and DELETE, with heartbeats) and `/sse` (legacy transport). Two client-side wrinkles are visible in source: `enableJsonResponse=true` on `/stream`, and header propagation. On 2026.2.x only the `initialize` request header matters; on 2026.3 the client should keep sending the headers on every request.
-- The **pre-seeded `mcpServer.xml`** persistence byte format (component name, option elements). Not verified at runtime; needed only if brave mode is ever enabled.
-- The exact behavior of a Swing `DialogWrapper` confirmation in a headless JVM. Expected to fail or hang; unverified.
-- Whether IDEA **Community** (not Ultimate) bundles the MCP server plugin. Static evidence only (see Community vs Ultimate).
-- SDK 2.1.0 compatibility beyond the connection checks above is not verified.
+- Resolved in #48 for released 2026.2.3: `idea.sh mcpServer --project=...` is accepted in practice (other 2026.2.x builds were not checked). The starter is `internal="true"` and its KDoc mentions `bazel run build:mcp_server --` for source runs. The `WellKnownCommand` mapping and the `appStarter` registration said yes from source.
+- The **stderr banner and stdout JSON** were observed in #48 on 2026.2.3 (the TOML block is 2026.3 only); timeout messages were not observed. Startup time and RSS were observed once for a two-file Maven project, not measured for a Quarkus project.
+- What a **released 2026.1** build does with `idea.sh mcpServer` (GUI start, error or failure without a display). Not verified. Also open: whether `-Djava.awt.headless=true` makes `AppMode.isHeadless` true on 2026.1 (`Boolean.getBoolean`), so that the older starter could run. It has no whitelist, timeouts or `--invocation-mode`, so every tool would be exposed. Not verified (#69).
+- Which tools behave correctly **without UI**. Brave-mode gated: `execute_terminal_command`, `execute_run_configuration`. Not brave-mode gated, with headless behavior unknown because of possible EDT or UI dependencies: `build_project`, `get_file_problems`, `lint_files`, `rename_refactoring`, `xdebug_*`. Still open (#68).
+- Fresh-config prerequisites: the isolated config has no JDK table, Maven or Gradle home settings or project SDK. `openOrImportAsync` imports a Maven or Quarkus project, but whether `build_project`, `get_file_problems` and run configurations work without SDK setup is not verified (#68).
+- Resolved in #48: the real `tools/list` payload was captured on 2026.2.3 (`docs/spikes/spike-48-tools-list.json`, 5 tools on the default whitelist). The 58 tool names on the help page are still not checked against a live server.
+- Behavior when a GUI IDEA instance already owns the same project. The starter does not obviously check for running instances in source, so a runtime probe is needed. Still open (#69).
+- Resolved in #48 at command level: `idea.sh inspect` ran next to a headless instance on the same project (exit 0). Whether a GUI instance causes contention is still open (#69), and #5 depends on it.
+- Whether the **MCP Java SDK 2.1.0 client** connects cleanly to both `/stream` (Streamable HTTP, `mcp-session-id`, GET, POST and DELETE, with heartbeats) and `/sse` (legacy transport). Two client-side wrinkles are visible in source: `enableJsonResponse=true` on `/stream`, and header propagation. Send `IJ_MCP_SERVER_PROJECT_PATH` on `initialize` regardless (the Headers correction shows that per-call headers also work on the shipped 2026.2.3). Still open (#71).
+- The **pre-seeded `mcpServer.xml`** persistence byte format (component name, option elements). Not verified at runtime; needed only if brave mode is ever enabled (#68).
+- The exact behavior of a Swing `DialogWrapper` confirmation in a headless JVM. Expected to fail or hang; unverified (#68).
+- Whether IDEA **Community** (not Ultimate) bundles the MCP server plugin. Static evidence only (see Community vs Ultimate) (#61).
+- SDK 2.1.0 compatibility beyond the connection checks above is not verified (#71).
 
 ### Criteria for issue #2
 
@@ -223,12 +217,12 @@ Provider integration points for `vintelli-idea` (Refs #15, #21, #16):
 
 Next steps:
 
-1. **Runtime spike on a released distribution (IDEA 2026.2.x):** run the recipe above, capture stderr and stdout, capture `tools/list` via the MCP Java SDK against `/stream` (Refs #2), and compare tool behavior with and without UI. Check the Community-bundling question on the same install, the `idea.sh inspect` coexistence, and the fresh-config SDK prerequisites. Verify the pre-seeded `mcpServer.xml` format only if brave mode is ever enabled (Refs #2).
-2. **Draft `ManagedIdeaProvider`** in `vintelli-idea` once the runtime probe confirms spawn, parsing, health checks and SIGTERM shutdown, mirroring the process-supervision shape planned for jdtls in the local provider (Refs #21, `jdtls` profile Refs #22, capability ports Refs #18).
+1. **Runtime probe on a released distribution (IDEA 2026.2.x):** done for 2026.2.3 in #48 (stderr and stdout, `tools/list` via `curl`, `idea.sh inspect` coexistence). Still open: the Community check (#61), tool behavior with and without UI and the fresh-config SDK prerequisites (#68), the 2026.1 and GUI coexistence checks (#69), the clean-machine first run and JVM options (#70), and the `tools/list` capture through the MCP Java SDK against `/stream` (#71). Verify the pre-seeded `mcpServer.xml` format only if brave mode is ever enabled (#68).
+2. **Draft `ManagedIdeaProvider`** in `vintelli-idea`: the #48 probe confirmed spawn, banner parsing and SIGTERM shutdown, so the provider can start from those. Mirror the process-supervision shape planned for jdtls in the local provider (Refs #21, `jdtls` profile Refs #22, capability ports Refs #18).
 3. **MCP Java SDK 2.1.0 compatibility check:** connect to `/stream` with the SDK client, verify `mcp-session-id` handling and per-request header propagation, and (depending on the outcome) document `/sse` as fallback (Refs #2).
 4. **Cross-check the tool whitelist behavior** (default four search tools vs. full whitelist) and decide what Vintelli exposes by default on a managed headless IDEA (Refs #21, #15).
-5. **Decide go/no-go** for `ManagedIdeaProvider` after step 1. The current decision is the PROVISIONAL go in the Decision section, conditional on the runtime probe. Brave mode is not a condition, because the recipe does not enable it (see Security).
+5. **Decision: GO** for `ManagedIdeaProvider` after the #48 probe (see Decision). Brave mode is not a condition, because the recipe does not enable it (see Security).
 
 ## Follow-up issues
 
-Work not executed in this spike is tracked in #48.
+Work not executed in this spike is tracked in #48; the runtime probe is recorded in `docs/spikes/spike-48-idea-headless-mcp-probe.md` (that PR carries `Closes #48`). Remaining open items live in #60 (2026.2.3 per-call header source re-read), #61 (Community distribution check), #68 (brave mode, tool behavior without UI, `--allowed-tools` and `via-router`), #69 (2026.1 and GUI coexistence), #70 (JVM options and clean-machine first run), and #71 (session liveness details and MCP Java SDK 2.1.0 client), plus #2/#55 for the SDK client and twin work and #21 for the provider design notes (session keep-alive contract, heap pinning).
