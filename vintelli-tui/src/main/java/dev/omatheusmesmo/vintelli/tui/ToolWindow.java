@@ -23,9 +23,16 @@ import dev.tamboui.tui.event.KeyEvent;
  * Registry validation rejects duplicates and the shell reserved keys
  * {@code j}, {@code k} and {@code q}. While the active window reports
  * {@link #capturesInput()} as true, the shell passes every key to it except
- * escape ({@link KeyCode#ESCAPE}), which hands focus back to the shell
- * navigation; the shell keeps the focus until the tab is reselected, so the
- * capturing window receives no keys in between.
+ * the keys that must stay reachable everywhere: escape ({@link KeyCode#ESCAPE})
+ * hands focus back to the shell navigation, and the reserved keymap chords
+ * (the {@code SearchEverywhere}, {@code KeymapHelp} and
+ * {@code Activate<Name>ToolWindow} actions, chord triggers only, never bare
+ * printable characters) route to the shell actions instead of the window, so
+ * switching stays possible without bare digit keys no matter which input has
+ * focus. {@code quit} is deliberately not reserved: a capturing terminal
+ * window keeps Ctrl+C for its own signal. The shell keeps the focus until the
+ * tab is reselected, so the capturing window receives no other keys in
+ * between.
  *
  * <p>Lifecycle, focus, status bar and menu bar hooks will be added later as
  * {@code default} methods, so new implementations keep compiling while the
@@ -69,7 +76,8 @@ public interface ToolWindow {
     /**
      * Claims the whole keyboard while this tool window is active: the shell
      * routes every key to {@link #handleKey(KeyEvent)} except escape, which
-     * returns focus to the shell navigation. Choose this only for windows
+     * returns focus to the shell navigation, and except the reserved keymap
+     * chords listed in the interface contract. Choose this only for windows
      * that need full text entry, such as terminal or chat input.
      */
     default boolean capturesInput() {

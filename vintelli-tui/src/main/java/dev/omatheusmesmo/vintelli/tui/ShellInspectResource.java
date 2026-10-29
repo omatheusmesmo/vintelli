@@ -1,5 +1,8 @@
 package dev.omatheusmesmo.vintelli.tui;
 
+import dev.omatheusmesmo.vintelli.tui.keymap.KeyAction;
+import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
+import dev.omatheusmesmo.vintelli.tui.keymap.KeymapProfile;
 import dev.tamboui.buffer.Buffer;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.terminal.Frame;
@@ -11,6 +14,9 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * REST anchor for inspecting the TUI shell from outside the process. Renders
@@ -39,12 +45,14 @@ public final class ShellInspectResource {
     private static final int STATUS_ROW = 23;
 
     private final VintelliShell shell;
+    private final ToolWindowRegistry registry;
     private final boolean enabled;
 
     @Inject
-    public ShellInspectResource(VintelliShell shell,
+    public ShellInspectResource(VintelliShell shell, ToolWindowRegistry registry,
             @ConfigProperty(name = "vintelli.inspect.enabled", defaultValue = "false") boolean enabled) {
         this.shell = shell;
+        this.registry = registry;
         this.enabled = enabled;
     }
 
@@ -75,6 +83,27 @@ public final class ShellInspectResource {
         return text.toString();
     }
 
+    /**
+     * Reports the keymap the inspection shells build: source and the shortcuts
+     * of every named action. Loading the TamboUI binding presets is exercised
+     * here in every integration test, including the native runner, so a missing
+     * built-in bindings resource in the native image fails this endpoint
+     * instead of staying silent. It is built from the default profile, not from
+     * the live shell, so it stays deterministic and independent of the
+     * developer's user keymap file.
+     */
+    @GET
+    @Path("/keymap")
+    @Produces(MediaType.APPLICATION_JSON)
+    public KeymapView keymap() {
+        Keymap keymap = Keymap.ofProfile(KeymapProfile.DEFAULT, registry.toolWindows());
+        Map<String, String> shortcuts = new LinkedHashMap<>();
+        for (KeyAction action : keymap.actions()) {
+            shortcuts.put(action.id(), keymap.describeBindings(action.id()));
+        }
+        return new KeymapView(keymap.source(), shortcuts);
+    }
+
     private static String rowText(Buffer buffer, int row) {
         StringBuilder text = new StringBuilder();
         for (int x = 0; x < buffer.width(); x++) {
@@ -90,5 +119,12 @@ public final class ShellInspectResource {
      * editor block joined by newlines, and the status row.
      */
     record ShellRenderView(String tabRow, String mainAreaTop, String editorArea, String status) {
+    }
+
+    /**
+     * Payload of the keymap inspection: the keymap source plus one shortcut
+     * string per action id.
+     */
+    record KeymapView(String source, Map<String, String> shortcuts) {
     }
 }

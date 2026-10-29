@@ -4,6 +4,12 @@ import dev.omatheusmesmo.vintelli.api.ShellDiffViewPort;
 import dev.omatheusmesmo.vintelli.api.ShellHighlightPort;
 import dev.omatheusmesmo.vintelli.api.ShellHighlightTarget;
 import dev.omatheusmesmo.vintelli.api.ShellUnifiedDiff;
+import dev.omatheusmesmo.vintelli.tui.keymap.CommandPalette;
+import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
+import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
+import dev.omatheusmesmo.vintelli.tui.keymap.KeymapHelpOverlay;
+import dev.omatheusmesmo.vintelli.tui.keymap.KeymapProfile;
+import dev.omatheusmesmo.vintelli.tui.keymap.KeymapRegistry;
 import dev.tamboui.layout.Constraint;
 import dev.tamboui.layout.Layout;
 import dev.tamboui.layout.Rect;
@@ -35,7 +41,9 @@ import jakarta.inject.Singleton;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.OptionalInt;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 /**
@@ -49,11 +57,22 @@ import java.util.stream.IntStream;
  * panel paints them on the next frame. Renders on every frame and answers
  * keyboard input through {@link EventHandler}.
  *
- * <p>{@link #render(Frame)} and {@link #handle(Event, TuiRunner)} share one
- * lock: TamboUI widget and layout state is mutated while a frame is drawn,
- * so the TUI event loop and external threads such as the inspect render
- * endpoint must never draw or route keys concurrently. The port writes stay
- * lock-free volatile assignments.
+ * <p>Renders on every frame and answers keyboard input through
+ * {@link EventHandler}. {@link #render(Frame)} and
+ * {@link #handle(Event, TuiRunner)} share one lock: TamboUI widget and layout
+ * state is mutated while a frame is drawn, so the TUI event loop and external
+ * threads such as the inspect render endpoint must never draw or route keys
+ * concurrently. The port writes stay lock-free volatile assignments.
+ *
+ * <p>Every key is routed through the active {@link Keymap}: the shell matches
+ * named actions instead of reading concrete keys, and the overlays (command
+ * palette, keymap help) capture the keyboard while open. The reserved keymap
+ * chords (palette, help, tool window activations) keep working while a
+ * capturing input has focus, so a terminal-like tool window never locks the
+ * user out of the shell. The keymap is resolved lazily through the
+ * {@link KeymapRegistry}, so a malformed user keymap file never aborts a
+ * headless or MCP-only process: only the {@code --tui} session builds it, and
+ * fails there with a one-line message.
  */
 @Singleton
 public final class VintelliShell implements EventHandler, ShellHighlightPort, ShellDiffViewPort {
@@ -93,12 +112,21 @@ public final class VintelliShell implements EventHandler, ShellHighlightPort, Sh
             .build();
     private static final String EDITOR_TEXT = "editor tool window lands with issue #31; vintelli needs no external editor";
 
+    /**
+     * The keymap-driven parts of the shell, built together the first time the
+     * TUI session actually uses them.
+     */
+    private record KeymapParts(Keymap keymap, CommandPalette commandPalette, KeymapHelpOverlay keymapHelp) {
+    }
+
     private final ShellState state;
     private final List<ToolWindow> toolWindows;
     private final ReentrantLock frameLock = new ReentrantLock();
+    private final Supplier<Keymap> keymapSupplier;
     private final Tabs toolTabs;
     private final TabsState tabsState = new TabsState(0);
     private final ListState listState = new ListState();
+    private volatile KeymapParts overlays;
 
     private volatile ShellHighlightTarget highlight;
     private volatile ShellUnifiedDiff diff;
@@ -106,8 +134,8 @@ public final class VintelliShell implements EventHandler, ShellHighlightPort, Sh
     private volatile boolean inputCaptured;
 
     @Inject
-    public VintelliShell(ToolWindowRegistry registry, ShellState state) {
-        this(registry.toolWindows(), state);
+    public VintelliShell(ToolWindowRegistry registry, ShellState state, KeymapRegistry keymapRegistry) {
+        this(registry.toolWindows(), state, keymapRegistry::get);
     }
 
     /**
@@ -116,8 +144,26 @@ public final class VintelliShell implements EventHandler, ShellHighlightPort, Sh
      * should come from a {@link ToolWindowRegistry}.
      */
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state) {
+        this(toolWindows, state, Keymap.ofProfile(KeymapProfile.DEFAULT, toolWindows));
+    }
+
+    /**
+     * Full control constructor: the keymap is passed explicitly so tests can
+     * exercise each profile, and the overlays and the dispatching of every
+     * named action are wired from it.
+     */
+    public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Keymap keymap) {
+        this(toolWindows, state, () -> keymap);
+    }
+
+    /**
+     * Lazy constructor: the keymap is built only when the shell first handles
+     * a key or renders, so a headless or MCP-only process never builds it.
+     */
+    public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier) {
         this.state = state;
         this.toolWindows = List.copyOf(toolWindows);
+        this.keymapSupplier = keymapSupplier;
         this.toolTabs = Tabs.builder()
                 .titles(toolWindowTabTitles())
                 .style(Style.create().fg(SUBTLE))
@@ -130,6 +176,22 @@ public final class VintelliShell implements EventHandler, ShellHighlightPort, Sh
             inputCaptured = toolWindows.get(0).capturesInput();
         }
         state.selectFile(PROJECT_FILES.get(0));
+    }
+
+    private KeymapParts overlays() {
+        KeymapParts parts = overlays;
+        if (parts == null) {
+            synchronized (this) {
+                if (overlays == null) {
+                    Keymap keymap = keymapSupplier.get();
+                    overlays = new KeymapParts(keymap,
+                            new CommandPalette(keymap.actions(), keymap),
+                            new KeymapHelpOverlay(keymap));
+                }
+                parts = overlays;
+            }
+        }
+        return parts;
     }
 
     private List<Line> toolWindowTabTitles() {
@@ -168,51 +230,154 @@ public final class VintelliShell implements EventHandler, ShellHighlightPort, Sh
         if (!(event instanceof KeyEvent key)) {
             return false;
         }
+        if (inputCaptured && key.isKey(KeyCode.ESCAPE)) {
+            inputCaptured = false;
+            status = "Focus: shell navigation";
+            return true;
+        }
+        KeymapParts parts = overlays();
+        if (!inputCaptured && parts.keymap().matches(key, KeyActions.QUIT)) {
+            runner.quit();
+            return true;
+        }
+        if (parts.keymap().matchesReserved(key, KeyActions.SEARCH_EVERYWHERE)) {
+            toggleCommandPalette(parts);
+            return true;
+        }
+        if (parts.keymap().matchesReserved(key, KeyActions.KEYMAP_HELP)) {
+            toggleKeymapHelp(parts);
+            return true;
+        }
+        if (parts.commandPalette().isOpen()) {
+            parts.commandPalette().handleKey(key).ifPresent(action -> dispatch(parts, action.id(), runner));
+            return true;
+        }
+        if (parts.keymapHelp().isOpen()) {
+            parts.keymapHelp().handleKey(key);
+            return true;
+        }
+        OptionalInt activation = activationByKey(parts, key);
+        if (activation.isPresent()) {
+            switchToToolWindow(activation.getAsInt());
+            return true;
+        }
         if (inputCaptured) {
-            if (key.isKey(KeyCode.ESCAPE)) {
-                inputCaptured = false;
-                status = "Focus: shell navigation";
-                return true;
-            }
             if (!toolWindows.isEmpty()) {
                 toolWindows.get(toolIndex()).handleKey(key);
             }
             return true;
         }
-        if (key.isQuit()) {
-            runner.quit();
-            return true;
-        }
-        if (selectToolWindow(key)) {
-            return true;
-        }
         if (routeToToolWindow(key)) {
             return true;
         }
-        if (key.isUp() || key.isChar('k')) {
+        if (parts.keymap().matches(key, KeyActions.MOVE_UP)) {
             moveSelection(-1);
             return true;
         }
-        if (key.isDown() || key.isChar('j')) {
+        if (parts.keymap().matches(key, KeyActions.MOVE_DOWN)) {
             moveSelection(1);
             return true;
         }
         return false;
     }
 
-    private boolean selectToolWindow(KeyEvent key) {
-        ToolWindow match = null;
-        for (ToolWindow toolWindow : toolWindows) {
-            if (toolWindow.shortcut() == key.character()) {
-                match = toolWindow;
-                break;
+    /**
+     * The tool window whose activation chord the event triggers. Bare
+     * shortcuts match only while the shell has the keyboard: once a capturing
+     * window holds the input they belong to it; the reserved chord set is what
+     * survives capture.
+     */
+    private OptionalInt activationByKey(KeymapParts parts, KeyEvent key) {
+        Keymap keymap = parts.keymap();
+        for (int index = 0; index < toolWindows.size(); index++) {
+            String actionId = KeyActions.activateToolWindow(toolWindows.get(index).id());
+            boolean triggered = inputCaptured
+                    ? keymap.matchesReserved(key, actionId)
+                    : keymap.matches(key, actionId);
+            if (triggered) {
+                return OptionalInt.of(index);
             }
         }
-        if (match == null) {
-            return false;
+        return OptionalInt.empty();
+    }
+
+    /**
+     * Runs one named action of the catalog. Palette confirmations land here,
+     * so every action stays reachable from the palette regardless of which
+     * chord the active profile or user file binds to it.
+     */
+    private void dispatch(KeymapParts parts, String actionId, TuiRunner runner) {
+        switch (actionId) {
+            case KeyActions.QUIT -> runner.quit();
+            case KeyActions.SEARCH_EVERYWHERE -> {
+                parts.keymapHelp().close();
+                parts.commandPalette().open();
+                status = "Command palette: type to filter, Enter runs the action, Escape closes";
+            }
+            case KeyActions.KEYMAP_HELP -> {
+                parts.commandPalette().close();
+                openKeymapHelp(parts);
+            }
+            case KeyActions.MOVE_UP -> {
+                closeOverlays(parts);
+                moveSelection(-1);
+            }
+            case KeyActions.MOVE_DOWN -> {
+                closeOverlays(parts);
+                moveSelection(1);
+            }
+            default -> {
+                OptionalInt toolWindowIndex = indexOfActivation(actionId);
+                closeOverlays(parts);
+                if (toolWindowIndex.isEmpty()) {
+                    status = "Unhandled action: " + actionId;
+                } else {
+                    switchToToolWindow(toolWindowIndex.getAsInt());
+                }
+            }
         }
-        switchToToolWindow(toolWindows.indexOf(match));
-        return true;
+    }
+
+    private OptionalInt indexOfActivation(String actionId) {
+        for (int index = 0; index < toolWindows.size(); index++) {
+            if (KeyActions.activateToolWindow(toolWindows.get(index).id()).equals(actionId)) {
+                return OptionalInt.of(index);
+            }
+        }
+        return OptionalInt.empty();
+    }
+
+    private void toggleCommandPalette(KeymapParts parts) {
+        inputCaptured = false;
+        parts.keymapHelp().close();
+        if (parts.commandPalette().isOpen()) {
+            parts.commandPalette().close();
+            status = "Command palette closed";
+            return;
+        }
+        parts.commandPalette().open();
+        status = "Command palette: type to filter, Enter runs the action, Escape closes";
+    }
+
+    private void toggleKeymapHelp(KeymapParts parts) {
+        inputCaptured = false;
+        parts.commandPalette().close();
+        if (parts.keymapHelp().isOpen()) {
+            parts.keymapHelp().close();
+            status = "Keymap help closed";
+            return;
+        }
+        openKeymapHelp(parts);
+    }
+
+    private void openKeymapHelp(KeymapParts parts) {
+        parts.keymapHelp().open();
+        status = "Keymap: " + parts.keymap().source();
+    }
+
+    private void closeOverlays(KeymapParts parts) {
+        parts.commandPalette().close();
+        parts.keymapHelp().close();
     }
 
     private void switchToToolWindow(int toolWindowIndex) {
@@ -312,6 +477,7 @@ public final class VintelliShell implements EventHandler, ShellHighlightPort, Sh
         frameLock.lock();
         try {
             Rect area = frame.area();
+            KeymapParts parts = overlays();
             frame.renderWidget(paintBackground(), area);
             List<Rect> vertical = Layout.vertical()
                     .constraints(
@@ -327,6 +493,12 @@ public final class VintelliShell implements EventHandler, ShellHighlightPort, Sh
             renderMainArea(frame, vertical.get(2));
             renderToolWindow(frame, vertical.get(3));
             renderStatusBar(frame, vertical.get(4));
+
+            if (parts.commandPalette().isOpen()) {
+                parts.commandPalette().render(frame, area);
+            } else if (parts.keymapHelp().isOpen()) {
+                parts.keymapHelp().render(frame, area);
+            }
         } finally {
             frameLock.unlock();
         }
@@ -410,6 +582,22 @@ public final class VintelliShell implements EventHandler, ShellHighlightPort, Sh
 
     public String status() {
         return status;
+    }
+
+    /**
+     * Whether the command palette overlay currently captures the keyboard;
+     * tests use it as the visual-free proxy for the rendered overlay.
+     */
+    public boolean paletteOpen() {
+        return overlays().commandPalette().isOpen();
+    }
+
+    /**
+     * Whether the keymap help overlay is open; tests use it to assert the
+     * {@code KeymapHelp} action without reading pixels off the rendered frame.
+     */
+    public boolean helpOverlayOpen() {
+        return overlays().keymapHelp().isOpen();
     }
 
     /**
