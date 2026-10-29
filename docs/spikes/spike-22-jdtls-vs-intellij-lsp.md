@@ -2,7 +2,7 @@
 
 Part of #15; feeds #20.
 
-**Status:** Desk research only. Neither `jdtls` nor `intellij-server` was launched, and no quality, latency or memory measurement was made. The decision rests on the vendors' own documentation and on the source of JetBrains' Neovim client, read on 2026-10-28. Items not verified are listed under "Not verified" and tracked in the follow-up issues.
+**Status:** Desk research only. Neither `jdtls` nor `intellij-server` was launched, and no quality, latency or memory measurement was made. The decision rests on the vendors' own documentation and on the source of JetBrains' Neovim client, read on 2026-10-28. Items not verified are listed under "Not verified" and tracked in the follow-up issues. Some of those items were later executed or corrected in `spike-52-server-benchmark.md`; see "Updates from spike 52" below, which supersedes the matching lines here.
 
 ## Decision
 
@@ -50,6 +50,15 @@ Nothing in this spike was executed: neither `jdtls` nor `intellij-server` was la
 - Whether the license is enforced exactly as documented ("starts but answers nothing" was read from the README, not observed). Tracked in #52.
 - Whether the bundle `EULA.txt` permits a third-party client to bundle or auto-download the bundle. The EULA text itself was not read; only the statement that the user must accept it on first start. Tracked in #53.
 - Content of JetBrains' forthcoming licensing terms for purely agentic use. Tracked in #54.
+
+## Updates from spike 52
+
+The text above is kept as the desk-research record. `spike-52-server-benchmark.md` established the following, and where it differs it supersedes this document:
+
+- **Java runtime:** jdt.ls 1.63.0 does not start on Java 21 (the OSGi layer requires `JavaSE` version 25); Temurin 25.0.3 and OpenJDK 27 started it. The "Java 21 (minimum)" line and the JDK 21+ consequence for #20 are stale for this milestone; #100 tracks the Java 25 requirement. Java 22 to 24 were not tested.
+- **Socket mode:** `intellij-server` has one. The launcher `--help` documents `--socket` (default `127.0.0.1:9999`), `--port-file`, `--idle-timeout` and `--multi-client`, and a plain LSP client was served over TCP. "No socket mode is documented" no longer holds. Multi-client behavior and port-file removal are open (#98, #99).
+- **Unlicensed behavior:** observed instead of read. The server answers `initialize` and runs the import, and refuses `textDocument/references`, `textDocument/hover` and `textDocument/prepareCallHierarchy` with `-32802`; other methods were not probed (#104). "Starts but answers nothing" was therefore not accurate for those methods. The fresh server started unlicensed instead of in a 30-day trial; the cause is unknown (#102).
+- **Measurements:** jdtls startup, diagnostics, references, hover, call hierarchy and memory on a small Maven project, with a few runs only; intellij-server quality is still not measured (#73). Repeats and real repositories are tracked in #101 and #97.
 
 ## Follow-up issues
 
