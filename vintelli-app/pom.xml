@@ -82,6 +82,13 @@
         </dependency>
         <dependency>
             <groupId>dev.omatheusmesmo</groupId>
+            <artifactId>vintelli-lsp</artifactId>
+            <version>${project.version}</version>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>dev.omatheusmesmo</groupId>
             <artifactId>vintelli-tui</artifactId>
             <version>${project.version}</version>
         </dependency>

@@ -16,6 +16,7 @@
 
     <properties>
         <tamboui.version>0.6.0</tamboui.version>
+        <lsp4j.version>1.0.0</lsp4j.version>
         <mcp.sdk.version>2.1.0</mcp.sdk.version>
         <acp.sdk.version>0.80.0</acp.sdk.version>
         <quarkus.core.version>3.40.1</quarkus.core.version>

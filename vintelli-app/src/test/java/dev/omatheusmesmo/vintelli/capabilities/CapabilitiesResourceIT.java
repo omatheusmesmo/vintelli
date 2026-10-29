@@ -15,11 +15,12 @@ import io.restassured.RestAssured;
 
 /**
  * Asserts the capability status surface of the shipped app: the three local
- * capabilities are served by the beans of {@code vintelli-local} and the three
- * remaining capabilities (diagnostics, call hierarchy and the editor bridge)
- * stay explicitly unavailable until their providers land. Under
- * {@code -Dnative} the same assertions run against the native runner, so the
- * local providers also survive AOT.
+ * capabilities are served by the beans of {@code vintelli-local}, the two LSP
+ * capabilities (diagnostics and call hierarchy) stay explicitly unavailable
+ * until a language server profile is configured, naming the LSP providers
+ * behind that state, and the editor bridge stays unavailable until its provider
+ * lands. Under {@code -Dnative} the same assertions run against the native
+ * runner, so the local and LSP providers also survive AOT.
  */
 @QuarkusIntegrationTest
 class CapabilitiesResourceIT {
@@ -28,7 +29,7 @@ class CapabilitiesResourceIT {
     URI capabilities;
 
     @Test
-    void servesTheLocalProvidersAndKeepsTheRemoteCapabilitiesUnavailable() {
+    void servesTheLocalProvidersAndLeavesTheLspCapabilitiesUnavailableWithoutAProfile() {
         RestAssured.given()
                 .when().get(capabilities)
                 .then()
@@ -38,8 +39,8 @@ class CapabilitiesResourceIT {
                 .body("health.state", contains("AVAILABLE", "AVAILABLE", "AVAILABLE", "UNAVAILABLE", "UNAVAILABLE", "UNAVAILABLE"))
                 .body("health.reason", contains(
                         nullValue(), nullValue(), nullValue(),
-                        containsString("no provider is registered"),
-                        containsString("no provider is registered"),
+                        containsString("no healthy provider for 'diagnostics': lsp"),
+                        containsString("no healthy provider for 'call-hierarchy': lsp"),
                         containsString("no provider is registered")));
     }
 }

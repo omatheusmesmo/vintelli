@@ -10,7 +10,7 @@
     <artifactId>vintelli-lsp</artifactId>
 
     <description>
-        Generic LSP client plus server profiles. Depends on the api ports and the shared JSON-RPC plumbing.
+        Generic LSP client over LSP4J plus server profiles (health, command, initialization options), implementing the diagnostics and call hierarchy capability ports. Native reflection registration lives in the `vintelli-core` deployment build step.
     </description>
 
     <dependencies>
@@ -20,14 +20,38 @@
             <version>${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>dev.omatheusmesmo</groupId>
-            <artifactId>vintelli-jsonrpc</artifactId>
-            <version>${project.version}</version>
+            <groupId>org.eclipse.lsp4j</groupId>
+            <artifactId>org.eclipse.lsp4j</artifactId>
+            <version>${lsp4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-arc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 
     <build>
         <plugins>
+            <plugin>
+                <groupId>io.smallrye</groupId>
+                <artifactId>jandex-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <artifactId>maven-jar-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>share-test-fixtures</id>
+                        <goals>
+                            <goal>test-jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <artifactId>maven-enforcer-plugin</artifactId>
                 <executions>
@@ -46,6 +70,8 @@
                                         <exclude>dev.omatheusmesmo:vintelli-core</exclude>
                                         <exclude>dev.omatheusmesmo:vintelli-core-deployment</exclude>
                                         <exclude>dev.omatheusmesmo:vintelli-app</exclude>
+                                        <exclude>dev.omatheusmesmo:vintelli-jsonrpc</exclude>
+                                        <exclude>dev.omatheusmesmo:vintelli-acp</exclude>
                                     </excludes>
                                 </bannedDependencies>
                             </rules>

@@ -27,6 +27,7 @@ Vintelli is a Quarkus application that shows an IntelliJ IDEA-like TUI (built wi
 - TamboUI 0.6.0 (`tamboui-tui`, `tamboui-toolkit`, Markdown support, JLine backend)
 - Quarkiverse MCP Server 2.0.4 (Vintelli as an MCP server for external agents)
 - MCP Java SDK 2.1.0 (client: IntelliJ IDEA MCP server)
+- LSP4J 1.0.0 (client: generic language server client with profiles)
 - AEsh 3.18.6 (plain library; CLI/REPL capabilities) and WebSockets Next (browser surface)
 
 ## Run
@@ -308,6 +309,38 @@ the same way (issue #132): they drive a full client session over stdio against
 a tiny echo agent configured with
 `vintelli.acp.probe.agent-command` and `vintelli.acp.probe.agent-args`, and
 answer 404 unless `vintelli.acp.probe.enabled=true`.
+
+## Language servers
+
+`vintelli-lsp` hosts the generic LSP client: it launches a language server from
+a profile through the LSP4J launcher (executor configured with daemon threads
+so the process never lingers after a session), runs `initialize`/`shutdown`,
+serves `didOpen`/`didChange`/`didClose`, the pushed diagnostics of
+`textDocument/publishDiagnostics`, hover, definition, references, completion
+and the `callHierarchy/*` requests. The diagnostics and call hierarchy ports of
+`vintelli-api` are implemented by providers whose identifier is the active
+profile, and the `vintelli-core` extension registers the LSP4J types and the
+four dynamic proxies for the native image from the Jandex index at build time,
+so an LSP4J upgrade needs no hand edited reflection config.
+
+Profiles are configuration only. The `jdtls` profile of issue #20 is the first
+tenant:
+
+```properties
+vintelli.lsp.profiles.jdtls.command=jdtls
+vintelli.lsp.profiles.jdtls.args=-data,/home/me/workspace-vintelli
+vintelli.lsp.profiles.jdtls.workspace-root=/home/me/projects/app
+vintelli.lsp.profiles.jdtls.initialization-options={"bundles":["..."]}
+```
+
+`vintelli.lsp.profile` picks the serving profile when several are configured.
+A missing binary or a server still indexing never breaks a call: the selection
+and the status row carry an explicit unavailable reason instead.
+`/lsp/diagnostics?file=...`, `/lsp/callers`, `/lsp/callees`, `/lsp/hover`,
+`/lsp/definition`, `/lsp/references` and `/lsp/completion` expose the session
+over HTTP for the native ITs, which run against the fake language server of
+`vintelli-lsp` (no real server lives on CI); they answer 404 unless
+`vintelli.lsp.debug-endpoint.enabled=true`.
 
 ## Status
 
