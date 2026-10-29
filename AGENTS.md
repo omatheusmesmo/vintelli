@@ -20,6 +20,22 @@ This is a Quarkus application. Follow these rules when working on this project.
 - The JDK is pinned by `.sdkmanrc` (SDKMAN rules; mise does not manage Java);
   `mvnw` stays exactly as upstream ships it.
 
+## Issue keywords
+
+Issues are the single source of truth for work items. Reference them with
+these exact keywords:
+
+- `Closes #N`, `Fixes #N`, `Resolves #N`: only in the pull request description.
+  GitHub auto-closes the issue when the PR merges.
+- `Refs #N`: in commit subjects and PR descriptions for partial progress or
+  related discussion; never auto-closes.
+- Commits that close an issue: `feat(tui): tabs bar (closes #1)`. If, when
+  merging, the PR refers to multiple issues, put one `Closes #N` per issue on
+  its own line in the PR description.
+- Never close an issue manually with a comment; always close it through the
+  keyword in a merged PR.
+
+
 
 ## CRITICAL -- Extension-First Rule (NEVER skip this)
 

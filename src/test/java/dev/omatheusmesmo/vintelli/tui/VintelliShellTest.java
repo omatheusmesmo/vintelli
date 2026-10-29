@@ -4,34 +4,44 @@ import dev.tamboui.tui.pilot.Pilot;
 import dev.tamboui.tui.pilot.TuiTestRunner;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class VintelliShellTest {
+
+    private static final Duration STARTUP = Duration.ofMillis(100);
+    private static final Duration EVENT_WINDOW = Duration.ofMillis(500);
+
+    private Pilot pilot(TuiTestRunner test) {
+        return test.pilot();
+    }
+
+    private void press(Pilot pilot, char key) {
+        pilot.press(key);
+        pilot.pause(EVENT_WINDOW);
+    }
 
     @Test
     void selectsToolWindowsByDigitKeys() throws Exception {
         VintelliShell shell = new VintelliShell();
         try (TuiTestRunner test = TuiTestRunner.runTest(shell, shell::render)) {
-            Pilot pilot = test.pilot();
+            Pilot pilot = pilot(test);
+            pilot.pause(STARTUP);
 
-            pilot.press('2');
-            pilot.pause();
+            press(pilot, '2');
             assertEquals(1, shell.toolIndex());
 
-            pilot.press('4');
-            pilot.pause();
+            press(pilot, '4');
             assertEquals(3, shell.toolIndex());
 
-            pilot.press('1');
-            pilot.pause();
+            press(pilot, '1');
             assertEquals(0, shell.toolIndex());
 
-            pilot.press('x');
-            pilot.pause();
+            press(pilot, 'x');
             assertEquals(0, shell.toolIndex());
 
-            pilot.press('q');
-            pilot.pause();
+            press(pilot, 'q');
         }
     }
 
@@ -39,22 +49,19 @@ class VintelliShellTest {
     void navigatesProjectTreeWithJAndK() throws Exception {
         VintelliShell shell = new VintelliShell();
         try (TuiTestRunner test = TuiTestRunner.runTest(shell, shell::render)) {
-            Pilot pilot = test.pilot();
+            Pilot pilot = pilot(test);
+            pilot.pause(STARTUP);
 
-            pilot.press('j');
-            pilot.pause();
+            press(pilot, 'j');
             assertEquals(1, shell.fileIndex());
 
-            pilot.press('j');
-            pilot.pause();
+            press(pilot, 'j');
             assertEquals(2, shell.fileIndex());
 
-            pilot.press('k');
-            pilot.pause();
+            press(pilot, 'k');
             assertEquals(1, shell.fileIndex());
 
-            pilot.press('q');
-            pilot.pause();
+            press(pilot, 'q');
         }
     }
 }
