@@ -11,7 +11,7 @@
 
     <name>Vintelli Core (runtime)</name>
     <description>
-        Quarkus extension, runtime part. Home of Vintelli's build-time glue: today the MCP client JSON mapper and schema validator producers, plus the capability registry.
+        Quarkus extension, runtime part. Home of Vintelli's build-time glue: the MCP client JSON mapper and schema validator producers, the capability registry and the Host and Origin guard for the local endpoints.
     </description>
 
     <dependencies>
@@ -23,6 +23,10 @@
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-arc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-vertx-http</artifactId>
         </dependency>
         <dependency>
             <groupId>io.modelcontextprotocol.sdk</groupId>

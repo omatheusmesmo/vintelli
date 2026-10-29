@@ -7,7 +7,7 @@ import io.modelcontextprotocol.spec.McpSchema.Implementation;
 import io.quarkus.builder.BuildChainBuilder;
 import io.quarkus.builder.BuildContext;
 import io.quarkus.builder.BuildStep;
-import io.quarkus.deployment.builditem.ServiceStartBuildItem;
+import io.quarkus.deployment.builditem.FeatureBuildItem;
 import io.quarkus.deployment.builditem.nativeimage.ReflectiveClassBuildItem;
 import io.quarkus.test.QuarkusUnitTest;
 import jakarta.inject.Inject;
@@ -73,8 +73,8 @@ class McpClientProcessorTest {
                 System.setProperty(REGISTERED_PROPERTY, context.consumeMulti(ReflectiveClassBuildItem.class).stream()
                         .flatMap(item -> item.getClassNames().stream())
                         .collect(Collectors.joining(",")));
-                context.produce(new ServiceStartBuildItem("vintelli-core-test"));
+                context.produce(new FeatureBuildItem("vintelli-core-test-capture"));
             }
-        }).consumes(ReflectiveClassBuildItem.class).produces(ServiceStartBuildItem.class).build();
+        }).consumes(ReflectiveClassBuildItem.class).produces(FeatureBuildItem.class).build();
     }
 }
