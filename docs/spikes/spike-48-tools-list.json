@@ -1,0 +1,368 @@
+{
+  "id": 11,
+  "result": {
+    "tools": [
+      {
+        "name": "search_file",
+        "inputSchema": {
+          "properties": {
+            "q": {
+              "type": "string",
+              "description": "Glob pattern to search for"
+            },
+            "paths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Optional list of project-relative glob patterns to filter results. Supports '!' excludes. Trailing '/' expands to '**'. Patterns without '/' are treated as '**/pattern'. Empty strings are ignored."
+            },
+            "includeExcluded": {
+              "type": "boolean",
+              "description": "Whether to include excluded/ignored files in results"
+            },
+            "limit": {
+              "type": "integer",
+              "description": "Maximum number of results to return"
+            }
+          },
+          "required": [
+            "q"
+          ],
+          "type": "object"
+        },
+        "description": "Searches for files by glob pattern within the project.\nUse this tool when you need to match file paths using glob syntax.\n\nGlob patterns are relative to the project root.\nExamples: \"**/*.kt\", \"src/**/Foo*.java\", \"build.gradle.kts\".\nPatterns without '/' are treated as \"**/pattern\".\nPaths are optional additional glob filters relative to the project root.",
+        "outputSchema": {
+          "properties": {
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "filePath"
+                ],
+                "properties": {
+                  "filePath": {
+                    "type": "string"
+                  },
+                  "startLine": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "startColumn": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "endLine": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "endColumn": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            },
+            "more": {
+              "type": "boolean"
+            },
+            "partialResultReason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "annotations": {
+          "readOnlyHint": true,
+          "openWorldHint": false
+        }
+      },
+      {
+        "name": "search_regex",
+        "inputSchema": {
+          "properties": {
+            "q": {
+              "type": "string",
+              "description": "Regex pattern to search for"
+            },
+            "paths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Optional list of project-relative glob patterns to filter results. Supports '!' excludes. Trailing '/' expands to '**'. Patterns without '/' are treated as '**/pattern'. Empty strings are ignored."
+            },
+            "limit": {
+              "type": "integer",
+              "description": "Maximum number of results to return"
+            }
+          },
+          "required": [
+            "q"
+          ],
+          "type": "object"
+        },
+        "description": "Searches for regex matches within project files.\nUse this tool when you need regex search with match coordinates.\nResults include match coordinates when available (1-based line/column, end exclusive).\n\nPaths are glob patterns relative to the project root.\nExamples: [\"src/**\", \"!**/test/**\"], [\"**/*.kt\"], [\"foo/\"].",
+        "outputSchema": {
+          "properties": {
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "filePath"
+                ],
+                "properties": {
+                  "filePath": {
+                    "type": "string"
+                  },
+                  "startLine": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "startColumn": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "endLine": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "endColumn": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            },
+            "more": {
+              "type": "boolean"
+            },
+            "partialResultReason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "annotations": {
+          "readOnlyHint": true,
+          "openWorldHint": false
+        }
+      },
+      {
+        "name": "search_symbol",
+        "inputSchema": {
+          "properties": {
+            "q": {
+              "type": "string",
+              "description": "Symbol query text"
+            },
+            "paths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Optional list of project-relative glob patterns to filter results. Supports '!' excludes. Trailing '/' expands to '**'. Patterns without '/' are treated as '**/pattern'. Empty strings are ignored."
+            },
+            "include_external": {
+              "type": "boolean",
+              "description": "Whether to include SDK and library symbols. Disabled by default; if nothing suitable is found, try again with include_external=true."
+            },
+            "limit": {
+              "type": "integer",
+              "description": "Maximum number of results to return"
+            }
+          },
+          "required": [
+            "q"
+          ],
+          "type": "object"
+        },
+        "description": "Searches for symbols (classes, methods, fields).\nUse this tool for semantic lookup by identifier fragments.\nResults include match coordinates when available (1-based line/column, end exclusive).\nFor call graph questions, use this only to locate the target symbol, then pass the fully qualified callable name\nto `analyze_calls` instead of using text search or Find Usages manually.\n\nPaths are glob patterns relative to the project root.\nBy default this searches project symbols only.\nIf you don't find a suitable result, try again with include_external=true to search SDK and library symbols too.",
+        "outputSchema": {
+          "properties": {
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "filePath"
+                ],
+                "properties": {
+                  "filePath": {
+                    "type": "string"
+                  },
+                  "startLine": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "startColumn": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "endLine": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "endColumn": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            },
+            "more": {
+              "type": "boolean"
+            },
+            "partialResultReason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "annotations": {
+          "readOnlyHint": true,
+          "openWorldHint": false
+        }
+      },
+      {
+        "name": "search_text",
+        "inputSchema": {
+          "properties": {
+            "q": {
+              "type": "string",
+              "description": "Text to search for"
+            },
+            "paths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Optional list of project-relative glob patterns to filter results. Supports '!' excludes. Trailing '/' expands to '**'. Patterns without '/' are treated as '**/pattern'. Empty strings are ignored."
+            },
+            "limit": {
+              "type": "integer",
+              "description": "Maximum number of results to return"
+            }
+          },
+          "required": [
+            "q"
+          ],
+          "type": "object"
+        },
+        "description": "Searches for a text substring within project files.\nUse this tool for fast text search with match coordinates.\nResults include match coordinates when available (1-based line/column, end exclusive).\n\nPaths are glob patterns relative to the project root.\nExamples: [\"src/**\", \"!**/test/**\"], [\"**/*.kt\"], [\"foo/\"].",
+        "outputSchema": {
+          "properties": {
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "filePath"
+                ],
+                "properties": {
+                  "filePath": {
+                    "type": "string"
+                  },
+                  "startLine": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "startColumn": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "endLine": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "endColumn": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            },
+            "more": {
+              "type": "boolean"
+            },
+            "partialResultReason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "annotations": {
+          "readOnlyHint": true,
+          "openWorldHint": false
+        }
+      },
+      {
+        "name": "execute_tool",
+        "inputSchema": {
+          "properties": {
+            "command": {
+              "type": "string",
+              "description": "Command-line string with tool name and arguments"
+            }
+          },
+          "required": [
+            "command"
+          ],
+          "type": "object"
+        },
+        "description": "Universal tool executor that can invoke specific IDE MCP tool dynamically."
+      }
+    ]
+  },
+  "jsonrpc": "2.0"
+}
