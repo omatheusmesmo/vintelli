@@ -11,10 +11,15 @@
 
     <name>Vintelli Core (runtime)</name>
     <description>
-        Quarkus extension, runtime part. Home of Vintelli's build-time glue: today the MCP client JSON mapper and schema validator producers.
+        Quarkus extension, runtime part. Home of Vintelli's build-time glue: today the MCP client JSON mapper and schema validator producers, plus the capability registry.
     </description>
 
     <dependencies>
+        <dependency>
+            <groupId>dev.omatheusmesmo</groupId>
+            <artifactId>vintelli-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-arc</artifactId>
@@ -23,6 +28,19 @@
             <groupId>io.modelcontextprotocol.sdk</groupId>
             <artifactId>mcp</artifactId>
             <version>${mcp.sdk.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- Generate the CapabilitiesConfig mapping implementation in the
+                 plain JUnit tests, io.smallrye.config.ConfigMappingLoader
+                 loads it through ASM at test runtime. -->
+            <groupId>org.ow2.asm</groupId>
+            <artifactId>asm</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 
@@ -74,6 +92,9 @@
                                     <excludes>
                                         <exclude>dev.omatheusmesmo:*</exclude>
                                     </excludes>
+                                    <includes>
+                                        <include>dev.omatheusmesmo:vintelli-api</include>
+                                    </includes>
                                 </bannedDependencies>
                             </rules>
                         </configuration>
