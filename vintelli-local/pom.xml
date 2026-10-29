@@ -19,10 +19,25 @@
             <artifactId>vintelli-api</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <!-- Makes the providers discoverable CDI beans, exactly like the
+                 IDEA provider module; never imported by the tests themselves. -->
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-arc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
         <plugins>
+            <plugin>
+                <groupId>io.smallrye</groupId>
+                <artifactId>jandex-maven-plugin</artifactId>
+            </plugin>
             <plugin>
                 <artifactId>maven-enforcer-plugin</artifactId>
                 <executions>
