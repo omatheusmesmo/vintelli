@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -104,7 +103,6 @@ class IdeaMcpClientTest {
         }
     }
 
-    @Disabled("Hangs on 2-vCPU runners, tracked in #46")
     @Test
     void callsIdeaToolAndMapsResult() throws Exception {
         try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();

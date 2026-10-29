@@ -27,6 +27,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -43,6 +45,12 @@ import java.util.concurrent.TimeoutException;
  * {@code execute_terminal_command}) can outlast a minute: pass an explicit
  * timeout per call and only invoke from a worker thread, never the TUI render
  * thread (issue #3 wires status updates back through the render thread).
+ *
+ * <p>Tool calls execute on a dedicated virtual-thread executor instead of the
+ * ForkJoin common pool: the MCP SDK transport is built on reactor, which needs
+ * common-pool workers for its own bookkeeping, so a blocking call parked on a
+ * common-pool worker can deadlock the answer it is waiting for (observed as a
+ * guaranteed hang with common-pool parallelism 1 on two-CPU machines).
  */
 @Singleton
 public final class IdeaMcpClient implements AutoCloseable {
@@ -53,6 +61,7 @@ public final class IdeaMcpClient implements AutoCloseable {
     private static final String PROJECT_PATH_HEADER = "IJ_MCP_SERVER_PROJECT_PATH";
     private static final String AUTH_TOKEN_HEADER = "IJ_MCP_AUTH_TOKEN";
     private static final Duration TRANSPORT_REQUEST_TIMEOUT = Duration.ofSeconds(120);
+    private static final Duration DEFAULT_CONNECT_TIMEOUT = Duration.ofSeconds(10);
     private static final Duration INITIALIZATION_TIMEOUT = Duration.ofSeconds(15);
     private static final Duration DEFAULT_CALL_TIMEOUT = Duration.ofSeconds(60);
 
@@ -60,6 +69,7 @@ public final class IdeaMcpClient implements AutoCloseable {
     private final String projectPath;
     private final String authToken;
     private final String clientVersion;
+    private final ExecutorService callExecutor;
 
     private volatile McpSyncClient client;
     private volatile ConnectionStatus status = ConnectionStatus.disconnected("not connected yet");
@@ -76,6 +86,7 @@ public final class IdeaMcpClient implements AutoCloseable {
         this.projectPath = projectPath;
         this.authToken = authToken;
         this.clientVersion = clientVersion;
+        this.callExecutor = Executors.newVirtualThreadPerTaskExecutor();
     }
 
     public ConnectionStatus status() {
@@ -124,7 +135,7 @@ public final class IdeaMcpClient implements AutoCloseable {
                     new IllegalStateException(status.state() + ": " + status.detail()));
         }
         CompletableFuture<CallToolResult> pending = CompletableFuture
-                .supplyAsync(() -> current.callTool(new CallToolRequest(name, safeArguments)));
+                .supplyAsync(() -> current.callTool(new CallToolRequest(name, safeArguments)), callExecutor);
         try {
             CallToolResult result = pending.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
             return new IdeaToolCall(name, rendered(result), Boolean.TRUE.equals(result.isError()));
@@ -144,6 +155,7 @@ public final class IdeaMcpClient implements AutoCloseable {
     @Override
     @PreDestroy
     public void close() {
+        callExecutor.shutdownNow();
         disconnectQuietly();
     }
 
@@ -163,6 +175,7 @@ public final class IdeaMcpClient implements AutoCloseable {
             HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport
                     .builder(baseUri)
                     .endpoint(STREAMABLE_ENDPOINT)
+                    .connectTimeout(DEFAULT_CONNECT_TIMEOUT)
                     .httpRequestCustomizer(ideaHeaders())
                     .build();
             McpSyncClient fresh = McpClient.sync(transport)
