@@ -11,6 +11,7 @@ import dev.omatheusmesmo.vintelli.api.capability.CapabilitySelection;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityStatus;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability;
+import dev.omatheusmesmo.vintelli.api.capability.EditorBridge;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderDescriptor;
 import dev.omatheusmesmo.vintelli.api.capability.ReadFileCapability;
 import dev.omatheusmesmo.vintelli.api.capability.RunCapability;
@@ -37,24 +38,28 @@ public final class DefaultCapabilityRegistry implements CapabilityRegistry {
     private final ProviderGroup<ReadFileCapability> readGroup;
     private final ProviderGroup<DiagnosticsCapability> diagnosticsGroup;
     private final ProviderGroup<CallHierarchyCapability> callHierarchyGroup;
+    private final ProviderGroup<EditorBridge> editorBridgeGroup;
 
     @Inject
     DefaultCapabilityRegistry(Instance<RunCapability> runProviders, Instance<TerminalCapability> terminalProviders,
             Instance<ReadFileCapability> readFileProviders, Instance<DiagnosticsCapability> diagnosticsProviders,
-            Instance<CallHierarchyCapability> callHierarchyProviders, CapabilityOrders orders) {
+            Instance<CallHierarchyCapability> callHierarchyProviders, Instance<EditorBridge> editorBridgeProviders,
+            CapabilityOrders orders) {
         this(collect(runProviders), collect(terminalProviders), collect(readFileProviders),
-                collect(diagnosticsProviders), collect(callHierarchyProviders), orders);
+                collect(diagnosticsProviders), collect(callHierarchyProviders), collect(editorBridgeProviders), orders);
     }
 
     DefaultCapabilityRegistry(List<RunCapability> runProviders, List<TerminalCapability> terminalProviders,
             List<ReadFileCapability> readFileProviders, List<DiagnosticsCapability> diagnosticsProviders,
-            List<CallHierarchyCapability> callHierarchyProviders, CapabilityOrders orders) {
+            List<CallHierarchyCapability> callHierarchyProviders, List<EditorBridge> editorBridgeProviders,
+            CapabilityOrders orders) {
         this.orders = orders;
         this.runGroup = ProviderGroup.of(CapabilityType.RUN, runProviders);
         this.terminalGroup = ProviderGroup.of(CapabilityType.TERMINAL, terminalProviders);
         this.readGroup = ProviderGroup.of(CapabilityType.READ_FILE, readFileProviders);
         this.diagnosticsGroup = ProviderGroup.of(CapabilityType.DIAGNOSTICS, diagnosticsProviders);
         this.callHierarchyGroup = ProviderGroup.of(CapabilityType.CALL_HIERARCHY, callHierarchyProviders);
+        this.editorBridgeGroup = ProviderGroup.of(CapabilityType.EDITOR_BRIDGE, editorBridgeProviders);
     }
 
     @Override
@@ -83,6 +88,11 @@ public final class DefaultCapabilityRegistry implements CapabilityRegistry {
     }
 
     @Override
+    public CapabilitySelection<EditorBridge> editorBridge() {
+        return select(editorBridgeGroup);
+    }
+
+    @Override
     public List<CapabilityStatus> snapshot() {
         List<CapabilityStatus> rows = new ArrayList<>();
         rows.add(status(runGroup));
@@ -90,6 +100,7 @@ public final class DefaultCapabilityRegistry implements CapabilityRegistry {
         rows.add(status(readGroup));
         rows.add(status(diagnosticsGroup));
         rows.add(status(callHierarchyGroup));
+        rows.add(status(editorBridgeGroup));
         return List.copyOf(rows);
     }
 

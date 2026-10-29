@@ -36,6 +36,7 @@ public final class CapabilityOrders {
         add(parsed, CapabilityType.READ_FILE, config.readFile());
         add(parsed, CapabilityType.DIAGNOSTICS, config.diagnostics());
         add(parsed, CapabilityType.CALL_HIERARCHY, config.callHierarchy());
+        add(parsed, CapabilityType.EDITOR_BRIDGE, config.editorBridge());
         return parsed;
     }
 

@@ -27,12 +27,14 @@ class CapabilitiesConfigTest {
     void readsTheConfiguredProviderOrderPerCapability() {
         SmallRyeConfig config = configOf(Map.of(
                 "run.provider-order", " local, idea ",
-                "read-file.provider-order", "lsp"));
+                "read-file.provider-order", "lsp",
+                "editor-bridge.provider-order", "generic, builtin"));
 
         CapabilityOrders orders = new CapabilityOrders(config.getConfigMapping(CapabilitiesConfig.class));
 
         assertEquals(List.of("local", "idea"), orders.orderFor(CapabilityType.RUN));
         assertEquals(List.of("lsp"), orders.orderFor(CapabilityType.READ_FILE));
+        assertEquals(List.of("generic", "builtin"), orders.orderFor(CapabilityType.EDITOR_BRIDGE));
         assertEquals(List.of(), orders.orderFor(CapabilityType.DIAGNOSTICS));
         assertEquals(List.of(), orders.orderFor(CapabilityType.TERMINAL));
     }

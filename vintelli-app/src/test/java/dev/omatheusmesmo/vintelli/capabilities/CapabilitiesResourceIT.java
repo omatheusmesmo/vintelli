@@ -15,10 +15,11 @@ import io.restassured.RestAssured;
 
 /**
  * Asserts the capability status surface of the shipped app: the three local
- * capabilities are served by the beans of {@code vintelli-local} and the two
- * IDEA dependant capabilities stay explicitly unavailable until their
- * providers land. Under {@code -Dnative} the same assertions run against the
- * native runner, so the local providers also survive AOT.
+ * capabilities are served by the beans of {@code vintelli-local} and the three
+ * remaining capabilities (diagnostics, call hierarchy and the editor bridge)
+ * stay explicitly unavailable until their providers land. Under
+ * {@code -Dnative} the same assertions run against the native runner, so the
+ * local providers also survive AOT.
  */
 @QuarkusIntegrationTest
 class CapabilitiesResourceIT {
@@ -32,11 +33,12 @@ class CapabilitiesResourceIT {
                 .when().get(capabilities)
                 .then()
                 .statusCode(200)
-                .body("", hasSize(5))
-                .body("providerIdentifier", contains("local", "local", "local", null, null))
-                .body("health.state", contains("AVAILABLE", "AVAILABLE", "AVAILABLE", "UNAVAILABLE", "UNAVAILABLE"))
+                .body("", hasSize(6))
+                .body("providerIdentifier", contains("local", "local", "local", null, null, null))
+                .body("health.state", contains("AVAILABLE", "AVAILABLE", "AVAILABLE", "UNAVAILABLE", "UNAVAILABLE", "UNAVAILABLE"))
                 .body("health.reason", contains(
                         nullValue(), nullValue(), nullValue(),
+                        containsString("no provider is registered"),
                         containsString("no provider is registered"),
                         containsString("no provider is registered")));
     }
