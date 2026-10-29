@@ -89,8 +89,8 @@ jobs:
 
   build-native:
     name: Native image (Mandrel container)
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -102,10 +102,17 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
 
-      - name: Build native image (in the Mandrel container, langchain4j pattern)
-        run: >
-          ./mvnw -B -ntp package -Dnative -DskipTests -Dquarkus.native.container-build
-          "-Dquarkus.native.additional-build-args=--initialize-at-run-time=org.jline.nativ"
+      - name: Build native image and run integration tests against it
+        run: ./mvnw -B -ntp verify -Dnative -Dquarkus.native.container-build
+
+      - name: Upload native integration test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-it-reports
+          path: |
+            target/failsafe-reports
+            target/quarkus.log
 
       - name: Smoke test native runner
         run: |
