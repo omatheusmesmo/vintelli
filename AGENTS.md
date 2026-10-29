@@ -25,15 +25,19 @@ This is a Quarkus application. Follow these rules when working on this project.
 Issues are the single source of truth for work items. Reference them with
 these exact keywords:
 
-- `Closes #N`, `Fixes #N`, `Resolves #N`: only in the pull request description.
-  GitHub auto-closes the issue when the PR merges.
+- `Closes #N`, `Fixes #N`, `Resolves #N`: in the PR description AND in the
+  commit message footer. GitHub closes the issue when a commit carrying the
+  keyword lands on the default branch (squash merges included).
 - `Refs #N`: in commit subjects and PR descriptions for partial progress or
   related discussion; never auto-closes.
-- Commits that close an issue: `feat(tui): tabs bar (closes #1)`. If, when
-  merging, the PR refers to multiple issues, put one `Closes #N` per issue on
-  its own line in the PR description.
 - Never close an issue manually with a comment; always close it through the
   keyword in a merged PR.
+
+## PR hygiene
+
+- Rebase only: no merge commits, ever. Bring `main` into a branch with
+  `git rebase` (or `git checkout -B` + `git cherry-pick`).
+- One commit per PR: squash intermediate commits before pushing.
 
 
 
