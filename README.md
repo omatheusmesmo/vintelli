@@ -2,7 +2,7 @@
 
 A terminal-native IDE experience for Java: IntelliJ intelligence, in your terminal, with zero IDE UI.
 
-Vintelli is a Quarkus application that shows an IntelliJ IDEA-like TUI (built with TamboUI), drives IntelliJ IDEA headlessly through its MCP server, and hosts AI coding agents (OpenCode, Claude Code, pi) through the Agent Client Protocol (ACP).
+Vintelli is a Quarkus application that shows an IntelliJ IDEA-like TUI (built with TamboUI) and hosts AI coding agents (OpenCode, Claude Code, pi) through the Agent Client Protocol (ACP). It works standalone with open tooling only. IntelliJ IDEA, driven headlessly through its MCP server, is an optional provider and is never required.
 
 ## Architecture
 
@@ -22,7 +22,7 @@ Vintelli is a Quarkus application that shows an IntelliJ IDEA-like TUI (built wi
 
 ## Stack
 
-- Java 25 (Eclipse Mandrel 25.0.2, pinned by `.sdkmanrc`)
+- Java 25 (Mandrel 25.0.2, the Red Hat build of GraalVM for native images, pinned by `.sdkmanrc`)
 - Quarkus 3.40.1.1 (build-time-first, no proxies/reflection unless required)
 - TamboUI 0.6.0 (`tamboui-tui`, `tamboui-toolkit`, Markdown support, JLine backend)
 - Quarkiverse MCP Server 2.0.4 (Vintelli as an MCP server for external agents)
