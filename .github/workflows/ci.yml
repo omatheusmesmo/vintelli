@@ -43,7 +43,7 @@ jobs:
           echo "classes=$JSON" >> "$GITHUB_OUTPUT"
 
   test-jvm:
-    name: Test (JVM) ${{ matrix.os }} :: ${{ matrix.test }}
+    name: "Test (JVM) ${{ matrix.os }} ${{ matrix.test }}"
     needs: discover-tests
     if: needs.discover-tests.outputs.classes != '[]'
     strategy:
@@ -99,10 +99,10 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Mandrel (${{ env.JAVA_VERSION }})
+      - name: Set up GraalVM CE (${{ env.JAVA_VERSION }})
         uses: actions/setup-java@v4
         with:
-          distribution: mandrel
+          distribution: graalvm-community
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
 
