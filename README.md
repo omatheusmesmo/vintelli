@@ -219,6 +219,12 @@ of the IDEA server. They answer 404 unless
 `vintelli.idea.debug-endpoint.enabled=true` and only call read-only tools whose
 name matches `get_[a-z_]+`.
 
+`/acp/probe/session` and `/acp/probe/mcp` expose the ACP SDK client probe in
+the same way (issue #132): they drive a full client session over stdio against
+a tiny echo agent configured with
+`vintelli.acp.probe.agent-command` and `vintelli.acp.probe.agent-args`, and
+answer 404 unless `vintelli.acp.probe.enabled=true`.
+
 ## Status
 
 See the GitHub issues for the implementation plan (IDEA MCP integration, ACP

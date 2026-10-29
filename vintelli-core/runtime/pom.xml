@@ -30,6 +30,16 @@
             <version>${mcp.sdk.version}</version>
         </dependency>
         <dependency>
+            <groupId>com.agentclientprotocol</groupId>
+            <artifactId>acp-core</artifactId>
+            <version>${acp.sdk.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.agentclientprotocol</groupId>
+            <artifactId>acp-json-jackson3</artifactId>
+            <version>${acp.sdk.version}</version>
+        </dependency>
+        <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>
