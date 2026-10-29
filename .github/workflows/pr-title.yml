@@ -3,6 +3,8 @@ name: PR title
 on:
   pull_request:
     types: [opened, edited, reopened, synchronize]
+  merge_group:
+    types: [checks_requested]
 
 permissions:
   contents: read
@@ -12,7 +14,12 @@ jobs:
     name: PR title is plain (no conventional commit prefix)
     runs-on: ubuntu-latest
     steps:
+      - name: Merge queue entry (no PR title to check)
+        if: github.event_name == 'merge_group'
+        run: |
+          echo "Merge group entry: the PR title was already validated on the pull_request event."
       - name: Reject conventional commit prefixes in the PR title
+        if: github.event_name == 'pull_request'
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
         shell: bash
