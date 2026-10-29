@@ -17,4 +17,14 @@ class VintelliInspectDisabledTest {
     void servesNothingUnlessTheInspectEndpointIsEnabled() {
         given().get("/tui/render").then().statusCode(404);
     }
+
+    /**
+     * The icon inspection loads the icon mapping, so the same gate applies
+     * without {@code vintelli.inspect.enabled}; {@link VintelliInspectDisabledIT}
+     * replays it against the packaged artifact.
+     */
+    @Test
+    void answers404ForIconsUnlessTheInspectEndpointIsEnabled() {
+        given().get("/tui/icons").then().statusCode(404);
+    }
 }
