@@ -72,12 +72,12 @@ jobs:
         with:
           name: native-it-reports
           path: |
-            target/failsafe-reports
-            target/quarkus.log
+            vintelli-app/target/failsafe-reports
+            vintelli-app/target/quarkus.log
 
       - name: Smoke test native runner
         run: |
-          RUNNER=$(find target -maxdepth 1 -type f -name '*-runner*' | head -1)
+          RUNNER=$(find vintelli-app/target -maxdepth 1 -type f -name '*-runner*' | head -1)
           "$RUNNER" &
           PID=$!
           sleep 10
