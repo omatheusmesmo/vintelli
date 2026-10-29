@@ -10,7 +10,7 @@ The machine already had a real released IDE, so nothing was downloaded:
 - Product: IntelliJ IDEA **Ultimate**, `product-info.json`: version 2026.2.3, buildNumber 262.10968.63, productCode IU. `build.txt`: `IU-262.10968.63`.
 - MCP plugin bundled: `plugins/mcpserver/lib/mcpserver.jar`, and the shaded `META-INF/plugin.xml` inside that jar (static inspection, not executed) contains `<appStarter id="mcpServer" implementation="com.intellij.mcpserver.McpServerHeadlessStarter" internal="true" />`. Also present: `plugins/mcpserver/lib/modules/intellij.mcpserver.terminal.jar` and `plugins/debuggerMcp` (the debugger tools in a separate plugin).
 - JVM: bundled JBR, OpenJDK **25.0.4** (JetBrains s.r.o.), `-ea`.
-- Not present on this machine and therefore still unverified at runtime: any IDEA **Community** distribution of any line, and any released 2026.1 build. The Community-bundling question stays UNVERIFIED; the static evidence in spike 25 is not confirmed or refuted by this probe.
+- Not exercised on this machine and therefore still unverified at runtime: the unified 2026.2+ distribution on a machine without a subscription (the machine's install is an Ultimate 2026.2.3 with its license; the mcp-server bundle question of #61 is UNVERIFIED, and the static evidence in spike 25 is not confirmed or refuted by this probe), and any released 2026.1 build.
 
 ## What was run
 
@@ -104,9 +104,22 @@ Spike 25 said from source that on 2026.2.x only the `IJ_MCP_SERVER_PROJECT_PATH`
 - Omit the header everywhere, pass a `projectPath` **tool-call argument**: **works**.
 - Omit everything: tool call returns `isError: true` with text starting `Unable to determine the target project for the current MCP tool call`, listing the currently open projects as JSON (`{"projects":[{"path":...}]}`), and suggesting `projectPath`.
 
-The spike-25 source reading does not match the shipped jar here; the 2026.2.3 source tag should be re-read to locate where the per-call header read actually lives before anyone relies on it as a version boundary. `projectPath` is accepted by the server but is not declared in any `inputSchema` of `spike-48-tools-list.json`, so a client that builds arguments from `tools/list` will not send it on its own.
+The spike-25 source reading does not match the shipped jar here (it was resolved in #60: the initial reading was mistaken, see the section below). `projectPath` is accepted by the server but is not declared in any `inputSchema` of `spike-48-tools-list.json`, so a client that builds arguments from `tools/list` will not send it on its own.
 
-Corrected decision: still send `IJ_MCP_SERVER_PROJECT_PATH` on `initialize` (cheapest, and confirmed working), with the per-call header and the `projectPath` argument as fallbacks.
+### Where per-call project resolution lives in the released build (#60 source re-read)
+
+The released jar of the install inspected in this spike was read with `javap` and with the bundled java-decompiler plugin's console decompiler (`plugins/java-decompiler/lib/java-decompiler.jar` executed as a plain console tool with the bundled JBR; the IDE itself was not started, the jar was unpacked read-only). The install facts are in Install and build facts above: `product-info.json` reads version 2026.2.3, `buildNumber IU-262.10968.63`, productCode IU; the inspected artifact is `plugins/mcpserver/lib/mcpserver.jar` within that install. For comparison, the `idea/2026.2.3` release tag of `plugins/mcp-server` was fetched from the public repository (raw HTTP, files `impl/McpProjectLocationInputs.kt` and `impl/util/network/mcp.sdk.util.kt`); its text matches what the jar's bytecode shows. Findings, in call order:
+
+1. **Session-bound header.** The session-establishing lambda of `McpServerService.startServer` (inner class `McpServerService$startServer$1$3` in the jar) reads `IJ_MCP_SERVER_PROJECT_PATH` from the request that creates the transport and passes it into the `McpSessionHandler` constructor as the value stored in `projectPathFromInitialRequest`. The same lambda also reads `IJ_MCP_AUTH_TOKEN` (only when `authCheck` is true) and `IJ_MCP_CLIENT_TAGS`.
+2. **Per-call request propagation.** `Mcp_sdk_utilKt` (file `mcp.sdk.util.kt`) installs `installHttpRequestPropagation` on the Ktor `Application`: a `Call`-phase interceptor wraps `proceed()` in `withContext(HttpRequestElement(request))`, so the HTTP request of every POST, including `tools/call`, is reachable from the coroutine context through `httpRequestOrNull`. No class named `HttpCallTransport` exists in the inspected jar or in the re-read tag files; spike 25's name for the session-side mechanism was wrong, the mechanism is a coroutine-context element.
+3. **Per-call inputs.** The per-tool-call handler built by `McpSessionHandler.mcpToolToRegisteredTool` performs the resolution for every registered tool: it pulls the current request with `getHttpRequestOrNull`, reads the tool-call argument named by `Schema_utilKt.getProjectPathParameterName()` (the literal `projectPath`, overridable by a `McpProjectPathCustomizer` extension; the plugin declares the extension point but ships no implementation, so the default applies), and falls back to the per-call header `IJ_MCP_SERVER_PROJECT_PATH` of that request, then to the same key inside the request `_meta` (`RequestMeta.get`). These values, the session header (`projectPathFromInitialRequest`) and the session roots are the four inputs of `McpProjectLocationInputs`; only this handler calls `findMostRelevantProject` in the jar, so the resolution is central, and toolsets obtain the already resolved `Project` from the call context (`McpCallInfoKt.getProject`; e.g. `VcsToolset`; its error text is `No project opened`).
+4. **Resolution order.** `McpProjectLocationInputs.resolveProject()` (decompiled from the jar; the tag source agrees) has two modes, as its own KDoc states: strict mode when the argument is present and non-blank, matching only that value with `findMostRelevantProject`; chaining mode otherwise, which tries the call header, then the session header, then the roots (`findMostRelevantProjectForRoots`), with each failed step logged. When the argument matches no project the error is `` `projectPath`=`<value>` doesn't correspond to any open project. ``; when the chain is exhausted it is `Unable to determine the target project for the current MCP tool call.` (also reached when the roots set is empty), both verbatim in the constant pool, matching what this probe observed at runtime.
+
+So the difference with the spike-25 reading is not a build-versus-tag divergence: the tag already contains the per-call structures and its own KDoc describes the two modes. Spike 25 had recorded the 2026.2.x line as session-only and named `HttpCallTransport`; both statements were reading errors rather than real version boundaries, and the spike-25 document carries the correction and rules Vintelli must follow.
+
+**Follow-up note for #21:** the `ManagedIdeaProvider` must not assume version-boundary behavior for project resolution. The behavior above is bounded by this build (`IU-262.10968.63`) and its tag; the session header on `initialize` stays the primary mechanism, and the per-call header, the `projectPath` argument and the `_meta` form are fallbacks that other versions may drop, change order, or gate. Version-boundary behavior of project resolution must be re-verified per targeted IDEA version, not inferred from this document.
+
+Corrected decision (after the probe and the #60 re-read): still send `IJ_MCP_SERVER_PROJECT_PATH` on `initialize` (cheapest, and confirmed working), with the per-call header and the `projectPath` argument as fallbacks.
 
 Also worth recording: a tool call with a wrong argument name (`globPattern`, from an older documented schema, instead of the real required `q`) returns the text `MCP tool call has been failed: No argument is passed for required parameter 'q'` with `isError: true`, in-band, not a JSON-RPC error; the IDEA `idea.log` records it as SEVERE. Vintelli's capability layer must treat `isError`-in-content as the normal failure channel, and must take argument names from the real schemas (`q`, not `path` or `globPattern`), which is exactly what #2 reads from `tools/list`.
 
@@ -129,7 +142,7 @@ Resolved by this probe (details above): the headless starter accepts `idea.sh mc
 
 Still open after this spike (UNVERIFIED, carrying over except where reformulated):
 
-- **Community edition runtime behavior.** No Community distribution is installed on this machine and none was downloaded (download size not measured); the static bundle claim from spike 25 stays unconfirmed at runtime (#61).
+- **Unified 2026.2+ distribution runtime behavior without a subscription (#61).** This machine ran a licensed Ultimate 2026.2.3 install only; no separate Community distribution of any line is installed and none was downloaded (download size not measured; the Community framing is stale: since 2025.3 there is no separate Community distribution), and the subscription-free side (whether the bundle ships and works before any license is applied) was not exercised. The static bundle claim from spike 25 stays unconfirmed at runtime (#61).
 - **JVM options precedence** when a user config exists alongside the isolated state dir (see Caveat in What was run): heap cap and provider defaults must be pinned in #21 and checked in #70.
 - **Brave-mode-gated tools headless** (`execute_terminal_command`, run configurations) and their `DialogWrapper` behavior; only relevant if Vintelli ever enables brave mode (current recipe: no) (#68).
 - **GUI IDEA coexistence** (a running IDE holding the same project path) was not exercised; only headless+headless (#69).
@@ -149,8 +162,8 @@ The two conditions the PROVISIONAL go in spike 25 carried:
 
 ## Follow-ups
 
-- #60: re-read the released 2026.2.3 mcp-server sources for per-call project path handling (the spike-25 reading does not match the shipped jar).
-- #61: run this probe on an IDEA Community 2026.2+ distribution (Community bundling is still only statically evidenced).
+- #60: re-read of the released 2026.2.3 mcp-server sources for per-call project path handling, resolved 2026-10-29 (see section Where per-call project resolution lives in the released build).
+- #61: run this probe on the unified 2026.2+ distribution on a machine without a subscription (the bundle question is still only statically evidenced; the earlier Community framing is stale since 2025.3).
 - #68: brave-mode-gated tools headless, tools that need SDK or run-configuration setup, `--allowed-tools=` override, `IJ_MCP_ALLOWED_TOOLS`, `--invocation-mode=via-router` and the `-p` flag.
 - #69: released 2026.1 `idea.sh mcpServer` behavior and a GUI IDEA instance holding the same project.
 - #70: JVM options precedence, explicit heap pinning for the managed spawn (provider work stays in #21), and first run on a clean machine.
@@ -165,3 +178,4 @@ The companion capture `spike-48-tools-list.json` (committed next to this documen
 ## Validation runs
 
 - 2026-10-28/29, this machine: all of the above against build IU-262.10968.63. Raw logs stay under `/tmp/opencode/idea48/` (not committed): `stdout.log`, `stderr.log`, `state/log/idea.log`, `init-headers.txt`, `tools-list.txt`, probe bodies.
+- 2026-10-29, #60: bytecode of the same install's `plugins/mcpserver/lib/mcpserver.jar` (`javap` plus the bundled console decompiler; the IDE was not started) and a raw fetch of the `idea/2026.2.3` tag's `McpProjectLocationInputs.kt` and `mcp.sdk.util.kt`, recorded in section Where per-call project resolution lives in the released build.
