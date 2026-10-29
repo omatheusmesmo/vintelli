@@ -40,6 +40,11 @@ public interface CapabilityRegistry {
     CapabilitySelection<CallHierarchyCapability> callHierarchy();
 
     /**
+     * @return the current editor bridging provider, or an explicit unavailable state
+     */
+    CapabilitySelection<EditorBridge> editorBridge();
+
+    /**
      * One status row per capability: the read model a status bar renders (for
      * example the provider identifier of {@link CapabilityType#DIAGNOSTICS} as
      * {@code Problems: jdtls}).

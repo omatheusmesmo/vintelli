@@ -40,6 +40,13 @@ public interface CapabilitiesConfig {
     Order callHierarchy();
 
     /**
+     * Ranking of the editor-bridge capability providers. Without
+     * configuration the builtin editor serves, because unlisted providers
+     * sort by identifier and {@code builtin} comes first.
+     */
+    Order editorBridge();
+
+    /**
      * Order settings of one capability.
      */
     interface Order {
