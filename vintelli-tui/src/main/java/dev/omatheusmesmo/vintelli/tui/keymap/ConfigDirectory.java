@@ -9,9 +9,11 @@ import java.util.Properties;
  * {@code vintelli.keymap.dir} system property (absolute or relative, so tests
  * and users can point anywhere), then {@code XDG_CONFIG_HOME} (absolute on the
  * XDG spec), then {@code APPDATA} on Windows, then the {@code user.home} based
- * default, which keeps {@code $HOME/.config} on Linux and macOS.
+ * default, which keeps {@code $HOME/.config} on Linux and macOS. The
+ * {@link #configRoot} resolution is shared with the file type icons, which
+ * pass no property override of their own.
  */
-final class ConfigDirectory {
+public final class ConfigDirectory {
 
     static final String USER_KEYMAP_DIR_PROPERTY = "vintelli.keymap.dir";
 
@@ -35,7 +37,7 @@ final class ConfigDirectory {
         return configRoot == null ? null : configRoot.resolve("vintelli").resolve("keymap.properties");
     }
 
-    static Path configRoot(String propertyValue, String xdgConfigHome, String appData, String userHome) {
+    public static Path configRoot(String propertyValue, String xdgConfigHome, String appData, String userHome) {
         if (propertyValue != null && !propertyValue.isBlank()) {
             return Path.of(propertyValue);
         }
