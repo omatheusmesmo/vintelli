@@ -10,6 +10,8 @@
         <tamboui.version>0.6.0</tamboui.version>
         <mcp.sdk.version>2.1.0</mcp.sdk.version>
         <quarkus.mcp.version>2.0.4</quarkus.mcp.version>
+        <aesh.version>3.18.6</aesh.version>
+        <aesh-readline.version>1.17</aesh-readline.version>
         <compiler-plugin.version>3.15.0</compiler-plugin.version>
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -58,10 +60,6 @@
         </dependency>
         <dependency>
             <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-aesh</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.quarkiverse.mcp</groupId>
             <artifactId>quarkus-mcp-server-http</artifactId>
         </dependency>
         <dependency>
@@ -76,6 +74,11 @@
         <dependency>
             <groupId>dev.tamboui</groupId>
             <artifactId>tamboui-jline3-backend</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.aesh</groupId>
+            <artifactId>aesh</artifactId>
+            <version>${aesh.version}</version>
         </dependency>
         <dependency>
             <groupId>dev.tamboui</groupId>

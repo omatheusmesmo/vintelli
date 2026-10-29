@@ -27,7 +27,7 @@ Vintelli is a Quarkus application that shows an IntelliJ IDEA-like TUI (built wi
 - TamboUI 0.6.0 (`tamboui-tui`, `tamboui-toolkit`, Markdown support, JLine backend)
 - Quarkiverse MCP Server 2.0.4 (Vintelli as an MCP server for external agents)
 - MCP Java SDK 2.1.0 (client: IntelliJ IDEA MCP server)
-- AEsh (CLI/REPL capabilities) and WebSockets Next (browser surface)
+- AEsh 3.18.6 (plain library; CLI/REPL capabilities) and WebSockets Next (browser surface)
 
 ## Run
 
