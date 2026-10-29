@@ -4,8 +4,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import io.modelcontextprotocol.json.McpJsonMapper;
+import io.modelcontextprotocol.json.jackson3.JacksonMcpJsonMapper;
+import io.modelcontextprotocol.json.schema.JsonSchemaValidator;
+import io.modelcontextprotocol.json.schema.jackson3.DefaultJsonSchemaValidator;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -26,11 +31,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class IdeaMcpClientTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();
+    private static final JsonMapper MCP_JSON = JsonMapper.builder().build();
+    private static final McpJsonMapper MAPPER = new JacksonMcpJsonMapper(MCP_JSON);
+    private static final JsonSchemaValidator VALIDATOR = new DefaultJsonSchemaValidator(MCP_JSON);
 
     @Test
     void connectsAndListsIdeaToolsOnStreamEndpoint() throws Exception {
         try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
-                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), null, null, "test")) {
+                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), null, null, "test", MAPPER, VALIDATOR)) {
 
             assertEquals(ConnectionState.CONNECTED, client.reconnect().state(), client.status().detail());
 
@@ -48,7 +56,7 @@ class IdeaMcpClientTest {
     @Test
     void sendsProjectPathAndAuthTokenHeaders() throws Exception {
         try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
-                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), "~/work/vintelli", "idea-token", "test")) {
+                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), "~/work/vintelli", "idea-token", "test", MAPPER, VALIDATOR)) {
 
             assertEquals(ConnectionState.CONNECTED, client.reconnect().state(), client.status().detail());
             client.listIdeaTools();
@@ -61,7 +69,7 @@ class IdeaMcpClientTest {
     @Test
     void reportsAuthRequiredOn401() throws Exception {
         try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
-                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), null, null, "test")) {
+                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), null, null, "test", MAPPER, VALIDATOR)) {
             server.rejectionStatus = 401;
 
             assertEquals(ConnectionState.AUTH_REQUIRED, client.reconnect().state(), client.status().detail());
@@ -71,7 +79,7 @@ class IdeaMcpClientTest {
     @Test
     void reportsConsentPendingOn403() throws Exception {
         try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
-                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), null, null, "test")) {
+                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), null, null, "test", MAPPER, VALIDATOR)) {
             server.rejectionStatus = 403;
 
             assertEquals(ConnectionState.CONSENT_PENDING, client.reconnect().state(), client.status().detail());
@@ -81,7 +89,7 @@ class IdeaMcpClientTest {
     @Test
     void reportsEndpointNotFoundOn404() throws Exception {
         try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
-                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), null, null, "test")) {
+                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), null, null, "test", MAPPER, VALIDATOR)) {
             server.rejectionStatus = 404;
 
             assertEquals(ConnectionState.ENDPOINT_NOT_FOUND, client.reconnect().state(), client.status().detail());
@@ -94,7 +102,7 @@ class IdeaMcpClientTest {
         try (ServerSocket socket = new ServerSocket(0)) {
             deadPort = socket.getLocalPort();
         }
-        try (IdeaMcpClient client = new IdeaMcpClient("http://127.0.0.1:" + deadPort, null, null, "test")) {
+        try (IdeaMcpClient client = new IdeaMcpClient("http://127.0.0.1:" + deadPort, null, null, "test", MAPPER, VALIDATOR)) {
 
             assertEquals(ConnectionState.UNREACHABLE, client.reconnect().state(), client.status().detail());
             assertTrue(client.listIdeaTools().isEmpty());
@@ -108,7 +116,7 @@ class IdeaMcpClientTest {
     @Test
     void callsIdeaToolAndMapsResult() throws Exception {
         try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
-                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), null, null, "test")) {
+                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), null, null, "test", MAPPER, VALIDATOR)) {
             client.reconnect();
 
             IdeaToolCall call = client.callIdeaTool("execute_run_configuration", Map.of("name", "Vintelli"));
@@ -121,7 +129,7 @@ class IdeaMcpClientTest {
     @Test
     void timesOutLongRunningToolCalls() throws Exception {
         try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
-                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), null, null, "test")) {
+                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), null, null, "test", MAPPER, VALIDATOR)) {
             server.toolsCallDelay = Duration.ofSeconds(2);
             client.reconnect();
 
@@ -136,7 +144,7 @@ class IdeaMcpClientTest {
     @Test
     void recoversByReconnectingWhenIdeaRestartedWithoutLosingState() throws Exception {
         try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
-                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), null, null, "test")) {
+                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), null, null, "test", MAPPER, VALIDATOR)) {
             client.reconnect();
             assertEquals(3, client.listIdeaTools().size());
 

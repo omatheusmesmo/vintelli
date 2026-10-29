@@ -5,6 +5,8 @@ import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.client.transport.McpHttpClientTransportAuthorizationException;
 import io.modelcontextprotocol.client.transport.customizer.McpSyncHttpClientRequestCustomizer;
+import io.modelcontextprotocol.json.McpJsonMapper;
+import io.modelcontextprotocol.json.schema.JsonSchemaValidator;
 import io.modelcontextprotocol.spec.McpSchema.CallToolRequest;
 import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import io.modelcontextprotocol.spec.McpSchema.Implementation;
@@ -60,22 +62,29 @@ public final class IdeaMcpClient implements AutoCloseable {
     private final String projectPath;
     private final String authToken;
     private final String clientVersion;
+    private final McpJsonMapper jsonMapper;
+    private final JsonSchemaValidator schemaValidator;
 
     private volatile McpSyncClient client;
     private volatile ConnectionStatus status = ConnectionStatus.disconnected("not connected yet");
 
     @Inject
     IdeaMcpClient(IdeaMcpConfig config,
-                  @ConfigProperty(name = "quarkus.application.version", defaultValue = "dev") String version) {
+                  @ConfigProperty(name = "quarkus.application.version", defaultValue = "dev") String version,
+                  McpJsonMapper jsonMapper,
+                  JsonSchemaValidator schemaValidator) {
         this(config.url().orElse(null), config.projectPath().orElse(null),
-                config.authToken().orElse(null), version);
+                config.authToken().orElse(null), version, jsonMapper, schemaValidator);
     }
 
-    IdeaMcpClient(String baseUri, String projectPath, String authToken, String clientVersion) {
+    IdeaMcpClient(String baseUri, String projectPath, String authToken, String clientVersion,
+                  McpJsonMapper jsonMapper, JsonSchemaValidator schemaValidator) {
         this.baseUri = trimBaseUri(baseUri);
         this.projectPath = projectPath;
         this.authToken = authToken;
         this.clientVersion = clientVersion;
+        this.jsonMapper = jsonMapper;
+        this.schemaValidator = schemaValidator;
     }
 
     public ConnectionStatus status() {
@@ -163,10 +172,12 @@ public final class IdeaMcpClient implements AutoCloseable {
             HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport
                     .builder(baseUri)
                     .endpoint(STREAMABLE_ENDPOINT)
+                    .jsonMapper(jsonMapper)
                     .httpRequestCustomizer(ideaHeaders())
                     .build();
             McpSyncClient fresh = McpClient.sync(transport)
                     .clientInfo(new Implementation("vintelli", clientVersion))
+                    .jsonSchemaValidator(schemaValidator)
                     .requestTimeout(TRANSPORT_REQUEST_TIMEOUT)
                     .initializationTimeout(INITIALIZATION_TIMEOUT)
                     .build();

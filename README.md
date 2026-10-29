@@ -35,15 +35,27 @@ Backend (headless, dev mode with live reload):
 
 ```bash
 sdk env            # honors .sdkmanrc (Java 25)
-./mvnw quarkus:dev
+./mvnw -pl vintelli-app -am quarkus:dev
 ```
 
 TUI (real terminal required):
 
 ```bash
 ./mvnw package
-java -jar target/quarkus-app/quarkus-run.jar --tui
+java -jar vintelli-app/target/quarkus-app/quarkus-run.jar --tui
 ```
+
+The application lives in the `vintelli-app` module; the other modules are
+plain libraries built along with it.
+
+`vintelli-core` is a Quarkus extension (parent `vintelli-core-parent` with
+`vintelli-core/runtime` and `vintelli-core/deployment`) and the home of
+Vintelli's build-time glue. Its first content is
+the MCP client support: CDI producers for the MCP SDK JSON mapper and schema
+validator (the SDK's `ServiceLoader` lookup does not work in a native image)
+and a build step that registers the `McpSchema` types for reflection. Only
+`vintelli-idea` and `vintelli-app` depend on it; `vintelli-api` and
+`vintelli-jsonrpc` stay Quarkus-free.
 
 Keys: `1-4` switch tool windows (Run, Terminal, Problems, ACP Agents),
 `j/k` navigate the project tree, `q` quits.
@@ -56,6 +68,8 @@ native-ready. Verify with the `native` profile and Mandrel 25 from SDKMAN:
 ```bash
 ./mvnw package -Dnative
 ```
+
+The native runner is written to `vintelli-app/target/`.
 
 Integration tests (`*IT`) run against the native runner in CI with
 `./mvnw verify -Dnative -Dquarkus.native.container-build`. `GET /tui/render`
