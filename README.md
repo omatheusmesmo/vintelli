@@ -253,6 +253,14 @@ status row) as JSON. It draws the live shell offscreen under the shell lock
 and never routes keys from HTTP, but it is only meant for tests and local
 debugging: it answers 404 unless `vintelli.inspect.enabled=true`.
 
+`GET /tui/icons?files=Main.java&files=pom.xml` reports the resolved file type
+icons as JSON: the icon face the session picked (`vintelli.icons`, `auto`
+resolving through the terminal environment) and, per requested file name, the
+Nerd Font glyph and the ASCII fallback marker of the built-in mapping or any
+user mapping. It is gated by the same `vintelli.inspect.enabled` switch and
+exists so the mapping resource (and its load inside the native image) is
+validated by the integration tests on every run.
+
 ### Configuring clients
 
 Register the URL in your MCP client configuration with the streamable HTTP

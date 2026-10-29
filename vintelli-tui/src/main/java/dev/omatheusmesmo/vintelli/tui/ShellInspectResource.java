@@ -12,10 +12,16 @@ import jakarta.ws.rs.GET;
 import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
+import dev.omatheusmesmo.vintelli.tui.icons.FileIcon;
+import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
+
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -104,6 +110,34 @@ public final class ShellInspectResource {
         return new KeymapView(keymap.source(), shortcuts);
     }
 
+    /**
+     * Reports the {@link FileIcon} the shell resolves for the requested file
+     * names: the Nerd Font glyph and the pure ASCII marker of each entry, plus
+     * the icon face ({@code vintelli.icons}, with {@code auto} resolved through
+     * the terminal environment) the session renders. The built-in mapping
+     * resource is loaded through {@link FileIcons#resolve()} on every call, so
+     * every integration test, including the native runner, exercises that
+     * load: a resource the image does not package makes the load (and this
+     * call) fail instead of staying silent. The endpoint is off like the
+     * render endpoint unless {@code vintelli.inspect.enabled} is {@code true}.
+     */
+    @GET
+    @Path("/icons")
+    @Produces(MediaType.APPLICATION_JSON)
+    public FileIconsView icons(@QueryParam("files") List<String> files) {
+        if (!enabled) {
+            throw new NotFoundException();
+        }
+        FileIcons icons = FileIcons.resolve();
+        Map<String, FileIconView> resolved = new LinkedHashMap<>();
+        List<String> names = files == null ? List.<String>of() : files;
+        for (String file : names) {
+            FileIcon icon = icons.iconFor(file);
+            resolved.put(file, new FileIconView(icon.glyph(), icon.ascii()));
+        }
+        return new FileIconsView(icons.mode().name().toLowerCase(Locale.ROOT), resolved);
+    }
+
     private static String rowText(Buffer buffer, int row) {
         StringBuilder text = new StringBuilder();
         for (int x = 0; x < buffer.width(); x++) {
@@ -126,5 +160,18 @@ public final class ShellInspectResource {
      * string per action id.
      */
     record KeymapView(String source, Map<String, String> shortcuts) {
+    }
+
+    /**
+     * Payload of the icon inspection: the resolved icon face and, per
+     * requested file name, the two symbol faces.
+     */
+    record FileIconsView(String mode, Map<String, FileIconView> files) {
+    }
+
+    /**
+     * One resolved icon: the Nerd Font glyph and the ASCII fallback marker.
+     */
+    record FileIconView(String glyph, String ascii) {
     }
 }
