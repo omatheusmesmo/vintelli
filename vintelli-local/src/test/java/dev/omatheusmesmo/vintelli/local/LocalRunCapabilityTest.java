@@ -159,6 +159,20 @@ class LocalRunCapabilityTest {
     }
 
     @Test
+    void rejectsARunWithAWorkingDirectoryOutsideTheProjectRoot() throws IOException {
+        Path project = Files.createDirectories(temp.resolve("project"));
+        Path outside = Files.createDirectories(temp.resolve("outside"));
+
+        LocalRunCapability capability = LocalRunCapability.of(new LocalProjectRoot(project), GENEROUS);
+        var result = capability.start(new RunCapability.RunRequest("maven:clean", outside, Map.of()), line -> {
+        });
+
+        assertTrue(result.isFailure());
+        var failure = assertInstanceOf(CapabilityResult.Failed.class, result).failure();
+        assertTrue(failure.reason().contains("outside the project root"));
+    }
+
+    @Test
     void rejectsAGoalWithAMissingWorkingDirectory() {
         mavenProject("quick");
 

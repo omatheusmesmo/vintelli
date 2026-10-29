@@ -99,13 +99,19 @@ public final class LocalRunCapability implements RunCapability {
 
     @Override
     public CapabilityResult<RunHandle> start(RunRequest request, Consumer<String> outputLines) {
-        if (!Files.isDirectory(request.workingDirectory())) {
+        Path confined = projectRoot.confine(request.workingDirectory());
+        if (confined == null) {
+            return CapabilityResult.failed(new CapabilityFailure(
+                    "The working directory is outside the project root or cannot be resolved",
+                    request.workingDirectory().toString()));
+        }
+        if (!Files.isDirectory(confined)) {
             return CapabilityResult.failed(new CapabilityFailure("The working directory does not exist",
                     request.workingDirectory().toString()));
         }
         for (BuildToolDetector.RunConfigurationSpecification specification : detector.specifications()) {
             if (specification.identifier().equals(request.configurationName())) {
-                return run(specification, request, outputLines);
+                return run(specification, request, outputLines, confined);
             }
         }
         return CapabilityResult.failed(new CapabilityFailure(
@@ -114,10 +120,7 @@ public final class LocalRunCapability implements RunCapability {
     }
 
     private CapabilityResult<RunHandle> run(BuildToolDetector.RunConfigurationSpecification specification,
-            RunRequest request, Consumer<String> outputLines) {
-        Path workingDirectory = projectRoot.raw().equals(request.workingDirectory().toAbsolutePath())
-                ? projectRoot.canonical()
-                : request.workingDirectory();
+            RunRequest request, Consumer<String> outputLines, Path workingDirectory) {
         try {
             ProcessRunner.Handle handle = runner.start(new ProcessRunner.CommandPlan(specification.command(),
                     workingDirectory, request.environment(), defaultTimeout), outputLines,

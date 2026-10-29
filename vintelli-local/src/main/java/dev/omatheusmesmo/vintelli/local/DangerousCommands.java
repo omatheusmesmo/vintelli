@@ -11,6 +11,18 @@ import java.util.Set;
  * is irreversible wherever it points. The gate is on the program name, so
  * payload arguments never change the decision and stay visible to the user
  * who confirms.
+ *
+ * <p>This is a heuristic, not a security boundary. It matches the base name
+ * of the first word, with a Windows executable suffix removed, so it misses
+ * wrappers and indirections such as {@code env rm -rf}, {@code sh -c
+ * 'rm -rf x'}, {@code find . -delete}, {@code git clean -fdx}, {@code dd},
+ * {@code mkfs}, {@code cmd}, {@code powershell} or {@code pwsh} (which
+ * interpret their own command lines) or a program reached through an alias or
+ * a path that differs from its name. A forced recursive removal is recognised only from the
+ * separate flags {@code -r}, {@code -R}, {@code -f}, {@code --recursive} and
+ * {@code --force}, in any order. Nothing here limits what an approved command
+ * does once it runs; the process runs inside the project root only as far as
+ * its working directory goes.
  */
 final class DangerousCommands {
 

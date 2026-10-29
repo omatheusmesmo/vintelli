@@ -103,31 +103,7 @@ public final class LocalReadFileCapability implements ReadFileCapability {
      * result is not the root itself or a descendant of it.
      */
     private Path confine(Path requested) {
-        Path root = projectRoot.canonical();
-        Path resolved = requested.isAbsolute() ? requested : root.resolve(requested);
-        Path real;
-        try {
-            real = Files.exists(resolved) ? resolved.toRealPath() : absentChildOf(resolved);
-        } catch (IOException failure) {
-            return null;
-        }
-        if (!real.startsWith(root)) {
-            return null;
-        }
-        return real;
-    }
-
-    /**
-     * A missing file is checked through its real parent, so a traversal like
-     * {@code ../secret} over a parent outside the root still fails while a
-     * fresh name inside the root is permitted.
-     */
-    private static Path absentChildOf(Path resolved) throws IOException {
-        Path parent = resolved.getParent();
-        if (parent == null) {
-            return resolved.normalize();
-        }
-        return parent.toRealPath().resolve(resolved.getFileName());
+        return projectRoot.confine(requested);
     }
 
     private static String failureMessage(IOException failure) {

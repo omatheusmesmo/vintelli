@@ -28,33 +28,35 @@ final class BuildToolDetector {
     }
 
     private final Path root;
+    private final boolean windows;
     private final BuildTool tool;
     private final boolean usesWrapper;
     private final List<String> effectiveCommand;
 
     BuildToolDetector(LocalProjectRoot projectRoot) {
+        this(projectRoot, isWindowsHost());
+    }
+
+    /**
+     * Detection for an explicit host family, so the Windows wrapper rules are
+     * covered on every runner. The production constructor passes the host.
+     */
+    BuildToolDetector(LocalProjectRoot projectRoot, boolean windows) {
         this.root = projectRoot.canonical();
+        this.windows = windows;
         BuildTool detected = BuildTool.NONE;
         boolean wrapper = false;
         List<String> command = List.of();
         if (isMavenProject()) {
             detected = BuildTool.MAVEN;
-            Optional<List<String>> resolved = wrapperCommand("mvnw", "mvnw.cmd", List.of("mvn"));
-            if (resolved.isPresent()) {
-                wrapper = true;
-                command = resolved.get();
-            } else {
-                command = List.of("mvn");
-            }
+            Optional<List<String>> resolved = wrapperCommand("mvnw", "mvnw.cmd");
+            wrapper = resolved.isPresent();
+            command = resolved.orElseGet(() -> List.of("mvn"));
         } else if (isGradleProject()) {
             detected = BuildTool.GRADLE;
-            Optional<List<String>> resolved = wrapperCommand("gradlew", "gradlew.bat", List.of("gradle"));
-            if (resolved.isPresent()) {
-                wrapper = true;
-                command = resolved.get();
-            } else {
-                command = List.of("gradle");
-            }
+            Optional<List<String>> resolved = wrapperCommand("gradlew", "gradlew.bat");
+            wrapper = resolved.isPresent();
+            command = resolved.orElseGet(() -> List.of("gradle"));
         }
         this.tool = detected;
         this.usesWrapper = wrapper;
@@ -124,46 +126,59 @@ final class BuildToolDetector {
     }
 
     /**
-     * Host appropriate wrapper selection: consumers on Unix get the directly
-     * executable wrapper script, consumers on Windows get the batch file
-     * driven through {@code cmd /c}, because a batch file cannot be launched
-     * as a process image directly.
+     * Host appropriate wrapper selection: on Unix only the executable
+     * {@code mvnw} or {@code gradlew} script counts, on Windows only the
+     * {@code mvnw.cmd} or {@code gradlew.bat} batch file, launched through
+     * {@code cmd /c} because a batch file cannot be started as a process image.
+     * The Unix script is never tried on Windows, where {@code cmd /c} cannot
+     * run it.
      */
-    private Optional<List<String>> wrapperCommand(String unixWrapper, String windowsWrapper, List<String> fallback) {
-        boolean windows = isWindows();
+    private Optional<List<String>> wrapperCommand(String unixWrapper, String windowsWrapper) {
         Path wrapperFile = root.resolve(windows ? windowsWrapper : unixWrapper);
-        if (executable(wrapperFile)) {
-            return Optional.of(commandLineFor(windows, wrapperFile));
+        if (!executable(wrapperFile)) {
+            return Optional.empty();
         }
         if (windows) {
-            Path scriptWrapper = root.resolve(unixWrapper);
-            if (executable(scriptWrapper)) {
-                return Optional.of(commandLineFor(true, scriptWrapper));
+            String absolutePath = wrapperFile.toAbsolutePath().toString();
+            if (containsCmdMetaCharacters(absolutePath)) {
+                return Optional.empty();
             }
+            return Optional.of(List.of("cmd", "/c", absolutePath));
         }
-        return Optional.empty();
+        return Optional.of(List.of(wrapperFile.toAbsolutePath().toString()));
     }
 
-    private static List<String> commandLineFor(boolean windows, Path wrapperFile) {
-        if (windows) {
-            return List.of("cmd", "/c", wrapperFile.toAbsolutePath().toString());
+    /**
+     * Predicate for the characters that cmd.exe treats as control syntax or
+     * expansion markers. A path carrying any of them reaches {@code cmd /c}
+     * unquoted unless it contains a space or tab, so the wrapper is refused
+     * instead of risking command injection, and the detector falls back to the
+     * system {@code mvn} or {@code gradle} command. It takes a plain string so
+     * the rule is unit tested without touching the filesystem.
+     */
+    static boolean containsCmdMetaCharacters(String value) {
+        for (int index = 0; index < value.length(); index++) {
+            char current = value.charAt(index);
+            if (current == '&' || current == '|' || current == '<' || current == '>'
+                    || current == '^' || current == '%' || current == '!' || current == '"') {
+                return true;
+            }
         }
-        return List.of(wrapperFile.toAbsolutePath().toString());
+        return false;
     }
 
     private boolean executable(Path candidate) {
         if (!Files.isRegularFile(candidate)) {
             return false;
         }
-        return isWindows() || Files.isExecutable(candidate);
+        return windows || Files.isExecutable(candidate);
     }
 
     /**
-     * On Windows the wrapper script never carries an executable bit, and the
-     * batch file is executable whenever it exists, so the file existence
-     * already answers.
+     * Windows batch files carry no executable bit, so their existence answers
+     * for them; POSIX wrappers also need the executable bit.
      */
-    private static boolean isWindows() {
+    private static boolean isWindowsHost() {
         return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("windows");
     }
 
