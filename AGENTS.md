@@ -2,6 +2,25 @@
 
 This is a Quarkus application. Follow these rules when working on this project.
 
+## Vintelli project conventions (addendum)
+
+- All code, docs, commits, and issues are written in English.
+- No inline FQCNs in code; always use normal imports.
+- Final, unproxied beans (`@Singleton`, `final` classes) with constructor
+  injection. Resolve work at build time; avoid reflection and runtime proxies
+  unless the feature strictly requires them.
+- TamboUI: follow its documented levels (TuiRunner/Toolkit); treat it as
+  immediate-mode, ratatui-like code.
+- MCP Java SDK: prefer the typed client API against the IDEA MCP server
+  (Streamable HTTP / SSE).
+- AEsh: model CLI capabilities as first-class commands (CDI beans), not
+  hand-parsed strings.
+- Tests use TamboUI Pilot (`TuiTestRunner`) and Quarkus `@QuarkusTest`.
+- Run builds and tests only through the Quarkus agent Dev MCP tools.
+- The JDK is pinned by `.sdkmanrc` (SDKMAN rules; mise does not manage Java);
+  `mvnw` stays exactly as upstream ships it.
+
+
 ## CRITICAL -- Extension-First Rule (NEVER skip this)
 
 **STOP before writing ANY code.** For every feature or capability the user requests:

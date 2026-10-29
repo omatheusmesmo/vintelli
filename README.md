@@ -1,59 +1,63 @@
-# vintelli
+# Vintelli
 
-This project uses Quarkus, the Supersonic Subatomic Java Framework.
+A terminal-native IDE experience for Java: IntelliJ intelligence, in your terminal, with zero IDE UI.
 
-If you want to learn more about Quarkus, please visit its website: <https://quarkus.io/>.
+Vintelli is a Quarkus application that shows an IntelliJ IDEA-like TUI (built with TamboUI), drives IntelliJ IDEA headlessly through its MCP server, and hosts AI coding agents (OpenCode, Claude Code, pi) through the Agent Client Protocol (ACP).
 
-## Running the application in dev mode
+## Architecture
 
-You can run your application in dev mode that enables live coding using:
+```
++-----------------------------------------------------------+
+|                    Vintelli (Quarkus TUI)                 |
+|  menu bar | project tree | editor | tool windows | status |
++------------------+--------------------+-------------------+
+| MCP Java SDK     | ACP client         | AEsh CLI commands |
+| (client -> IDEA) | (opencode/claude/pi)| (REPL capabilities)|
++------------------+--------------------+-------------------+
+        |                     |                    |
+        v                     v                    v
+  IntelliJ IDEA         agent processes      Vintelli REPL
+  MCP Server (SSE/HTTP streamable)        + browser surface (websockets-next)
+```
 
-```shell script
+## Stack
+
+- Java 25 (Eclipse Mandrel 25.0.2, pinned by `.sdkmanrc`)
+- Quarkus 3.40.1.1 (build-time-first, no proxies/reflection unless required)
+- TamboUI 0.6.0 (`tamboui-tui`, `tamboui-toolkit`, Markdown support, JLine backend)
+- Quarkiverse MCP Server 2.0.4 (Vintelli as an MCP server for external agents)
+- MCP Java SDK 2.1.0 (client: IntelliJ IDEA MCP server)
+- AEsh (CLI/REPL capabilities) and WebSockets Next (browser surface)
+
+## Run
+
+Backend (headless, dev mode with live reload):
+
+```bash
+sdk env            # honors .sdkmanrc (Java 25)
 ./mvnw quarkus:dev
 ```
 
-> **_NOTE:_**  Quarkus now ships with a Dev UI, which is available in dev mode only at <http://localhost:8080/q/dev/>.
+TUI (real terminal required):
 
-## Packaging and running the application
-
-The application can be packaged using:
-
-```shell script
+```bash
 ./mvnw package
+java -jar target/quarkus-app/quarkus-run.jar --tui
 ```
 
-It produces the `quarkus-run.jar` file in the `target/quarkus-app/` directory.
-Be aware that it’s not an _über-jar_ as the dependencies are copied into the `target/quarkus-app/lib/` directory.
+Keys: `1-4` switch tool windows (Run, Terminal, Problems, ACP Agents),
+`j/k` navigate the project tree, `q` quits.
 
-The application is now runnable using `java -jar target/quarkus-app/quarkus-run.jar`.
+## Native image
 
-If you want to build an _über-jar_, execute the following command:
+The project is kept reflection-free (final beans, no client proxies) so it is
+native-ready. Verify with the `native` profile and Mandrel 25 from SDKMAN:
 
-```shell script
-./mvnw package -Dquarkus.package.jar.type=uber-jar
-```
-
-The application, packaged as an _über-jar_, is now runnable using `java -jar target/*-runner.jar`.
-
-## Creating a native executable
-
-You can create a native executable using:
-
-```shell script
+```bash
 ./mvnw package -Dnative
 ```
 
-Or, if you don't have GraalVM installed, you can run the native executable build in a container using:
+## Status
 
-```shell script
-./mvnw package -Dnative -Dquarkus.native.container-build=true
-```
-
-You can then execute your native executable with: `./target/vintelli-1.0.0-SNAPSHOT-runner`
-
-If you want to learn more about building native executables, please consult <https://quarkus.io/guides/maven-tooling>.
-
-## Related Guides
-
-- REST Jackson ([guide](https://quarkus.io/guides/rest#json-serialisation)): Jackson serialization support for Quarkus REST. This extension is not compatible with the quarkus-resteasy extension, or any of the extensions that depend on it
-- WebSockets Next ([guide](https://quarkus.io/guides/websockets-next-reference)): Implementation of the WebSocket API with enhanced efficiency and usability
+See the GitHub issues for the implementation plan (IDEA MCP integration, ACP
+agents, offline inspections, WebSocket surface, native smoke test).
