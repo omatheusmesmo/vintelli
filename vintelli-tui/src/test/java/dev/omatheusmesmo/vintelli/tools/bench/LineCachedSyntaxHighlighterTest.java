@@ -86,6 +86,93 @@ class LineCachedSyntaxHighlighterTest {
     }
 
     @Test
+    void insertedLineMatchesAFreshHighlighterAndRetokenizesOnlyTheInsertedRow() {
+        LineCachedSyntaxHighlighter warm = new LineCachedSyntaxHighlighter();
+        warm.highlight(CORPUS, LANGUAGE, Style.EMPTY, SyntaxTheme.DEFAULTS);
+        String edited = CORPUS.replace("    int count = 1;", "    int count = 1;\n    int extra = 2;");
+        List<Line> incremental = warm.highlight(edited, LANGUAGE, Style.EMPTY, SyntaxTheme.DEFAULTS);
+        Assertions.assertEquals(1, warm.lastTokenizedLines(), "only the inserted row");
+        assertTokensMatchAFreshHighlighter(incremental, edited, "inserted row");
+    }
+
+    @Test
+    void deletedLineMatchesAFreshHighlighterAndShiftsTheTailByReference() {
+        LineCachedSyntaxHighlighter warm = new LineCachedSyntaxHighlighter();
+        warm.highlight(CORPUS, LANGUAGE, Style.EMPTY, SyntaxTheme.DEFAULTS);
+        String edited = CORPUS.replace("    int count = 1;\n", "");
+        List<Line> incremental = warm.highlight(edited, LANGUAGE, Style.EMPTY, SyntaxTheme.DEFAULTS);
+        Assertions.assertEquals(0, warm.lastTokenizedLines(), "the tail below the removed row shifts by reference");
+        assertTokensMatchAFreshHighlighter(incremental, edited, "deleted row");
+    }
+
+    @Test
+    void replacedBlockMatchesAFreshHighlighterAndRetokenizesOnlyTheReplacedRows() {
+        LineCachedSyntaxHighlighter warm = new LineCachedSyntaxHighlighter();
+        warm.highlight(CORPUS, LANGUAGE, Style.EMPTY, SyntaxTheme.DEFAULTS);
+        String edited = CORPUS.replace("        text // not a comment\n        \"\"\";\n",
+            "        text inside\n        the block\n        \"\"\";\n");
+        List<Line> incremental = warm.highlight(edited, LANGUAGE, Style.EMPTY, SyntaxTheme.DEFAULTS);
+        Assertions.assertEquals(2, warm.lastTokenizedLines(), "two rows replaced inside an open text block");
+        assertTokensMatchAFreshHighlighter(incremental, edited, "replaced block");
+    }
+
+    @Test
+    void insertedCommentCloserPropagatesTheStateChangeIntoTheShiftedTail() {
+        String text = "a\n/* open\nb\nc\nd\ne";
+        LineCachedSyntaxHighlighter warm = new LineCachedSyntaxHighlighter();
+        warm.highlight(text, LANGUAGE, Style.EMPTY, SyntaxTheme.DEFAULTS);
+        String edited = text.replace("b\n", "b\n*/\n");
+        List<Line> incremental = warm.highlight(edited, LANGUAGE, Style.EMPTY, SyntaxTheme.DEFAULTS);
+        Assertions.assertEquals(4, warm.lastTokenizedLines(), "the closer plus the tail rows kept in comment state");
+        assertTokensMatchAFreshHighlighter(incremental, edited, "comment closer inserted");
+    }
+
+    @Test
+    void deletedCommentOpenerRetokenizesOnlyUntilTheStateConverges() {
+        String text = "a\n/* open\nb\nc */\nd\ne";
+        LineCachedSyntaxHighlighter warm = new LineCachedSyntaxHighlighter();
+        warm.highlight(text, LANGUAGE, Style.EMPTY, SyntaxTheme.DEFAULTS);
+        String edited = text.replace("/* open\n", "");
+        List<Line> incremental = warm.highlight(edited, LANGUAGE, Style.EMPTY, SyntaxTheme.DEFAULTS);
+        Assertions.assertEquals(2, warm.lastTokenizedLines(), "the rows the comment state no longer covers");
+        assertTokensMatchAFreshHighlighter(incremental, edited, "comment opener deleted");
+    }
+
+    @Test
+    void sameSizeDocumentWithTwoEditedRowsRetokenizesOnlyTheEditedRows() {
+        StringBuilder builder = new StringBuilder();
+        for (int row = 0; row < 1_000; row++) {
+            builder.append("int row_").append(row).append(" = ").append(row).append(";\n");
+        }
+        String text = builder.toString();
+        LineCachedSyntaxHighlighter warm = new LineCachedSyntaxHighlighter();
+        warm.highlight(text, LANGUAGE, Style.EMPTY, SyntaxTheme.DEFAULTS);
+        Assertions.assertTrue(text.contains("int row_10 = 10;") && text.contains("int row_900 = 900;"));
+        String edited = text.replace("int row_10 = 10;", "int row_ten = 10;")
+            .replace("int row_900 = 900;", "int row_nine_hundred = 900;");
+        List<Line> incremental = warm.highlight(edited, LANGUAGE, Style.EMPTY, SyntaxTheme.DEFAULTS);
+        Assertions.assertEquals(2, warm.lastTokenizedLines(), "the unchanged rows between the two edits stay cached");
+        assertTokensMatchAFreshHighlighter(incremental, edited, "two same-size edits");
+    }
+
+    @Test
+    void oneInsertedLineInATenThousandLineDocumentRetokenizesOnlyThatLine() {
+        StringBuilder builder = new StringBuilder();
+        for (int row = 0; row < 10_000; row++) {
+            builder.append("int value_").append(row).append(" = ").append(row).append(";\n");
+        }
+        String text = builder.toString();
+        LineCachedSyntaxHighlighter warm = new LineCachedSyntaxHighlighter();
+        warm.highlight(text, LANGUAGE, Style.EMPTY, SyntaxTheme.DEFAULTS);
+        String anchor = "int value_5000 = 5000;";
+        Assertions.assertTrue(text.contains(anchor));
+        String edited = text.replace(anchor, anchor + "\nint inserted = 42;");
+        List<Line> incremental = warm.highlight(edited, LANGUAGE, Style.EMPTY, SyntaxTheme.DEFAULTS);
+        Assertions.assertEquals(1, warm.lastTokenizedLines(), "an inserted line must not cascade re-tokenization below");
+        assertTokensMatchAFreshHighlighter(incremental, edited, "10k line insertion");
+    }
+
+    @Test
     void keywordsBeforeParenthesisAreKeywords() {
         List<Line> lines = new LineCachedSyntaxHighlighter().highlight(String.join("\n",
             "if (a) {",
@@ -202,8 +289,15 @@ class LineCachedSyntaxHighlighterTest {
 
     private static void assertWarmMatchesFresh(LineCachedSyntaxHighlighter warm, String text, String step) {
         List<Line> incremental = warm.highlight(text, LANGUAGE, Style.EMPTY, SyntaxTheme.DEFAULTS);
-        List<Line> fresh = new LineCachedSyntaxHighlighter().highlight(text, LANGUAGE, Style.EMPTY, SyntaxTheme.DEFAULTS);
-        Assertions.assertEquals(pieces(fresh), pieces(incremental), "warm and fresh differ after edit: " + step);
+        Assertions.assertEquals(pieces(fresh(text)), pieces(incremental), "warm and fresh differ after edit: " + step);
+    }
+
+    private static void assertTokensMatchAFreshHighlighter(List<Line> incremental, String text, String step) {
+        Assertions.assertEquals(pieces(fresh(text)), pieces(incremental), "warm and fresh differ: " + step);
+    }
+
+    private static List<Line> fresh(String text) {
+        return new LineCachedSyntaxHighlighter().highlight(text, LANGUAGE, Style.EMPTY, SyntaxTheme.DEFAULTS);
     }
 
     private static List<Line> plainLines(String text) {
