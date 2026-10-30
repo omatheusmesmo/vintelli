@@ -46,9 +46,14 @@ its own follow-up issue (see "Follow-up issues").
   channel on all four (not exact). `Color.indexed(173)` sampled as the xterm-256 value `#d7875f` (215,135,95), but for
   two of the four terminals only after correcting for an assumed uniform dim factor of about 0.8 that was not measured
   (#89). One machine, one theme.
-- UNVERIFIED or not run: legacy X10 mouse reporting (#93), vt100 and the Linux console (#94), Windows Terminal and the
-  panama backend (#95), kitty legacy Ctrl+Shift+Left (#92), ghostty Ctrl+Enter and lone modifiers (#90), decoding of
-  press/release sequences (#91), Home and arrows under DECCKM (#96).
+- A physical-key Windows Terminal run with TamboUI 0.6.0's Panama backend captured the 19-chord matrix (#95).
+  The first guided run was discarded because its step labels did not reliably match the keys pressed. A timed
+  second run removed the manual advance key; the operator confirmed the displayed keys were pressed except Escape,
+  which was re-captured cleanly three times. Ctrl+Space produced no TamboUI event in its timed slot. The layer that
+  consumed this chord is unknown. Classic conhost was not run.
+- UNVERIFIED or not run: legacy X10 mouse reporting (#93), vt100 and the Linux console (#94), kitty legacy
+  Ctrl+Shift+Left (#92), ghostty Ctrl+Enter and lone modifiers (#90), decoding of press/release sequences (#91),
+  Home and arrows under DECCKM (#96).
 
 ## How the capture was done
 
@@ -266,12 +271,71 @@ stands: TamboUI emits `?1000h ?1002h [?1003h] ?1015h ?1006h` and its parser only
 so legacy X10 tracking bytes would yield nothing. The open per-terminal question (do these terminals report
 X10/URXVT-style bytes when only `?1000h` is enabled and `?1015h`/`?1006h` are never requested) stays open (#93).
 
-## vt100 / linux console / Windows Terminal: not run
+## vt100 / linux console: not run
 
 - TERM=vt100 and the Linux virtual console (`showkey -a` on a real console) were not exercised in this capture: there
   is no serial console attached to this machine, and a TERM environment change does not convert a GUI terminal into
   console behavior. UNVERIFIED (#94).
-- Windows Terminal and the TamboUI panama Windows backend remain open per spike 27 (#95).
+
+## Windows Terminal with the TamboUI Panama backend
+
+Captured on 2026-10-30 in Windows Terminal 1.24.12741.0 on Windows build 26300, with Java 25 (Temurin 25+36) and
+TamboUI 0.6.0. A separate JBang probe depended on `tamboui-tui` and `tamboui-panama-backend`, set
+`tamboui.backend=panama`, and checked that `BackendFactory` returned `dev.tamboui.backend.panama.PanamaBackend`.
+It used a `TuiRunner` inside a Windows Terminal `cmd.exe` tab and logged `KeyEvent` code, modifiers and code point
+with timestamps. These are TamboUI events, not raw Win32 console records or terminal bytes. No tmux or keyboard
+protocol enable sequence was involved.
+
+The first guided capture required an `n` key to advance and had unrelated input in several slots. The operator
+reported that some displayed chords did not match the keys being pressed, so **none of its rows were used** in the
+matrix below. In the second capture, each chord had its own 10-second interval and the probe advanced automatically.
+The operator confirmed pressing the displayed physical chord in every interval except Escape. A separate three-step
+Escape run then recorded `ESCAPE` on all three presses. The Ctrl+M and Alt+1 intervals contain two identical events
+each; all other nonempty intervals contain one event. The probe source and raw logs are not committed, so this
+transcription cannot be checked against the raw source. Independent Win32 virtual-key and scan-code logging for
+the unresolved Ctrl+Space result is tracked in #166.
+
+A later full run used five-second intervals. One earlier five-second run was restarted after the operator found an
+error, and another was stopped after step 14; neither is used as a complete matrix. In the final full five-second
+run, the event listed below appeared in its labeled interval for every chord except Ctrl+Space, which again had no
+TamboUI event. The Enter, Ctrl+H and Ctrl+[ intervals also contained extra unrelated input. This repetition supports
+the event mappings, but the probe still did not independently record physical key identity. No success percentage or
+reliability estimate can be inferred from these few operator-driven attempts. In the first five-second run,
+Ctrl+Shift+Left crossed the time boundary and appeared 145 ms into the Alt+1 interval, illustrating why slot labels
+alone are insufficient. Ctrl+Space had no TamboUI event in the 10-second run and in the five-second runs, but its
+cause remains unknown (#166).
+
+A final full 10-second run reproduced the listed events for the other chords. In its Ctrl+Space interval, the probe
+logged two plain `CHAR` U+0020 events; the operator confirmed pressing Space **without** Ctrl on both attempts, so
+those events are not Ctrl+Space results. The Ctrl+H interval also contained an unrelated Ctrl+B event among matching
+`BACKSPACE` events. This run corroborates the other mappings but does not add a valid Ctrl+Space observation.
+
+| Physical chord | TamboUI `KeyEvent` observed | Note |
+|---|---|---|
+| `a` | `CHAR` U+0061, no modifiers | |
+| Tab | `TAB`, no modifiers | |
+| Escape | `ESCAPE`, no modifiers | Three matching presses in the separate Escape run. |
+| Backspace | `BACKSPACE`, no modifiers | |
+| Enter | `ENTER`, no modifiers | |
+| Home | `HOME`, no modifiers | |
+| F5 | `F5`, no modifiers | |
+| F12 | `F12`, no modifiers | |
+| Shift+Tab | `TAB`, `shift=true` | |
+| Ctrl+I | `TAB`, no modifiers | Same event as Tab. |
+| Ctrl+M | `ENTER`, no modifiers | Same event as Enter; two matching events in this interval. |
+| Ctrl+H | `BACKSPACE`, no modifiers | Same event as Backspace. |
+| Ctrl+[ | `ESCAPE`, no modifiers | Same event as Escape. |
+| Ctrl+Space | `NO_EVENT` | No TamboUI event in the 10-second interval; cause not determined. |
+| Ctrl+Left | `LEFT`, `ctrl=true` | |
+| Ctrl+Shift+Left | `LEFT`, `ctrl=true, shift=true` | |
+| Alt+1 | `CHAR` U+0031, `alt=true` | Two matching events in this interval. |
+| Alt+5 | `CHAR` U+0035, `alt=true` | |
+| Ctrl+B | `CHAR` U+0062, `ctrl=true` | |
+
+Ctrl+I, Ctrl+M, Ctrl+H and Ctrl+[ were not distinguishable from Tab, Enter, Backspace and Escape at the TamboUI
+event boundary in this run. The Windows backend retained modifiers for Ctrl+arrow, Alt+digit and Ctrl+B.
+`Ctrl+Space` produced no TamboUI event in the timed slot, but this capture cannot tell whether Windows Terminal,
+the console layer or TamboUI consumed it. Classic conhost was not exercised.
 
 ## Keymap consequences for #29 (default keymap re-checked against this table)
 
@@ -321,5 +385,6 @@ All in milestone 0.1.0. Each UNVERIFIED, not-run or needs-recapture item above h
 - #92 Capture Ctrl+Shift+Left in kitty in legacy mode
 - #93 Check legacy X10 and URXVT mouse reporting per terminal
 - #94 Capture keyboard input on TERM=vt100 and the Linux virtual console
-- #95 Capture keyboard input on Windows Terminal with the TamboUI panama backend
+- #95 Capture keyboard input on Windows Terminal with the TamboUI panama backend (this section)
 - #96 Check Home and arrow keys when DECCKM (application cursor keys) is enabled
+- #166 Determine why Ctrl+Space yields no TamboUI event on Windows Terminal
