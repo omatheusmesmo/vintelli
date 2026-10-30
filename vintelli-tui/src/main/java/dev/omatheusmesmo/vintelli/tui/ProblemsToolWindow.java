@@ -1,5 +1,6 @@
 package dev.omatheusmesmo.vintelli.tui;
 
+import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
 /**
@@ -8,8 +9,9 @@ import jakarta.inject.Singleton;
 @Singleton
 public final class ProblemsToolWindow extends PilotToolWindow {
 
-    public ProblemsToolWindow() {
+    @Inject
+    public ProblemsToolWindow(ShellThemes themes) {
         super("problems", "Problems", '3', 2,
-                "Problems view: offline inspections via idea.sh inspect + MCP analysis tools");
+                "Problems view: offline inspections via idea.sh inspect + MCP analysis tools", themes);
     }
 }

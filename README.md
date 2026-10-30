@@ -24,7 +24,7 @@ Vintelli is a Quarkus application that shows an IntelliJ IDEA-like TUI (built wi
 
 - Java 25 (Mandrel 25.0.2, the Red Hat build of GraalVM for native images, pinned by `.sdkmanrc`)
 - Quarkus 3.40.1.1 (build-time-first, no proxies/reflection unless required)
-- TamboUI 0.6.0 (`tamboui-tui`, `tamboui-toolkit`, Markdown support, JLine backend)
+- TamboUI 0.6.0 (`tamboui-tui`, `tamboui-toolkit` with the CSS style engine, Markdown support, JLine backend)
 - Quarkiverse MCP Server 2.0.4 (Vintelli as an MCP server for external agents)
 - MCP Java SDK 2.1.0 (client: IntelliJ IDEA MCP server)
 - LSP4J 1.0.0 (client: generic language server client with profiles)
@@ -82,8 +82,119 @@ server can read what the user is looking at, and the write ports
 `ShellHighlightPort` and `ShellDiffViewPort` (implemented by the shell) let
 it push a highlight and a diff back into the TUI.
 
-Keys: `1-4` switch tool windows (Run, Terminal, Problems, ACP Agents),
-arrow keys navigate the project tree, `Ctrl+C` quits.
+The shell runs at the Toolkit level with a CSS style engine: the element
+tree of `VintelliShell` (`#shell`, `#menu-bar`, `#tool-tabs`,
+`#project-panel`, `#editor-panel`, `tool-<id>` per tool window and
+`#status-bar`) resolves every color from the active stylesheet, so no hex
+value is hardcoded in shell code. Two themes ship with the app, both
+derived mechanically from the official IntelliJ platform files of IDEA
+Ultimate 2026.2.3 (build IU-262.10968.63), with the source key cited per
+palette entry in the stylesheet headers and checked by
+`ThemePaletteSourceTest` against verbatim excerpts of the platform files
+committed under `vintelli-tui/src/test/resources`:
+
+- `darcula`: classic Darcula chrome (`themes/darcula.theme.json`) plus the
+  classic Darcula editor color scheme (the `Darcula` scheme inside
+  `DefaultColorSchemesManager.xml`).
+- `dark` (default): New UI Dark chrome (`themes/expUI/expUI_dark.theme.json`)
+  plus the New UI Dark editor color scheme
+  (`themes/expUI/expUI_darkScheme.xml`).
+
+Themes are configurable at three levels:
+
+- `vintelli.tui.theme` picks the default theme of the session (`dark` by
+  default). An unknown name fails fast before the terminal is attached: in
+  `--tui` mode the process prints
+  `Vintelli cannot start the TUI: <message>` and exits with code 2, with the
+  available names in the message. Headless runs (the MCP server, the REST
+  surface) never load a theme at all because the shell and its engine are
+  resolved lazily on first use.
+- A user theme file in the config directory, default
+  `vintelli/themes.tcss`. The directory is resolved by the shared
+  `ConfigDirectory` resolver: the `vintelli.config.dir` system property, or
+  the `VINTELLI_CONFIG_DIR` environment variable, first (the same override
+  also relocates the keymap and the file icon mapping), then
+  `XDG_CONFIG_HOME` when absolute, then `APPDATA` on Windows, then
+  `$HOME/.config`. The file is relocatable to any path with
+  `vintelli.tui.theme.file`. Note that the shared `vintelli.config.dir`
+  override is honored by themes through every MicroProfile Config source
+  (system property, environment variable, `application.properties` or a
+  `.env` file), while the keymap and the file icon mapping read only the
+  system property and the `VINTELLI_CONFIG_DIR` environment variable, so a
+  value set through `application.properties` or `.env` relocates the themes
+  but not those two. The file is stylesheet text plus one optional
+  `@theme` directive line, so it is not pure CSS:
+    - without the directive it is a patch: its rules are appended to every
+      shipped theme and override matching selectors,
+    - `@theme name` defines a theme of its own (a shipped name replaces that
+      theme), which must declare every palette variable,
+    - `@theme name extends dark` builds `name` on top of a shipped theme, so
+      one override does not need the full palette.
+  Example of a patch:
+
+  ```
+  .menu-entry-active { color: #2F65CA; background: #DEDEDE; }
+  ```
+
+  Example of a derived theme:
+
+  ```
+  @theme midnight extends dark
+  $panel: #101010;
+  ```
+
+  A single file may carry at most one `@theme` line; an unreadable, unparsable
+  or incomplete file fails fast with the file name, the position and the
+  missing palette variables in the message.
+- The named action `shell.theme.switch` switches to the next registered
+  theme at runtime (cycling through the registration order, so user themes
+  participate). The keymap binds a key to it, see the key map below. Both
+  themes render the whole shell and switch without a restart.
+
+The chrome palette (menu bar, tab bar, panel borders, status bar) and the
+editor palette (`$editor-*`: text, keywords, strings and comments) live in
+separate sections of each stylesheet. Shell code exposes the editor palette
+through `ShellEditorPalette` in `vintelli-api` so an editor surface follows
+the editor color scheme of its theme instead of the UI chrome.
+
+The main palette entries as CSS variables, with the rendered hex, the 256
+color index a downgrade should map them to, and the official source key.
+Reuse notes say where a value was chosen from a neighbouring official
+element instead of a role-named one:
+
+| variable | darcula | index | dark | index | source |
+|---|---|---|---|---|---|
+| `$panel` | `#3C3F41` | 237 | `#2B2D30` | 236 | ui `*` `background` |
+| `$chrome-fg` | `#BBBBBB` | 250 | `#DFE1E5` | 254 | ui `*` `foreground` |
+| `$chrome-fg-strong` | `#DEDEDE` | 253 | `#FFFFFF` | 15 | chosen from `selectionForeground` / `SearchEverywhere.Tab.selectedForeground` |
+| `$selection-bg` | `#2F65CA` | 26 | `#2E436E` | 239 | ui `*` `selectionBackground` |
+| `$tab-selected-bg` | `#365880` | 60 | `#3574F0` | 12 | chosen from `Button.default.startBackground`, New UI `ToolWindow.Button.selectedBackground` |
+| `$border` | `#515151` | 239 | `#1E1F22` | 234 | ui `MenuBar.borderColor`, New UI `Borders.ContrastBorderColor` |
+| `$editor-border` | `#515151` | 239 | `#43454A` | 238 | ui `MenuBar.borderColor`, New UI `ToolWindow.Stripe.separatorColor` |
+| `$editor-bg` | `#2B2B2B` | 235 | `#1E1F22` | 234 | editor scheme `TEXT` background |
+| `$editor-fg` | `#A9B7C6` | 146 | `#BCBEC4` | 250 | editor scheme `TEXT` foreground |
+| `$editor-keyword` | `#CC7832` | 173 | `#CF8E6D` | 173 | editor scheme `DEFAULT_KEYWORD` |
+| `$editor-string` | `#6A8759` | 65 | `#6AAB73` | 71 | editor scheme `DEFAULT_STRING` |
+| `$editor-comment` | `#808080` | 244 | `#7A7E85` | 8 | editor scheme `DEFAULT_LINE_COMMENT` |
+
+Palette rendering is truecolor only: TamboUI always emits
+`38;2;r;g;b` and never downgrades, so nothing here reads `COLORTERM` and the
+result on 256 or 16 color terminals depends entirely on the terminal
+(spike `docs/spikes/spike-27-keyboard-and-colors.md` documents the behavior).
+The 256 index column above is the documented nearest approximation per
+value; making the shell honor it at runtime is tracked in issue #139, which
+also records the truecolor detection schedule.
+
+Keys: `1-4` (or `Alt+1`..`Alt+4`) switch tool windows (Run, Terminal,
+Problems, ACP Agents), arrows and `PageUp`/`PageDown`/`Home`/`End` navigate
+the project panel (hjkl in the `vim` profile) and every change is mirrored
+into the shell state and the status line, `Tab`/`Shift+Tab` move the focus
+through the focusable panels (`#project-panel`, `#editor-panel`), clicking
+a panel focuses it, escape leaves captured input (a tool window that claims
+the keyboard) and returns to shell navigation, `Ctrl+C` quits. Theme
+switching is exposed through the named action `shell.theme.switch`
+(`SwitchShellThemeAction`), for the keymap work to bind a key to; the switch
+applies on the next frame without a restart.
 
 ## Keymap
 
@@ -96,8 +207,9 @@ top in the TamboUI properties format (`moveUp = Ctrl+k`): an action named in
 the file loses the profile triggers and keeps exactly the listed ones, other
 actions keep the profile bindings. The config directory is resolved from the
 `vintelli.keymap.dir` property when set (absolute or relative, useful for
-tests), then `XDG_CONFIG_HOME` (Linux, if absolute), then `APPDATA`
-(Windows), then `$HOME/.config`. The user file is validated: unknown action
+tests), then the shared `vintelli.config.dir` override (system property or
+`VINTELLI_CONFIG_DIR` environment variable), then `XDG_CONFIG_HOME` (Linux, if
+absolute), then `APPDATA` (Windows), then `$HOME/.config`. The user file is validated: unknown action
 names fail fast naming the file and the line, a trigger bound to two
 different actions fails fast, and actions that must stay reachable while an
 input has focus (the palette, the help overlay, the tool window
@@ -181,7 +293,8 @@ a consumer must reserve `FileIcon.symbolWidth(mode)` cells plus one separator
 cell after the icon.
 
 A user file `vintelli/file-icons.properties` inside the config directory
-(`XDG_CONFIG_HOME`, then `APPDATA`, then `$HOME/.config`) is layered on top
+(the shared `vintelli.config.dir` override first, then `XDG_CONFIG_HOME`,
+then `APPDATA`, then `$HOME/.config`) is layered on top
 with the same keys and is optional when missing. The `vintelli.icons.file`
 property names an explicit user file instead and must exist. Each key
 overrides exactly the field it names, so `ext.java.ascii=Jv` changes only the
@@ -250,7 +363,7 @@ answers 403. To accept a browser origin end to end, add it to both
 `quarkus.http.cors.origins` (readable responses).
 
 `GET /tui/render` shows the same shell (tool window tab row, editor area,
-status row) as JSON. It draws the live shell offscreen under the shell lock
+status row and active theme) as JSON. It draws the live shell offscreen under the shell lock
 and never routes keys from HTTP, but it is only meant for tests and local
 debugging: it answers 404 unless `vintelli.inspect.enabled=true`.
 
@@ -261,6 +374,11 @@ Nerd Font glyph and the ASCII fallback marker of the built-in mapping or any
 user mapping. It is gated by the same `vintelli.inspect.enabled` switch and
 exists so the mapping resource (and its load inside the native image) is
 validated by the integration tests on every run.
+
+`GET /tui/keymap` reports the keymap the inspection shell builds (source and
+the shortcut string of every named action) as JSON. It is gated by the same
+`vintelli.inspect.enabled` switch and exists so the TamboUI binding presets
+are exercised on every run, including the native runner.
 
 ### Configuring clients
 
@@ -300,11 +418,13 @@ The native runner is written to `vintelli-app/target/`.
 
 Integration tests (`*IT`) run against the native runner in CI with
 `./mvnw verify -Dnative -Dquarkus.native.container-build`. `GET /tui/render`
-renders one offscreen frame of the live shell and returns the tool window tab
-row, the editor area and the status row as JSON; it exists so the render
-pipeline can be validated on the native image and is gated behind
-`vintelli.inspect.enabled` (read-only and offscreen, never driving the TUI
-event loop).
+renders one offscreen frame of the live shell through the CSS style engine
+and returns the tool window tab row, the editor area, the status row and the
+active theme as JSON; it exists so the render pipeline can be validated on
+the native image and is gated behind `vintelli.inspect.enabled` (read-only
+and offscreen, never driving the TUI event loop). The theme stylesheets are
+resources of the image, included by the `ShellThemeProcessor` build step of
+`vintelli-core/deployment`.
 
 `/idea/reconnect`, `/idea/tools` and `/idea/tool?name=get_...` expose the IDEA
 MCP client over HTTP so the native ITs can drive it against an in-process twin

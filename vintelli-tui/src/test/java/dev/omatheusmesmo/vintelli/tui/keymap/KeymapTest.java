@@ -1,6 +1,7 @@
 package dev.omatheusmesmo.vintelli.tui.keymap;
 
 import dev.omatheusmesmo.vintelli.tui.AcpAgentsToolWindow;
+import dev.omatheusmesmo.vintelli.tui.ShellThemes;
 import dev.omatheusmesmo.vintelli.tui.ProblemsToolWindow;
 import dev.omatheusmesmo.vintelli.tui.RunToolWindow;
 import dev.omatheusmesmo.vintelli.tui.TerminalToolWindow;
@@ -11,6 +12,7 @@ import dev.tamboui.tui.event.KeyEvent;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashSet;
@@ -32,8 +34,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class KeymapTest {
 
-    private static final List<ToolWindow> WINDOWS = List.of(
-            new RunToolWindow(), new TerminalToolWindow(), new ProblemsToolWindow(), new AcpAgentsToolWindow());
+    private static final List<ToolWindow> WINDOWS = windowList();
+
+    private static List<ToolWindow> windowList() {
+        ShellThemes themes = themes();
+        return List.of(new RunToolWindow(themes), new TerminalToolWindow(themes), new ProblemsToolWindow(themes),
+                new AcpAgentsToolWindow(themes));
+    }
+
+    private static ShellThemes themes() {
+        return new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
+    }
 
     @Test
     void bindsAnActivationActionPerToolWindowToItsAltChord() {

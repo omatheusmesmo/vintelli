@@ -14,9 +14,10 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * Stand-in tool window for tests that register an implementation through the
  * registry and observe the shell reacting without any shell change. It
  * consumes every key it is given so tests can assert both routing orders.
+ * Deliberately non final: a test can override {@link #render(Frame, Rect)} to
+ * make the fault tolerant tool window rendering observable.
  */
-final class FakeToolWindow implements ToolWindow {
-
+class FakeToolWindow implements ToolWindow {
     private final String id;
     private final String title;
     private final char shortcut;

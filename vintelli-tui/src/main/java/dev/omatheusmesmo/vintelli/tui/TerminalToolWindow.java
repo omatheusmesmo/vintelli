@@ -1,5 +1,6 @@
 package dev.omatheusmesmo.vintelli.tui;
 
+import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
 /**
@@ -8,8 +9,9 @@ import jakarta.inject.Singleton;
 @Singleton
 public final class TerminalToolWindow extends PilotToolWindow {
 
-    public TerminalToolWindow() {
+    @Inject
+    public TerminalToolWindow(ShellThemes themes) {
         super("terminal", "Terminal", '2', 1,
-                "IDEA integrated terminal panel (MCP: execute_terminal_command)");
+                "IDEA integrated terminal panel (MCP: execute_terminal_command)", themes);
     }
 }

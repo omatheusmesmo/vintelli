@@ -1,0 +1,167 @@
+/*
+ * Vintelli shell theme "darcula": the classic Darcula UI chrome plus the
+ * classic Darcula editor palette.
+ *
+ * Source and release: IntelliJ IDEA Ultimate 2026.2.3 (build IU-262.10968.63).
+ * Chrome values are mechanical translations of the `ui` section of the
+ * platform file themes/darcula.theme.json; editor values are taken from the
+ * platform Darcula editor color scheme (the Darcula scheme inside
+ * DefaultColorSchemesManager.xml of the same build). Source keys are cited on
+ * every variable against verbatim excerpts of those files; the packaged
+ * `theme-source-*` test resolves both. Two roles reuse a value chosen from a
+ * neighbouring official element rather than one named for that exact role;
+ * those lines say "chosen from". No value is hand picked.
+ *
+ * The chrome palette styles the shell UI; the editor palette ($editor-*)
+ * only styles editor text, keywords, strings and comments and never leaks
+ * into the UI chrome.
+ *
+ * Truecolor: the hex values are always emitted as truecolor and nothing
+ * downgrades them for 256/16 color terminals (see spike
+ * docs/spikes/spike-27-keyboard-and-colors.md); the mapping table in the
+ * README documents the intended 256 color index per value, and making the
+ * shell honor it is tracked in issue #139.
+ */
+$panel            : #3C3F41;       /* ui["*"].background */
+$chrome-fg        : #BBBBBB;       /* ui["*"].foreground */
+$chrome-fg-strong : #DEDEDE;       /* chosen from: ui["*"].selectionForeground */
+$muted            : #787878;       /* ui["Component"].infoForeground */
+$soft             : #808080;       /* ui["SearchEverywhere"].Advertiser.foreground */
+$selection-bg     : #2F65CA;       /* ui["*"].selectionBackground (os.default) */
+$selection-fg     : #DEDEDE;       /* ui["*"].selectionForeground */
+$tab-selected-bg  : #365880;       /* chosen from: ui["Button"].default.startBackground */
+$tab-selected-fg  : #DEDEDE;       /* chosen from: ui["*"].selectionForeground */
+$border           : #515151;       /* ui["MenuBar"].borderColor */
+$focus-border     : #466D94;       /* ui["Component"].focusedBorderColor */
+$editor-border    : #515151;       /* ui["MenuBar"].borderColor */
+
+$editor-bg        : #2B2B2B;       /* editor scheme TEXT background */
+$editor-fg        : #A9B7C6;       /* editor scheme TEXT foreground */
+$editor-keyword   : #CC7832;       /* editor scheme DEFAULT_KEYWORD */
+$editor-string    : #6A8759;       /* editor scheme DEFAULT_STRING */
+$editor-comment   : #808080;       /* editor scheme DEFAULT_LINE_COMMENT */
+$editor-number    : #6897BB;       /* editor scheme DEFAULT_NUMBER */
+$editor-constant  : #9876AA;       /* editor scheme DEFAULT_CONSTANT */
+$editor-selection : #214283;       /* editor scheme SELECTION_BACKGROUND */
+$editor-sel-fg    : #A9B7C6;       /* editor scheme TEXT foreground */
+
+#shell {
+  background: $panel;
+  color: $chrome-fg;
+}
+
+#menu-bar {
+  background: $panel;
+  color: $chrome-fg;
+  spacing: 2;
+}
+
+.menu-entry {
+  color: $chrome-fg;
+}
+
+.menu-entry-active {
+  color: $selection-fg;
+  background: $selection-bg;
+}
+
+#tool-tabs {
+  background: $panel;
+}
+
+TabsElement-tab {
+  color: $soft;
+}
+
+TabsElement-tab:selected {
+  color: $tab-selected-fg;
+  background: $tab-selected-bg;
+  text-style: bold;
+}
+
+TabsElement-divider {
+  color: $soft;
+}
+
+#project-panel {
+  background: $panel;
+  color: $chrome-fg;
+  border-color: $border;
+}
+
+#project-panel:focus {
+  border-color: $focus-border;
+}
+
+ListElement-item {
+  color: $chrome-fg;
+}
+
+ListElement-item:selected {
+  color: $selection-fg;
+  background: $selection-bg;
+}
+
+ListElement-scrollbar-thumb {
+  color: $muted;
+}
+
+ListElement-scrollbar-track {
+  color: $panel;
+}
+
+#editor-panel {
+  background: $editor-bg;
+  color: $editor-fg;
+  border-color: $editor-border;
+  border-type: rounded;
+}
+
+#editor-panel:focus {
+  border-color: $focus-border;
+}
+
+#editor-content {
+  color: $editor-fg;
+}
+
+.editor-push-highlight {
+  color: $editor-keyword;
+  text-style: bold;
+}
+
+.editor-diff-title {
+  color: $editor-keyword;
+  text-style: bold;
+}
+
+.editor-diff-added {
+  color: $chrome-fg-strong;
+  text-style: bold;
+}
+
+.editor-diff-removed {
+  color: $muted;
+}
+
+.editor-diff-marker {
+  color: $muted;
+}
+
+.editor-diff-context {
+  color: $editor-fg;
+}
+
+.tool-window {
+  color: $chrome-fg;
+  border-color: $border;
+}
+
+.tool-window-title {
+  color: $chrome-fg-strong;
+}
+
+#status-bar {
+  background: $panel;
+  color: $chrome-fg-strong;
+}

@@ -106,6 +106,26 @@ public class McpEndpointGuardTest {
     }
 
     @Test
+    public void themeSwitchRejectsForeignHostAndForeignOrigin() {
+        given().when()
+                .headers("Host", "rebound.example.org")
+                .post("/tui/theme?name=dark")
+                .then()
+                .statusCode(403);
+
+        given().when()
+                .headers("Origin", McpGuardResource.CORS_ONLY_ORIGIN)
+                .post("/tui/theme?name=dark")
+                .then()
+                .statusCode(403);
+    }
+
+    @Test
+    public void themeSwitchForeignHostOnAlternatePathSpelling() {
+        assertEquals(403, rawStatus("POST", "//tui/theme?name=dark", "rebound.example.org", null, null));
+    }
+
+    @Test
     public void configuredOriginReachesMcpAndRender() {
         given().when()
                 .headers("Origin", McpGuardResource.TRUSTED_ORIGIN, "Accept", ACCEPT)

@@ -4,12 +4,16 @@ import dev.omatheusmesmo.vintelli.api.ShellHighlightTarget;
 import dev.omatheusmesmo.vintelli.api.ShellUnifiedDiff;
 import dev.tamboui.buffer.Buffer;
 import dev.tamboui.layout.Rect;
+import dev.tamboui.layout.Size;
 import dev.tamboui.terminal.Frame;
+import dev.tamboui.toolkit.app.ToolkitTestRunner;
+import dev.tamboui.toolkit.element.DefaultRenderContext;
 import dev.tamboui.tui.event.KeyEvent;
 import dev.tamboui.tui.pilot.Pilot;
-import dev.tamboui.tui.pilot.TuiTestRunner;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -30,22 +34,24 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * The write ports of {@code vintelli-api} push a highlight and a diff into the
  * shell; both must land visibly in the editor panel of the next frame, so
  * external surfaces such as the MCP server can show their state to the human.
- * The smoke test renders from other threads while the TUI event loop drives
+ * The smoke test pushes from other threads while the TUI event loop drives
  * the very same shell. The serialisation tests park one call inside a gated
  * tool window and prove a second call cannot enter before the first returns,
- * so a dropped frame lock fails them deterministically.
+ * so a dropped frame lock fails them deterministically. Offline frames render
+ * through {@link VintelliShell#root()}, the path the runner draws every frame,
+ * so they exercise the locked render pass, not the locked paint helper alone.
  */
 class VintelliShellPushTest {
 
     private static final Rect VIEWPORT = new Rect(0, 0, 80, 24);
+    private static final Size SIZE = new Size(VIEWPORT.width(), VIEWPORT.height());
     private static final int FIRST_EDITOR_ROW = 3;
     private static final int SECOND_EDITOR_ROW = 4;
-    private static final int LAST_EDITOR_ROW = 12;
     private static final Duration STARTUP = Duration.ofMillis(100);
     private static final Duration EVENT_WINDOW = Duration.ofMillis(500);
 
     @Test
-    void paintsTheHighlightPushedThroughThePort() {
+    void paintsTheHighlightPushedThroughThePort() throws IOException {
         VintelliShell shell = defaultShell();
         shell.highlight(new ShellHighlightTarget("src/Main.java", 7));
         Buffer buffer = offlineFrame(shell);
@@ -55,7 +61,7 @@ class VintelliShellPushTest {
     }
 
     @Test
-    void paintsTheDiffPushedThroughThePort() {
+    void paintsTheDiffPushedThroughThePort() throws IOException {
         VintelliShell shell = defaultShell();
         shell.show(new ShellUnifiedDiff("example.patch", "@@ -1,3 +1,4 @@\n vintelli state\n+state view"));
         Buffer buffer = offlineFrame(shell);
@@ -67,7 +73,7 @@ class VintelliShellPushTest {
     }
 
     @Test
-    void clipsLongDiffLinesWithAnExplicitMarker() {
+    void clipsLongDiffLinesWithAnExplicitMarker() throws IOException {
         VintelliShell shell = defaultShell();
         shell.show(new ShellUnifiedDiff("clip.patch", "+" + "x".repeat(260) + "\n y"));
         Buffer buffer = offlineFrame(shell);
@@ -78,7 +84,7 @@ class VintelliShellPushTest {
     }
 
     @Test
-    void appendsAMarkerWhenTheDiffDoesNotFitThePanel() {
+    void appendsAMarkerWhenTheDiffDoesNotFitThePanel() throws IOException {
         VintelliShell shell = defaultShell();
         shell.show(new ShellUnifiedDiff("long.patch", "@@ -1 +1 @@\n" + " ctx\n".repeat(11)));
         Buffer buffer = offlineFrame(shell);
@@ -88,7 +94,7 @@ class VintelliShellPushTest {
     }
 
     @Test
-    void keepsTheEditorPlaceholderWhenNothingWasPushed() {
+    void keepsTheEditorPlaceholderWhenNothingWasPushed() throws IOException {
         VintelliShell shell = defaultShell();
         Buffer buffer = offlineFrame(shell);
 
@@ -96,11 +102,17 @@ class VintelliShellPushTest {
         assertTrue(firstEditorRow.contains("editor tool window"), firstEditorRow);
     }
 
+    /**
+     * Renders that run outside the toolkit loop must not touch the element
+     * registry, so the workers push through the volatile ports only; the next
+     * frame the loop draws them both, and the tool window they park in proves
+     * the frame lock spans the whole render pass.
+     */
     @Test
     void rendersFramesWhileTheEventLoopDrivesTheShell() throws Exception {
         VintelliShell shell = defaultShell();
         ExecutorService pool = Executors.newFixedThreadPool(4);
-        try (TuiTestRunner test = TuiTestRunner.runTest(shell, shell::render)) {
+        try (ToolkitTestRunner test = runShell(shell)) {
             Pilot pilot = test.pilot();
             pilot.pause(STARTUP);
 
@@ -110,7 +122,6 @@ class VintelliShellPushTest {
                     for (int step = 0; step < 200; step++) {
                         shell.highlight(new ShellHighlightTarget("src/concurrent.java", step + 1));
                         shell.show(new ShellUnifiedDiff("concurrent.patch", "@@ -1 +1 @@\n-a\n+b\n ctx"));
-                        offlineFrame(shell);
                     }
                 }));
             }
@@ -118,6 +129,7 @@ class VintelliShellPushTest {
             for (Future<?> worker : workers) {
                 worker.get(60, TimeUnit.SECONDS);
             }
+            press(pilot, 'x');
         }
         pool.shutdownNow();
 
@@ -129,25 +141,25 @@ class VintelliShellPushTest {
     @Test
     void keyRoutingWaitsForAFrameThatIsBeingDrawn() throws Exception {
         GatedToolWindow window = new GatedToolWindow();
-        VintelliShell shell = new VintelliShell(List.of(window), new ShellState());
+        VintelliShell shell = new VintelliShell(List.of(window), new ShellState(), themes());
 
         assertSerialised(window.renderGate, () -> offlineFrame(shell),
-                () -> shell.handle(KeyEvent.ofChar('x'), null), window.keyGate);
+                () -> shell.handle(KeyEvent.ofChar('x')), window.keyGate);
     }
 
     @Test
     void framesWaitForKeyRoutingThatIsInProgress() throws Exception {
         GatedToolWindow window = new GatedToolWindow();
-        VintelliShell shell = new VintelliShell(List.of(window), new ShellState());
+        VintelliShell shell = new VintelliShell(List.of(window), new ShellState(), themes());
 
-        assertSerialised(window.keyGate, () -> shell.handle(KeyEvent.ofChar('x'), null),
+        assertSerialised(window.keyGate, () -> shell.handle(KeyEvent.ofChar('x')),
                 () -> offlineFrame(shell), window.renderGate);
     }
 
     @Test
     void twoFramesAreNeverDrawnAtTheSameTime() throws Exception {
         GatedToolWindow window = new GatedToolWindow();
-        VintelliShell shell = new VintelliShell(List.of(window), new ShellState());
+        VintelliShell shell = new VintelliShell(List.of(window), new ShellState(), themes());
 
         assertSerialised(window.renderGate, () -> offlineFrame(shell),
                 () -> offlineFrame(shell), window.renderGate);
@@ -177,15 +189,29 @@ class VintelliShellPushTest {
         }
     }
 
-    private static VintelliShell defaultShell() {
+    private static ToolkitTestRunner runShell(VintelliShell shell) throws Exception {
+        ToolkitTestRunner test = ToolkitTestRunner.runTest(shell::root, SIZE);
+        test.runner().styleEngine(shell.themes().engine());
+        test.runner().eventRouter().addGlobalHandler(shell);
+        return test;
+    }
+
+    private static VintelliShell defaultShell() throws IOException {
         ToolWindowRegistry registry = new ToolWindowRegistry(List.of(
-                new RunToolWindow(), new TerminalToolWindow(), new ProblemsToolWindow(), new AcpAgentsToolWindow()));
-        return new VintelliShell(registry.toolWindows(), new ShellState());
+                new RunToolWindow(themes()), new TerminalToolWindow(themes()), new ProblemsToolWindow(themes()),
+                new AcpAgentsToolWindow(themes())));
+        return new VintelliShell(registry.toolWindows(), new ShellState(), themes());
+    }
+
+    static ShellThemes themes() {
+        return new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
     }
 
     private static Buffer offlineFrame(VintelliShell shell) {
         Buffer buffer = Buffer.empty(VIEWPORT);
-        shell.render(Frame.forTesting(buffer));
+        DefaultRenderContext context = DefaultRenderContext.createEmpty();
+        context.setStyleEngine(shell.themes().engine());
+        shell.root().render(Frame.forTesting(buffer), VIEWPORT, context);
         return buffer;
     }
 

@@ -42,7 +42,8 @@ import static dev.omatheusmesmo.vintelli.tui.keymap.KeyActions.reservedActionIds
  * as the alternative, selected through the {@code vintelli.keymap} system
  * property. A user keymap file in the config directory
  * ({@code $XDG_CONFIG_HOME/vintelli/keymap.properties} on Linux, {@code
- * APPDATA} on Windows, or the {@code vintelli.keymap.dir} property override)
+ * APPDATA} on Windows, the shared {@code vintelli.config.dir} override, or the
+ * more specific {@code vintelli.keymap.dir} property override)
  * is layered on top in the TamboUI format: an action named in the file loses
  * the profile triggers and keeps exactly the ones the file lists, every other
  * action keeps the profile bindings. The file is validated: unknown action

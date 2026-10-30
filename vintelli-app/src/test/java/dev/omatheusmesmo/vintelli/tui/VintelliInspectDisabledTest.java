@@ -6,9 +6,9 @@ import io.quarkus.test.junit.QuarkusTest;
 import org.junit.jupiter.api.Test;
 
 /**
- * The inspect render endpoint shows the live shell, so a build without
- * {@code vintelli.inspect.enabled} must not serve it and answers 404 with an
- * empty body.
+ * The inspect endpoints show the live shell and can switch its theme, so a
+ * build without {@code vintelli.inspect.enabled} must not serve any of them
+ * and answers 404 with an empty body.
  */
 @QuarkusTest
 class VintelliInspectDisabledTest {
@@ -16,6 +16,8 @@ class VintelliInspectDisabledTest {
     @Test
     void servesNothingUnlessTheInspectEndpointIsEnabled() {
         given().get("/tui/render").then().statusCode(404);
+        given().post("/tui/theme?name=darcula").then().statusCode(404);
+        given().get("/tui/keymap").then().statusCode(404);
     }
 
     /**

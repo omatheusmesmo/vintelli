@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<scheme name="Darcula" version="1" parent_scheme="Default" default_scheme="true">
+  <!-- excerpt of the `colors` and `attributes` option blocks for TEXT, the keyword, string, comment, number and constant attributes and the selection color; taken verbatim from DefaultColorSchemesManager.xml (the built in Darcula editor scheme) of IntelliJ IDEA Ultimate 2026.2.3 (build IU-262.10968.63), Apache License, Version 2.0 by JetBrains -->
+  <colors>
+    <option name="SELECTION_BACKGROUND" value="214283" />
+  </colors>
+  <attributes>
+<option name="TEXT">
+        <value>
+          <option name="FOREGROUND" value="a9b7c6" deuteranopia="aeb5bd" protanopia="aeb5bd"/>
+          <option name="BACKGROUND" value="2b2b2b" deuteranopia="2b2b2b" protanopia="2b2b2b"/>
+          <option name="EFFECT_TYPE" value="5" />
+        </value>
+      </option>
+<option name="DEFAULT_KEYWORD">
+        <value>
+          <option name="FOREGROUND" value="cc7832" deuteranopia="597cc2" protanopia="597cc2"/>
+        </value>
+      </option>
+<option name="DEFAULT_STRING">
+        <value>
+          <option name="FOREGROUND" value="6a8759" deuteranopia="807d6e" protanopia="807d6e"/>
+          <option name="FONT_TYPE" deuteranopia="bold" protanopia="bold"/>
+        </value>
+      </option>
+<option name="DEFAULT_LINE_COMMENT">
+        <value>
+          <option name="FOREGROUND" value="808080" deuteranopia="7a7a7a" protanopia="7a7a7a"/>
+        </value>
+      </option>
+<option name="DEFAULT_NUMBER">
+        <value>
+          <option name="FOREGROUND" value="6897bb" deuteranopia="267dff" protanopia="267dff"/>
+        </value>
+      </option>
+<option name="DEFAULT_CONSTANT">
+        <value>
+          <option name="FOREGROUND" value="9876aa" deuteranopia="828eba" protanopia="828eba"/>
+          <option name="FONT_TYPE" value="2" />
+        </value>
+      </option>
+  </attributes>
+</scheme>

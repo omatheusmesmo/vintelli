@@ -1,0 +1,76 @@
+{
+  "source": "themes/darcula.theme.json (verbatim excerpt of the `ui` entries) of IntelliJ IDEA Ultimate 2026.2.3 (build IU-262.10968.63), Apache License, Version 2.0 by JetBrains",
+"ui": {
+    "*": {
+  "background": "#3C3F41",
+  "textBackground": "#3C3F41",
+  "foreground": "#BBBBBB",
+  "textForeground": "#BBBBBB",
+  "caretForeground": "#BBBBBB",
+  "inactiveBackground": "#3C3F41",
+  "selectionBackgroundInactive": "#0D293E",
+  "selectionInactiveBackground": "#0D293E",
+  "selectionForegroundInactive": "#BBBBBB",
+  "selectionInactiveForeground": "#BBBBBB",
+  "selectionBackground": {
+    "os.default": "#2F65CA",
+    "os.windows": "#4B6EAF"
+  },
+  "selectionForeground": "#dedede"
+},
+    "Component": {
+  "arc": 5,
+  "borderColor": "#646464",
+  "disabledBorderColor": "#646464",
+  "errorFocusColor": "#8B3C3C",
+  "focusColor": "#3D6185",
+  "focusWidth": 2,
+  "focusedBorderColor": "#466D94",
+  "inactiveErrorFocusColor": "#725252",
+  "inactiveWarningFocusColor": "#6E5324",
+  "infoForeground": "#787878",
+  "warningFocusColor": "#AC7920"
+},
+    "SearchEverywhere": {
+  "Advertiser.background": "#45494a",
+  "Advertiser.foreground": "#808080",
+  "Advertiser.borderInsets.compact": "4,20,5,20",
+  "Header.background": "#45494a",
+  "List.separatorColor": "#505050",
+  "SearchField.background": "#3c3f41",
+  "SearchField.borderColor": "#646464",
+  "SearchField.infoForeground": "#808080",
+  "Tab.selectedBackground": "#555a5e",
+  "Tab.selectedForeground": "#bbbbbb"
+},
+    "Button": {
+  "arc": 6,
+  "border": "com.intellij.ide.ui.laf.darcula.ui.DarculaButtonPainter",
+  "defaultButtonFollowsFocus": false,
+  "default.endBackground": "#365880",
+  "default.endBorderColor": "#4c708c",
+  "default.focusColor": "#43688c",
+  "default.focusedBorderColor": "#537699",
+  "default.foreground": "#bbbbbb",
+  "default.startBackground": "#365880",
+  "default.startBorderColor": "#4c708c",
+  "disabledBorderColor": "#5e6060",
+  "disabledText": "#777777",
+  "endBackground": "#4C5052",
+  "endBorderColor": "#5e6060",
+  "focusedBorderColor": "#466d94",
+  "paintShadow": true,
+  "shadowColor": "#36363680",
+  "shadowWidth": 2,
+  "startBackground": "#4C5052",
+  "startBorderColor": "#5e6060",
+  "UI": "com.intellij.ide.ui.laf.darcula.ui.DarculaButtonUI"
+},
+    "MenuBar": {
+  "border": "com.intellij.ide.ui.laf.darcula.ui.DarculaMenuBarBorder",
+  "borderColor": "#515151",
+  "disabledBackground": "#3c3f41",
+  "UI": "javax.swing.plaf.basic.BasicMenuBarUI"
+}
+  }
+}

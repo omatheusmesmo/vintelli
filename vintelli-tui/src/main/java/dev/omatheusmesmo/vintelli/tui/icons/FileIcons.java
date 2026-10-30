@@ -33,10 +33,12 @@ import dev.tamboui.style.Color;
  * {@code name.pom.xml.glyph}) and {@code ext.<extension>.*}, each defining
  * {@code glyph}, {@code ascii} and an optional {@code color} (ANSI color name
  * such as {@code red} or {@code light-blue}). A user file
- * {@code <config>/vintelli/file-icons.properties}, where the config directory is
- * resolved by {@link ConfigDirectory} from {@code XDG_CONFIG_HOME} (absolute),
- * then {@code APPDATA}, then {@code user.home/.config}, is layered on top in
- * the same key format: any key of the user file overrides exactly that field.
+ * {@code <config>/vintelli/file-icons.properties}, where the config directory
+ * is resolved by {@link ConfigDirectory} with the shared
+ * {@code vintelli.config.dir} override first (the same one the themes and the
+ * keymap honor), then {@code XDG_CONFIG_HOME} (absolute), then
+ * {@code APPDATA}, then {@code user.home/.config}, is layered on top in the
+ * same key format: any key of the user file overrides exactly that field.
  * A missing default user file is absent; the {@code vintelli.icons.file}
  * system property names an explicit user file, which must exist.
  *
@@ -228,8 +230,10 @@ public final class FileIcons {
     /**
      * The user mapping file of the session: the explicit {@code vintelli.icons.file}
      * property when set (it must exist), otherwise {@code vintelli/file-icons.properties}
-     * inside the resolved config directory, or null when no directory can be
-     * derived.
+     * inside the resolved config directory (the shared
+     * {@code vintelli.config.dir} override like every other consumer, then
+     * {@code XDG_CONFIG_HOME}, then {@code APPDATA}, then {@code user.home/.config}),
+     * or null when no directory can be derived.
      */
     private static Path userMappingFile() {
         String override = System.getProperty(USER_FILE_PROPERTY);
@@ -241,7 +245,7 @@ public final class FileIcons {
             }
             return explicit;
         }
-        Path configRoot = ConfigDirectory.configRoot(null, System.getenv("XDG_CONFIG_HOME"),
+        Path configRoot = ConfigDirectory.configRoot(ConfigDirectory.sharedConfigDir(), System.getenv("XDG_CONFIG_HOME"),
                 System.getenv("APPDATA"), System.getProperty("user.home"));
         return configRoot == null ? null : configRoot.resolve("vintelli").resolve("file-icons.properties");
     }
