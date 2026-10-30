@@ -65,7 +65,14 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
 
+      - name: Install the foreign ACP agent
+        run: |
+          npm install -g @opencode/cli@2.1.4
+          opencode --version
+
       - name: Build native image and run integration tests against it
+        env:
+          VINTELLI_FOREIGN_ACP_COMMAND: opencode acp
         run: ./mvnw -B -ntp verify -Dnative -Dquarkus.native.container-build
 
       - name: Upload native integration test reports
