@@ -1,5 +1,6 @@
 package dev.omatheusmesmo.vintelli.local;
 
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +24,18 @@ import jakarta.inject.Singleton;
  * machine or erase data recursively come back as
  * {@code REQUIRES_CONFIRMATION} and only run when the caller reissues the
  * request carrying an explicit confirmation.
+ *
+ * <p>Working directory policy: every command runs inside the
+ * {@link LocalProjectRoot}, with no opt-out. A relative working directory
+ * resolves against the root, and any directory that lands outside it, through
+ * {@code ..} or behind a symlink, fails before a process starts. A command that
+ * times out returns the output it produced so far in the failure detail.
+ *
+ * <p>Known limits, deliberately kept for the interactive terminal to replace:
+ * the line is not a shell, so pipes, redirects, globbing, variable expansion,
+ * command chaining and {@code cd} are not interpreted; each word is passed as
+ * one argument. The confirmation gate is a heuristic on the program name and
+ * is documented on {@link DangerousCommands}.
  */
 @Unremovable
 @Singleton
@@ -79,17 +92,23 @@ public final class LocalTerminalCapability implements TerminalCapability {
     }
 
     private CapabilityResult<TerminalResult> run(List<String> command, TerminalRequest request) {
+        Path inside = projectRoot.confine(request.workingDirectory());
+        if (inside == null) {
+            return CapabilityResult.failed(new CapabilityFailure(
+                    "The working directory is outside the project root or cannot be resolved",
+                    request.workingDirectory().toString()));
+        }
         ProcessRunner.ProcessResult result;
         try {
-            result = runner.run(new ProcessRunner.CommandPlan(command, request.workingDirectory(),
-                    Map.of(), defaultTimeout));
+            result = runner.run(new ProcessRunner.CommandPlan(command, inside, Map.of(), defaultTimeout));
         } catch (ProcessRunner.UncheckedProcessFailure e) {
             return CapabilityResult.failed(new CapabilityFailure("Cannot start the command", e.getMessage()));
         }
         return switch (result.outcome()) {
             case EXITED, CANCELLED -> CapabilityResult.ok(new TerminalResult(
                     TerminalOutcome.EXECUTED, result.exitCode().orElse(-1), result.output()));
-            case TIMED_OUT -> CapabilityResult.failed(new CapabilityFailure("The command timed out", ""));
+            case TIMED_OUT -> CapabilityResult.failed(new CapabilityFailure(
+                    "The command timed out", result.output()));
         };
     }
 }

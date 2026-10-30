@@ -17,6 +17,8 @@ import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * Build tool detection on real temporary project roots: Maven wins with a
@@ -133,6 +135,73 @@ class BuildToolDetectorTest {
         Files.createDirectories(temp.resolve(TestProcesses.isWindows() ? "mvnw.cmd" : "mvnw"));
 
         BuildToolDetector detector = new BuildToolDetector(new LocalProjectRoot(temp));
+
+        assertFalse(detector.wrapperResolved());
+        assertIterableEquals(List.of("mvn"), detector.baseCommand());
+    }
+
+    @Test
+    void onWindowsTheBatchWrapperIsRunThroughCmdAndTheUnixScriptIsNeverTried() throws IOException {
+        Files.writeString(temp.resolve("pom.xml"), "<project/>", StandardCharsets.UTF_8);
+        Files.writeString(temp.resolve("mvnw.cmd"), "@echo off", StandardCharsets.US_ASCII);
+        makeExecutable(Files.writeString(temp.resolve("mvnw"), "#!/bin/sh", StandardCharsets.UTF_8));
+
+        BuildToolDetector detector = new BuildToolDetector(new LocalProjectRoot(temp), true);
+
+        assertTrue(detector.wrapperResolved());
+        assertIterableEquals(List.of("cmd", "/c", temp.toRealPath().resolve("mvnw.cmd").toString()),
+                detector.baseCommand());
+    }
+
+    @Test
+    void onWindowsAUnixScriptAloneDoesNotCountAsAWrapper() throws IOException {
+        Files.writeString(temp.resolve("pom.xml"), "<project/>", StandardCharsets.UTF_8);
+        makeExecutable(Files.writeString(temp.resolve("mvnw"), "#!/bin/sh", StandardCharsets.UTF_8));
+
+        BuildToolDetector detector = new BuildToolDetector(new LocalProjectRoot(temp), true);
+
+        assertFalse(detector.wrapperResolved());
+        assertIterableEquals(List.of("mvn"), detector.baseCommand());
+    }
+
+    @Test
+    void onUnixABatchWrapperAloneDoesNotCountAsAWrapper() throws IOException {
+        Files.writeString(temp.resolve("pom.xml"), "<project/>", StandardCharsets.UTF_8);
+        Files.writeString(temp.resolve("mvnw.cmd"), "@echo off", StandardCharsets.US_ASCII);
+
+        BuildToolDetector detector = new BuildToolDetector(new LocalProjectRoot(temp), false);
+
+        assertFalse(detector.wrapperResolved());
+        assertIterableEquals(List.of("mvn"), detector.baseCommand());
+    }
+
+    @Test
+    void onWindowsTheGradleBatchWrapperIsRunThroughCmd() throws IOException {
+        Files.writeString(temp.resolve("build.gradle"), "", StandardCharsets.UTF_8);
+        Files.writeString(temp.resolve("gradlew.bat"), "@echo off", StandardCharsets.US_ASCII);
+
+        BuildToolDetector detector = new BuildToolDetector(new LocalProjectRoot(temp), true);
+
+        assertEquals(BuildToolDetector.BuildTool.GRADLE, detector.detectedTool());
+        assertTrue(detector.wrapperResolved());
+        assertIterableEquals(List.of("cmd", "/c", temp.toRealPath().resolve("gradlew.bat").toString()),
+                detector.baseCommand());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"&", "|", "^", "%", "<", ">", "!", "\""})
+    void detectsEveryCmdMetaCharacterThroughThePredicate(String meta) {
+        assertTrue(BuildToolDetector.containsCmdMetaCharacters("a" + meta + "b"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"&", "^", "%", "!"})
+    void refusesAWindowsWrapperWhosePathContainsLegalFileNameMetaCharacters(String meta) throws IOException {
+        Path project = Files.createDirectories(temp.resolve("a" + meta + "b"));
+        Files.writeString(project.resolve("pom.xml"), "<project/>", StandardCharsets.UTF_8);
+        Files.writeString(project.resolve("mvnw.cmd"), "@echo off", StandardCharsets.US_ASCII);
+
+        BuildToolDetector detector = new BuildToolDetector(new LocalProjectRoot(project), true);
 
         assertFalse(detector.wrapperResolved());
         assertIterableEquals(List.of("mvn"), detector.baseCommand());

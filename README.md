@@ -113,6 +113,33 @@ every traversal or symlink escape. A timeout
 and cancellation works the same way. Its providers are CDI beans, so the
 capability registry ranks them like every other provider.
 
+Decisions of the local provider:
+
+- Terminal commands always run inside the project root, with no opt-out. A
+  relative working directory resolves against the root, and a directory that
+  lands outside it, through `..` or a symlink, is refused before any process
+  starts. A timed out command reports the output read so far.
+- The terminal is not a shell: pipes, redirects, `cd`, globbing and variable
+  expansion are not interpreted, and each word is one argument. The real
+  interactive terminal is tracked separately.
+- The confirmation gate for `sudo`, machine control and `rm -rf` is a
+  name-based heuristic, not a sandbox; its limits are listed on
+  `DangerousCommands`.
+- Build wrappers are chosen per host: `mvnw` or `gradlew` on Unix (executable
+  only), `mvnw.cmd` or `gradlew.bat` on Windows, run through `cmd /c`. The
+  Unix script is never tried on Windows.
+- A run completes as soon as the main process has exited and the output pipe
+  reached its end, with no wait. When a background child keeps the pipe open
+  after the main process exits, the run completes when the pipe stays idle for
+  the 5 second drain grace or when 5 seconds have elapsed since the main
+  process exited, whichever comes first, and that child's later output is
+  dropped. The hard cap on the wait for the pipe also holds for output with no line
+  terminator; it does not bound time spent inside a consumer of the output, and
+  a consumer that blocks delays the end of the run until it returns. On
+  Linux that child is reparented when its parent exits, so it may keep running
+  after the run has completed. On abandonment the output stream is closed and
+  the reader stops as soon as its pending read returns.
+
 The tool window SPI lives in `vintelli-tui` because its render and key
 handling signatures use TamboUI types: a `ToolWindow` declares an id, a
 title, a `char` shortcut, an `ordinal` position, rendering and key

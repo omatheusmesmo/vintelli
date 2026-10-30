@@ -29,4 +29,9 @@ class VintelliInspectDisabledTest {
     void answers404ForIconsUnlessTheInspectEndpointIsEnabled() {
         given().get("/tui/icons").then().statusCode(404);
     }
+
+    @Test
+    void answers404ForProcessProbeUnlessTheInspectEndpointIsEnabled() {
+        given().post("/tui/process-probe").then().statusCode(404);
+    }
 }
