@@ -28,6 +28,7 @@ Vintelli is a Quarkus application that shows an IntelliJ IDEA-like TUI (built wi
 - Quarkiverse MCP Server 2.0.4 (Vintelli as an MCP server for external agents)
 - MCP Java SDK 2.1.0 (client: IntelliJ IDEA MCP server)
 - LSP4J 1.0.0 (client: generic language server client with profiles)
+- JGit 7.7.1 through the Quarkiverse `quarkus-jgit` extension (local Git provider for the VCS surfaces)
 - AEsh 3.18.6 (plain library; CLI/REPL capabilities) and WebSockets Next (browser surface)
 
 ## Run
@@ -534,6 +535,19 @@ its SHA-256 against the value pinned in the workflow, caches the archive by
 version and extracts it into the runner temp directory. To bump jdt.ls, change
 the version, build, archive name, URL and SHA-256 env values together; take the
 checksum from the `.sha256` file published next to the archive.
+
+`/vcs/status` and `/vcs/diff?file=...` expose the Git provider through its
+`VersionControlCapability` port so the native ITs drive JGit inside the image
+over a real temporary repository the test prepares through JGit before
+boot. They answer 404 unless `vintelli.vcs.debug-endpoint.enabled=true`; a
+selection without a healthy provider answers 503 and a failed capability
+result (not a repository, a path outside the project root) answers 409 with
+the provider's reason. The project root may sit below the repository root:
+the provider confines every requested diff path and every status entry to the
+project root, so no answer carries state from outside the project, and a
+status longer than its bound says so with `truncated`. JGit needs no `git`
+executable for status and diff; it may spawn one only to discover system wide
+configuration when such a file exists.
 
 ## Status
 

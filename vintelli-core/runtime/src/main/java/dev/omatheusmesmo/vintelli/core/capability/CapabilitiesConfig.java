@@ -47,6 +47,13 @@ public interface CapabilitiesConfig {
     Order editorBridge();
 
     /**
+     * Ranking of the vcs capability providers. Without configuration the
+     * local JGit provider serves, because unlisted providers sort by
+     * identifier and {@code local} comes first.
+     */
+    Order vcs();
+
+    /**
      * Order settings of one capability.
      */
     interface Order {

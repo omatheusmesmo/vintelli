@@ -10,7 +10,7 @@
     <artifactId>vintelli-local</artifactId>
 
     <description>
-        Process runner, build tool detection and filesystem access for the standalone provider. Depends on the api ports only.
+        Process runner, build tool detection, filesystem access and Git version control for the standalone provider. Depends on the api ports only.
     </description>
 
     <dependencies>
@@ -24,6 +24,10 @@
                  IDEA provider module; never imported by the tests themselves. -->
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-arc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkiverse.jgit</groupId>
+            <artifactId>quarkus-jgit</artifactId>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>

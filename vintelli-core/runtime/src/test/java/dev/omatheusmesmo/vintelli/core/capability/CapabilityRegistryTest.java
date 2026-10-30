@@ -31,6 +31,7 @@ import dev.omatheusmesmo.vintelli.api.capability.TerminalCapability;
 import dev.omatheusmesmo.vintelli.api.capability.TerminalCapability.TerminalOutcome;
 import dev.omatheusmesmo.vintelli.api.capability.TerminalCapability.TerminalRequest;
 import dev.omatheusmesmo.vintelli.api.capability.TerminalCapability.TerminalResult;
+import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -76,19 +77,37 @@ class CapabilityRegistryTest {
         TestingFileProvider fileProvider = new TestingFileProvider("local-reader");
         TestingDiagnosticsProvider diagnosticsProvider = new TestingDiagnosticsProvider();
         TestingCallHierarchyProvider hierarchyProvider = new TestingCallHierarchyProvider();
+        TestingVersionControlProvider versionControlProvider = new TestingVersionControlProvider();
         DefaultCapabilityRegistry registry = new DefaultCapabilityRegistry(
                 List.of(runProvider), List.of(terminalProvider), List.of(fileProvider),
-                List.of(diagnosticsProvider), List.of(hierarchyProvider), List.of(), orders(NO_ORDER));
+                List.of(diagnosticsProvider), List.of(hierarchyProvider), List.of(),
+                List.of(versionControlProvider), orders(NO_ORDER));
 
         assertEquals("run-standalone", selectedIdentifierOf(registry.run()));
         assertEquals("terminal-standalone", selectedIdentifierOf(registry.terminal()));
         assertEquals("local-reader", selectedIdentifierOf(registry.readFile()));
         assertEquals("diagnostics-standalone", selectedIdentifierOf(registry.diagnostics()));
         assertEquals("hierarchy-standalone", selectedIdentifierOf(registry.callHierarchy()));
+        assertEquals("vcs-standalone", selectedIdentifierOf(registry.versionControl()));
+        assertEquals("vcs-standalone", statusOf(registry, CapabilityType.VERSION_CONTROL).providerIdentifier());
 
         CapabilitySelection<ReadFileCapability> read = registry.readFile();
         assertTrue(read instanceof CapabilitySelection.Selected<ReadFileCapability>);
         assertEquals("local-reader", selectedIdentifierOf(read));
+    }
+
+    @Test
+    void reportsTheUnavailableStateOfTheVcsCapabilityThroughTheStatusRow() {
+        DefaultCapabilityRegistry contract = registryWith(NO_ORDER);
+
+        CapabilitySelection<VersionControlCapability> selection = contract.versionControl();
+
+        assertFalse(selection.isAvailable());
+        assertEquals("no provider is registered for 'vcs'", unavailableReasonOf(selection));
+        CapabilityStatus row = statusOf(contract, CapabilityType.VERSION_CONTROL);
+        assertFalse(row.isAvailable());
+        assertNull(row.providerIdentifier());
+        assertEquals("no provider is registered for 'vcs'", row.health().reason());
     }
 
     @Test
@@ -97,7 +116,7 @@ class CapabilityRegistryTest {
         TestingFileProvider near = new TestingFileProvider("near-reader");
         DefaultCapabilityRegistry registry = new DefaultCapabilityRegistry(
                 List.of(), List.of(), List.of(near, far), List.of(), List.of(), List.of(),
-                orders(Map.of(CapabilityType.READ_FILE, List.of("near-reader", "far-reader"))));
+                List.of(), orders(Map.of(CapabilityType.READ_FILE, List.of("near-reader", "far-reader"))));
 
         CapabilitySelection<ReadFileCapability> selection = registry.readFile();
 
@@ -113,7 +132,7 @@ class CapabilityRegistryTest {
         TestingFileProvider backup = new TestingFileProvider("backup");
         DefaultCapabilityRegistry registry = new DefaultCapabilityRegistry(
                 List.of(), List.of(), List.of(backup, primary), List.of(), List.of(), List.of(),
-                orders(Map.of(CapabilityType.READ_FILE, List.of("primary", "backup"))));
+                List.of(), orders(Map.of(CapabilityType.READ_FILE, List.of("primary", "backup"))));
 
         assertTrue(registry.readFile().isAvailable());
         assertEquals("primary", selectedIdentifierOf(registry.readFile()));
@@ -137,7 +156,7 @@ class CapabilityRegistryTest {
     void keepsTheExplicitReasonWhenEveryRegisteredProviderIsUnhealthy() {
         TestingFileProvider only = new TestingFileProvider("only-reader");
         DefaultCapabilityRegistry registry = new DefaultCapabilityRegistry(
-                List.of(), List.of(), List.of(only), List.of(), List.of(), List.of(), orders(NO_ORDER));
+                List.of(), List.of(), List.of(only), List.of(), List.of(), List.of(), List.of(), orders(NO_ORDER));
         only.markUnavailable("declined the project root");
 
         CapabilitySelection<ReadFileCapability> selection = registry.readFile();
@@ -154,7 +173,7 @@ class CapabilityRegistryTest {
 
         IllegalStateException failure = assertThrows(IllegalStateException.class,
                 () -> new DefaultCapabilityRegistry(
-                        List.of(), List.of(), List.of(first, second), List.of(), List.of(), List.of(), orders(NO_ORDER)));
+                        List.of(), List.of(), List.of(first, second), List.of(), List.of(), List.of(), List.of(), orders(NO_ORDER)));
 
         assertTrue(failure.getMessage().contains("dup"));
         assertTrue(failure.getMessage().contains("read-file"));
@@ -165,7 +184,7 @@ class CapabilityRegistryTest {
         IllegalStateException failure = assertThrows(IllegalStateException.class,
                 () -> new DefaultCapabilityRegistry(
                         List.of(), List.of(), List.of(new BlankIdentifierProvider()), List.of(), List.of(), List.of(),
-                        orders(NO_ORDER)));
+                        List.of(), orders(NO_ORDER)));
 
         assertTrue(failure.getMessage().contains("blank identifier"), failure.getMessage());
         assertTrue(failure.getMessage().contains("read-file"), failure.getMessage());
@@ -176,7 +195,7 @@ class CapabilityRegistryTest {
         IllegalStateException failure = assertThrows(IllegalStateException.class,
                 () -> new DefaultCapabilityRegistry(
                         List.of(), List.of(), List.of(new NullIdentifierProvider()), List.of(), List.of(), List.of(),
-                        orders(NO_ORDER)));
+                        List.of(), orders(NO_ORDER)));
 
         assertTrue(failure.getMessage().contains("identifier"), failure.getMessage());
         assertTrue(failure.getMessage().contains("read-file"), failure.getMessage());
@@ -187,7 +206,7 @@ class CapabilityRegistryTest {
         IllegalStateException failure = assertThrows(IllegalStateException.class,
                 () -> new DefaultCapabilityRegistry(
                         List.of(), List.of(), List.of(new ExplodingIdentifierProvider()), List.of(), List.of(), List.of(),
-                        orders(NO_ORDER)));
+                        List.of(), orders(NO_ORDER)));
 
         assertTrue(failure.getMessage().contains("identifier"), failure.getMessage());
         assertTrue(failure.getMessage().contains("read-file"), failure.getMessage());
@@ -198,7 +217,7 @@ class CapabilityRegistryTest {
         ThrowingFileProvider broken = new ThrowingFileProvider();
         TestingFileProvider healthy = new TestingFileProvider("healthy-reader");
         DefaultCapabilityRegistry registry = new DefaultCapabilityRegistry(
-                List.of(), List.of(), List.of(broken, healthy), List.of(), List.of(), List.of(), orders(NO_ORDER));
+                List.of(), List.of(), List.of(broken, healthy), List.of(), List.of(), List.of(), List.of(), orders(NO_ORDER));
 
         CapabilityStatus row = statusOf(registry, CapabilityType.READ_FILE);
 
@@ -232,7 +251,7 @@ class CapabilityRegistryTest {
 
     private static DefaultCapabilityRegistry registryWith(Map<CapabilityType, List<String>> orders) {
         return new DefaultCapabilityRegistry(
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), new CapabilityOrders(orders));
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), new CapabilityOrders(orders));
     }
 
     private static CapabilityOrders orders(Map<CapabilityType, List<String>> orders) {
@@ -491,6 +510,39 @@ class CapabilityRegistryTest {
         @Override
         public String provenance() {
             return "stub hierarchy";
+        }
+    }
+
+    private static final class TestingVersionControlProvider implements VersionControlCapability {
+
+        @Override
+        public CapabilityResult<VersionControlCapability.Status> status() {
+            return CapabilityResult.ok(new VersionControlCapability.Status("main", null, null, List.of()));
+        }
+
+        @Override
+        public CapabilityResult<String> diff(Path path) {
+            return CapabilityResult.ok("");
+        }
+
+        @Override
+        public CapabilityResult<String> diffWorkingTree() {
+            return CapabilityResult.ok("");
+        }
+
+        @Override
+        public String identifier() {
+            return "vcs-standalone";
+        }
+
+        @Override
+        public ProviderHealth health() {
+            return ProviderHealth.available();
+        }
+
+        @Override
+        public String provenance() {
+            return "stub vcs";
         }
     }
 }

@@ -12,7 +12,8 @@ public enum CapabilityType {
     READ_FILE("read-file"),
     DIAGNOSTICS("diagnostics"),
     CALL_HIERARCHY("call-hierarchy"),
-    EDITOR_BRIDGE("editor-bridge");
+    EDITOR_BRIDGE("editor-bridge"),
+    VERSION_CONTROL("vcs");
 
     private final String label;
 
