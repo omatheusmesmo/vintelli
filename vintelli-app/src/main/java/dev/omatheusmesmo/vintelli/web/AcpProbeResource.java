@@ -1,12 +1,9 @@
 package dev.omatheusmesmo.vintelli.web;
 
-import com.agentclientprotocol.sdk.client.AcpClient;
 import com.agentclientprotocol.sdk.client.AcpSyncClient;
-import com.agentclientprotocol.sdk.client.transport.AgentParameters;
-import com.agentclientprotocol.sdk.client.transport.StdioAcpClientTransport;
-import com.agentclientprotocol.sdk.json.AcpJsonMapper;
 import com.agentclientprotocol.sdk.spec.AcpError;
 import com.agentclientprotocol.sdk.spec.AcpSchema;
+import dev.omatheusmesmo.vintelli.acp.AcpAgentClientFactory;
 import io.smallrye.common.annotation.Blocking;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -16,7 +13,6 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import org.jboss.resteasy.reactive.RestResponse;
 
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -32,7 +28,9 @@ import java.util.concurrent.TimeUnit;
  * full client session (initialize, session/new, session/prompt with streamed
  * session/update, cancel, close) over HTTP on the native runner. The agent
  * under test is the tiny stdio echo agent the test resources configure through
- * {@code vintelli.acp.probe.agent-command} and {@code vintelli.acp.probe.agent-args}.
+ * {@code vintelli.acp.probe.agent-command} and {@code vintelli.acp.probe.agent-args},
+ * and the client itself is built by {@link AcpAgentClientFactory}, shared with
+ * the CLI prompt command.
  *
  * <p>The endpoint is off unless {@code vintelli.acp.probe.enabled} is
  * {@code true} and answers 404 otherwise. Every answer carries the measured
@@ -43,30 +41,22 @@ import java.util.concurrent.TimeUnit;
 @Produces(MediaType.APPLICATION_JSON)
 public final class AcpProbeResource {
 
-    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(20);
-    private static final Duration PROMPT_TIMEOUT = Duration.ofSeconds(30);
     private static final long STREAM_WAIT_MILLIS = 10_000;
     private static final long STREAM_POLL_MILLIS = 50;
     private static final long CANCEL_WAIT_SECONDS = 20;
 
-    private final AcpJsonMapper acpJsonMapper;
-    private final boolean enabled;
-    private final String command;
-    private final List<String> args;
+    private final AcpAgentClientFactory agents;
 
     @Inject
-    AcpProbeResource(AcpJsonMapper acpJsonMapper, AcpProbeConfig config) {
-        this.acpJsonMapper = acpJsonMapper;
-        this.enabled = config.enabled().orElse(false);
-        this.command = config.agentCommand().orElse("");
-        this.args = config.agentArgs().map(value -> List.of(value.split(","))).orElse(List.of());
+    AcpProbeResource(AcpAgentClientFactory agents) {
+        this.agents = agents;
     }
 
     @POST
     @Path("/session")
     @Blocking
     public RestResponse<AcpProbeReply> session() {
-        if (!enabled || command.isBlank()) {
+        if (!agents.isConfigured()) {
             return disabled();
         }
         return RestResponse.ok(runFullSession());
@@ -76,7 +66,7 @@ public final class AcpProbeResource {
     @Path("/mcp")
     @Blocking
     public RestResponse<AcpProbeReply> mcpGate() {
-        if (!enabled || command.isBlank()) {
+        if (!agents.isConfigured()) {
             return disabled();
         }
         return RestResponse.ok(runMcpGate());
@@ -86,7 +76,7 @@ public final class AcpProbeResource {
         List<String> phases = new ArrayList<>();
         Set<String> streamedSessions = ConcurrentHashMap.newKeySet();
         List<String> chunkTexts = Collections.synchronizedList(new ArrayList<>());
-        AcpSyncClient client = client(streamedSessions, chunkTexts);
+        AcpSyncClient client = agents.client(streamedSessions, chunkTexts);
         String state;
         String detail = "";
         try {
@@ -118,7 +108,7 @@ public final class AcpProbeResource {
 
     private AcpProbeReply runMcpGate() {
         List<String> phases = new ArrayList<>();
-        AcpSyncClient client = client(ConcurrentHashMap.newKeySet(), Collections.synchronizedList(new ArrayList<>()));
+        AcpSyncClient client = agents.client(ConcurrentHashMap.newKeySet(), Collections.synchronizedList(new ArrayList<>()));
         String state;
         String detail = "";
         try {
@@ -157,23 +147,6 @@ public final class AcpProbeResource {
         } finally {
             executor.shutdownNow();
         }
-    }
-
-    private AcpSyncClient client(Set<String> streamedSessions, List<String> chunkTexts) {
-        AgentParameters parameters = AgentParameters.builder(command).args(args).build();
-        StdioAcpClientTransport transport = new StdioAcpClientTransport(parameters, acpJsonMapper);
-        return AcpClient.sync(transport)
-                .requestTimeout(REQUEST_TIMEOUT)
-                .promptTimeout(PROMPT_TIMEOUT)
-                .clientInfo(new AcpSchema.Implementation("vintelli", "1.0.0"))
-                .sessionUpdateHandler(update -> {
-                    streamedSessions.add(update.sessionId());
-                    if (update.update() instanceof AcpSchema.AgentMessageChunk chunk
-                            && chunk.content() instanceof AcpSchema.TextContent content) {
-                        chunkTexts.add(content.text());
-                    }
-                })
-                .build();
     }
 
     private static RestResponse<AcpProbeReply> disabled() {
