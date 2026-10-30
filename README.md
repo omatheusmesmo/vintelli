@@ -500,6 +500,11 @@ checksum from the `.sha256` file published next to the archive.
 See the GitHub issues for the implementation plan (IDEA MCP integration, ACP
 agents, offline inspections, WebSocket surface, native smoke test).
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to set up, propose changes, and
+meet the review bar.
+
 ## License
 
 Vintelli is licensed under the [Apache License, Version 2.0](LICENSE).
