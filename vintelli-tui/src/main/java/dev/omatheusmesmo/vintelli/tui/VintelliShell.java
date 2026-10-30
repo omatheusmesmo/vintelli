@@ -686,6 +686,32 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         return overlays().keymapHelp().isOpen();
     }
 
+    /**
+     * Resets the shell to its initial selection (first tool window, first
+     * project file, ready status, closed overlays). Its only caller is the
+     * web terminal integration test, which shares one shell bean between
+     * test methods; production code drives the shell through key events and
+     * never resets it.
+     */
+    public void reset() {
+        if (!toolWindows.isEmpty()) {
+            toolIndex = 0;
+            inputCaptured = toolWindows.get(0).capturesInput();
+            state.selectToolWindow(toolWindows.get(0).id());
+        } else {
+            toolIndex = 0;
+            inputCaptured = false;
+        }
+        state.selectFile(PROJECT_FILES.get(0));
+        syncedFileIndex = 0;
+        status = "Vintelli ready | IDEA MCP: disconnected | ACP: stopped";
+        KeymapParts current = overlays;
+        if (current != null) {
+            current.commandPalette().close();
+            current.keymapHelp().close();
+        }
+    }
+
     public int toolIndex() {
         return toolIndex;
     }

@@ -127,8 +127,18 @@ class VintelliCliCommandsIT {
     }
 
     private static CliRun launch(String stdin, String... arguments) throws Exception {
+        EchoAcpAgentResource agent = new EchoAcpAgentResource();
+        try {
+            return run(agent.start(), stdin, arguments);
+        } finally {
+            agent.stop();
+        }
+    }
+
+    private static CliRun run(Map<String, String> agentProperties, String stdin, String... arguments)
+            throws Exception {
         List<String> options = new ArrayList<>();
-        for (Map.Entry<String, String> property : new EchoAcpAgentResource().start().entrySet()) {
+        for (Map.Entry<String, String> property : agentProperties.entrySet()) {
             options.add("-D" + property.getKey() + "=" + property.getValue());
         }
         options.add("-Dquarkus.http.port=0");

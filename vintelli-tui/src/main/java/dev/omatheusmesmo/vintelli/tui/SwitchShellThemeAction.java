@@ -1,6 +1,7 @@
 package dev.omatheusmesmo.vintelli.tui;
 
 import jakarta.inject.Inject;
+import jakarta.inject.Provider;
 import jakarta.inject.Singleton;
 
 import java.util.List;
@@ -16,11 +17,15 @@ public final class SwitchShellThemeAction {
 
     static final String NAME = "shell.theme.switch";
 
-    private final ShellThemes themes;
+    private final Provider<ShellThemes> themes;
 
     @Inject
-    public SwitchShellThemeAction(ShellThemes themes) {
+    public SwitchShellThemeAction(Provider<ShellThemes> themes) {
         this.themes = themes;
+    }
+
+    private ShellThemes themes() {
+        return themes.get();
     }
 
     public String name() {
@@ -33,8 +38,9 @@ public final class SwitchShellThemeAction {
      * registered name.
      */
     public void perform() {
-        List<String> names = themes.availableThemeNames();
-        int index = names.indexOf(themes.activeTheme());
-        themes.switchTheme(names.get(Math.floorMod(index + 1, names.size())));
+        ShellThemes active = themes();
+        List<String> names = active.availableThemeNames();
+        int index = names.indexOf(active.activeTheme());
+        active.switchTheme(names.get(Math.floorMod(index + 1, names.size())));
     }
 }

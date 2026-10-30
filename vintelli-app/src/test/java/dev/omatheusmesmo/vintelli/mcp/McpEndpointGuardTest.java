@@ -59,6 +59,16 @@ public class McpEndpointGuardTest {
     URI tuiRender;
 
     @Test
+    void missingOrWrongCredentialsDoNotChallengeUnprotectedRoutes() {
+        given().when().get(tuiRender).then().statusCode(200);
+        given().header("Authorization", "Basic d3Jvbmc6Y3JlZHM=").when().get(tuiRender).then().statusCode(200);
+
+        given().header("Accept", ACCEPT).body(STATE_CALL).post(mcp).then().statusCode(200);
+        given().header("Authorization", "Basic d3Jvbmc6Y3JlZHM=").header("Accept", ACCEPT).body(STATE_CALL)
+                .post(mcp).then().statusCode(200);
+    }
+
+    @Test
     public void mcpToolsCallWithForeignHostIsRejectedAndNeverRunsTheTool() {
         given().when()
                 .headers("Host", "rebound.example.org", "Accept", ACCEPT)
