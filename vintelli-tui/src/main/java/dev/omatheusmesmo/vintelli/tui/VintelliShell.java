@@ -17,11 +17,14 @@ import dev.omatheusmesmo.vintelli.tui.menu.MenuPopup;
 import dev.omatheusmesmo.vintelli.tui.layout.ShellLayout;
 import dev.omatheusmesmo.vintelli.tui.layout.ShellLayoutStore;
 import dev.omatheusmesmo.vintelli.tui.keymap.ConfigDirectory;
+import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
+import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
 import dev.omatheusmesmo.vintelli.tui.search.ProjectSearchModel;
 import dev.omatheusmesmo.vintelli.tui.search.ProjectSearchOverlay;
 import dev.omatheusmesmo.vintelli.api.search.ProjectSearch;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityRegistry;
 import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability;
+import dev.omatheusmesmo.vintelli.api.capability.ProjectFileOperations;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityStatus;
@@ -61,11 +64,11 @@ import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import io.quarkus.arc.All;
-
 import java.nio.file.Path;
 import java.nio.file.Files;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -79,6 +82,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+
 
 /**
  * IntelliJ-like terminal shell: menu bar, tool window stripes (left, right, bottom),
@@ -166,6 +170,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private final CapabilityRegistry capabilityRegistry;
     private final List<StatusBarWidgetContributor> statusBarContributors;
     private final List<VersionControlCapability> vcsProviders;
+    private final ProjectFileOperations fileOperations;
     private final ShellLayout shellLayout;
     private final ShellLayoutStore layoutStore;
     private volatile DockElement layoutDock;
@@ -188,6 +193,17 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private volatile List<String> projectFiles;
     private volatile Map<String, VersionControlCapability.State> vcsStates = Map.of();
     private volatile boolean projectFilesLoading;
+    private final Path projectRoot;
+    private final FileIcons fileIcons;
+    private final boolean unicodeProjectTree;
+    private final List<ProjectNode> rootNodes = new ArrayList<>();
+    private volatile List<ProjectNode> visibleNodeObjects = List.of();
+    private volatile boolean showHiddenFiles;
+    private volatile String pendingDeletePath;
+    private InputMode projectInputMode = InputMode.NONE;
+    private final StringBuilder projectInput = new StringBuilder();
+    private boolean pendingProjectFocus;
+    private volatile Path copiedPath;
     private volatile Runnable quitAction;
     private volatile KeymapParts overlays;
 
@@ -207,95 +223,67 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             Instance<ShellThemes> themes, ProjectSearch projectSearch,
             @All List<NavigationCapability> navigationProviders, CapabilityRegistry capabilityRegistry,
             @All List<StatusBarWidgetContributor> statusBarContributors,
-            @All List<VersionControlCapability> vcsProviders) {
+            @All List<VersionControlCapability> vcsProviders, @All List<ProjectFileOperations> fileOperations) {
         this(registry.toolWindows(), state, keymapRegistry::get, themes.get(), projectSearch, navigationProviders,
-                capabilityRegistry, vcsProviders, true, statusBarContributors);
-    }
-
-    /** Backward-compatible construction surface for embedders that wire providers manually. */
-    public VintelliShell(ToolWindowRegistry registry, ShellState state, KeymapRegistry keymapRegistry,
-            Instance<ShellThemes> themes, ProjectSearch projectSearch,
-            List<NavigationCapability> navigationProviders, CapabilityRegistry capabilityRegistry) {
-        this(registry.toolWindows(), state, keymapRegistry::get, themes.get(), projectSearch, navigationProviders,
-                capabilityRegistry, List.of(), true, registry.toolWindows());
+                capabilityRegistry, vcsProviders, true, statusBarContributors,
+                fileOperations.isEmpty() ? null : fileOperations.getFirst());
     }
 
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state, ShellThemes themes) {
-        this(toolWindows, state, () -> Keymap.defaultKeymap(toolWindows), themes, null, List.of(), null,
-                List.of(), false, toolWindows);
+        this(toolWindows, state, () -> Keymap.defaultKeymap(toolWindows), themes, null, List.of(), null, List.of(),
+                false, toolWindows, null);
     }
 
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state, ShellThemes themes,
             CapabilityRegistry capabilityRegistry) {
         this(toolWindows, state, () -> Keymap.defaultKeymap(toolWindows), themes, null, List.of(), capabilityRegistry,
-                List.of(), false, toolWindows);
-    }
-
-    public VintelliShell(List<ToolWindow> toolWindows, ShellState state, ShellThemes themes,
-            List<NavigationCapability> navigationProviders, CapabilityRegistry capabilityRegistry) {
-        this(toolWindows, state, () -> Keymap.defaultKeymap(toolWindows), themes, null, navigationProviders,
-                capabilityRegistry, List.of(), false, toolWindows);
+                List.of(), false, toolWindows, null);
     }
 
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Keymap keymap, ShellThemes themes) {
-        this(toolWindows, state, () -> keymap, themes, null, List.of(), null, List.of(), false, toolWindows);
-    }
-
-    public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Keymap keymap, ShellThemes themes,
-            CapabilityRegistry capabilityRegistry) {
-        this(toolWindows, state, () -> keymap, themes, null, List.of(), capabilityRegistry, List.of(), false,
-                toolWindows);
+        this(toolWindows, state, () -> keymap, themes, null, List.of(), null, List.of(), false, toolWindows, null);
     }
 
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
             ShellThemes themes) {
-        this(toolWindows, state, keymapSupplier, themes, null, List.of(), null, List.of(), false, toolWindows);
-    }
-
-    public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
-            ShellThemes themes, CapabilityRegistry capabilityRegistry) {
-        this(toolWindows, state, keymapSupplier, themes, null, List.of(), capabilityRegistry, List.of(), false,
-                toolWindows);
+        this(toolWindows, state, keymapSupplier, themes, null, List.of(), null, List.of(), false, toolWindows, null);
     }
 
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
             ShellThemes themes, ProjectSearch projectSearch) {
-        this(toolWindows, state, keymapSupplier, themes, projectSearch, List.of(), null, List.of(), false, toolWindows);
-    }
-
-    public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
-            ShellThemes themes, ProjectSearch projectSearch, CapabilityRegistry capabilityRegistry) {
-        this(toolWindows, state, keymapSupplier, themes, projectSearch, List.of(), capabilityRegistry, List.of(), false,
-                toolWindows);
-    }
-
-    public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
-            ShellThemes themes, ProjectSearch projectSearch, List<NavigationCapability> navigationProviders) {
-        this(toolWindows, state, keymapSupplier, themes, projectSearch, navigationProviders, null, List.of(), false,
-                toolWindows);
+        this(toolWindows, state, keymapSupplier, themes, projectSearch, List.of(), null, List.of(), false, toolWindows,
+                null);
     }
 
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
             ShellThemes themes, ProjectSearch projectSearch, List<NavigationCapability> navigationProviders,
             CapabilityRegistry capabilityRegistry) {
         this(toolWindows, state, keymapSupplier, themes, projectSearch, navigationProviders, capabilityRegistry,
-                List.of(), false, toolWindows);
+                List.of(), false, toolWindows, null);
     }
 
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
             ShellThemes themes, ProjectSearch projectSearch, List<NavigationCapability> navigationProviders,
             List<VersionControlCapability> vcsProviders) {
         this(toolWindows, state, keymapSupplier, themes, projectSearch, navigationProviders, null, vcsProviders, false,
-                toolWindows);
+                toolWindows, null);
+    }
+
+    public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
+            ShellThemes themes, ProjectSearch projectSearch, ProjectFileOperations fileOperations) {
+        this(toolWindows, state, keymapSupplier, themes, projectSearch, List.of(), null, List.of(), false, toolWindows,
+                fileOperations);
     }
 
     private VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
             ShellThemes themes, ProjectSearch projectSearch, List<NavigationCapability> navigationProviders,
             CapabilityRegistry capabilityRegistry, List<VersionControlCapability> vcsProviders,
-            boolean persistLayout, List<? extends StatusBarWidgetContributor> statusBarContributors) {
+            boolean persistLayout, List<? extends StatusBarWidgetContributor> statusBarContributors,
+            ProjectFileOperations fileOperations) {
         this.themes = themes;
         this.state = state;
         this.projectSearch = projectSearch;
+        this.fileOperations = fileOperations;
         this.navigationProviders = List.copyOf(navigationProviders);
         this.capabilityRegistry = capabilityRegistry;
         this.statusBarContributors = List.copyOf(statusBarContributors);
@@ -305,6 +293,16 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         this.toolWindows = toolWindows.stream().filter(window -> !(window instanceof BuiltinEditor)).toList();
         this.projectFiles = projectSearch == null ? PROJECT_FILES : List.of();
         this.projectFilesLoading = projectSearch != null;
+        Path resolvedRoot = editor == null ? Path.of("").toAbsolutePath().normalize() : editor.project();
+        try {
+            if (Files.exists(resolvedRoot)) {
+                resolvedRoot = resolvedRoot.toRealPath();
+            }
+        } catch (IOException ignored) {
+        }
+        this.projectRoot = resolvedRoot.normalize();
+        this.fileIcons = FileIcons.resolve();
+        this.unicodeProjectTree = ProjectTreeGlyphs.supportsUnicode();
         Path projectRoot = editor == null ? Path.of("").toAbsolutePath().normalize() : editor.project();
         Path configRoot = persistLayout ? ConfigDirectory.configRoot(ConfigDirectory.sharedConfigDir(),
                 System.getenv("XDG_CONFIG_HOME"), System.getenv("APPDATA"), System.getProperty("user.home")) : null;
@@ -322,7 +320,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         syncedFileIndex = 0;
         this.toolTabs = toolWindowTabs();
         this.projectList = projectPanel();
-        this.lockedProjectList = locked(projectList);
+        this.lockedProjectList = new LockedElement(projectList, frameLock, this);
         this.rootBase = buildRootContent();
         this.lockedRoot = locked(rootBase);
         // Initialize active index for each anchor to first window
@@ -572,30 +570,210 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     private void discoverProjectFiles() {
+        frameLock.lock();
         try {
-            List<String> discovered = projectSearch.listFiles().stream().map(Path::toString).toList();
-            frameLock.lock();
-            try {
-                projectFiles = discovered;
-                projectFilesLoading = false;
-                projectList.items(discovered.isEmpty() ? List.of("No project files found") : projectFileRows());
-                projectList.selectFirst();
-                syncedFileIndex = projectList.selected();
-                state.selectFile(discovered.isEmpty() ? "" : discovered.getFirst());
-                status = discovered.isEmpty() ? "No project files found" : "Project files loaded";
-            } finally {
-                frameLock.unlock();
+            if (projectFilesLoading) {
+                refreshProjectTree();
             }
         } catch (Exception unavailable) {
-            frameLock.lock();
-            try {
-                projectFiles = List.of();
-                projectFilesLoading = false;
-                projectList.items(List.of("Project files unavailable"));
-                state.selectFile("");
-                status = "Project files unavailable: " + unavailable.getMessage();
-            } finally {
-                frameLock.unlock();
+            projectFiles = List.of();
+            projectFilesLoading = false;
+            visibleNodeObjects = List.of();
+            rootNodes.clear();
+            projectList.items(List.of("Project files unavailable"));
+            state.selectFile("");
+            status = "Project files unavailable: " + unavailable.getMessage();
+        } finally {
+            frameLock.unlock();
+        }
+    }
+
+    public void refreshProjectTree() {
+        refreshProjectTree(true);
+    }
+
+    public void refresh() {
+        refreshProjectTree();
+    }
+
+    public void refreshProject() {
+        refreshProjectTree();
+    }
+
+    public void reloadProjectTree() {
+        refreshProjectTree();
+    }
+
+    private void refreshProjectTree(boolean updateStatus) {
+        frameLock.lock();
+        try {
+            if (projectSearch == null) {
+                return;
+            }
+            List<Path> files = projectSearch.listFiles();
+            List<Path> directories = projectSearch.listDirectories();
+            Set<Path> directoryPaths = new HashSet<>(directories);
+            List<Path> entries = new ArrayList<>(directories);
+            entries.addAll(files);
+            List<Path> filtered = showHiddenFiles ? entries
+                    : entries.stream().filter(path -> {
+                        for (int i = 0; i < path.getNameCount(); i++) {
+                            if (path.getName(i).toString().startsWith(".")) {
+                                return false;
+                            }
+                        }
+                        return true;
+                    }).toList();
+            buildProjectTree(filtered, directoryPaths);
+            String previous = (projectFiles == null || projectFiles.isEmpty()) ? ""
+                    : (projectList.selected() >= 0 && projectList.selected() < projectFiles.size()
+                            ? projectFiles.get(projectList.selected()) : "");
+            recomputeVisible(previous);
+            projectFilesLoading = false;
+            if (updateStatus) {
+                status = visibleNodeObjects.isEmpty() ? "No project files found" : "Project files loaded";
+            }
+        } finally {
+            frameLock.unlock();
+        }
+    }
+
+    private void buildProjectTree(List<Path> files, Set<Path> directoryPaths) {
+        Set<Path> expanded = new HashSet<>();
+        collectExpanded(rootNodes, expanded);
+        List<ProjectNode> newRoots = new ArrayList<>();
+        Map<Path, ProjectNode> byPath = new HashMap<>();
+        for (Path file : files) {
+            ProjectNode parent = null;
+            Path accumulated = Path.of("");
+            for (int i = 0; i < file.getNameCount(); i++) {
+                accumulated = accumulated.resolve(file.getName(i));
+                boolean leaf = i == file.getNameCount() - 1;
+                ProjectNode node = byPath.get(accumulated);
+                if (node == null) {
+                    node = new ProjectNode(accumulated, file.getName(i).toString(), !leaf || directoryPaths.contains(accumulated));
+                    node.expanded = expanded.contains(accumulated);
+                    node.parent = parent;
+                    node.children = new ArrayList<>();
+                    byPath.put(accumulated, node);
+                    if (parent == null) {
+                        newRoots.add(node);
+                    } else {
+                        parent.children.add(node);
+                    }
+                } else if (!leaf) {
+                    node.directory = true;
+                }
+                parent = node;
+            }
+        }
+        sortProjectNodes(newRoots);
+        rootNodes.clear();
+        rootNodes.addAll(newRoots);
+    }
+
+    private static void collectExpanded(List<ProjectNode> nodes, Set<Path> expanded) {
+        for (ProjectNode node : nodes) {
+            if (node.expanded) {
+                expanded.add(node.relative);
+            }
+            collectExpanded(node.children, expanded);
+        }
+    }
+
+    private void sortProjectNodes(List<ProjectNode> nodes) {
+        if (nodes == null || nodes.size() < 2) {
+            if (nodes != null) {
+                for (ProjectNode node : new ArrayList<>(nodes)) {
+                    if (node != null && node.children != null && !node.children.isEmpty()
+                            && node.children != nodes) {
+                        sortProjectNodes(node.children);
+                    }
+                }
+            }
+            return;
+        }
+        List<ProjectNode> sorted = new ArrayList<>(nodes);
+        sorted.sort(Comparator.comparing((ProjectNode node) -> !node.directory)
+                .thenComparing(node -> node.name));
+        nodes.clear();
+        nodes.addAll(sorted);
+        for (ProjectNode node : new ArrayList<>(nodes)) {
+            if (node != null && node.children != null && !node.children.isEmpty()
+                    && node.children != nodes) {
+                sortProjectNodes(node.children);
+            }
+        }
+    }
+
+    private void recomputeVisible(String previousSelection) {
+        List<ProjectNode> objects = new ArrayList<>();
+        appendVisible(rootNodes, objects);
+        visibleNodeObjects = List.copyOf(objects);
+        List<String> paths = new ArrayList<>();
+        for (ProjectNode node : objects) {
+            paths.add(node.relative.toString().replace('\\', '/'));
+        }
+        projectFiles = List.copyOf(paths);
+        List<String> labels = new ArrayList<>();
+        for (ProjectNode node : objects) {
+            labels.add(projectNodeLabel(node));
+        }
+        projectList.items(labels.isEmpty() ? List.of("No project files found") : labels);
+        int index = paths.indexOf(previousSelection);
+        if (index < 0 && !paths.isEmpty()) {
+            index = 0;
+        }
+        if (index >= 0) {
+            projectList.selected(index);
+        } else {
+            projectList.selected(0);
+        }
+        syncedFileIndex = projectList.selected();
+        if (paths.isEmpty()) {
+            state.selectFile("");
+        } else {
+            int selected = projectList.selected();
+            if (selected >= 0 && selected < paths.size()) {
+                state.selectFile(paths.get(selected));
+            }
+        }
+    }
+
+    private String projectNodeLabel(ProjectNode node) {
+        boolean nerd = fileIcons.mode() == IconMode.NERD;
+        List<ProjectNode> ancestors = new ArrayList<>();
+        for (ProjectNode parent = node.parent; parent != null; parent = parent.parent) {
+            ancestors.add(parent);
+        }
+        StringBuilder label = new StringBuilder();
+        for (int i = ancestors.size() - 1; i >= 0; i--) {
+            label.append(isLastSibling(ancestors.get(i)) ? "    " : unicodeProjectTree ? "│   " : "|   ");
+        }
+        label.append(isLastSibling(node) ? (unicodeProjectTree ? "└── " : "\\-- ")
+                : (unicodeProjectTree ? "├── " : "|-- "));
+        if (node.directory) {
+            label.append(nerd ? (node.expanded ? "▾ " : "▸ ") : (node.expanded ? "- " : "+ "));
+        }
+        label.append((node.directory ? fileIcons.folderIconFor(node.name) : fileIcons.iconFor(node.name))
+                .symbol(fileIcons.mode())).append(' ');
+        label.append(node.name);
+        if (node.directory) {
+            label.append('/');
+        }
+        return label.toString();
+    }
+
+    private boolean isLastSibling(ProjectNode node) {
+        List<ProjectNode> siblings = node.parent == null ? rootNodes : node.parent.children;
+        return !siblings.isEmpty() && siblings.getLast() == node;
+    }
+
+    private void appendVisible(List<ProjectNode> nodes, List<ProjectNode> output) {
+        for (ProjectNode node : nodes) {
+            output.add(node);
+            if (node.directory && node.expanded && node.children != null) {
+                appendVisible(node.children, output);
             }
         }
         refreshVcs();
@@ -609,7 +787,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
      * frame or an inspect render.
      */
     private Element locked(Element delegate) {
-        return new LockedElement(delegate, frameLock);
+        return new LockedElement(delegate, frameLock, null);
     }
 
     private Panel centerPanel() {
@@ -632,6 +810,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         List<StatusBarWidget> widgets = new ArrayList<>();
         String shellMessage = status.replace(" | IDEA MCP: disconnected", "");
         widgets.add(new StatusBarWidget("shell", 0, shellMessage, compactShellStatus(shellMessage)));
+        if (projectInputMode != InputMode.NONE || vcsPrompt != VcsPrompt.NONE || pendingDeletePath != null) {
+            return List.copyOf(widgets);
+        }
         if (capabilityRegistry != null) {
             int order = 10;
             for (CapabilityStatusWidgets capabilityStatusWidgets : capabilityRegistry.statusBarSnapshot()) {
@@ -793,6 +974,20 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             return EventResult.UNHANDLED;
         }
         syncFileSelection();
+        if (projectInputMode != InputMode.NONE && handleProjectKey(key)) {
+            return EventResult.HANDLED;
+        }
+        if (pendingDeletePath != null) {
+            if (key.isCharIgnoreCase('y')) {
+                deleteSelectedConfirmed();
+                return EventResult.HANDLED;
+            }
+            if (key.isCharIgnoreCase('n') || key.isKey(KeyCode.ESCAPE)) {
+                cancelDelete();
+                return EventResult.HANDLED;
+            }
+            return EventResult.HANDLED;
+        }
         if (inputCaptured && key.isKey(KeyCode.ESCAPE)) {
             releaseCapture();
             return EventResult.HANDLED;
@@ -899,6 +1094,14 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         }
         if (parts.keymap().matches(key, KeyActions.MOVE_DOWN)) {
             moveSelection(1);
+            return EventResult.HANDLED;
+        }
+        if (key.isRight()) {
+            expandSelected();
+            return EventResult.HANDLED;
+        }
+        if (key.isLeft()) {
+            collapseSelected();
             return EventResult.HANDLED;
         }
         if (key.isQuit()) {
@@ -1033,6 +1236,26 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 closeOverlays(parts);
                 requestBranchSwitch();
             }
+            case KeyActions.PROJECT_NEW_FILE -> {
+                closeOverlays(parts);
+                beginProjectInput(InputMode.CREATE_FILE);
+            }
+            case KeyActions.PROJECT_NEW_DIRECTORY -> {
+                closeOverlays(parts);
+                beginProjectInput(InputMode.CREATE_DIRECTORY);
+            }
+            case KeyActions.PROJECT_RENAME -> {
+                closeOverlays(parts);
+                beginProjectInput(InputMode.RENAME);
+            }
+            case KeyActions.PROJECT_DELETE -> {
+                closeOverlays(parts);
+                requestDeleteSelected();
+            }
+            case KeyActions.PROJECT_REFRESH -> {
+                closeOverlays(parts);
+                refreshProjectTree();
+            }
             case KeyActions.PROJECT_WIDER -> {
                 closeOverlays(parts);
                 resizeProject(2);
@@ -1092,6 +1315,13 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private void openSelectedFile() {
         if (projectFiles.isEmpty()) {
             status = projectFilesLoading ? "Loading project files..." : "No project files found";
+            return;
+        }
+        ProjectNode selected = selectedProjectNode();
+        if (selected != null && selected.directory) {
+            selected.expanded = !selected.expanded;
+            recomputeVisible(projectFiles.get(Math.min(projectList.selected(), projectFiles.size() - 1)));
+            status = (selected.expanded ? "Expanded " : "Collapsed ") + selected.relative;
             return;
         }
         openFile(Path.of(projectFiles.get(projectList.selected())), 0);
@@ -1773,7 +2003,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         return active.handleKey(key);
     }
 
-    private void moveSelection(int delta) {
+    public void moveSelection(int delta) {
         if (projectFiles.isEmpty()) {
             status = projectFilesLoading ? "Loading project files..." : "No project files found";
             return;
@@ -1987,6 +2217,349 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         return projectList.selected();
     }
 
+    public List<String> projectFiles() {
+        return projectFiles;
+    }
+
+    public Path projectRoot() {
+        return projectRoot;
+    }
+
+    public Path selectedPath() {
+        int selected = projectList.selected();
+        if (selected < 0 || selected >= projectFiles.size()) {
+            return null;
+        }
+        return projectRoot.resolve(projectFiles.get(selected));
+    }
+
+    public String selectedPathString() {
+        int selected = projectList.selected();
+        if (selected < 0 || selected >= projectFiles.size()) {
+            return "";
+        }
+        return projectFiles.get(selected);
+    }
+
+    private ProjectNode selectedProjectNode() {
+        int selected = projectList.selected();
+        if (selected < 0 || selected >= visibleNodeObjects.size()) {
+            return null;
+        }
+        return visibleNodeObjects.get(selected);
+    }
+
+    public void expandSelected() {
+        ProjectNode node = selectedProjectNode();
+        if (node != null && node.directory && !node.expanded) {
+            node.expanded = true;
+            recomputeVisible(selectedPathString());
+            status = "Expanded " + node.relative;
+        }
+    }
+
+    public void collapseSelected() {
+        ProjectNode node = selectedProjectNode();
+        if (node != null && node.directory && node.expanded) {
+            node.expanded = false;
+            recomputeVisible(selectedPathString());
+            status = "Collapsed " + node.relative;
+        }
+    }
+
+    public void toggleSelected() {
+        ProjectNode node = selectedProjectNode();
+        if (node != null && node.directory) {
+            node.expanded = !node.expanded;
+            recomputeVisible(selectedPathString());
+            status = (node.expanded ? "Expanded " : "Collapsed ") + node.relative;
+        }
+    }
+
+    private void beginProjectInput(InputMode mode) {
+        if (fileOperations == null) {
+            status = "Project file operations unavailable";
+            return;
+        }
+        if (mode == InputMode.RENAME && selectedProjectNode() == null) {
+            status = "No selection";
+            return;
+        }
+        projectInputMode = mode;
+        projectInput.setLength(0);
+        pendingProjectFocus = true;
+        updateProjectPrompt();
+    }
+
+    private void updateProjectPrompt() {
+        String label = switch (projectInputMode) {
+            case CREATE_FILE -> "New file";
+            case CREATE_DIRECTORY -> "New directory";
+            case RENAME -> "Rename";
+            case NONE -> "";
+        };
+        status = label + ": " + projectInput + " (Enter to confirm, Escape to cancel)";
+    }
+
+    private boolean handleProjectKey(KeyEvent key) {
+        if (projectInputMode != InputMode.NONE) {
+            if (key.isKey(KeyCode.ESCAPE)) {
+                projectInputMode = InputMode.NONE;
+                status = "Project action cancelled";
+            } else if (key.isKey(KeyCode.ENTER)) {
+                String name = projectInput.toString();
+                InputMode mode = projectInputMode;
+                projectInputMode = InputMode.NONE;
+                switch (mode) {
+                    case CREATE_FILE -> createFile(name);
+                    case CREATE_DIRECTORY -> createDirectory(name);
+                    case RENAME -> renameSelected(name);
+                    case NONE -> { }
+                }
+            } else if (key.isKey(KeyCode.BACKSPACE) && !projectInput.isEmpty()) {
+                projectInput.delete(projectInput.offsetByCodePoints(projectInput.length(), -1), projectInput.length());
+                updateProjectPrompt();
+            } else if (key.code() == KeyCode.CHAR && key.codePoint() >= 32 && !key.hasCtrl() && !key.hasAlt()) {
+                projectInput.appendCodePoint(key.codePoint());
+                updateProjectPrompt();
+            }
+            return true;
+        }
+        if (pendingDeletePath != null) {
+            if (key.isCharIgnoreCase('y')) {
+                deleteSelectedConfirmed();
+            } else if (key.isCharIgnoreCase('n') || key.isKey(KeyCode.ESCAPE)) {
+                cancelDelete();
+            }
+            return true;
+        }
+        KeymapParts parts = overlays();
+        if (inputCaptured || parts.menuPopup().isOpen() || parts.commandPalette().isOpen()
+                || parts.keymapHelp().isOpen() || (parts.searchModel() != null && parts.searchModel().isOpen())) {
+            return false;
+        }
+        if (parts.keymap().matches(key, KeyActions.PROJECT_NEW_FILE)) {
+            beginProjectInput(InputMode.CREATE_FILE);
+        } else if (parts.keymap().matches(key, KeyActions.PROJECT_NEW_DIRECTORY)) {
+            beginProjectInput(InputMode.CREATE_DIRECTORY);
+        } else if (parts.keymap().matches(key, KeyActions.PROJECT_RENAME)) {
+            beginProjectInput(InputMode.RENAME);
+        } else if (parts.keymap().matches(key, KeyActions.PROJECT_DELETE)) {
+            requestDeleteSelected();
+        } else if (parts.keymap().matches(key, KeyActions.PROJECT_REFRESH)) {
+            refreshProjectTree();
+        } else {
+            return false;
+        }
+        return true;
+    }
+
+    public boolean createFile(String name) {
+        return createEntry(name, false);
+    }
+
+    public boolean createDirectory(String name) {
+        return createEntry(name, true);
+    }
+
+    private boolean createEntry(String name, boolean directory) {
+        if (name == null || name.isBlank()) {
+            status = "A name is required";
+            return false;
+        }
+        ProjectNode parent = selectedProjectNode();
+        if (parent != null && !parent.directory) {
+            parent = parent.parent;
+        }
+        if (fileOperations == null) {
+            status = "Project file operations unavailable";
+            return false;
+        }
+        Path parentRelative = parent == null ? Path.of("") : parent.relative;
+        CapabilityResult<Path> result = directory ? fileOperations.createDirectory(parentRelative, name)
+                : fileOperations.createFile(parentRelative, name);
+        if (result instanceof CapabilityResult.Failed<Path> failed) {
+            status = "Create failed: " + failed.failure().detail();
+            return false;
+        }
+        if (name.startsWith(".")) {
+            showHiddenFiles = true;
+        }
+        if (parent != null) {
+            parent.expanded = true;
+        }
+        Path newRelative = parentRelative.resolve(name);
+        refreshProjectTree();
+        selectPath(newRelative.toString().replace('\\', '/'));
+        status = (directory ? "Directory" : "File") + " created: " + newRelative;
+        return true;
+    }
+
+    public boolean renameSelected(String newName) {
+        ProjectNode node = selectedProjectNode();
+        if (node == null) {
+            status = "No selection";
+            return false;
+        }
+        if (newName == null || newName.isBlank()) {
+            status = "A name is required";
+            return false;
+        }
+        if (fileOperations == null) {
+            status = "Project file operations unavailable";
+            return false;
+        }
+        CapabilityResult<Path> result = fileOperations.rename(node.relative, newName);
+        if (result instanceof CapabilityResult.Failed<Path> failed) {
+            status = "Rename failed: " + failed.failure().detail();
+            return false;
+        }
+        Path parent = node.relative.getParent();
+        Path newRelative = parent == null ? Path.of(newName) : parent.resolve(newName);
+        refreshProjectTree();
+        selectPath(newRelative.toString().replace('\\', '/'));
+        status = "Renamed to " + newName;
+        return true;
+    }
+
+    public void requestDeleteSelected() {
+        ProjectNode node = selectedProjectNode();
+        if (node == null) {
+            status = "No selection";
+            return;
+        }
+        pendingDeletePath = node.relative.toString().replace('\\', '/');
+        status = "Delete '" + node.name + "'? (y/n)";
+    }
+
+    public boolean deleteSelectedConfirmed() {
+        if (pendingDeletePath == null || pendingDeletePath.isBlank()) {
+            return false;
+        }
+        if (fileOperations == null) {
+            status = "Project file operations unavailable";
+            return false;
+        }
+        CapabilityResult<Path> result = fileOperations.delete(Path.of(pendingDeletePath));
+        if (result instanceof CapabilityResult.Failed<Path> failed) {
+            status = "Delete failed: " + failed.failure().detail();
+            return false;
+        }
+        String deleted = pendingDeletePath;
+        pendingDeletePath = null;
+        refreshProjectTree();
+        status = "Deleted " + deleted;
+        return true;
+    }
+
+    public void confirmDelete() {
+        deleteSelectedConfirmed();
+    }
+
+    public void cancelDelete() {
+        pendingDeletePath = null;
+        status = "Delete cancelled";
+    }
+
+    public boolean isDeletePending() {
+        return pendingDeletePath != null;
+    }
+
+    public void copySelectedPath() {
+        ProjectNode node = selectedProjectNode();
+        if (node == null) {
+            status = "No selection";
+            return;
+        }
+        copiedPath = projectRoot.resolve(node.relative.toString().replace('/', java.io.File.separatorChar));
+        status = "Copied path: " + copiedPath;
+    }
+
+    public Path copiedPath() {
+        return copiedPath;
+    }
+
+    public void revealFile(Path file) {
+        if (file == null) {
+            return;
+        }
+        try {
+            Path relative = projectRoot.toAbsolutePath().normalize()
+                    .relativize(file.toAbsolutePath().normalize());
+            String relativeText = relative.toString().replace('\\', '/');
+            Path accumulated = Path.of("");
+            for (Path part : relative) {
+                accumulated = accumulated.resolve(part);
+                ProjectNode node = findProjectNode(accumulated.toString().replace('\\', '/'));
+                if (node != null) {
+                    node.expanded = true;
+                }
+            }
+            refreshProjectTree();
+            selectPath(relativeText);
+        } catch (IllegalArgumentException outside) {
+            status = "File outside project";
+        }
+    }
+
+    public void revealActiveFile() {
+        if (editor == null || editor.activeDocument() == null) {
+            status = "No active file";
+            return;
+        }
+        revealFile(Path.of(editor.activeDocument().orElseThrow().file()));
+    }
+
+    public void toggleShowHiddenFiles() {
+        setShowHiddenFiles(!showHiddenFiles);
+    }
+
+    public void setShowHiddenFiles(boolean value) {
+        showHiddenFiles = value;
+        if (projectSearch != null) {
+            refreshProjectTree();
+        }
+    }
+
+    public boolean showHiddenFiles() {
+        return showHiddenFiles;
+    }
+
+    private ProjectNode findProjectNode(String relative) {
+        List<ProjectNode> current = rootNodes;
+        ProjectNode found = null;
+        Path accumulated = Path.of("");
+        for (String part : relative.split("/")) {
+            if (part.isBlank()) {
+                continue;
+            }
+            accumulated = accumulated.resolve(part);
+            ProjectNode next = null;
+            for (ProjectNode candidate : current) {
+                if (candidate.relative.equals(accumulated)) {
+                    next = candidate;
+                    break;
+                }
+            }
+            if (next == null) {
+                return null;
+            }
+            found = next;
+            current = next.children == null ? List.of() : next.children;
+        }
+        return found;
+    }
+
+    public void selectPath(String relative) {
+        int index = projectFiles.indexOf(relative);
+        if (index >= 0) {
+            projectList.selected(index);
+            syncedFileIndex = index;
+            state.selectFile(relative);
+            status = "Selected: " + relative;
+        }
+    }
+
     public String status() {
         return status;
     }
@@ -2045,12 +2618,16 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
      * passthrough of id, focus, constraint and area keeps registration, the
      * focus chain and the cascade identical to the unwrapped tree.
      */
-    private record LockedElement(Element delegate, ReentrantLock lock) implements Element {
+    private record LockedElement(Element delegate, ReentrantLock lock, VintelliShell projectOwner) implements Element {
 
         @Override
         public void render(Frame frame, Rect area, RenderContext context) {
             lock.lock();
             try {
+                if (projectOwner != null && projectOwner.pendingProjectFocus && context instanceof DefaultRenderContext drc) {
+                    drc.focusManager().setFocus("project-panel");
+                    projectOwner.pendingProjectFocus = false;
+                }
                 delegate.render(frame, area, context);
             } finally {
                 lock.unlock();
@@ -2066,6 +2643,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         public EventResult handleKeyEvent(KeyEvent event, boolean focused) {
             lock.lock();
             try {
+                if (focused && projectOwner != null && projectOwner.handleProjectKey(event)) {
+                    return EventResult.HANDLED;
+                }
                 return delegate.handleKeyEvent(event, focused);
             } finally {
                 lock.unlock();
@@ -2106,5 +2686,24 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     @FunctionalInterface
     private interface RenderCall {
         void draw(Frame frame, Rect area);
+    }
+
+    private static final class ProjectNode {
+        Path relative;
+        String name;
+        boolean directory;
+        List<ProjectNode> children = new ArrayList<>();
+        ProjectNode parent;
+        boolean expanded;
+
+        ProjectNode(Path relative, String name, boolean directory) {
+            this.relative = relative;
+            this.name = name;
+            this.directory = directory;
+        }
+    }
+
+    private enum InputMode {
+        NONE, CREATE_FILE, CREATE_DIRECTORY, RENAME
     }
 }

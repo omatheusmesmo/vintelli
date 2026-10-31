@@ -46,6 +46,16 @@ class LocalProjectSearchTest {
     }
 
     @Test
+    void listsEmptyDirectoriesWhilePruningIgnoredDirectories() throws Exception {
+        write(".gitignore", "ignored/\n");
+        Files.createDirectories(root.resolve("empty"));
+        Files.createDirectories(root.resolve("ignored"));
+        Files.createDirectories(root.resolve("parent/child"));
+        assertEquals(List.of(Path.of("empty"), Path.of("parent"), Path.of("parent/child")),
+                search().listDirectories());
+    }
+
+    @Test
     void honorsNestedIgnoreNegationAndPrunesIgnoredDirectoriesWithoutAGitRepository() throws Exception {
         write(".gitignore", "target/\n*.log\n!keep.log\n");
         write("src/.gitignore", "*.tmp\n!keep.tmp\n");

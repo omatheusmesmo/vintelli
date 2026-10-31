@@ -54,6 +54,8 @@ class KeymapTest {
                 "Ctrl+P must open the command palette (Search Everywhere stand-in)");
         assertTrue(keymap.matches(KeyEvent.ofKey(KeyCode.F1), KEYMAP_HELP),
                 "F1 must open the keymap help overlay");
+        assertTrue(keymap.matches(KeyEvent.ofKey(KeyCode.F5), KeyActions.PROJECT_REFRESH),
+                "F5 refreshes the project tree");
         assertTrue(keymap.matches(actionChord('1'), KeyActions.activateToolWindow("run")));
         assertTrue(keymap.matches(actionChord('2'), KeyActions.activateToolWindow("terminal")));
         assertTrue(keymap.matches(actionChord('3'), KeyActions.activateToolWindow("problems")));
@@ -112,7 +114,8 @@ class KeymapTest {
                 "editor_close", "editor_nextTab", "editor_previousTab", "editor_definition",
                 "editor_usages", "editor_nextProblem", "editor_toggleImportFold", "navigation_goToFile", "navigation_findInFiles",
                 "layout_project_wider", "layout_project_narrower", "layout_bottom_taller", "layout_bottom_shorter",
-                "shell.theme.switch",
+                "shell.theme.switch", "project_new_file", "project_new_directory", "project_rename",
+                "project_delete", "project_refresh",
                 "ActivateRunToolWindow", "ActivateTerminalToolWindow", "ActivateProblemsToolWindow",
                 "ActivateAcpAgentsToolWindow");
         assertEquals(expected, ids);
@@ -132,12 +135,12 @@ class KeymapTest {
         Files.writeString(userFile, """
                 # replace one navigation chord
                 moveUp = Ctrl+k
-                ActivateRunToolWindow = F9
+                ActivateRunToolWindow = F6
                 """);
 
         Keymap keymap = Keymap.load(KeymapProfile.VIM, WINDOWS, userFile);
 
-        assertTrue(keymap.matches(KeyEvent.ofKey(KeyCode.F9), KeyActions.activateToolWindow("run")));
+        assertTrue(keymap.matches(KeyEvent.ofKey(KeyCode.F6), KeyActions.activateToolWindow("run")));
         assertFalse(keymap.matches(actionChord('1'), KeyActions.activateToolWindow("run")),
                 "a mentioned action must lose the profile triggers");
         assertTrue(keymap.matches(keypress('p', KeyModifiers.CTRL), SEARCH_EVERYWHERE),

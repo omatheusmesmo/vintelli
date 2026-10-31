@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.aesh.terminal.detect.TerminalCapabilities;
 
 import dev.omatheusmesmo.vintelli.tui.keymap.ConfigDirectory;
 import dev.tamboui.style.Color;
@@ -88,7 +89,9 @@ public final class FileIcons {
      * not exist fails fast.
      */
     public static FileIcons resolve() {
-        return of(System.getProperty(IconMode.CONFIG_PROPERTY, "auto"), System.getenv(), userMappingFile());
+        IconMode mode = IconMode.fromConfig(System.getProperty(IconMode.CONFIG_PROPERTY, "auto"))
+                .resolveTerminalName(TerminalCapabilities.getInstance().terminalName());
+        return of(mode, userMappingFile());
     }
 
     /**
@@ -98,6 +101,10 @@ public final class FileIcons {
      */
     static FileIcons of(String configValue, Map<String, String> env, Path userMappingFile) {
         IconMode mode = IconMode.fromConfig(configValue).resolve(env);
+        return of(mode, userMappingFile);
+    }
+
+    private static FileIcons of(IconMode mode, Path userMappingFile) {
         Map<String, Map<String, Setting>> groups = new LinkedHashMap<>();
         collect(loadResource(RESOURCE), RESOURCE_SOURCE, groups);
         if (userMappingFile != null && Files.isRegularFile(userMappingFile)) {

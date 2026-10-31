@@ -138,6 +138,11 @@ public final class Keymap {
         builder.bind(KeyTrigger.ctrl('p'), SEARCH_EVERYWHERE);
         builder.bind(KeyTrigger.key(KeyCode.F1), KEYMAP_HELP);
         builder.bind(KeyTrigger.key(KeyCode.F10), KeyActions.MENU);
+        builder.bind(KeyTrigger.key(KeyCode.F7), KeyActions.PROJECT_NEW_FILE);
+        builder.bind(KeyTrigger.key(KeyCode.F9), KeyActions.PROJECT_NEW_DIRECTORY);
+        builder.bind(KeyTrigger.key(KeyCode.F2), KeyActions.PROJECT_RENAME);
+        builder.bind(KeyTrigger.key(KeyCode.DELETE), KeyActions.PROJECT_DELETE);
+        builder.bind(KeyTrigger.key(KeyCode.F5), KeyActions.PROJECT_REFRESH);
         builder.bind(KeyTrigger.key(KeyCode.ENTER), KeyActions.OPEN_FILE);
         builder.bind(KeyTrigger.ctrl('s'), KeyActions.SAVE);
         builder.bind(KeyTrigger.ctrl('z'), KeyActions.UNDO);
@@ -172,6 +177,7 @@ public final class Keymap {
         catalog.add(new KeyAction(SEARCH_EVERYWHERE, "Search Everywhere", "Double Shift"));
         catalog.add(new KeyAction(KEYMAP_HELP, "Keymap Help", ""));
         catalog.addAll(KeyActions.shellActions());
+        catalog.addAll(KeyActions.projectActions());
         for (ToolWindow toolWindow : toolWindows) {
             catalog.add(new KeyAction(activateToolWindow(toolWindow.id()),
                     "Activate " + toolWindow.title() + " Tool Window",

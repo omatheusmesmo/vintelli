@@ -279,9 +279,18 @@ from the live capability registry.
 
 Keys: `1-4` (or `Alt+1`..`Alt+4`) switch tool windows (Run, Terminal,
 Problems, ACP Agents), arrows and `PageUp`/`PageDown`/`Home`/`End` navigate
-the live project file list (hjkl in the `vim` profile), and every selection is
-mirrored into shell state and the status line. `Enter` opens the selected file
-in the built-in editor; `Ctrl+S` saves, `Ctrl+Z`/`Ctrl+Y` undo and redo,
+the live project tree (hjkl in the `vim` profile), and every selection is
+mirrored into shell state and the status line. The tree shows file and folder
+icons and directory disclosure arrows, using ASCII markers when Nerd Font icons
+are disabled. Tree connectors use Unicode when the terminal's locale and output
+charset support it, independently of the Nerd Font icon mode. Set
+`vintelli.icons=nerd` for the richer terminal presentation.
+`Enter` toggles a directory or opens the selected file in the built-in editor.
+With the project panel focused, `F5` refreshes the tree, `F7` creates a file,
+`F9` creates a directory, `F2` renames the selected entry, and `Delete` asks
+for confirmation before removal. Project mutations use the configured local
+file provider; names must stay within the project and rename never replaces an
+existing entry. In the editor, `Ctrl+S` saves, `Ctrl+Z`/`Ctrl+Y` undo and redo,
 `Alt+]`/`Alt+[` switch editor tabs, and `Ctrl+W` closes a tab (dirty tabs ask
 for confirmation). `F10` opens the menu bar; menu headings also respond to
 mouse clicks, and long unavailable reasons can be scrolled with Page Up/Down.
@@ -380,12 +389,12 @@ property:
 
 | Value | Face |
 |---|---|
-| `auto` (default) | Nerd Font glyphs on the terminals the detection trusts (kitty, Ghostty, WezTerm, recognized from their environment variables; the bundled symbol font of each was not checked visually), ASCII markers everywhere else |
+| `auto` (default) | AEsh detects terminal identity; kitty, Ghostty and WezTerm select Nerd Font glyphs, while other terminals use ASCII markers |
 | `nerd` | Nerd Font glyphs, for a terminal with a patched font |
 | `ascii` | ASCII markers, colored, for exact terminal compatibility |
 
-The detection cannot see the font of the terminal, so it only trusts the
-terminals listed above. On any other terminal (IDE terminals, VS Code, iTerm2,
+AEsh's environment-only detection cannot see the font of the terminal, so the
+application only trusts the terminals listed above. On other terminals (IDE terminals, VS Code, iTerm2,
 Windows Terminal, plain `xterm` over SSH) a glyph from the private use area
 shows as a tofu box, a blank or an overlapping character, depending on the font.
 Set `vintelli.icons=nerd` there only when the font is patched. Each entry
@@ -403,6 +412,12 @@ overrides exactly the field it names, so `ext.java.ascii=Jv` changes only the
 ASCII marker of Java files; keys are case-insensitive. An invalid key, a
 duplicate key, an unknown color name or an unknown `vintelli.icons` value
 fails fast and names the source.
+
+Project tree connectors are detected separately from icon fonts. Vintelli uses
+the `├──`, `└──`, and `│` line characters when the active locale is UTF-8 (or
+unset) and the output charset can encode them. `TERM=dumb`, an explicitly
+non-UTF-8 locale, or an output charset that cannot encode the connectors selects
+the ASCII fallback.
 
 ## MCP server
 

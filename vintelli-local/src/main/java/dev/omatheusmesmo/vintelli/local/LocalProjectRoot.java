@@ -38,7 +38,7 @@ public final class LocalProjectRoot {
                 .normalize().toAbsolutePath();
     }
 
-    LocalProjectRoot(Path root) {
+    public LocalProjectRoot(Path root) {
         this.root = root.toAbsolutePath().normalize();
     }
 

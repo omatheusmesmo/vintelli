@@ -76,6 +76,16 @@ public enum IconMode {
         return this == AUTO ? autoDetect(env) : this;
     }
 
+    IconMode resolveTerminalName(String name) {
+        if (this != AUTO) {
+            return this;
+        }
+        return switch (name == null ? "" : name.toLowerCase(Locale.ROOT)) {
+            case "kitty", "ghostty", "wezterm" -> NERD;
+            default -> ASCII;
+        };
+    }
+
     private static IconMode autoDetect(Map<String, String> env) {
         if (present(env, "KITTY_PID")
                 || present(env, "KITTY_WINDOW_ID")
