@@ -46,6 +46,8 @@ class WebTerminalSessionLimitTest {
         } finally {
             second.close();
             first.close();
+            assertTrue(second.awaitClosed(5_000), "second capped session must release its slot before the next test");
+            assertTrue(first.awaitClosed(5_000), "first capped session must release its slot before the next test");
         }
     }
 

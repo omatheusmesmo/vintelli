@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -26,6 +27,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityFailure;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
+import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability.Entry;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability.State;
@@ -65,6 +67,28 @@ class LocalVersionControlCapabilityTest {
             assertNull(status.ahead());
             assertNull(status.behind());
             assertEquals(List.of(new Entry(State.UNTRACKED, "notes.txt")), status.entries());
+        }
+    }
+
+    @Test
+    void statusBarBranchIsCachedAsynchronouslyAndRefreshesAfterTheBranchChanges()
+            throws IOException, GitAPIException {
+        Path repo = temp.resolve("status-bar-repo");
+        Files.createDirectories(repo);
+        try (Git git = initRepository(repo);
+                LocalVersionControlCapability capability = capabilityAt(repo)) {
+            Files.writeString(repo.resolve("a.txt"), "one\n");
+            commitAll(git, "initial");
+
+            TestProcesses.awaitUntil(Duration.ofSeconds(5),
+                    () -> capability.statusBarWidgets(CapabilityType.VERSION_CONTROL).getFirst().text()
+                            .equals("Branch: main"));
+
+            git.checkout().setCreateBranch(true).setName("feature/status-bar").call();
+            value(capability.status());
+
+            assertEquals("Branch: feature/status-bar",
+                    capability.statusBarWidgets(CapabilityType.VERSION_CONTROL).getFirst().text());
         }
     }
 

@@ -33,6 +33,10 @@ class VintelliShellRenderTest {
                         "mainAreaTop", not(isEmptyOrNullString()),
                         "mainAreaTop", containsString("╭"),
                         "status", not(isEmptyOrNullString()),
+                        "status", containsString("R:"),
+                        "status", containsString("T:"),
+                        "status", containsString("P:"),
+                        "status", containsString("IDEA:"),
                         "theme", is(ShellThemes.DEFAULT_THEME));
     }
 

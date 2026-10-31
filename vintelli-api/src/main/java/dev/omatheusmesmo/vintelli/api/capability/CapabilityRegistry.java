@@ -2,6 +2,8 @@ package dev.omatheusmesmo.vintelli.api.capability;
 
 import java.util.List;
 
+import dev.omatheusmesmo.vintelli.api.statusbar.CapabilityStatusWidgets;
+
 /**
  * Read only view of the capability selection that the app runs with. Tool
  * windows, the status bar and the CLI consume this interface only; the module
@@ -55,4 +57,13 @@ public interface CapabilityRegistry {
      * {@code Problems: jdtls}).
      */
     List<CapabilityStatus> snapshot();
+
+    /**
+     * Snapshot used only while rendering the TUI status bar. Unlike
+     * {@link #snapshot()}, this may request provider widget contributions.
+     * Implementations should keep such contributions quick and non-blocking.
+     */
+    default List<CapabilityStatusWidgets> statusBarSnapshot() {
+        return snapshot().stream().map(status -> new CapabilityStatusWidgets(status, List.of())).toList();
+    }
 }

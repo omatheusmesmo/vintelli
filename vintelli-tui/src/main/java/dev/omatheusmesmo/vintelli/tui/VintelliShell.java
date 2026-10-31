@@ -20,9 +20,14 @@ import dev.omatheusmesmo.vintelli.tui.keymap.ConfigDirectory;
 import dev.omatheusmesmo.vintelli.tui.search.ProjectSearchModel;
 import dev.omatheusmesmo.vintelli.tui.search.ProjectSearchOverlay;
 import dev.omatheusmesmo.vintelli.api.search.ProjectSearch;
-import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability;
+import dev.omatheusmesmo.vintelli.api.capability.CapabilityRegistry;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
+import dev.omatheusmesmo.vintelli.api.capability.CapabilityStatus;
+import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability;
 import dev.omatheusmesmo.vintelli.api.capability.EditorBridge.OpenRequest;
+import dev.omatheusmesmo.vintelli.api.statusbar.StatusBarWidget;
+import dev.omatheusmesmo.vintelli.api.statusbar.StatusBarWidgetContributor;
+import dev.omatheusmesmo.vintelli.api.statusbar.CapabilityStatusWidgets;
 import dev.tamboui.layout.Constraint;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.terminal.Frame;
@@ -147,6 +152,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private final BuiltinEditor editor;
     private final ProjectSearch projectSearch;
     private final List<NavigationCapability> navigationProviders;
+    private final CapabilityRegistry capabilityRegistry;
+    private final List<StatusBarWidgetContributor> statusBarContributors;
     private final ShellLayout shellLayout;
     private final ShellLayoutStore layoutStore;
     private volatile DockElement layoutDock;
@@ -179,8 +186,18 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     @Inject
     public VintelliShell(ToolWindowRegistry registry, ShellState state, KeymapRegistry keymapRegistry,
             Instance<ShellThemes> themes, ProjectSearch projectSearch,
-            @All List<NavigationCapability> navigationProviders) {
-        this(registry.toolWindows(), state, keymapRegistry::get, themes.get(), projectSearch, navigationProviders, true);
+            @All List<NavigationCapability> navigationProviders, CapabilityRegistry capabilityRegistry,
+            @All List<StatusBarWidgetContributor> statusBarContributors) {
+        this(registry.toolWindows(), state, keymapRegistry::get, themes.get(), projectSearch, navigationProviders,
+                capabilityRegistry, true, statusBarContributors);
+    }
+
+    /** Backward-compatible construction surface for embedders that wire providers manually. */
+    public VintelliShell(ToolWindowRegistry registry, ShellState state, KeymapRegistry keymapRegistry,
+            Instance<ShellThemes> themes, ProjectSearch projectSearch,
+            List<NavigationCapability> navigationProviders, CapabilityRegistry capabilityRegistry) {
+        this(registry.toolWindows(), state, keymapRegistry::get, themes.get(), projectSearch, navigationProviders,
+                capabilityRegistry, true, registry.toolWindows());
     }
 
     /**
@@ -190,7 +207,19 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
      * profile drives it.
      */
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state, ShellThemes themes) {
-        this(toolWindows, state, () -> Keymap.defaultKeymap(toolWindows), themes, null, List.of(), false);
+        this(toolWindows, state, () -> Keymap.defaultKeymap(toolWindows), themes, null, List.of(), null, false);
+    }
+
+    public VintelliShell(List<ToolWindow> toolWindows, ShellState state, ShellThemes themes,
+            CapabilityRegistry capabilityRegistry) {
+        this(toolWindows, state, () -> Keymap.defaultKeymap(toolWindows), themes, null, List.of(),
+                capabilityRegistry, false);
+    }
+
+    public VintelliShell(List<ToolWindow> toolWindows, ShellState state, ShellThemes themes,
+            List<NavigationCapability> navigationProviders, CapabilityRegistry capabilityRegistry) {
+        this(toolWindows, state, () -> Keymap.defaultKeymap(toolWindows), themes, null, navigationProviders,
+                capabilityRegistry, false);
     }
 
     /**
@@ -198,7 +227,12 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
      * named profile or a user keymap source.
      */
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Keymap keymap, ShellThemes themes) {
-        this(toolWindows, state, () -> keymap, themes, null, List.of(), false);
+        this(toolWindows, state, () -> keymap, themes, null, List.of(), null, false);
+    }
+
+    public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Keymap keymap, ShellThemes themes,
+            CapabilityRegistry capabilityRegistry) {
+        this(toolWindows, state, () -> keymap, themes, null, List.of(), capabilityRegistry, false);
     }
 
     /**
@@ -207,26 +241,54 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
      */
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
             ShellThemes themes) {
-        this(toolWindows, state, keymapSupplier, themes, null, List.of(), false);
+        this(toolWindows, state, keymapSupplier, themes, null, List.of(), null, false);
+    }
+
+    public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
+            ShellThemes themes, CapabilityRegistry capabilityRegistry) {
+        this(toolWindows, state, keymapSupplier, themes, null, List.of(), capabilityRegistry, false);
     }
 
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
             ShellThemes themes, ProjectSearch projectSearch) {
-        this(toolWindows, state, keymapSupplier, themes, projectSearch, List.of(), false);
+        this(toolWindows, state, keymapSupplier, themes, projectSearch, List.of(), null, false);
+    }
+
+    public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
+            ShellThemes themes, ProjectSearch projectSearch, CapabilityRegistry capabilityRegistry) {
+        this(toolWindows, state, keymapSupplier, themes, projectSearch, List.of(), capabilityRegistry, false);
     }
 
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
             ShellThemes themes, ProjectSearch projectSearch, List<NavigationCapability> navigationProviders) {
-        this(toolWindows, state, keymapSupplier, themes, projectSearch, navigationProviders, false);
+        this(toolWindows, state, keymapSupplier, themes, projectSearch, navigationProviders, null, false);
+    }
+
+    public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
+            ShellThemes themes, ProjectSearch projectSearch, List<NavigationCapability> navigationProviders,
+            CapabilityRegistry capabilityRegistry) {
+        this(toolWindows, state, keymapSupplier, themes, projectSearch, navigationProviders, capabilityRegistry, false);
+    }
+
+
+
+    private VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
+            ShellThemes themes, ProjectSearch projectSearch, List<NavigationCapability> navigationProviders,
+            CapabilityRegistry capabilityRegistry, boolean persistLayout) {
+        this(toolWindows, state, keymapSupplier, themes, projectSearch, navigationProviders, capabilityRegistry,
+                persistLayout, toolWindows);
     }
 
     private VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
             ShellThemes themes, ProjectSearch projectSearch, List<NavigationCapability> navigationProviders,
-            boolean persistLayout) {
+            CapabilityRegistry capabilityRegistry, boolean persistLayout,
+            List<? extends StatusBarWidgetContributor> statusBarContributors) {
         this.themes = themes;
         this.state = state;
         this.projectSearch = projectSearch;
         this.navigationProviders = List.copyOf(navigationProviders);
+        this.capabilityRegistry = capabilityRegistry;
+        this.statusBarContributors = List.copyOf(statusBarContributors);
         this.editor = toolWindows.stream().filter(BuiltinEditor.class::isInstance)
                 .map(BuiltinEditor.class::cast).findFirst().orElse(null);
         this.toolWindows = toolWindows.stream().filter(window -> !(window instanceof BuiltinEditor)).toList();
@@ -551,10 +613,86 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     private Element statusBarEntry() {
         syncFileSelection();
-        TextElement statusBarText = Toolkit.text(" " + status);
-        statusBarText.id("status-bar");
-        statusBarText.length(1);
-        return statusBarText;
+        return new StatusBarElement(this::statusBarModelWidgets);
+    }
+
+    private List<StatusBarWidget> statusBarModelWidgets() {
+        List<StatusBarWidget> widgets = new ArrayList<>();
+        String shellMessage = status.replace(" | IDEA MCP: disconnected", "");
+        widgets.add(new StatusBarWidget("shell", 0, shellMessage, compactShellStatus(shellMessage)));
+        if (capabilityRegistry != null) {
+            int order = 10;
+            for (CapabilityStatusWidgets capabilityStatusWidgets : capabilityRegistry.statusBarSnapshot()) {
+                CapabilityStatus capabilityStatus = capabilityStatusWidgets.status();
+                widgets.add(capabilityWidget(capabilityStatus, order++));
+                widgets.addAll(capabilityStatusWidgets.widgets());
+            }
+        }
+        if (editor != null) {
+            editor.statusBarInfo().ifPresent(info -> {
+                String cursor = "L" + info.line() + ":C" + info.column();
+                widgets.add(new StatusBarWidget("editor-caret", 8, "Caret " + cursor, cursor));
+                String details = info.encoding() + " · " + info.lineSeparator() + " · " + info.fileType();
+                widgets.add(new StatusBarWidget("editor-format", 101, details,
+                        info.encoding().replace("-", "") + " " + info.lineSeparator() + " " + info.fileType()));
+            });
+        }
+        for (StatusBarWidgetContributor contributor : statusBarContributors) {
+            widgets.addAll(contributor.statusBarWidgets());
+        }
+        return List.copyOf(widgets);
+    }
+
+    private StatusBarWidget capabilityWidget(CapabilityStatus status, int order) {
+        String label = switch (status.capability()) {
+            case RUN -> "Run";
+            case TERMINAL -> "Terminal";
+            case READ_FILE -> "Read File";
+            case DIAGNOSTICS -> "Problems";
+            case CALL_HIERARCHY -> "Call Hierarchy";
+            case EDITOR_BRIDGE -> "Editor";
+            case VERSION_CONTROL -> "VCS";
+        };
+        String shortLabel = switch (status.capability()) {
+            case RUN -> "R";
+            case TERMINAL -> "T";
+            case READ_FILE -> "RF";
+            case DIAGNOSTICS -> "P";
+            case CALL_HIERARCHY -> "CH";
+            case EDITOR_BRIDGE -> "E";
+            case VERSION_CONTROL -> "VCS";
+        };
+        String id = "capability-" + status.capability().label();
+        if (status.isAvailable()) {
+            return new StatusBarWidget(id, order,
+                    label + ": " + status.providerIdentifier() + " (" + status.provenance() + ")",
+                    shortLabel + ":" + StatusBarLayout.truncate(status.providerIdentifier(), 7));
+        }
+        return new StatusBarWidget(id, order, label + ": unavailable: " + status.health().reason(),
+                shortLabel + ":!" + compactReason(status.health().reason()));
+    }
+
+    private static String compactShellStatus(String message) {
+        if (message.startsWith("Tool window: ")) {
+            return message;
+        }
+        if (message.startsWith("Vintelli ready") || message.equals("Project files loaded")) {
+            return "Ready";
+        }
+        if (message.startsWith("Loading project files")) {
+            return "Loading";
+        }
+        if (message.startsWith("No project files")) {
+            return "No files";
+        }
+        if (message.startsWith("Project files unavailable")) {
+            return "Project!";
+        }
+        return StatusBarLayout.truncate(message, 8);
+    }
+
+    private static String compactReason(String reason) {
+        return StatusBarLayout.truncate(reason, 12);
     }
 
     private Element paletteOverlayElement() {
@@ -1432,6 +1570,14 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     public String status() {
         return status;
+    }
+
+    public CapabilityRegistry capabilityRegistry() {
+        return capabilityRegistry;
+    }
+
+    public List<CapabilityStatus> statusBarWidgets() {
+        return capabilityRegistry == null ? List.of() : capabilityRegistry.snapshot();
     }
 
     /**

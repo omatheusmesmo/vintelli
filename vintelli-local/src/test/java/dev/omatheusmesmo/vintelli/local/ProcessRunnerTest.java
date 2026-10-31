@@ -194,7 +194,8 @@ class ProcessRunnerTest {
         ProcessRunner.ProcessResult result = null;
         try {
             result = runner.run(new ProcessRunner.CommandPlan(
-                    command(detacher, sleeper.toString(), pidFile.toString()), temp, Map.of(), GENEROUS));
+                    command(detacher, sleeper.toString(), pidFile.toString(), MODULE_DIRECTORY.toString()), temp,
+                    Map.of(), GENEROUS));
             Duration elapsed = Duration.ofNanos(System.nanoTime() - started);
             String observed = result.outcome() + " exit=" + result.exitCode() + " in " + elapsed
                     + " lines=" + result.outputLines();
@@ -220,7 +221,9 @@ class ProcessRunnerTest {
         ProcessRunner runner = new ProcessRunner(Duration.ofSeconds(1));
 
         ProcessRunner.Handle handle = runner.start(
-                new ProcessRunner.CommandPlan(command(detacher, sleeper.toString(), pidFile.toString()), temp, Map.of(), GENEROUS),
+                new ProcessRunner.CommandPlan(
+                        command(detacher, sleeper.toString(), pidFile.toString(), MODULE_DIRECTORY.toString()), temp,
+                        Map.of(), GENEROUS),
                 observed::add, termination -> observed.add("RUN_TERMINATED:" + termination.outcome()));
         try {
             TestProcesses.awaitUntil(STREAM_SETTLE, () -> observed.contains("RUN_TERMINATED:EXITED"));

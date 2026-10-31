@@ -12,6 +12,8 @@ import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
 import io.modelcontextprotocol.spec.McpSchema.Implementation;
 import io.modelcontextprotocol.spec.McpSchema.TextContent;
 import io.modelcontextprotocol.spec.McpSchema.Tool;
+import dev.omatheusmesmo.vintelli.api.statusbar.StatusBarWidget;
+import dev.omatheusmesmo.vintelli.api.statusbar.StatusBarWidgetContributor;
 import io.smallrye.config.ConfigMapping;
 import jakarta.annotation.PreDestroy;
 import jakarta.inject.Inject;
@@ -27,6 +29,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -59,7 +62,7 @@ import java.util.concurrent.TimeoutException;
  * aborts the in-flight request.
  */
 @Singleton
-public final class IdeaMcpClient implements AutoCloseable {
+public final class IdeaMcpClient implements AutoCloseable, StatusBarWidgetContributor {
 
     private static final Logger LOG = Logger.getLogger(IdeaMcpClient.class);
 
@@ -103,6 +106,23 @@ public final class IdeaMcpClient implements AutoCloseable {
 
     public ConnectionStatus status() {
         return status;
+    }
+
+    @Override
+    public List<StatusBarWidget> statusBarWidgets() {
+        ConnectionStatus current = status;
+        String stateName = current.state().name().toLowerCase(Locale.ROOT).replace('_', ' ');
+        String text = "IDEA MCP: " + stateName + " — " + current.detail();
+        String compactState = switch (current.state()) {
+            case CONNECTED -> "on";
+            case DISCONNECTED -> "off";
+            case UNREACHABLE, ENDPOINT_NOT_FOUND -> "down";
+            case AUTH_REQUIRED -> "auth";
+            case CONSENT_PENDING -> "wait";
+            case TIMEOUT -> "slow";
+            case ERROR -> "error";
+        };
+        return List.of(new StatusBarWidget("idea-mcp", 5, text, "IDEA:" + compactState));
     }
 
     /**

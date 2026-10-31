@@ -48,6 +48,7 @@ public final class EditorDocument {
     public String text() { return state.text(); }
     public int row() { return state.cursorRow(); }
     public int column() { return state.cursorCol(); }
+    public String lineSeparator() { return newline; }
     public boolean dirty() { return savedText == null || !savedText.equals(text()); }
     public List<Diagnostic> diagnostics() { return diagnostics; }
     TextAreaState state() { return state; }

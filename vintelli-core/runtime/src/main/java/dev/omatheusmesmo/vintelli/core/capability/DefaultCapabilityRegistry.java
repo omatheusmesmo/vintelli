@@ -18,6 +18,7 @@ import dev.omatheusmesmo.vintelli.api.capability.RunCapability;
 import dev.omatheusmesmo.vintelli.api.capability.SkippedProvider;
 import dev.omatheusmesmo.vintelli.api.capability.TerminalCapability;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
+import dev.omatheusmesmo.vintelli.api.statusbar.CapabilityStatusWidgets;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -114,7 +115,14 @@ public final class DefaultCapabilityRegistry implements CapabilityRegistry {
         return List.copyOf(rows);
     }
 
-    private CapabilityStatus status(ProviderGroup<?> group) {
+    @Override
+    public List<CapabilityStatusWidgets> statusBarSnapshot() {
+        return List.of(statusBarStatus(runGroup), statusBarStatus(terminalGroup), statusBarStatus(readGroup),
+                statusBarStatus(diagnosticsGroup), statusBarStatus(callHierarchyGroup),
+                statusBarStatus(editorBridgeGroup), statusBarStatus(versionControlGroup));
+    }
+
+    private <T extends ProviderDescriptor> CapabilityStatus status(ProviderGroup<T> group) {
         ProviderChoice choice = CapabilitySelector.choose(group.capability(), group.snapshots(),
                 orders.orderFor(group.capability()));
         if (!choice.isAvailable()) {
@@ -126,6 +134,23 @@ public final class DefaultCapabilityRegistry implements CapabilityRegistry {
         }
         return CapabilityStatus.available(group.capability(), choice.selected().identifier(),
                 choice.selected().provenance(), skipped);
+    }
+
+    private <T extends ProviderDescriptor> CapabilityStatusWidgets statusBarStatus(ProviderGroup<T> group) {
+        ProviderChoice choice = CapabilitySelector.choose(group.capability(), group.snapshots(),
+                orders.orderFor(group.capability()));
+        if (!choice.isAvailable()) {
+            return new CapabilityStatusWidgets(CapabilityStatus.unavailable(group.capability(),
+                    choice.unavailableReason()), List.of());
+        }
+        List<SkippedProvider> skipped = new ArrayList<>(choice.skipped().size());
+        for (ProviderSnapshot passed : choice.skipped()) {
+            skipped.add(new SkippedProvider(passed.identifier(), passed.health().reason()));
+        }
+        T provider = group.provider(choice.selected().identifier());
+        CapabilityStatus status = CapabilityStatus.available(group.capability(), choice.selected().identifier(),
+                choice.selected().provenance(), skipped);
+        return new CapabilityStatusWidgets(status, provider.statusBarWidgets(group.capability()));
     }
 
     private <T extends ProviderDescriptor> CapabilitySelection<T> select(ProviderGroup<T> group) {

@@ -44,6 +44,18 @@ class IdeaMcpClientTest {
     }
 
     @Test
+    void contributesTheLiveIdeaConnectionStateToTheStatusBar() throws Exception {
+        try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
+                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), null, null, "test", MAPPER, VALIDATOR)) {
+            assertEquals("IDEA:off", client.statusBarWidgets().getFirst().compactText());
+
+            client.reconnect();
+
+            assertEquals("IDEA:on", client.statusBarWidgets().getFirst().compactText());
+        }
+    }
+
+    @Test
     void sendsProjectPathAndAuthTokenHeaders() throws Exception {
         try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
                 IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), "~/work/vintelli", "idea-token", "test", MAPPER, VALIDATOR)) {

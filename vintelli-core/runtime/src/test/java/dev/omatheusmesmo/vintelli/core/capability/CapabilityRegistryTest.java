@@ -7,6 +7,7 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import dev.omatheusmesmo.vintelli.api.capability.CallHierarchyCapability;
 import dev.omatheusmesmo.vintelli.api.capability.CallHierarchyCapability.CallSite;
@@ -32,6 +33,8 @@ import dev.omatheusmesmo.vintelli.api.capability.TerminalCapability.TerminalOutc
 import dev.omatheusmesmo.vintelli.api.capability.TerminalCapability.TerminalRequest;
 import dev.omatheusmesmo.vintelli.api.capability.TerminalCapability.TerminalResult;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
+import dev.omatheusmesmo.vintelli.api.statusbar.StatusBarWidget;
+import dev.omatheusmesmo.vintelli.api.statusbar.CapabilityStatusWidgets;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -108,6 +111,10 @@ class CapabilityRegistryTest {
         assertFalse(row.isAvailable());
         assertNull(row.providerIdentifier());
         assertEquals("no provider is registered for 'vcs'", row.health().reason());
+        CapabilityStatusWidgets barRow = statusBarOf(contract, CapabilityType.VERSION_CONTROL);
+        assertFalse(barRow.status().isAvailable());
+        assertEquals("no provider is registered for 'vcs'", barRow.status().health().reason());
+        assertTrue(barRow.widgets().isEmpty());
     }
 
     @Test
@@ -150,6 +157,45 @@ class CapabilityRegistryTest {
         SkippedProvider skipped = row.skipped().get(0);
         assertEquals("primary", skipped.identifier());
         assertEquals("lsp process exited", skipped.reason());
+    }
+
+    @Test
+    void statusBarSnapshotUsesTheLiveSelectedProviderContributionAndKeepsUnavailableReasons() {
+        TestingFileProvider primary = new TestingFileProvider("primary");
+        TestingFileProvider backup = new TestingFileProvider("backup");
+        DefaultCapabilityRegistry registry = new DefaultCapabilityRegistry(
+                List.of(), List.of(), List.of(primary, backup), List.of(), List.of(), List.of(), List.of(),
+                orders(Map.of(CapabilityType.READ_FILE, List.of("primary", "backup"))));
+
+        CapabilityStatusWidgets initial = statusBarOf(registry, CapabilityType.READ_FILE);
+        assertEquals("primary", initial.status().providerIdentifier());
+        assertEquals("Reader: primary", initial.widgets().getFirst().text());
+
+        primary.markUnavailable("primary disconnected");
+        CapabilityStatusWidgets fallback = statusBarOf(registry, CapabilityType.READ_FILE);
+        assertEquals("backup", fallback.status().providerIdentifier());
+        assertEquals("Reader: backup", fallback.widgets().getFirst().text());
+        assertEquals("primary disconnected", fallback.status().skipped().getFirst().reason());
+
+        backup.markUnavailable("backup disconnected");
+        CapabilityStatusWidgets unavailable = statusBarOf(registry, CapabilityType.READ_FILE);
+        assertFalse(unavailable.status().isAvailable());
+        assertEquals("no healthy provider for 'read-file': primary (primary disconnected), backup (backup disconnected)",
+                unavailable.status().health().reason());
+        assertTrue(unavailable.widgets().isEmpty());
+    }
+
+    @Test
+    void ordinaryRegistrySnapshotDoesNotRequestProviderStatusBarWidgets() {
+        TestingFileProvider provider = new TestingFileProvider("reader");
+        DefaultCapabilityRegistry registry = new DefaultCapabilityRegistry(
+                List.of(), List.of(), List.of(provider), List.of(), List.of(), List.of(), List.of(), orders(NO_ORDER));
+
+        registry.snapshot();
+        assertEquals(0, provider.widgetReads.get());
+
+        registry.statusBarSnapshot();
+        assertEquals(1, provider.widgetReads.get());
     }
 
     @Test
@@ -249,6 +295,13 @@ class CapabilityRegistryTest {
         throw new AssertionError("status row of " + capability + " is missing");
     }
 
+    private static CapabilityStatusWidgets statusBarOf(DefaultCapabilityRegistry registry,
+            CapabilityType capability) {
+        return registry.statusBarSnapshot().stream()
+                .filter(row -> row.status().capability() == capability)
+                .findFirst().orElseThrow();
+    }
+
     private static DefaultCapabilityRegistry registryWith(Map<CapabilityType, List<String>> orders) {
         return new DefaultCapabilityRegistry(
                 List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), new CapabilityOrders(orders));
@@ -264,6 +317,7 @@ class CapabilityRegistryTest {
 
         private final String identifier;
         private volatile ProviderHealth health = ProviderHealth.available();
+        private final AtomicInteger widgetReads = new AtomicInteger();
 
         private TestingFileProvider(String identifier) {
             this.identifier = identifier;
@@ -286,6 +340,16 @@ class CapabilityRegistryTest {
         @Override
         public String provenance() {
             return "filesystem";
+        }
+
+        @Override
+        public List<StatusBarWidget> statusBarWidgets(CapabilityType capability) {
+            widgetReads.incrementAndGet();
+            if (capability != CapabilityType.READ_FILE) {
+                return List.of();
+            }
+            return List.of(new StatusBarWidget("read-provider", 60, "Reader: " + identifier,
+                    "R:" + identifier));
         }
 
         @Override

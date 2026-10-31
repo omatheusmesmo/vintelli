@@ -253,6 +253,15 @@ The 256 index column above is the documented nearest approximation per
 value; making the shell honor it at runtime is tracked in issue #139, which
 also records the truecolor detection schedule.
 
+The status bar combines the shell message, live IDEA MCP connection state,
+active provider for each capability, and the active editor's caret position,
+encoding, line separator, and file type. Tool windows and selected capability
+providers can contribute ordered widgets; the VCS provider refreshes its
+branch label asynchronously. On narrow terminals the bar uses compact labels
+and truncates to the available width; unavailable providers are marked with
+`!`, with their reason shown when space allows. Provider selections are read
+from the live capability registry.
+
 Keys: `1-4` (or `Alt+1`..`Alt+4`) switch tool windows (Run, Terminal,
 Problems, ACP Agents), arrows and `PageUp`/`PageDown`/`Home`/`End` navigate
 the live project file list (hjkl in the `vim` profile), and every selection is
