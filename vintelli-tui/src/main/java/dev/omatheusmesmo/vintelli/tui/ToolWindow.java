@@ -4,6 +4,9 @@ import dev.tamboui.layout.Rect;
 import dev.tamboui.terminal.Frame;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
+import dev.omatheusmesmo.vintelli.tui.menu.MenuEntry;
+
+import java.util.List;
 
 /**
  * SPI for one tool window in the TUI shell, such as Run, Terminal or Problems.
@@ -41,6 +44,21 @@ import dev.tamboui.tui.event.KeyEvent;
 public interface ToolWindow {
 
     /**
+     * Dock anchor for the tool window: left, right, or bottom stripe.
+     * The tab bar is always rendered on the bottom stripe; this anchor
+     * controls where the tool window's content panel appears when active.
+     */
+    enum Anchor {
+        LEFT,
+        RIGHT,
+        BOTTOM
+    }
+
+    default List<MenuEntry> menuEntries() {
+        return List.of();
+    }
+
+    /**
      * Stable identifier of the tool window, unique across the registry.
      */
     String id();
@@ -59,6 +77,14 @@ public interface ToolWindow {
      * Declarative tab position; lower values come first. Ties break by {@link #id()}.
      */
     int ordinal();
+
+    /**
+     * Dock anchor where this tool window's content panel is rendered.
+     * Defaults to {@link Anchor#BOTTOM} for backward compatibility.
+     */
+    default Anchor anchor() {
+        return Anchor.BOTTOM;
+    }
 
     /**
      * Renders the tool window into the content area the shell assigns to the

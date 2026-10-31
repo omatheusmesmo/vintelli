@@ -32,7 +32,8 @@ class ToolWindowDiscoveryTest {
                         "sample.extra",
                         "terminal",
                         "problems",
-                        "acp.agents"),
+                        "acp.agents",
+                        "editor"),
                 registry.toolWindows().stream()
                         .map(ToolWindow::id)
                         .toList());

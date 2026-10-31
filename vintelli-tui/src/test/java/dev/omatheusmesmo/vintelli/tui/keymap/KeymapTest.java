@@ -105,7 +105,13 @@ class KeymapTest {
         Keymap keymap = Keymap.ofProfile(KeymapProfile.DEFAULT, WINDOWS);
 
         Set<String> ids = new LinkedHashSet<>(keymap.actions().stream().map(KeyAction::id).toList());
+        // Catalog includes: basic actions, shell actions, and tool window activations
         Set<String> expected = Set.of(QUIT, MOVE_UP, MOVE_DOWN, SEARCH_EVERYWHERE, KEYMAP_HELP,
+                "shell_menu",
+                "editor_open", "editor_save", "editor_undo", "editor_redo", "editor_find",
+                "editor_close", "editor_nextTab", "editor_previousTab", "editor_definition",
+                "editor_usages", "editor_nextProblem", "navigation_goToFile", "navigation_findInFiles",
+                "layout_project_wider", "layout_project_narrower", "layout_bottom_taller", "layout_bottom_shorter",
                 "ActivateRunToolWindow", "ActivateTerminalToolWindow", "ActivateProblemsToolWindow",
                 "ActivateAcpAgentsToolWindow");
         assertEquals(expected, ids);

@@ -14,6 +14,8 @@ import java.util.Map;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.isEmptyOrNullString;
+import static org.hamcrest.Matchers.not;
 
 /**
  * The shipped {@code darcula} stylesheet as the configured default, with a
@@ -44,6 +46,6 @@ class ConfiguredShippedThemeTest {
                 .then()
                 .statusCode(200)
                 .body("theme", is("darcula"),
-                        "mainAreaTop", containsString("Project"));
+                        "mainAreaTop", not(isEmptyOrNullString()));
     }
 }

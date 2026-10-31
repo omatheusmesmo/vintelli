@@ -24,7 +24,7 @@ import jakarta.inject.Inject;
  * Editor bridging through real CDI bean discovery with the provider order set
  * by a configuration profile: the ranked first adapter opens files at the
  * requested line, and when its health flips the registry re-selects the
- * builtin adapter and the status row reports the skipped adapter with its
+ * builtin test stub and the status row reports the skipped adapter with its
  * reason.
  */
 @QuarkusTest
@@ -54,10 +54,10 @@ class EditorBridgeSelectionTest {
         generic.markUnavailable("editor process exited");
 
         CapabilitySelection<EditorBridge> reSelected = registry.editorBridge();
-        assertEquals("builtin", providerOf(reSelected).identifier());
+        assertEquals("builtin-stub", providerOf(reSelected).identifier());
 
         CapabilityStatus row = statusRow();
-        assertEquals("builtin", row.providerIdentifier());
+        assertEquals("builtin-stub", row.providerIdentifier());
         assertEquals("stub builtin text area", row.provenance());
         assertEquals(1, row.skipped().size());
         SkippedProvider skipped = row.skipped().get(0);

@@ -28,14 +28,20 @@ abstract class PilotToolWindow implements ToolWindow {
     private final int ordinal;
     private final String content;
     private final Provider<ShellThemes> themes;
+    private final Anchor anchor;
 
     PilotToolWindow(String id, String title, char shortcut, int ordinal, String content, Provider<ShellThemes> themes) {
+        this(id, title, shortcut, ordinal, content, Anchor.BOTTOM, themes);
+    }
+
+    PilotToolWindow(String id, String title, char shortcut, int ordinal, String content, Anchor anchor, Provider<ShellThemes> themes) {
         this.id = id;
         this.title = title;
         this.shortcut = shortcut;
         this.ordinal = ordinal;
         this.content = content;
         this.themes = themes;
+        this.anchor = anchor;
     }
 
     private ShellThemes themes() {
@@ -60,6 +66,11 @@ abstract class PilotToolWindow implements ToolWindow {
     @Override
     public final int ordinal() {
         return ordinal;
+    }
+
+    @Override
+    public final Anchor anchor() {
+        return anchor;
     }
 
     @Override
