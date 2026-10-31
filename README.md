@@ -226,32 +226,47 @@ through `ShellEditorPalette` in `vintelli-api` so an editor surface follows
 the editor color scheme of its theme instead of the UI chrome.
 
 The main palette entries as CSS variables, with the rendered hex, the 256
-color index a downgrade should map them to, and the official source key.
-Reuse notes say where a value was chosen from a neighbouring official
-element instead of a role-named one:
+color index the shell maps them to when it runs without truecolor, and the
+official source key. Reuse notes say where a value was chosen from a
+neighbouring official element instead of a role-named one:
 
 | variable | darcula | index | dark | index | source |
 |---|---|---|---|---|---|
 | `$panel` | `#3C3F41` | 237 | `#2B2D30` | 236 | ui `*` `background` |
 | `$chrome-fg` | `#BBBBBB` | 250 | `#DFE1E5` | 254 | ui `*` `foreground` |
-| `$chrome-fg-strong` | `#DEDEDE` | 253 | `#FFFFFF` | 15 | chosen from `selectionForeground` / `SearchEverywhere.Tab.selectedForeground` |
+| `$chrome-fg-strong` | `#DEDEDE` | 253 | `#FFFFFF` | 231 | chosen from `selectionForeground` / `SearchEverywhere.Tab.selectedForeground` |
 | `$selection-bg` | `#2F65CA` | 26 | `#2E436E` | 239 | ui `*` `selectionBackground` |
-| `$tab-selected-bg` | `#365880` | 60 | `#3574F0` | 12 | chosen from `Button.default.startBackground`, New UI `ToolWindow.Button.selectedBackground` |
+| `$tab-selected-bg` | `#365880` | 60 | `#3574F0` | 69 | chosen from `Button.default.startBackground`, New UI `ToolWindow.Button.selectedBackground` |
 | `$border` | `#515151` | 239 | `#1E1F22` | 234 | ui `MenuBar.borderColor`, New UI `Borders.ContrastBorderColor` |
 | `$editor-border` | `#515151` | 239 | `#43454A` | 238 | ui `MenuBar.borderColor`, New UI `ToolWindow.Stripe.separatorColor` |
 | `$editor-bg` | `#2B2B2B` | 235 | `#1E1F22` | 234 | editor scheme `TEXT` background |
 | `$editor-fg` | `#A9B7C6` | 146 | `#BCBEC4` | 250 | editor scheme `TEXT` foreground |
 | `$editor-keyword` | `#CC7832` | 173 | `#CF8E6D` | 173 | editor scheme `DEFAULT_KEYWORD` |
 | `$editor-string` | `#6A8759` | 65 | `#6AAB73` | 71 | editor scheme `DEFAULT_STRING` |
-| `$editor-comment` | `#808080` | 244 | `#7A7E85` | 8 | editor scheme `DEFAULT_LINE_COMMENT` |
+| `$editor-comment` | `#808080` | 244 | `#7A7E85` | 244 | editor scheme `DEFAULT_LINE_COMMENT` |
 
-Palette rendering is truecolor only: TamboUI always emits
-`38;2;r;g;b` and never downgrades, so nothing here reads `COLORTERM` and the
-result on 256 or 16 color terminals depends entirely on the terminal
-(spike `docs/spikes/spike-27-keyboard-and-colors.md` documents the behavior).
-The 256 index column above is the documented nearest approximation per
-value; making the shell honor it at runtime is tracked in issue #139, which
-also records the truecolor detection schedule.
+The depth the shell renders with is chosen by the `vintelli.tui.color-level`
+property:
+
+| Value | Colors |
+|---|---|
+| `auto` (default) | 24-bit truecolor when `COLORTERM` contains `truecolor` or `24bit` (case insensitive), 256 colors otherwise |
+| `truecolor` | the theme hex values, emitted as `38;2;r;g;b` |
+| `256` | the index column above, emitted as `38;5;n` |
+
+TamboUI never downgrades on its own and reads no terminal variable, so the
+shell picks the representation before the styles are resolved (spike
+`docs/spikes/spike-27-keyboard-and-colors.md` documents the behavior). The
+detection of `auto` reads `COLORTERM` through MicroProfile Config, so it sees
+the environment variable of the process; an unknown property value fails fast,
+naming the property and the allowed values. In the `256` depth every hex value
+of the active stylesheet is replaced by the nearest fixed palette index before
+the stylesheet is parsed, shipped and user sheets alike. Indices 0 to 15 are
+never candidates: they are the terminal's own palette and render differently
+per terminal, so the three table rows documented below 16 move to 231 (white),
+69 (`#3574F0`) and 244 (`#7A7E85`). The hex values stay the source of truth,
+and a section of the inspection payload reports the palette the active depth
+serves (see `GET /tui/render` below).
 
 Keys: `1-4` (or `Alt+1`..`Alt+4`) switch tool windows (Run, Terminal,
 Problems, ACP Agents), arrows and `PageUp`/`PageDown`/`Home`/`End` navigate
@@ -441,7 +456,14 @@ answers 403. To accept a browser origin end to end, add it to both
 `quarkus.http.cors.origins` (readable responses).
 
 `GET /tui/render` shows the same shell (tool window tab row, editor area,
-status row and active theme) as JSON. It draws the live shell offscreen under the shell lock
+status row and active theme) as JSON, plus the color depth the session renders
+with in `colorLevel` and, in `colors`, the values of six palette variables
+(chrome background, foreground and selected tab background plus editor
+background, keyword and comment) as that depth serves them: the authored hex on
+truecolor, the rewritten `indexed(n)` on 256 colors. `colorLevel` carries the
+name of the resolved depth (`truecolor` or `indexed_256`), so `auto` reports
+what it resolved to instead of the property token and the `256` value reports
+`indexed_256`. It draws the live shell offscreen under the shell lock
 and never routes keys from HTTP, but it is only meant for tests and local
 debugging: it answers 404 unless `vintelli.inspect.enabled=true`.
 
