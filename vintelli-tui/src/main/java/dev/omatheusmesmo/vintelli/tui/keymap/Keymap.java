@@ -155,6 +155,7 @@ public final class Keymap {
         builder.bind(KeyTrigger.alt('-'), KeyActions.PROJECT_NARROWER);
         builder.bind(KeyTrigger.alt('.'), KeyActions.BOTTOM_TALLER);
         builder.bind(KeyTrigger.alt(','), KeyActions.BOTTOM_SHORTER);
+        builder.bind(KeyTrigger.ctrl('t'), bindingName(KeyActions.SWITCH_THEME));
         for (ToolWindow toolWindow : toolWindows) {
             builder.bind(KeyTrigger.alt(toolWindow.shortcut()), activateToolWindow(toolWindow.id()));
             builder.bind(KeyTrigger.ch(toolWindow.shortcut()), activateToolWindow(toolWindow.id()));
@@ -228,9 +229,10 @@ public final class Keymap {
         try {
             Bindings.Builder builder = base.toBuilder();
             for (String action : properties.stringPropertyNames()) {
-                builder.unbind(action);
+                builder.unbind(bindingName(action));
             }
-            Bindings layered = BindingSets.load(new ByteArrayInputStream(content), builder.build());
+            byte[] layeredContent = translateUserKeymapContent(content, properties.stringPropertyNames());
+            Bindings layered = BindingSets.load(new ByteArrayInputStream(layeredContent), builder.build());
             validateReservedChords(userKeymapFile, lineNumbers, layered, properties.stringPropertyNames(),
                     reservedIds);
             validateNoTriggerConflicts(userKeymapFile, lineNumbers, layered, knownIds,
@@ -281,7 +283,7 @@ public final class Keymap {
             if (!reservedIds.contains(action)) {
                 continue;
             }
-            List<InputTrigger> triggers = layered.triggersFor(action);
+            List<InputTrigger> triggers = layered.triggersFor(bindingName(action));
             List<InputTrigger> barePrintable = new ArrayList<>(triggers.stream()
                     .filter(Keymap::isBarePrintable)
                     .toList());
@@ -304,12 +306,12 @@ public final class Keymap {
     private static void validateNoTriggerConflicts(Path userKeymapFile, Map<String, Integer> lineNumbers,
             Bindings layered, Set<String> knownIds, Set<String> mentioned) {
         for (String action : new TreeSet<>(mentioned)) {
-            for (InputTrigger trigger : layered.triggersFor(action)) {
+            for (InputTrigger trigger : layered.triggersFor(bindingName(action))) {
                 for (String other : new TreeSet<>(knownIds)) {
                     if (other.equals(action)) {
                         continue;
                     }
-                    for (InputTrigger otherTrigger : layered.triggersFor(other)) {
+                    for (InputTrigger otherTrigger : layered.triggersFor(bindingName(other))) {
                         if (otherTrigger.equals(trigger)) {
                             throw new IllegalStateException("trigger '" + trigger.describe()
                                     + "' in user keymap file '" + userKeymapFile
@@ -343,9 +345,9 @@ public final class Keymap {
     private static Bindings buildReservedBindings(Bindings bindings, Set<String> reservedIds) {
         Bindings.Builder builder = DefaultBindings.builder();
         for (String action : new TreeSet<>(reservedIds)) {
-            for (InputTrigger trigger : bindings.triggersFor(action)) {
+            for (InputTrigger trigger : bindings.triggersFor(bindingName(action))) {
                 if (!isBarePrintable(trigger)) {
-                    builder.bind(trigger, action);
+                    builder.bind(trigger, bindingName(action));
                 }
             }
         }
@@ -388,7 +390,7 @@ public final class Keymap {
      * by action id only and never reads concrete keys.
      */
     public boolean matches(KeyEvent event, String actionId) {
-        return bindings.matches(event, actionId);
+        return bindings.matches(event, bindingName(actionId));
     }
 
     /**
@@ -397,7 +399,7 @@ public final class Keymap {
      * Ctrl/Alt/F-key chords, never bare printable characters.
      */
     public boolean matchesReserved(KeyEvent event, String actionId) {
-        return reserved.matches(event, actionId);
+        return reserved.matches(event, bindingName(actionId));
     }
 
     /**
@@ -406,6 +408,29 @@ public final class Keymap {
      * when the user file left the action without triggers.
      */
     public String describeBindings(String actionId) {
-        return bindings.describeBindings(actionId);
+        return bindings.describeBindings(bindingName(actionId));
+    }
+
+    /**
+     * TamboUI binding action names may only contain alphanumerics and
+     * underscores, while Vintelli action ids use dotted namespaces such as
+     * {@code shell.theme.switch}. Map the latter to a safe binding name so a
+     * chord can be stored and matched under the public action id.
+     */
+    static String bindingName(String actionId) {
+        return actionId == null ? null : actionId.replace('.', '_');
+    }
+
+    private static byte[] translateUserKeymapContent(byte[] content, java.util.Set<String> actions) {
+        String text = new String(content, java.nio.charset.StandardCharsets.UTF_8);
+        for (String action : actions) {
+            String safe = bindingName(action);
+            if (safe.equals(action)) {
+                continue;
+            }
+            text = text.replaceAll("(?m)^(\\s*)" + java.util.regex.Pattern.quote(action)
+                    + "(\\s*[=:]\\s*.*)$", "$1" + safe + "$2");
+        }
+        return text.getBytes(java.nio.charset.StandardCharsets.UTF_8);
     }
 }

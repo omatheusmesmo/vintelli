@@ -850,6 +850,13 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 closeOverlays(parts);
                 resizeBottom(-1);
             }
+            case KeyActions.SWITCH_THEME -> {
+                closeOverlays(parts);
+                List<String> themeNames = themes.availableThemeNames();
+                int themeIndex = themeNames.indexOf(themes.activeTheme());
+                themes.switchTheme(themeNames.get(Math.floorMod(themeIndex + 1, themeNames.size())));
+                status = "Theme: " + themes.activeTheme();
+            }
             case KeyActions.MOVE_UP -> {
                 closeOverlays(parts);
                 moveSelection(-1);
