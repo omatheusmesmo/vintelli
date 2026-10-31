@@ -7,9 +7,22 @@ import dev.omatheusmesmo.vintelli.api.ShellStateView;
 import dev.omatheusmesmo.vintelli.api.ShellUnifiedDiff;
 import dev.omatheusmesmo.vintelli.tui.keymap.CommandPalette;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
+import dev.omatheusmesmo.vintelli.tui.keymap.KeyAction;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeymapHelpOverlay;
 import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeymapRegistry;
+import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
+import dev.omatheusmesmo.vintelli.tui.menu.MenuEntry;
+import dev.omatheusmesmo.vintelli.tui.menu.MenuPopup;
+import dev.omatheusmesmo.vintelli.tui.layout.ShellLayout;
+import dev.omatheusmesmo.vintelli.tui.layout.ShellLayoutStore;
+import dev.omatheusmesmo.vintelli.tui.keymap.ConfigDirectory;
+import dev.omatheusmesmo.vintelli.tui.search.ProjectSearchModel;
+import dev.omatheusmesmo.vintelli.tui.search.ProjectSearchOverlay;
+import dev.omatheusmesmo.vintelli.api.search.ProjectSearch;
+import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability;
+import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
+import dev.omatheusmesmo.vintelli.api.capability.EditorBridge.OpenRequest;
 import dev.tamboui.layout.Constraint;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.terminal.Frame;
@@ -20,18 +33,17 @@ import dev.tamboui.toolkit.element.DefaultRenderContext;
 import dev.tamboui.toolkit.element.Element;
 import dev.tamboui.toolkit.element.RenderContext;
 import dev.tamboui.toolkit.element.Size;
+import dev.tamboui.toolkit.elements.DockElement;
 import dev.tamboui.toolkit.elements.ListElement;
 import dev.tamboui.toolkit.elements.Panel;
-import dev.tamboui.toolkit.elements.Column;
 import dev.tamboui.toolkit.elements.RichTextElement;
 import dev.tamboui.toolkit.elements.Row;
+import dev.tamboui.toolkit.elements.Column;
 import dev.tamboui.toolkit.elements.StackElement;
 import dev.tamboui.toolkit.elements.TabsElement;
 import dev.tamboui.toolkit.elements.TextElement;
 import dev.tamboui.toolkit.event.EventResult;
 import dev.tamboui.toolkit.event.GlobalEventHandler;
-import dev.tamboui.toolkit.event.KeyEventHandler;
-import dev.tamboui.toolkit.event.MouseEventHandler;
 import dev.tamboui.tui.event.Event;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
@@ -41,17 +53,24 @@ import dev.tamboui.widgets.common.ScrollBarPolicy;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
+import io.quarkus.arc.All;
 
+import java.nio.file.Path;
+import java.nio.file.Files;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.OptionalInt;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 /**
- * IntelliJ-like terminal shell: menu bar, tool window tabs, project panel,
- * editor panel and status bar. Runs at the Toolkit level: the runner gets the
+ * IntelliJ-like terminal shell: menu bar, tool window stripes (left, right, bottom),
+ * project panel, editor panel and status bar. Runs at the Toolkit level: the runner gets the
  * style engine from {@link ShellThemes} and the element tree from
  * {@link #root()}, so every color resolves from the active theme stylesheet
  * and a runtime theme switch is one call away; shell code carries no hex
@@ -72,11 +91,13 @@ import java.util.function.Supplier;
  * only the {@code --tui} session builds it, and fails there with a one line
  * message. The theme engine is resolved through the same laziness.
  *
- * <p>The tab bar and the key routing are built from every {@link ToolWindow}
+ * <p>Tool windows declare their dock anchor via {@link ToolWindow#anchor()}.
+ * The shell groups them into three stripes (left, right, bottom), each with
+ * its own tab bar. The tab bar and the key routing are built from every {@link ToolWindow}
  * the {@link ToolWindowRegistry} exposes, so adding a tool window never
  * changes this class: the window declares itself, gets discovered as a CDI
- * bean and shows up in tab order with a {@code tool-<id>} element id. The
- * project list is the single source of truth for the file selection: arrows,
+ * bean and shows up in its anchor's stripe with a {@code tool-<id>} element id.
+ * The project list is the single source of truth for the file selection: arrows,
  * page keys, Home/End and mouse clicks are consumed by the focused list
  * itself, so {@link #fileIndex()}, the {@code ShellStateSnapshot} read model
  * and the status line are read back from the list on every handled key and
@@ -95,7 +116,8 @@ import java.util.function.Supplier;
 public final class VintelliShell implements GlobalEventHandler, ShellHighlightPort, ShellDiffViewPort {
 
     static final int TOOL_WINDOW_HEIGHT = 9;
-    static final int PROJECT_PANEL_WIDTH = 34;
+    static final int PROJECT_PANEL_WIDTH = 30;
+    static final int SIDE_PANEL_WIDTH = 20;
 
     private static final int MAX_EDITOR_DIFF_LINES = 6;
     private static final int MAX_EDITOR_LINE_LENGTH = 40;
@@ -115,12 +137,21 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
      * The keymap-driven parts of the shell, built together the first time the
      * TUI session actually uses them.
      */
-    private record KeymapParts(Keymap keymap, CommandPalette commandPalette, KeymapHelpOverlay keymapHelp) {
+    private record KeymapParts(Keymap keymap, CommandPalette commandPalette, KeymapHelpOverlay keymapHelp,
+            MenuPopup menuPopup, ProjectSearchModel searchModel, ProjectSearchOverlay searchOverlay) {
     }
 
     private final ShellThemes themes;
     private final ShellState state;
     private final List<ToolWindow> toolWindows;
+    private final BuiltinEditor editor;
+    private final ProjectSearch projectSearch;
+    private final List<NavigationCapability> navigationProviders;
+    private final ShellLayout shellLayout;
+    private final ShellLayoutStore layoutStore;
+    private volatile DockElement layoutDock;
+    private int nextDiagnosticIndex;
+    private final Map<ToolWindow.Anchor, List<ToolWindow>> windowsByAnchor;
     private final ReentrantLock frameLock = new ReentrantLock();
     private final Supplier<Keymap> keymapSupplier;
     private final StackElement rootBase;
@@ -128,6 +159,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private final Element lockedProjectList;
     private final TabsElement toolTabs;
     private final ListElement<?> projectList;
+    private Panel centerPanel;
+    private volatile List<String> projectFiles;
+    private volatile boolean projectFilesLoading;
     private volatile Runnable quitAction;
     private volatile KeymapParts overlays;
 
@@ -138,10 +172,14 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private volatile int toolIndex;
     private volatile int syncedFileIndex = -1;
 
+    // Active tool window index per anchor (for stripe tab selection)
+    private final Map<ToolWindow.Anchor, Integer> activeToolIndexByAnchor = new ConcurrentHashMap<>();
+
     @Inject
     public VintelliShell(ToolWindowRegistry registry, ShellState state, KeymapRegistry keymapRegistry,
-            Instance<ShellThemes> themes) {
-        this(registry.toolWindows(), state, keymapRegistry::get, themes.get());
+            Instance<ShellThemes> themes, ProjectSearch projectSearch,
+            @All List<NavigationCapability> navigationProviders) {
+        this(registry.toolWindows(), state, keymapRegistry::get, themes.get(), projectSearch, navigationProviders, true);
     }
 
     /**
@@ -151,7 +189,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
      * profile drives it.
      */
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state, ShellThemes themes) {
-        this(toolWindows, state, () -> Keymap.defaultKeymap(toolWindows), themes);
+        this(toolWindows, state, () -> Keymap.defaultKeymap(toolWindows), themes, null, List.of(), false);
     }
 
     /**
@@ -159,7 +197,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
      * named profile or a user keymap source.
      */
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Keymap keymap, ShellThemes themes) {
-        this(toolWindows, state, () -> keymap, themes);
+        this(toolWindows, state, () -> keymap, themes, null, List.of(), false);
     }
 
     /**
@@ -168,21 +206,60 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
      */
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
             ShellThemes themes) {
+        this(toolWindows, state, keymapSupplier, themes, null, List.of(), false);
+    }
+
+    public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
+            ShellThemes themes, ProjectSearch projectSearch) {
+        this(toolWindows, state, keymapSupplier, themes, projectSearch, List.of(), false);
+    }
+
+    public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
+            ShellThemes themes, ProjectSearch projectSearch, List<NavigationCapability> navigationProviders) {
+        this(toolWindows, state, keymapSupplier, themes, projectSearch, navigationProviders, false);
+    }
+
+    private VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
+            ShellThemes themes, ProjectSearch projectSearch, List<NavigationCapability> navigationProviders,
+            boolean persistLayout) {
         this.themes = themes;
         this.state = state;
-        this.toolWindows = List.copyOf(toolWindows);
+        this.projectSearch = projectSearch;
+        this.navigationProviders = List.copyOf(navigationProviders);
+        this.editor = toolWindows.stream().filter(BuiltinEditor.class::isInstance)
+                .map(BuiltinEditor.class::cast).findFirst().orElse(null);
+        this.toolWindows = toolWindows.stream().filter(window -> !(window instanceof BuiltinEditor)).toList();
+        this.projectFiles = projectSearch == null ? PROJECT_FILES : List.of();
+        this.projectFilesLoading = projectSearch != null;
+        Path projectRoot = editor == null ? Path.of("").toAbsolutePath().normalize() : editor.project();
+        Path configRoot = persistLayout ? ConfigDirectory.configRoot(ConfigDirectory.sharedConfigDir(),
+                System.getenv("XDG_CONFIG_HOME"), System.getenv("APPDATA"), System.getProperty("user.home")) : null;
+        this.layoutStore = new ShellLayoutStore(configRoot, projectRoot);
+        this.shellLayout = layoutStore.load();
+        this.windowsByAnchor = this.toolWindows.stream()
+                .collect(Collectors.groupingBy(ToolWindow::anchor, Collectors.toList()));
         this.keymapSupplier = keymapSupplier;
-        if (!toolWindows.isEmpty()) {
-            state.selectToolWindow(toolWindows.get(0).id());
-            inputCaptured = toolWindows.get(0).capturesInput();
+        if (!this.toolWindows.isEmpty()) {
+            state.selectToolWindow(this.toolWindows.get(0).id());
+            inputCaptured = this.toolWindows.get(0).capturesInput();
         }
-        state.selectFile(PROJECT_FILES.get(0));
+        state.selectFile(this.projectFiles.isEmpty() ? "" : this.projectFiles.getFirst());
         syncedFileIndex = 0;
         this.toolTabs = toolWindowTabs();
         this.projectList = projectPanel();
         this.lockedProjectList = locked(projectList);
         this.rootBase = buildRootContent();
         this.lockedRoot = locked(rootBase);
+        // Initialize active index for each anchor to first window
+        for (ToolWindow.Anchor anchor : ToolWindow.Anchor.values()) {
+            List<ToolWindow> windows = windowsByAnchor.getOrDefault(anchor, List.of());
+            if (!windows.isEmpty()) {
+                activeToolIndexByAnchor.put(anchor, 0);
+            }
+        }
+        if (projectSearch != null) {
+            Thread.ofVirtual().start(this::discoverProjectFiles);
+        }
     }
 
     /**
@@ -202,9 +279,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             synchronized (this) {
                 if (overlays == null) {
                     Keymap keymap = keymapSupplier.get();
-                    overlays = new KeymapParts(keymap,
-                            new CommandPalette(keymap.actions(), keymap),
-                            new KeymapHelpOverlay(keymap));
+                    ProjectSearchModel searchModel = projectSearch == null ? null : new ProjectSearchModel(projectSearch);
+                    overlays = new KeymapParts(keymap, new CommandPalette(keymap.actions(), keymap),
+                            new KeymapHelpOverlay(keymap), new MenuPopup(MENUS, this::menuEntries,
+                                    keymap::describeBindings), searchModel,
+                            searchModel == null ? null : new ProjectSearchOverlay(searchModel));
                 }
                 parts = overlays;
             }
@@ -217,24 +296,43 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         stack.add(Toolkit.lazy(this::shellLayout));
         stack.add(Toolkit.lazy(this::paletteOverlayElement));
         stack.add(Toolkit.lazy(this::keymapHelpOverlayElement));
+        stack.add(Toolkit.lazy(this::menuOverlayElement));
+        stack.add(Toolkit.lazy(this::projectSearchOverlayElement));
         return stack;
     }
 
     private Element shellLayout() {
-        Column layout = Toolkit.column().id("shell");
-        layout.add(menuBar());
-        layout.add(toolTabs);
-        layout.add(mainArea());
-        layout.add(Toolkit.lazy(this::activeToolWindowElement));
-        layout.add(Toolkit.lazy(this::statusBarEntry));
-        return layout;
+        boolean persisted = layoutStore.file() != null && Files.isRegularFile(layoutStore.file());
+        Constraint projectWidth = persisted ? ratioConstraint(shellLayout.projectRatio())
+                : Constraint.length(PROJECT_PANEL_WIDTH);
+        Constraint bottomHeight = persisted ? ratioConstraint(shellLayout.bottomRatio())
+                : Constraint.length(TOOL_WINDOW_HEIGHT + 2);
+        DockElement dock = Toolkit.dock()
+                .top(menuBar())
+                .left(leftStripe())
+                .center(centerPanel())
+                .right(rightStripe())
+                .bottom(bottomStripe())
+                .topHeight(Constraint.length(1))
+                .leftWidth(projectWidth)
+                .rightWidth(Constraint.length(SIDE_PANEL_WIDTH))
+                .bottomHeight(bottomHeight);
+        dock.id("shell");
+        layoutDock = dock;
+        return dock;
     }
 
-    private Row menuBar() {
+    private static Constraint ratioConstraint(double ratio) {
+        int denominator = 10_000;
+        return Constraint.ratio((int) Math.round(ratio * denominator), denominator);
+    }
+
+    private Element menuBar() {
         Row bar = Toolkit.row().id("menu-bar");
         bar.length(1);
+        int activeMenu = overlays().menuPopup().isOpen() ? overlays().menuPopup().menuIndex() : -1;
         for (int index = 0; index < MENUS.size(); index++) {
-            boolean selected = index == 0;
+            boolean selected = index == activeMenu;
             TextElement entry = Toolkit.text(selected ? " " + MENUS.get(index) + " " : MENUS.get(index));
             entry.addClass(selected ? "menu-entry-active" : "menu-entry");
             bar.add(entry);
@@ -242,13 +340,90 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         return bar;
     }
 
+    private Element leftStripe() {
+        List<ToolWindow> leftWindows = windowsByAnchor.getOrDefault(ToolWindow.Anchor.LEFT, List.of());
+        if (leftWindows.isEmpty()) {
+            // No left anchor tool windows: just the project panel
+            return lockedProjectList;
+        }
+        // Stack: project panel on top, left tool window tabs and content below
+        Column column = Toolkit.column().id("left-stripe");
+        column.add(lockedProjectList);
+        column.add(toolWindowStripe(ToolWindow.Anchor.LEFT));
+        column.fill();
+        return column;
+    }
+
+    private Element rightStripe() {
+        List<ToolWindow> rightWindows = windowsByAnchor.getOrDefault(ToolWindow.Anchor.RIGHT, List.of());
+        if (rightWindows.isEmpty()) {
+            return null;
+        }
+        Column column = Toolkit.column().id("right-stripe");
+        column.add(toolWindowStripe(ToolWindow.Anchor.RIGHT));
+        column.fill();
+        return column;
+    }
+
+    private Element bottomStripe() {
+        List<ToolWindow> bottomWindows = windowsByAnchor.getOrDefault(ToolWindow.Anchor.BOTTOM, List.of());
+        if (bottomWindows.isEmpty()) {
+            TextElement empty = Toolkit.text(EMPTY_TOOL_WINDOWS_TEXT);
+            empty.id("tool-windows-empty");
+            empty.length(TOOL_WINDOW_HEIGHT + 1);
+            return empty;
+        }
+        Column column = Toolkit.column().id("bottom-stripe");
+        column.add(toolWindowStripe(ToolWindow.Anchor.BOTTOM));
+        column.add(Toolkit.lazy(this::statusBarEntry));
+        return column;
+    }
+
+    private Element toolWindowStripe(ToolWindow.Anchor anchor) {
+        List<ToolWindow> windows = windowsByAnchor.getOrDefault(anchor, List.of());
+        if (windows.isEmpty()) {
+            return Toolkit.text("").length(0);
+        }
+
+        // Create tab bar for this anchor
+        TabsElement tabs = Toolkit.tabs(windows.stream()
+                .map(w -> " " + w.shortcut() + ". " + w.title() + " ")
+                .toList());
+        tabs.id("tool-tabs-" + anchor.name().toLowerCase());
+        tabs.length(1);
+        tabs.divider(" ");
+        tabs.padding("", "");
+        int activeIdx = activeToolIndexByAnchor.getOrDefault(anchor, 0);
+        tabs.selected(activeIdx);
+
+        // Column: tabs on top (fixed height 1), active tool window content below (fills remaining)
+        Column column = Toolkit.column().id("tool-stripe-" + anchor.name().toLowerCase());
+        column.add(tabs);
+        column.add(Toolkit.lazy(() -> activeToolWindowElement(anchor)));
+        column.fill();
+        return column;
+    }
+
+    private Element activeToolWindowElement(ToolWindow.Anchor anchor) {
+        List<ToolWindow> windows = windowsByAnchor.getOrDefault(anchor, List.of());
+        if (windows.isEmpty()) {
+            return Toolkit.text("").length(0);
+        }
+        int index = activeToolIndexByAnchor.getOrDefault(anchor, 0);
+        return new ToolWindowElement(windows.get(index), anchor == ToolWindow.Anchor.BOTTOM ? TOOL_WINDOW_HEIGHT : -1);
+    }
+
     private TabsElement toolWindowTabs() {
-        TabsElement tabs = Toolkit.tabs(tabTitles());
+        // Backward compatibility: returns the bottom stripe tabs for legacy code
+        List<ToolWindow> bottomWindows = windowsByAnchor.getOrDefault(ToolWindow.Anchor.BOTTOM, List.of());
+        TabsElement tabs = Toolkit.tabs(bottomWindows.stream()
+                .map(window -> " " + window.shortcut() + ". " + window.title() + " ")
+                .toList());
         tabs.id("tool-tabs");
         tabs.length(1);
         tabs.divider(" ");
         tabs.padding("", "");
-        tabs.selected(0);
+        tabs.selected(activeToolIndexByAnchor.getOrDefault(ToolWindow.Anchor.BOTTOM, 0));
         return tabs;
     }
 
@@ -258,12 +433,47 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 .toList();
     }
 
-    private Row mainArea() {
-        Row row = Toolkit.row().id("main-area");
-        row.fill();
-        row.add(lockedProjectList);
-        row.add(editorPanel());
-        return row;
+    private ListElement<?> projectPanel() {
+        ListElement<?> panel = Toolkit.list(projectFiles.isEmpty()
+                ? List.of(projectFilesLoading ? "Loading project files..." : "No project files found")
+                : projectFiles);
+        panel.id("project-panel");
+        panel.addClass("tool-panel");
+        panel.title("Project");
+        panel.focusable();
+        panel.length(PROJECT_PANEL_WIDTH);
+        panel.scrollbar(ScrollBarPolicy.AS_NEEDED);
+        panel.selected(0);
+        return panel;
+    }
+
+    private void discoverProjectFiles() {
+        try {
+            List<String> discovered = projectSearch.listFiles().stream().map(Path::toString).toList();
+            frameLock.lock();
+            try {
+                projectFiles = discovered;
+                projectFilesLoading = false;
+                projectList.items(discovered.isEmpty() ? List.of("No project files found") : discovered);
+                projectList.selectFirst();
+                syncedFileIndex = projectList.selected();
+                state.selectFile(discovered.isEmpty() ? "" : discovered.getFirst());
+                status = discovered.isEmpty() ? "No project files found" : "Project files loaded";
+            } finally {
+                frameLock.unlock();
+            }
+        } catch (RuntimeException unavailable) {
+            frameLock.lock();
+            try {
+                projectFiles = List.of();
+                projectFilesLoading = false;
+                projectList.items(List.of("Project files unavailable"));
+                state.selectFile("");
+                status = "Project files unavailable: " + unavailable.getMessage();
+            } finally {
+                frameLock.unlock();
+            }
+        }
     }
 
     /**
@@ -277,36 +487,18 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         return new LockedElement(delegate, frameLock);
     }
 
-    private ListElement<?> projectPanel() {
-        ListElement<?> panel = Toolkit.list(PROJECT_FILES);
-        panel.id("project-panel");
-        panel.addClass("tool-panel");
-        panel.title("Project");
-        panel.focusable();
-        panel.length(PROJECT_PANEL_WIDTH);
-        panel.scrollbar(ScrollBarPolicy.AS_NEEDED);
-        panel.selected(0);
-        return panel;
-    }
-
-    private Panel editorPanel() {
-        return Toolkit.panel(Toolkit.lazy(this::editorContent))
+    private Panel centerPanel() {
+        if (centerPanel != null) {
+            return centerPanel;
+        }
+        centerPanel = Toolkit.panel(Toolkit.lazy(this::editorContent))
                 .title("Editor")
                 .rounded()
                 .id("editor-panel")
                 .addClass("tool-panel")
                 .focusable()
                 .fill();
-    }
-
-    private Element activeToolWindowElement() {
-        if (toolWindows.isEmpty()) {
-            TextElement emptyWindows = Toolkit.text(EMPTY_TOOL_WINDOWS_TEXT);
-            emptyWindows.id("tool-windows-empty");
-            emptyWindows.length(TOOL_WINDOW_HEIGHT);
-            return emptyWindows;
-        }
-        return new ToolWindowElement(toolWindows.get(toolIndex));
+        return centerPanel;
     }
 
     private Element statusBarEntry() {
@@ -333,14 +525,67 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         return new OverlayElement("keymap-help", parts.keymapHelp()::render);
     }
 
+    private Element menuOverlayElement() {
+        MenuPopup popup = overlays().menuPopup();
+        if (!popup.isOpen()) {
+            return null;
+        }
+        return new OverlayElement("menu-popup", popup::render);
+    }
+
+    private Element projectSearchOverlayElement() {
+        KeymapParts parts = overlays();
+        if (parts.searchModel() == null || !parts.searchModel().isOpen()) {
+            return null;
+        }
+        return new OverlayElement("project-search", parts.searchOverlay()::render);
+    }
+
     @Override
     public EventResult handle(Event event) {
         frameLock.lock();
         try {
+            if (event instanceof MouseEvent mouse && mouse.isClick()) {
+                return handleMouse(mouse);
+            }
             return accept(event);
         } finally {
             frameLock.unlock();
         }
+    }
+
+    private EventResult handleMouse(MouseEvent mouse) {
+        KeymapParts parts = overlays();
+        if (mouse.y() == 0) {
+            int menu = menuAt(mouse.x());
+            if (menu >= 0) {
+                parts.commandPalette().close();
+                parts.keymapHelp().close();
+                if (parts.searchModel() != null) {
+                    parts.searchModel().close();
+                }
+                parts.menuPopup().open(menu);
+                inputCaptured = false;
+                return EventResult.HANDLED;
+            }
+        }
+        if (parts.menuPopup().isOpen()) {
+            parts.menuPopup().click(mouse.x(), mouse.y()).ifPresent(action -> dispatch(parts, action));
+            return EventResult.HANDLED;
+        }
+        return EventResult.UNHANDLED;
+    }
+
+    private static int menuAt(int x) {
+        int offset = 0;
+        for (int index = 0; index < MENUS.size(); index++) {
+            int width = MENUS.get(index).length() + 2;
+            if (x >= offset && x < offset + width) {
+                return index;
+            }
+            offset += width;
+        }
+        return -1;
     }
 
     private EventResult accept(Event event) {
@@ -350,6 +595,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         syncFileSelection();
         if (inputCaptured && key.isKey(KeyCode.ESCAPE)) {
             releaseCapture();
+            return EventResult.HANDLED;
+        }
+        if (editor != null && editor.closeConfirmationPending()) {
+            editor.handleKey(key);
+            status = editor.status();
             return EventResult.HANDLED;
         }
         KeymapParts parts = overlays();
@@ -372,10 +622,48 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             parts.keymapHelp().handleKey(key);
             return EventResult.HANDLED;
         }
+        if (parts.menuPopup().isOpen()) {
+            parts.menuPopup().handleKey(key).ifPresent(action -> dispatch(parts, action));
+            return EventResult.HANDLED;
+        }
+        if (parts.searchModel() != null && parts.searchModel().isOpen()) {
+            parts.searchOverlay().handleKey(key).ifPresent(target -> openFile(target.file(), target.line()));
+            return EventResult.HANDLED;
+        }
+        if (parts.keymap().matchesReserved(key, KeyActions.MENU)) {
+            parts.menuPopup().open(0);
+            inputCaptured = false;
+            return EventResult.HANDLED;
+        }
+        if (editor != null) {
+            String editorAction = KeyActions.activateToolWindow(editor.id());
+            boolean activateEditor = inputCaptured ? parts.keymap().matchesReserved(key, editorAction)
+                    : parts.keymap().matches(key, editorAction);
+            if (activateEditor) {
+                editor.requestFocus();
+                inputCaptured = false;
+                status = "Editor focused";
+                return EventResult.HANDLED;
+            }
+        }
         OptionalInt activation = activationByKey(parts, key);
         if (activation.isPresent()) {
             switchToToolWindow(activation.getAsInt());
             return EventResult.HANDLED;
+        }
+        for (KeyAction action : KeyActions.shellActions()) {
+            if (KeyActions.QUIT.equals(action.id()) || KeyActions.MENU.equals(action.id())) {
+                continue;
+            }
+            if (inputCaptured && KeyActions.OPEN_FILE.equals(action.id())) {
+                continue;
+            }
+            boolean matched = inputCaptured ? parts.keymap().matchesReserved(key, action.id())
+                    : parts.keymap().matches(key, action.id());
+            if (matched) {
+                dispatch(parts, action.id());
+                return EventResult.HANDLED;
+            }
         }
         if (inputCaptured) {
             if (!toolWindows.isEmpty()) {
@@ -435,6 +723,76 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 parts.commandPalette().close();
                 openKeymapHelp(parts);
             }
+            case KeyActions.MENU -> {
+                parts.commandPalette().close();
+                parts.keymapHelp().close();
+                parts.menuPopup().open(0);
+                inputCaptured = false;
+            }
+            case KeyActions.OPEN_FILE -> {
+                closeOverlays(parts);
+                openSelectedFile();
+            }
+            case KeyActions.SAVE -> {
+                closeOverlays(parts);
+                saveActiveFile();
+            }
+            case KeyActions.UNDO -> {
+                closeOverlays(parts);
+                editorUndo();
+            }
+            case KeyActions.REDO -> {
+                closeOverlays(parts);
+                editorRedo();
+            }
+            case KeyActions.FIND, KeyActions.FIND_IN_FILES -> {
+                closeOverlays(parts);
+                openSearch(parts, ProjectSearchModel.Mode.TEXT);
+            }
+            case KeyActions.GO_TO_FILE -> {
+                closeOverlays(parts);
+                openSearch(parts, ProjectSearchModel.Mode.FILES);
+            }
+            case KeyActions.CLOSE_TAB -> {
+                closeOverlays(parts);
+                closeEditorTab();
+            }
+            case KeyActions.NEXT_TAB -> {
+                closeOverlays(parts);
+                selectEditorTab(true);
+            }
+            case KeyActions.PREVIOUS_TAB -> {
+                closeOverlays(parts);
+                selectEditorTab(false);
+            }
+            case KeyActions.DEFINITION -> {
+                closeOverlays(parts);
+                navigateToSymbol(false);
+            }
+            case KeyActions.USAGES -> {
+                closeOverlays(parts);
+                navigateToSymbol(true);
+            }
+            case KeyActions.NEXT_PROBLEM -> {
+                closeOverlays(parts);
+                nextProblem();
+            }
+            case KeyActions.PROJECT_WIDER -> {
+                closeOverlays(parts);
+                resizeProject(2);
+            }
+            case KeyActions.PROJECT_NARROWER -> {
+                closeOverlays(parts);
+                resizeProject(-2);
+            }
+            case KeyActions.BOTTOM_TALLER -> {
+                closeOverlays(parts);
+                resizeBottom(1);
+            }
+            case KeyActions.BOTTOM_SHORTER -> {
+                closeOverlays(parts);
+                resizeBottom(-1);
+            }
             case KeyActions.MOVE_UP -> {
                 closeOverlays(parts);
                 moveSelection(-1);
@@ -446,12 +804,177 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             default -> {
                 OptionalInt toolWindowIndex = indexOfActivation(actionId);
                 closeOverlays(parts);
-                if (toolWindowIndex.isEmpty()) {
+                if (editor != null && KeyActions.activateToolWindow(editor.id()).equals(actionId)) {
+                    editor.requestFocus();
+                    inputCaptured = false;
+                    status = "Editor focused";
+                } else if (toolWindowIndex.isEmpty()) {
                     status = "Unhandled action: " + actionId;
                 } else {
                     switchToToolWindow(toolWindowIndex.getAsInt());
                 }
             }
+        }
+    }
+
+    private void openSelectedFile() {
+        if (projectFiles.isEmpty()) {
+            status = projectFilesLoading ? "Loading project files..." : "No project files found";
+            return;
+        }
+        openFile(Path.of(projectFiles.get(projectList.selected())), 0);
+    }
+
+    private void openFile(Path file, int line) {
+        if (editor == null) {
+            status = "Built-in editor unavailable";
+            return;
+        }
+        if (editor.open(new OpenRequest(file, line)).isFailure()) {
+            status = editor.status();
+            return;
+        }
+        status = editor.status();
+    }
+
+    private void saveActiveFile() {
+        if (editor == null) {
+            status = "Built-in editor unavailable";
+            return;
+        }
+        editor.save();
+        status = editor.status();
+    }
+
+    private void editorUndo() {
+        if (editor == null || !editor.undo()) {
+            status = editor == null ? "Built-in editor unavailable" : "Nothing to undo";
+        } else {
+            status = "Undo";
+        }
+    }
+
+    private void editorRedo() {
+        if (editor == null || !editor.redo()) {
+            status = editor == null ? "Built-in editor unavailable" : "Nothing to redo";
+        } else {
+            status = "Redo";
+        }
+    }
+
+    private void openSearch(KeymapParts parts, ProjectSearchModel.Mode mode) {
+        if (parts.searchModel() == null) {
+            status = "Project search unavailable";
+            return;
+        }
+        parts.commandPalette().close();
+        parts.keymapHelp().close();
+        parts.menuPopup().close();
+        inputCaptured = false;
+        parts.searchModel().open(mode);
+        status = mode == ProjectSearchModel.Mode.FILES ? "Go to File: type to filter" : "Find in Files: type to search";
+    }
+
+    private void closeEditorTab() {
+        if (editor == null) {
+            status = "Built-in editor unavailable";
+            return;
+        }
+        BuiltinEditor.CloseResult result = editor.closeActive();
+        status = result == BuiltinEditor.CloseResult.CONFIRM_REQUIRED ? editor.status()
+                : result == BuiltinEditor.CloseResult.EMPTY ? "No editor tab is open" : "Tab closed";
+    }
+
+    private void selectEditorTab(boolean next) {
+        if (editor == null || editor.tabs().isEmpty()) {
+            status = "No editor tab is open";
+            return;
+        }
+        if (next) {
+            editor.nextTab();
+        } else {
+            editor.previousTab();
+        }
+        status = "Editor tab: " + editor.activeDocument().orElseThrow().file();
+    }
+
+    private void navigateToSymbol(boolean references) {
+        if (editor == null || editor.activeDocument().isEmpty()) {
+            status = "Open a project file first";
+            return;
+        }
+        NavigationCapability provider = availableNavigationProvider();
+        if (provider == null) {
+            status = "Navigation provider unavailable";
+            return;
+        }
+        BuiltinEditor.DocumentView document = editor.activeDocument().orElseThrow();
+        NavigationCapability.SourcePosition position = new NavigationCapability.SourcePosition(
+                Path.of(document.file()), document.line(), document.column());
+        CapabilityResult<List<NavigationCapability.Location>> result = references
+                ? provider.references(position, true) : provider.definition(position);
+        if (result instanceof CapabilityResult.Ok<List<NavigationCapability.Location>> ok && !ok.value().isEmpty()) {
+            NavigationCapability.Location location = ok.value().getFirst();
+            openFile(location.filePath(), location.line());
+        } else {
+            status = result.failureOf().map(failure -> failure.reason() + ": " + failure.detail())
+                    .orElse(references ? "No usages found" : "No definition found");
+        }
+    }
+
+    private void nextProblem() {
+        if (editor == null || editor.diagnostics().isEmpty()) {
+            status = "No problems in the active file";
+            return;
+        }
+        nextDiagnosticIndex = Math.floorMod(nextDiagnosticIndex, editor.diagnostics().size());
+        editor.jumpToDiagnostic(nextDiagnosticIndex++);
+        status = editor.status();
+    }
+
+    private void resizeProject(int delta) {
+        int available = availableWidth();
+        if (available <= 0 || layoutDock == null) {
+            status = "Project layout is not ready";
+            return;
+        }
+        shellLayout.projectWidth(projectList.renderedArea().width(), available);
+        shellLayout.resizeProject(delta, available);
+        layoutDock.leftWidth(Constraint.length(shellLayout.projectWidth(available)));
+        persistLayout();
+        status = "Project panel: " + shellLayout.projectWidth(available) + " columns";
+    }
+
+    private void resizeBottom(int delta) {
+        int available = availableHeight();
+        if (available <= 0 || layoutDock == null) {
+            status = "Tool window layout is not ready";
+            return;
+        }
+        shellLayout.bottomHeight(Math.max(0, available - centerPanel.renderedArea().height()), available);
+        shellLayout.resizeBottom(delta, available);
+        layoutDock.bottomHeight(Constraint.length(shellLayout.bottomHeight(available)));
+        persistLayout();
+        status = "Tool window height: " + shellLayout.bottomHeight(available) + " rows";
+    }
+
+    private int availableWidth() {
+        Rect project = projectList.renderedArea();
+        Rect center = centerPanel == null ? Rect.ZERO : centerPanel.renderedArea();
+        return project.width() + center.width()
+                + (windowsByAnchor.getOrDefault(ToolWindow.Anchor.RIGHT, List.of()).isEmpty() ? 0 : SIDE_PANEL_WIDTH);
+    }
+
+    private int availableHeight() {
+        Rect center = centerPanel == null ? Rect.ZERO : centerPanel.renderedArea();
+        return center.height() + TOOL_WINDOW_HEIGHT + 2;
+    }
+
+    private void persistLayout() {
+        try {
+            layoutStore.save(shellLayout);
+        } catch (IOException failure) {
+            status = "Cannot save layout: " + failure.getMessage();
         }
     }
 
@@ -487,6 +1010,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private void toggleCommandPalette(KeymapParts parts) {
         inputCaptured = false;
         parts.keymapHelp().close();
+        parts.menuPopup().close();
+        if (parts.searchModel() != null) {
+            parts.searchModel().close();
+        }
         if (parts.commandPalette().isOpen()) {
             parts.commandPalette().close();
             status = "Command palette closed";
@@ -499,6 +1026,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private void toggleKeymapHelp(KeymapParts parts) {
         inputCaptured = false;
         parts.commandPalette().close();
+        parts.menuPopup().close();
+        if (parts.searchModel() != null) {
+            parts.searchModel().close();
+        }
         if (parts.keymapHelp().isOpen()) {
             parts.keymapHelp().close();
             status = "Keymap help closed";
@@ -512,6 +1043,54 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         status = "Keymap: " + parts.keymap().source();
     }
 
+    private List<MenuEntry> menuEntries() {
+        List<MenuEntry> entries = new ArrayList<>();
+        boolean hasDocument = editor != null && editor.activeDocument().isPresent();
+        boolean canEdit = hasDocument;
+        String editorUnavailable = editor == null ? "Built-in editor unavailable"
+                : hasDocument ? "" : "Open a project file first";
+        addMenu(entries, "File", KeyActions.OPEN_FILE, "Open Selected File",
+                editor == null ? "Built-in editor unavailable" : projectFiles.isEmpty() ? "No project files found" : "");
+        addMenu(entries, "File", KeyActions.SAVE, "Save", canEdit ? "" : editorUnavailable);
+        addMenu(entries, "File", KeyActions.CLOSE_TAB, "Close Editor Tab", canEdit ? "" : editorUnavailable);
+        addMenu(entries, "File", KeyActions.QUIT, "Quit", "");
+        addMenu(entries, "Edit", KeyActions.UNDO, "Undo", canEdit ? "" : editorUnavailable);
+        addMenu(entries, "Edit", KeyActions.REDO, "Redo", canEdit ? "" : editorUnavailable);
+        addMenu(entries, "Edit", KeyActions.FIND, "Find", canEdit ? "" : editorUnavailable);
+        addMenu(entries, "View", KeyActions.PROJECT_WIDER, "Widen Project Panel", "");
+        addMenu(entries, "View", KeyActions.PROJECT_NARROWER, "Narrow Project Panel", "");
+        addMenu(entries, "View", KeyActions.BOTTOM_TALLER, "Grow Tool Windows", "");
+        addMenu(entries, "View", KeyActions.BOTTOM_SHORTER, "Shrink Tool Windows", "");
+        addMenu(entries, "Navigate", KeyActions.GO_TO_FILE, "Go to File",
+                projectSearch == null ? "Project search unavailable" : "");
+        addMenu(entries, "Navigate", KeyActions.FIND_IN_FILES, "Find in Files",
+                projectSearch == null ? "Project search unavailable" : "");
+        String navigationUnavailable = availableNavigationProvider() == null
+                ? navigationProviders.isEmpty() ? "Navigation provider unavailable"
+                        : navigationProviders.stream().map(provider -> provider.health().reason())
+                                .filter(Objects::nonNull).findFirst().orElse("Navigation provider unavailable")
+                : "";
+        addMenu(entries, "Navigate", KeyActions.DEFINITION, "Go to Definition",
+                canEdit ? navigationUnavailable : editorUnavailable);
+        addMenu(entries, "Navigate", KeyActions.USAGES, "Find Usages",
+                canEdit ? navigationUnavailable : editorUnavailable);
+        addMenu(entries, "Code", KeyActions.NEXT_PROBLEM, "Next Problem", canEdit ? "" : editorUnavailable);
+        for (ToolWindow window : toolWindows) {
+            entries.addAll(window.menuEntries());
+        }
+        return List.copyOf(entries);
+    }
+
+    private NavigationCapability availableNavigationProvider() {
+        return navigationProviders.stream().filter(candidate -> candidate.health().isAvailable())
+                .findFirst().orElse(null);
+    }
+
+    private static void addMenu(List<MenuEntry> entries, String menu, String action, String label, String reason) {
+        entries.add(new MenuEntry(menu, action, label, reason));
+    }
+
+
     /**
      * Closes the overlays; the keymap runs the closing at every non overlay
      * dispatch, so the shell returns to navigation with the next action.
@@ -519,14 +1098,31 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private boolean closeOverlays(KeymapParts parts) {
         parts.commandPalette().close();
         parts.keymapHelp().close();
+        parts.menuPopup().close();
+        if (parts.searchModel() != null) {
+            parts.searchModel().close();
+        }
         return false;
     }
 
-    private void switchToToolWindow(int index) {
-        ToolWindow window = toolWindows.get(index);
-        toolIndex = index;
+    private void switchToToolWindow(int globalIndex) {
+        ToolWindow window = toolWindows.get(globalIndex);
+        ToolWindow.Anchor anchor = window.anchor();
+
+        // Find the index within the anchor's window list
+        List<ToolWindow> anchorWindows = windowsByAnchor.getOrDefault(anchor, List.of());
+        int anchorIndex = anchorWindows.indexOf(window);
+        if (anchorIndex >= 0) {
+            activeToolIndexByAnchor.put(anchor, anchorIndex);
+        }
+
+        // Update the global toolIndex for backward compatibility (bottom anchor)
+        if (anchor == ToolWindow.Anchor.BOTTOM) {
+            toolIndex = globalIndex;
+        }
+
         inputCaptured = window.capturesInput();
-        toolTabs.selected(index);
+        toolTabs.selected(activeToolIndexByAnchor.getOrDefault(ToolWindow.Anchor.BOTTOM, 0));
         state.selectToolWindow(window.id());
         status = "Tool window: " + window.title();
     }
@@ -535,7 +1131,13 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         if (toolWindows.isEmpty()) {
             return false;
         }
-        ToolWindow active = toolWindows.get(toolIndex);
+        // Route to the active tool window of the bottom anchor (legacy behavior)
+        int bottomIndex = activeToolIndexByAnchor.getOrDefault(ToolWindow.Anchor.BOTTOM, 0);
+        List<ToolWindow> bottomWindows = windowsByAnchor.getOrDefault(ToolWindow.Anchor.BOTTOM, List.of());
+        if (bottomWindows.isEmpty() || bottomIndex >= bottomWindows.size()) {
+            return false;
+        }
+        ToolWindow active = bottomWindows.get(bottomIndex);
         if (active.capturesInput()) {
             return false;
         }
@@ -543,8 +1145,12 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     private void moveSelection(int delta) {
+        if (projectFiles.isEmpty()) {
+            status = projectFilesLoading ? "Loading project files..." : "No project files found";
+            return;
+        }
         int selected = projectList.selected();
-        int target = Math.clamp(selected + delta, 0, PROJECT_FILES.size() - 1);
+        int target = Math.clamp(selected + delta, 0, projectFiles.size() - 1);
         if (target != selected) {
             projectList.selected(target);
             syncFileSelection();
@@ -558,13 +1164,19 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
      * where the focused list consumes arrows, page keys, Home/End and clicks.
      */
     private void syncFileSelection() {
+        if (projectFiles.isEmpty()) {
+            syncedFileIndex = projectList.selected();
+            state.selectFile("");
+            status = projectFilesLoading ? "Loading project files..." : "No project files found";
+            return;
+        }
         int selected = projectList.selected();
         if (selected == syncedFileIndex) {
             return;
         }
         syncedFileIndex = selected;
-        state.selectFile(PROJECT_FILES.get(selected));
-        status = "Selected: " + PROJECT_FILES.get(selected);
+        state.selectFile(projectFiles.get(selected));
+        status = "Selected: " + projectFiles.get(selected);
     }
 
     private void releaseCapture() {
@@ -585,6 +1197,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     private Element editorContent() {
+        if (editor != null) {
+            return editor.element();
+        }
         List<Line> lines = new ArrayList<>();
         ShellHighlightTarget pushed = highlight;
         ShellUnifiedDiff pushedDiff = diff;
@@ -702,18 +1317,29 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             toolIndex = 0;
             inputCaptured = false;
         }
-        state.selectFile(PROJECT_FILES.get(0));
+        // Reset all anchor active indices to first window
+        for (ToolWindow.Anchor anchor : ToolWindow.Anchor.values()) {
+            List<ToolWindow> windows = windowsByAnchor.getOrDefault(anchor, List.of());
+            if (!windows.isEmpty()) {
+                activeToolIndexByAnchor.put(anchor, 0);
+            }
+        }
+        state.selectFile(projectFiles.isEmpty() ? "" : projectFiles.getFirst());
         syncedFileIndex = 0;
         status = "Vintelli ready | IDEA MCP: disconnected | ACP: stopped";
         KeymapParts current = overlays;
         if (current != null) {
             current.commandPalette().close();
             current.keymapHelp().close();
+            current.menuPopup().close();
+            if (current.searchModel() != null) {
+                current.searchModel().close();
+            }
         }
     }
 
     public int toolIndex() {
-        return toolIndex;
+        return activeToolIndexByAnchor.getOrDefault(ToolWindow.Anchor.BOTTOM, 0);
     }
 
     public int fileIndex() {

@@ -24,20 +24,27 @@ class FakeToolWindow implements ToolWindow {
     private final int ordinal;
     private final String content;
     private final boolean captures;
+    private final Anchor anchor;
     private final CopyOnWriteArrayList<String> handledKeys = new CopyOnWriteArrayList<>();
 
     FakeToolWindow(String id, String title, char shortcut, int ordinal, String content) {
-        this(id, title, shortcut, ordinal, content, false);
+        this(id, title, shortcut, ordinal, content, false, Anchor.BOTTOM);
     }
 
     FakeToolWindow(String id, String title, char shortcut, int ordinal, String content,
             boolean captures) {
+        this(id, title, shortcut, ordinal, content, captures, Anchor.BOTTOM);
+    }
+
+    FakeToolWindow(String id, String title, char shortcut, int ordinal, String content,
+            boolean captures, Anchor anchor) {
         this.id = id;
         this.title = title;
         this.shortcut = shortcut;
         this.ordinal = ordinal;
         this.content = content;
         this.captures = captures;
+        this.anchor = anchor;
     }
 
     @Override
@@ -58,6 +65,11 @@ class FakeToolWindow implements ToolWindow {
     @Override
     public int ordinal() {
         return ordinal;
+    }
+
+    @Override
+    public Anchor anchor() {
+        return anchor;
     }
 
     @Override

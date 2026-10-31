@@ -136,6 +136,24 @@ public final class Keymap {
         builder.unbind(QUIT).bind(KeyTrigger.ctrl('c'), QUIT);
         builder.bind(KeyTrigger.ctrl('p'), SEARCH_EVERYWHERE);
         builder.bind(KeyTrigger.key(KeyCode.F1), KEYMAP_HELP);
+        builder.bind(KeyTrigger.key(KeyCode.F10), KeyActions.MENU);
+        builder.bind(KeyTrigger.key(KeyCode.ENTER), KeyActions.OPEN_FILE);
+        builder.bind(KeyTrigger.ctrl('s'), KeyActions.SAVE);
+        builder.bind(KeyTrigger.ctrl('z'), KeyActions.UNDO);
+        builder.bind(KeyTrigger.ctrl('y'), KeyActions.REDO);
+        builder.bind(KeyTrigger.ctrl('f'), KeyActions.FIND);
+        builder.bind(KeyTrigger.ctrl('w'), KeyActions.CLOSE_TAB);
+        builder.bind(KeyTrigger.alt(']'), KeyActions.NEXT_TAB);
+        builder.bind(KeyTrigger.alt('['), KeyActions.PREVIOUS_TAB);
+        builder.bind(KeyTrigger.key(KeyCode.F12), KeyActions.DEFINITION);
+        builder.bind(KeyTrigger.alt('u'), KeyActions.USAGES);
+        builder.bind(KeyTrigger.key(KeyCode.F8), KeyActions.NEXT_PROBLEM);
+        builder.bind(KeyTrigger.ctrl('o'), KeyActions.GO_TO_FILE);
+        builder.bind(KeyTrigger.alt('f'), KeyActions.FIND_IN_FILES);
+        builder.bind(KeyTrigger.alt('='), KeyActions.PROJECT_WIDER);
+        builder.bind(KeyTrigger.alt('-'), KeyActions.PROJECT_NARROWER);
+        builder.bind(KeyTrigger.alt('.'), KeyActions.BOTTOM_TALLER);
+        builder.bind(KeyTrigger.alt(','), KeyActions.BOTTOM_SHORTER);
         for (ToolWindow toolWindow : toolWindows) {
             builder.bind(KeyTrigger.alt(toolWindow.shortcut()), activateToolWindow(toolWindow.id()));
             builder.bind(KeyTrigger.ch(toolWindow.shortcut()), activateToolWindow(toolWindow.id()));
@@ -150,6 +168,7 @@ public final class Keymap {
         catalog.add(new KeyAction(MOVE_DOWN, "Move Selection Down", ""));
         catalog.add(new KeyAction(SEARCH_EVERYWHERE, "Search Everywhere", "Double Shift"));
         catalog.add(new KeyAction(KEYMAP_HELP, "Keymap Help", ""));
+        catalog.addAll(KeyActions.shellActions());
         for (ToolWindow toolWindow : toolWindows) {
             catalog.add(new KeyAction(activateToolWindow(toolWindow.id()),
                     "Activate " + toolWindow.title() + " Tool Window",

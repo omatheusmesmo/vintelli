@@ -13,6 +13,7 @@ public final class AcpAgentsToolWindow extends PilotToolWindow {
     @Inject
     public AcpAgentsToolWindow(Provider<ShellThemes> themes) {
         super("acp.agents", "ACP Agents", '4', 3,
-                "ACP agent sessions: opencode acp / claude-code-acp / pi-acp", themes);
+                "ACP agent sessions: opencode acp / claude-code-acp / pi-acp",
+                Anchor.RIGHT, themes);
     }
 }

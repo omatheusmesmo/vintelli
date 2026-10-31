@@ -13,6 +13,7 @@ public final class TerminalToolWindow extends PilotToolWindow {
     @Inject
     public TerminalToolWindow(Provider<ShellThemes> themes) {
         super("terminal", "Terminal", '2', 1,
-                "IDEA integrated terminal panel (MCP: execute_terminal_command)", themes);
+                "IDEA integrated terminal panel (MCP: execute_terminal_command)",
+                Anchor.BOTTOM, themes);
     }
 }

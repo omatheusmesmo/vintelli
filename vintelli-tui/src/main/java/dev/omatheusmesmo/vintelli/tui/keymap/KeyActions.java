@@ -22,6 +22,43 @@ public final class KeyActions {
     public static final String MOVE_DOWN = Actions.MOVE_DOWN;
     public static final String SEARCH_EVERYWHERE = "SearchEverywhere";
     public static final String KEYMAP_HELP = "KeymapHelp";
+    public static final String MENU = "shell_menu";
+    public static final String OPEN_FILE = "editor_open";
+    public static final String SAVE = "editor_save";
+    public static final String UNDO = "editor_undo";
+    public static final String REDO = "editor_redo";
+    public static final String FIND = "editor_find";
+    public static final String CLOSE_TAB = "editor_close";
+    public static final String NEXT_TAB = "editor_nextTab";
+    public static final String PREVIOUS_TAB = "editor_previousTab";
+    public static final String DEFINITION = "editor_definition";
+    public static final String USAGES = "editor_usages";
+    public static final String NEXT_PROBLEM = "editor_nextProblem";
+    public static final String GO_TO_FILE = "navigation_goToFile";
+    public static final String FIND_IN_FILES = "navigation_findInFiles";
+    public static final String PROJECT_WIDER = "layout_project_wider";
+    public static final String PROJECT_NARROWER = "layout_project_narrower";
+    public static final String BOTTOM_TALLER = "layout_bottom_taller";
+    public static final String BOTTOM_SHORTER = "layout_bottom_shorter";
+
+    public static List<KeyAction> shellActions() {
+        return List.of(new KeyAction(MENU, "Open Menu", ""),
+                new KeyAction(OPEN_FILE, "Open Selected File", ""),
+                new KeyAction(SAVE, "Save File", ""), new KeyAction(UNDO, "Undo", ""),
+                new KeyAction(REDO, "Redo", ""), new KeyAction(FIND, "Find in Editor", ""),
+                new KeyAction(CLOSE_TAB, "Close Editor Tab", ""),
+                new KeyAction(NEXT_TAB, "Next Editor Tab", ""),
+                new KeyAction(PREVIOUS_TAB, "Previous Editor Tab", ""),
+                new KeyAction(DEFINITION, "Go to Definition", ""),
+                new KeyAction(USAGES, "Find Usages", ""),
+                new KeyAction(NEXT_PROBLEM, "Next Problem", ""),
+                new KeyAction(GO_TO_FILE, "Go to File", ""),
+                new KeyAction(FIND_IN_FILES, "Find in Files", ""),
+                new KeyAction(PROJECT_WIDER, "Widen Project Panel", ""),
+                new KeyAction(PROJECT_NARROWER, "Narrow Project Panel", ""),
+                new KeyAction(BOTTOM_TALLER, "Grow Tool Window", ""),
+                new KeyAction(BOTTOM_SHORTER, "Shrink Tool Window", ""));
+    }
 
     private KeyActions() {
     }
@@ -45,6 +82,7 @@ public final class KeyActions {
      */
     public static Set<String> reservedActionIds(List<ToolWindow> toolWindows) {
         Set<String> reserved = new LinkedHashSet<>(List.of(SEARCH_EVERYWHERE, KEYMAP_HELP));
+        shellActions().stream().map(KeyAction::id).filter(id -> !OPEN_FILE.equals(id)).forEach(reserved::add);
         for (ToolWindow toolWindow : toolWindows) {
             reserved.add(activateToolWindow(toolWindow.id()));
         }

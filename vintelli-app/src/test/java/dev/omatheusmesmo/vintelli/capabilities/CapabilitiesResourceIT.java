@@ -21,16 +21,18 @@ import io.restassured.RestAssured;
  * capabilities (run, terminal, read-file and the version control provider) are
  * served by the beans of {@code vintelli-local}, the two LSP capabilities
  * (diagnostics and call hierarchy) stay explicitly unavailable until a language
- * server profile is configured, naming the LSP providers behind that state, and
- * the editor bridge stays unavailable until its provider lands. Under
- * {@code -Dnative} the same assertions run against the native runner, so the
- * local and LSP providers also survive AOT.
+ * server profile is configured, and the built-in editor bridge remains
+ * available. Under {@code -Dnative} the same assertions run against the native
+ * runner, so these providers also survive AOT.
  */
 @QuarkusIntegrationTest
 class CapabilitiesResourceIT {
 
     @TestHTTPResource("/capabilities")
     URI capabilities;
+
+    @TestHTTPResource("/inspect/editor")
+    URI editorInspect;
 
     @Test
     void wrongOrMissingCredentialsDoNotChallengeCapabilities() {
@@ -39,21 +41,31 @@ class CapabilitiesResourceIT {
     }
 
     @Test
-    void servesTheLocalProvidersAndLeavesTheLspCapabilitiesUnavailableWithoutAProfile() {
+    void editorInspectionSurfaceIsDisabledByDefault() {
+        given().when().get(editorInspect).then().statusCode(404);
+        given().when().post(URI.create(editorInspect + "/insert")).then().statusCode(404);
+    }
+
+    @Test
+    void servesTheLocalProvidersAndBuiltinEditorAndLeavesLspUnavailableWithoutAProfile() {
         RestAssured.given()
                 .when().get(capabilities)
                 .then()
                 .statusCode(200)
                 .body("", hasSize(7))
-                .body("providerIdentifier", contains("local", "local", "local", null, null, null, "local"))
+                .body("providerIdentifier", contains("local", "local", "local", null, null, "builtin", "local"))
+                .body("provenance", contains(
+                        "local process runner via mvn", "local shell process",
+                        "local filesystem, confined to the project root", null, null,
+                        "built-in TamboUI TextArea editor", "JGit, repository discovered from the project root"))
                 .body("health.state", contains(
-                        "AVAILABLE", "AVAILABLE", "AVAILABLE", "UNAVAILABLE", "UNAVAILABLE", "UNAVAILABLE",
+                        "AVAILABLE", "AVAILABLE", "AVAILABLE", "UNAVAILABLE", "UNAVAILABLE", "AVAILABLE",
                         "AVAILABLE"))
                 .body("health.reason", contains(
                         nullValue(), nullValue(), nullValue(),
                         containsString("no healthy provider for 'diagnostics': lsp"),
                         containsString("no healthy provider for 'call-hierarchy': lsp"),
-                        containsString("no provider is registered"),
+                        nullValue(),
                         nullValue()))
                 .body("capability", hasItem("VERSION_CONTROL"));
     }
