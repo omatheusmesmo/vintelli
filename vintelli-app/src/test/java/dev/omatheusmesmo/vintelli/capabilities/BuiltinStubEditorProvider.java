@@ -11,9 +11,9 @@ import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import jakarta.inject.Singleton;
 
 /**
- * Stands in for the builtin text area editor in the CDI selection tests. The
- * identifier matches the documented builtin adapter so the unconfigured
- * default ranks it first.
+ * Stands in for the builtin text area editor in the CDI selection tests. It
+ * uses a distinct identifier so the tests can include both this
+ * deterministic stub and the real built-in editor without an ambiguous rank.
  */
 @Singleton
 public final class BuiltinStubEditorProvider implements EditorBridge {
@@ -22,7 +22,7 @@ public final class BuiltinStubEditorProvider implements EditorBridge {
 
     @Override
     public String identifier() {
-        return "builtin";
+        return "builtin-stub";
     }
 
     @Override

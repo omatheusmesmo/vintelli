@@ -161,3 +161,5 @@ Each layer can either enhance (append to) or override (replace) the previous lay
 
 You can also manually place SKILL.md files under `.quarkus/skills/<extension-name>/SKILL.md`.
 Use `mode: enhance` (default) or `mode: override` in the YAML frontmatter to control behavior.
+
+@RTK.md
