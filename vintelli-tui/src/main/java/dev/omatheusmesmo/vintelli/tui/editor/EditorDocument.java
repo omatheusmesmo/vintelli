@@ -13,6 +13,7 @@ import java.nio.file.StandardOpenOption;
 import java.util.Set;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Deque;
 import java.util.List;
 
@@ -31,6 +32,9 @@ public final class EditorDocument {
     /** Exact on-disk contents last opened/saved; null means this is a recovered missing file. */
     private String savedDiskText;
     private List<Diagnostic> diagnostics = List.of();
+    /** While folded, {@code view} is the widget-facing copy of {@code state} with the import block replaced by its placeholder. */
+    private ImportFold fold;
+    private TextAreaState view;
 
     EditorDocument(Path file, String text) {
         this(file, text, text.replace("\r\n", "\n"));
@@ -50,12 +54,22 @@ public final class EditorDocument {
     public int column() { return state.cursorCol(); }
     public boolean dirty() { return savedText == null || !savedText.equals(text()); }
     public List<Diagnostic> diagnostics() { return diagnostics; }
-    TextAreaState state() { return state; }
+    TextAreaState state() { return view != null ? view : state; }
+    public int lineCount() { return state.lineCount(); }
+    public boolean importsFolded() { return fold != null; }
+    int documentRow(int viewRow) { return fold == null ? viewRow : fold.toDocument(viewRow); }
+
+    boolean hasDiagnosticAt(int viewRow) {
+        int first = documentRow(viewRow);
+        int span = fold != null && viewRow == fold.start() ? fold.count() : 1;
+        return diagnostics.stream().anyMatch(value -> value.startLine() >= first && value.startLine() < first + span);
+    }
     EditorSyntaxHighlighter highlighter() { return highlighter; }
 
     void mutate(Runnable edit) {
         Revision before = revision();
         edit.run();
+        if (fold != null) { syncFold(); }
         if (!before.text().equals(text())) {
             undo.push(before);
             while (undo.size() > HISTORY_LIMIT) { undo.removeLast(); }
@@ -71,22 +85,79 @@ public final class EditorDocument {
         if (from.isEmpty()) { return false; }
         to.push(revision());
         Revision revision = from.pop();
+        boolean folded = fold != null;
+        dropFold();
         state.setText(revision.text());
         position(revision.row(), revision.column());
         diagnostics(revision.diagnostics());
+        if (folded) { foldImports(); }
         return true;
     }
 
     private Revision revision() { return new Revision(text(), row(), column(), diagnostics); }
 
     void position(int row, int column) {
-        state.moveCursorToStart();
-        for (int i = 0; i < Math.clamp(row, 0, state.lineCount() - 1); i++) { state.moveCursorDown(); }
-        while (state.cursorCol() < column) {
-            int previous = state.cursorCol();
-            state.moveCursorRight();
-            if (state.cursorCol() <= previous) { state.moveCursorLeft(); break; }
+        if (fold != null && fold.hides(row)) { dropFold(); }
+        place(state, row, column);
+        if (fold != null) { place(view, fold.toView(row), fold.viewColumn(row, column)); }
+    }
+
+    private static void place(TextAreaState target, int row, int column) {
+        target.moveCursorToStart();
+        for (int i = 0; i < Math.clamp(row, 0, target.lineCount() - 1); i++) { target.moveCursorDown(); }
+        while (target.cursorCol() < column) {
+            int previous = target.cursorCol();
+            target.moveCursorRight();
+            if (target.cursorCol() <= previous) { target.moveCursorLeft(); break; }
         }
+    }
+
+    /** Collapses the import block when expanded and expands it when collapsed; false when there is nothing to collapse. */
+    boolean toggleImportFold() {
+        if (fold != null) { dropFold(); return true; }
+        return foldImports();
+    }
+
+    private boolean foldImports() {
+        fold = ImportFold.detect(text()).orElse(null);
+        if (fold == null) { return false; }
+        String[] lines = text().split("\n", -1);
+        List<String> shown = new ArrayList<>(Arrays.asList(lines).subList(0, fold.start()));
+        shown.add(fold.placeholder());
+        shown.addAll(Arrays.asList(lines).subList(fold.start() + fold.count(), lines.length));
+        view = new TextAreaState(String.join("\n", shown));
+        place(view, fold.toView(row()), fold.viewColumn(row(), column()));
+        paintDiagnostics();
+        return true;
+    }
+
+    private void dropFold() {
+        fold = null;
+        view = null;
+        paintDiagnostics();
+    }
+
+    /** Writes the widget's edits of the folded view back into the full text; an edit that damages the placeholder expands the block and is discarded. */
+    private void syncFold() {
+        String[] shown = view.text().split("\n", -1);
+        String placeholder = fold.placeholder();
+        int at = -1;
+        for (int i = 0; i < shown.length; i++) {
+            if (shown[i].equals(placeholder)) {
+                if (at >= 0) { at = -1; break; }
+                at = i;
+            }
+        }
+        if (at < 0) { dropFold(); return; }
+        String[] full = state.text().split("\n", -1);
+        List<String> merged = new ArrayList<>(Arrays.asList(shown).subList(0, at));
+        merged.addAll(Arrays.asList(full).subList(fold.start(), fold.start() + fold.count()));
+        merged.addAll(Arrays.asList(shown).subList(at + 1, shown.length));
+        ImportFold moved = new ImportFold(at, fold.count(), fold.statements());
+        String text = String.join("\n", merged);
+        if (!text.equals(state.text())) { state.setText(text); }
+        fold = moved;
+        place(state, moved.toDocument(view.cursorRow()), moved.documentColumn(view.cursorRow(), view.cursorCol()));
     }
 
     boolean find(String query) {
@@ -140,8 +211,12 @@ public final class EditorDocument {
 
     void diagnostics(List<Diagnostic> values) {
         diagnostics = List.copyOf(values);
-        highlighter.setDiagnostics(values.stream().map(value -> new EditorSyntaxHighlighter.Diagnostic(
-                value.startLine(), switch (value.severity()) {
+        paintDiagnostics();
+    }
+
+    private void paintDiagnostics() {
+        highlighter.setDiagnostics(diagnostics.stream().map(value -> new EditorSyntaxHighlighter.Diagnostic(
+                fold == null ? value.startLine() : fold.toView(value.startLine()), switch (value.severity()) {
                     case ERROR -> EditorSyntaxHighlighter.Severity.ERROR;
                     case WARNING -> EditorSyntaxHighlighter.Severity.WARNING;
                     default -> EditorSyntaxHighlighter.Severity.INFO;

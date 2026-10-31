@@ -277,7 +277,7 @@ in the built-in editor; `Ctrl+S` saves, `Ctrl+Z`/`Ctrl+Y` undo and redo,
 for confirmation). `F10` opens the menu bar; menu headings also respond to
 mouse clicks, and long unavailable reasons can be scrolled with Page Up/Down.
 `Ctrl+O` opens Go to File, `Alt+F` searches file contents, `F12` requests a
-definition, `Alt+U` requests references, and `F8` moves to the next diagnostic.
+definition, `Alt+U` requests references, and `F8` moves to the next diagnostic, and `Alt+I` folds or unfolds the import block.
 `Alt+=`/`Alt+-` resize the project pane and `Alt+.`/`Alt+,` resize the bottom
 tool window pane; the ratios are saved per project under the user config
 directory. `Tab`/`Shift+Tab` move focus through the focusable panels

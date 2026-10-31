@@ -48,6 +48,111 @@ class BuiltinEditorTest {
         assertTrue(row(scrolled, 1).startsWith("  3 "), row(scrolled, 1));
     }
 
+    private static final String IMPORTS = "package demo;\n\nimport java.util.List;\nimport java.util.Map;\n\nimport static java.lang.Math.max;\n\nclass A {\n    int x;\n}\n";
+
+    private BuiltinEditor foldedEditor() throws IOException {
+        BuiltinEditor editor = editor(null);
+        editor.open(new OpenRequest(write("A.java", IMPORTS), 0));
+        assertTrue(editor.toggleImportFold());
+        return editor;
+    }
+
+    @Test
+    void foldingCollapsesTheImportBlockIntoOnePlaceholderAndExpandsAgain() throws IOException {
+        BuiltinEditor editor = foldedEditor();
+
+        Buffer folded = render(editor, 60, 8);
+        assertTrue(row(folded, 1).startsWith("   1 package demo;"), row(folded, 1));
+        assertTrue(row(folded, 3).startsWith("   3 import ... (3 statements)"), row(folded, 3));
+        assertTrue(row(folded, 5).startsWith("   8 class A {"), row(folded, 5));
+        assertEquals(IMPORTS, editor.activeDocument().orElseThrow().text());
+
+        assertTrue(editor.toggleImportFold());
+        assertTrue(row(render(editor, 60, 12), 3).contains("import java.util.List;"));
+    }
+
+    @Test
+    void editingWhileFoldedKeepsTheHiddenImportsAligned() throws IOException {
+        BuiltinEditor editor = foldedEditor();
+        editor.document().position(7, 0);
+        assertTrue(editor.handleKey(KeyEvent.ofKey(KeyCode.ENTER)));
+        editor.insert("// note");
+
+        String expected = IMPORTS.replace("class A", "\n// noteclass A");
+        assertEquals(expected, editor.activeDocument().orElseThrow().text());
+        assertTrue(editor.document().importsFolded());
+        editor.toggleImportFold();
+        assertEquals(expected, editor.activeDocument().orElseThrow().text());
+        assertTrue(editor.undo());
+        assertEquals(IMPORTS.replace("class A", "\nclass A"), editor.activeDocument().orElseThrow().text());
+    }
+
+    @Test
+    void editingThePlaceholderExpandsTheBlockWithoutLosingImports() throws IOException {
+        BuiltinEditor editor = foldedEditor();
+        editor.document().position(0, 0);
+        editor.handleKey(KeyEvent.ofKey(KeyCode.DOWN));
+        editor.handleKey(KeyEvent.ofKey(KeyCode.DOWN));
+        editor.handleKey(KeyEvent.ofChar('x'));
+
+        assertEquals(IMPORTS, editor.activeDocument().orElseThrow().text());
+        assertFalse(editor.document().importsFolded());
+    }
+
+    @Test
+    void cursorMovesBetweenViewRowsAndDocumentRows() throws IOException {
+        BuiltinEditor editor = foldedEditor();
+        editor.document().position(8, 4);
+        assertEquals(5, editor.document().state().cursorRow());
+        assertEquals(8, editor.document().row());
+
+        editor.handleKey(KeyEvent.ofKey(KeyCode.UP));
+        editor.handleKey(KeyEvent.ofKey(KeyCode.UP));
+        assertEquals(6, editor.document().row());
+        editor.handleKey(KeyEvent.ofKey(KeyCode.UP));
+        assertEquals(2, editor.document().row());
+        assertEquals(2, editor.document().state().cursorRow());
+    }
+
+    @Test
+    void jumpingIntoTheHiddenBlockExpandsIt() throws IOException {
+        BuiltinEditor editor = foldedEditor();
+        editor.document().position(3, 2);
+        assertFalse(editor.document().importsFolded());
+        assertEquals(3, editor.document().row());
+    }
+
+    @Test
+    void selectionsMapBetweenViewAndDocumentRows() {
+        ImportFold fold = new ImportFold(2, 4, 3);
+        SelectionCursor selection = SelectionCursor.collapsed(7, 3).extendTo(8, 1);
+
+        assertEquals(new SelectionCursor(4, 3, 5, 1), fold.toView(selection));
+        assertEquals(selection, fold.toDocument(fold.toView(selection)));
+        assertEquals(new SelectionCursor(2, 0, 5, 2), fold.toView(new SelectionCursor(3, 5, 8, 2)));
+    }
+
+    @Test
+    void foldStateStaysWithItsTabAcrossTabSwitches() throws IOException {
+        BuiltinEditor editor = foldedEditor();
+        editor.open(new OpenRequest(write("B.java", IMPORTS), 0));
+        assertFalse(editor.document().importsFolded());
+
+        editor.previousTab();
+        assertTrue(editor.document().importsFolded());
+        editor.nextTab();
+        assertFalse(editor.document().importsFolded());
+    }
+
+    @Test
+    void foldingReportsWhenThereIsNothingToFold() throws IOException {
+        BuiltinEditor editor = editor(null);
+        editor.open(new OpenRequest(write("Plain.java", "class Plain {}\n"), 0));
+
+        assertFalse(editor.toggleImportFold());
+        assertEquals("No import block to fold", editor.status());
+    }
+
     private static Buffer render(BuiltinEditor editor, int width, int height) {
         Rect area = new Rect(0, 0, width, height);
         Buffer buffer = Buffer.empty(area);

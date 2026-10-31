@@ -51,7 +51,7 @@ final class EditorElement implements Element {
                 ListView tabs = tabs();
                 column.add(tabs.element);
                 Row body = Toolkit.row().fill();
-                int gutterWidth = Integer.toString(document.state().lineCount()).length() + 3;
+                int gutterWidth = Integer.toString(document.lineCount()).length() + 3;
                 int bodyHeight = Math.max(0, area.height() - 2);
                 document.state().ensureCursorVisible(bodyHeight, Math.max(0, area.width() - gutterWidth));
                 body.add(Toolkit.richText(gutter(document, bodyHeight, gutterWidth))
@@ -111,8 +111,8 @@ final class EditorElement implements Element {
         int end = Math.min(document.state().lineCount(), first + height);
         for (int row = first; row < end; row++) {
             final int currentRow = row;
-            boolean marker = document.diagnostics().stream().anyMatch(diagnostic -> diagnostic.startLine() == currentRow);
-            String number = Integer.toString(currentRow + 1);
+            boolean marker = document.hasDiagnosticAt(currentRow);
+            String number = Integer.toString(document.documentRow(currentRow) + 1);
             lines.add(Line.from((marker ? "! " : "  ") + " ".repeat(width - 3 - number.length()) + number + " "));
         }
         return Text.from(lines);

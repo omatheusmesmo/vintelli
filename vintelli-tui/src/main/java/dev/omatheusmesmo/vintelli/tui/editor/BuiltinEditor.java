@@ -187,6 +187,13 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
         document().mutate(() -> document().state().insert(text.replace("\r\n", "\n")));
         persist();
     }
+    public synchronized boolean toggleImportFold() {
+        EditorDocument document = document();
+        boolean toggled = document != null && document.toggleImportFold();
+        status = document == null ? "No file is open" : !toggled ? "No import block to fold"
+                : document.importsFolded() ? "Imports folded" : "Imports expanded";
+        return toggled;
+    }
     public synchronized void nextTab() { selectTab(active + 1); }
     public synchronized void previousTab() { selectTab(active - 1); }
     public synchronized void selectTab(int index) {

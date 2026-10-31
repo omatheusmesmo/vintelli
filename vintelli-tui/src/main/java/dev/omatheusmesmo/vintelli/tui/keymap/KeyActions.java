@@ -34,6 +34,7 @@ public final class KeyActions {
     public static final String DEFINITION = "editor_definition";
     public static final String USAGES = "editor_usages";
     public static final String NEXT_PROBLEM = "editor_nextProblem";
+    public static final String TOGGLE_IMPORT_FOLD = "editor_toggleImportFold";
     public static final String GO_TO_FILE = "navigation_goToFile";
     public static final String FIND_IN_FILES = "navigation_findInFiles";
     public static final String PROJECT_WIDER = "layout_project_wider";
@@ -53,6 +54,7 @@ public final class KeyActions {
                 new KeyAction(DEFINITION, "Go to Definition", ""),
                 new KeyAction(USAGES, "Find Usages", ""),
                 new KeyAction(NEXT_PROBLEM, "Next Problem", ""),
+                new KeyAction(TOGGLE_IMPORT_FOLD, "Fold or Unfold Imports", ""),
                 new KeyAction(GO_TO_FILE, "Go to File", ""),
                 new KeyAction(FIND_IN_FILES, "Find in Files", ""),
                 new KeyAction(PROJECT_WIDER, "Widen Project Panel", ""),

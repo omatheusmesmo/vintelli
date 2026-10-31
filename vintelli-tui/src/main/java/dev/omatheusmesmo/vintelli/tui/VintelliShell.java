@@ -830,6 +830,15 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 closeOverlays(parts);
                 navigateToSymbol(true);
             }
+            case KeyActions.TOGGLE_IMPORT_FOLD -> {
+                closeOverlays(parts);
+                if (editor == null) {
+                    status = "Built-in editor unavailable";
+                } else {
+                    editor.toggleImportFold();
+                    status = editor.status();
+                }
+            }
             case KeyActions.NEXT_PROBLEM -> {
                 closeOverlays(parts);
                 nextProblem();
@@ -1127,6 +1136,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         addMenu(entries, "View", KeyActions.PROJECT_NARROWER, "Narrow Project Panel", "");
         addMenu(entries, "View", KeyActions.BOTTOM_TALLER, "Grow Tool Windows", "");
         addMenu(entries, "View", KeyActions.BOTTOM_SHORTER, "Shrink Tool Windows", "");
+        addMenu(entries, "View", KeyActions.TOGGLE_IMPORT_FOLD, "Fold or Unfold Imports", canEdit ? "" : editorUnavailable);
         addMenu(entries, "Navigate", KeyActions.GO_TO_FILE, "Go to File",
                 projectSearch == null ? "Project search unavailable" : "");
         addMenu(entries, "Navigate", KeyActions.FIND_IN_FILES, "Find in Files",
