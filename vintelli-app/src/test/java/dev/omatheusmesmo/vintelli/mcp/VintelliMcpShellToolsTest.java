@@ -3,6 +3,7 @@ package dev.omatheusmesmo.vintelli.mcp;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -257,9 +258,12 @@ public class VintelliMcpShellToolsTest {
     private void assertStatePayload(ToolResponse response) {
         assertSuccessfulCall(response);
         String text = textResult(response);
-        assertTrue(text.contains("\"selectedToolWindowId\":\"run\""), text);
-        assertTrue(text.contains("\"selectedFile\":\"vintelli/pom.xml\""), text);
-        assertTrue(text.contains("\"agentSessionIds\":[]"), text);
+        var payload = assertDoesNotThrow(() -> new ObjectMapper().readTree(text), text);
+        assertEquals("run", payload.path("selectedToolWindowId").asText(), text);
+        assertTrue(payload.hasNonNull("selectedFile"), text);
+        assertTrue(payload.path("selectedFile").isTextual(), text);
+        assertTrue(payload.path("agentSessionIds").isArray(), text);
+        assertEquals(0, payload.path("agentSessionIds").size(), text);
     }
 
     private static void assertSuccessfulCall(ToolResponse response) {

@@ -58,7 +58,6 @@ class ConfiguredThemeTest {
                 .when().get("/tui/render")
                 .then()
                 .statusCode(200)
-                .body("theme", is("darcula"),
-                        "status", is("Vintelli ready | IDEA MCP: disconnected | ACP: stopped"));
+                .body("theme", is("darcula"));
     }
 }

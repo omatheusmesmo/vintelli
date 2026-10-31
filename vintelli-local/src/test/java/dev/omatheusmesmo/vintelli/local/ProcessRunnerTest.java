@@ -16,7 +16,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -204,7 +206,7 @@ class ProcessRunnerTest {
         } finally {
             if (Files.exists(pidFile)) {
                 ProcessHandle.of(Long.parseLong(Files.readString(pidFile).strip()))
-                        .ifPresent(ProcessHandle::destroyForcibly);
+                        .ifPresent(ProcessRunnerTest::destroyAndWait);
             }
         }
     }
@@ -228,8 +230,20 @@ class ProcessRunnerTest {
             handle.cancel();
             if (Files.exists(pidFile)) {
                 ProcessHandle.of(Long.parseLong(Files.readString(pidFile).strip()))
-                        .ifPresent(ProcessHandle::destroyForcibly);
+                        .ifPresent(ProcessRunnerTest::destroyAndWait);
             }
+        }
+    }
+
+    private static void destroyAndWait(ProcessHandle process) {
+        process.destroyForcibly();
+        try {
+            process.onExit().get(10, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("Interrupted while waiting for the descendant process to exit", e);
+        } catch (ExecutionException | TimeoutException e) {
+            throw new AssertionError("Descendant process did not exit after forcible termination", e);
         }
     }
 

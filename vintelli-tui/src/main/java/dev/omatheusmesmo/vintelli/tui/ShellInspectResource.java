@@ -60,7 +60,7 @@ public final class ShellInspectResource {
     private static final Rect VIEWPORT = new Rect(0, 0, 80, 24);
     private static final int TAB_ROW = 1;
     private static final int MAIN_AREA_TOP_ROW = 2;
-    private static final int FIRST_EDITOR_ROW = 3;
+    private static final int FIRST_EDITOR_ROW = 2;
     private static final int LAST_EDITOR_ROW = 12;
     private static final int STATUS_ROW = 23;
 

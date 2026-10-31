@@ -12,8 +12,8 @@ import dev.tamboui.widgets.paragraph.Paragraph;
  * Toolkit wrapper around one {@link ToolWindow}: carries the stable element
  * id ({@code tool-<id>}) that Pilot tests and the stylesheet address, draws
  * fault tolerant (a broken window never takes the shell down and shows the
- * failure instead) and applies a fixed row height so the shell layout keeps
- * the tool window strip a known size.
+ * failure instead). Bottom windows use a fixed height; side windows fill the
+ * space assigned by their stripe.
  */
 final class ToolWindowElement extends StyledElement<ToolWindowElement> {
 
@@ -21,12 +21,22 @@ final class ToolWindowElement extends StyledElement<ToolWindowElement> {
     private static final String RENDER_FAILED_TEXT = "tool window render failed: ";
 
     private final ToolWindow window;
+    private final int height;
 
     ToolWindowElement(ToolWindow window) {
+        this(window, TOOL_WINDOW_HEIGHT);
+    }
+
+    ToolWindowElement(ToolWindow window, int height) {
         this.window = window;
+        this.height = height;
         id("tool-" + window.id());
         addClass("tool-window");
-        length(TOOL_WINDOW_HEIGHT);
+        if (height < 0) {
+            fill();
+        } else {
+            length(height);
+        }
     }
 
     ToolWindow window() {
@@ -45,7 +55,7 @@ final class ToolWindowElement extends StyledElement<ToolWindowElement> {
     @Override
     public Size preferredSize(int availableWidth, int availableHeight, RenderContext context) {
         int width = availableWidth >= 0 ? availableWidth : 1;
-        return new Size(width, TOOL_WINDOW_HEIGHT);
+        return new Size(width, height < 0 ? Math.max(0, availableHeight) : height);
     }
 
     private static Paragraph failureParagraph(RenderContext context, RuntimeException failure) {

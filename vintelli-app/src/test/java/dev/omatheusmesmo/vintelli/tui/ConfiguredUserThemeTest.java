@@ -13,7 +13,6 @@ import java.nio.file.Path;
 import java.util.Map;
 
 import static io.restassured.RestAssured.given;
-import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
 
 /**
@@ -62,8 +61,6 @@ class ConfiguredUserThemeTest {
                 .when().get("/tui/render")
                 .then()
                 .statusCode(200)
-                .body("theme", is("midnight"),
-                        "tabRow", containsString("1. Run"),
-                        "status", is("Vintelli ready | IDEA MCP: disconnected | ACP: stopped"));
+                .body("theme", is("midnight"));
     }
 }

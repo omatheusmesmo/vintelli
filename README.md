@@ -255,12 +255,22 @@ also records the truecolor detection schedule.
 
 Keys: `1-4` (or `Alt+1`..`Alt+4`) switch tool windows (Run, Terminal,
 Problems, ACP Agents), arrows and `PageUp`/`PageDown`/`Home`/`End` navigate
-the project panel (hjkl in the `vim` profile) and every change is mirrored
-into the shell state and the status line, `Tab`/`Shift+Tab` move the focus
-through the focusable panels (`#project-panel`, `#editor-panel`), clicking
-a panel focuses it, escape leaves captured input (a tool window that claims
-the keyboard) and returns to shell navigation, `Ctrl+C` quits. Theme
-switching is exposed through the named action `shell.theme.switch`
+the live project file list (hjkl in the `vim` profile), and every selection is
+mirrored into shell state and the status line. `Enter` opens the selected file
+in the built-in editor; `Ctrl+S` saves, `Ctrl+Z`/`Ctrl+Y` undo and redo,
+`Alt+]`/`Alt+[` switch editor tabs, and `Ctrl+W` closes a tab (dirty tabs ask
+for confirmation). `F10` opens the menu bar; menu headings also respond to
+mouse clicks, and long unavailable reasons can be scrolled with Page Up/Down.
+`Ctrl+O` opens Go to File, `Alt+F` searches file contents, `F12` requests a
+definition, `Alt+U` requests references, and `F8` moves to the next diagnostic.
+`Alt+=`/`Alt+-` resize the project pane and `Alt+.`/`Alt+,` resize the bottom
+tool window pane; the ratios are saved per project under the user config
+directory. `Tab`/`Shift+Tab` move focus through the focusable panels
+(`#project-panel`, `#editor-panel`), clicking a panel focuses it, escape leaves
+captured input (a tool window that claims the keyboard) and returns to shell
+navigation, and `Ctrl+C` quits. Open editor tabs and their unsaved recovery
+text are also restored from the user config directory. Theme switching is
+exposed through the named action `shell.theme.switch`
 (`SwitchShellThemeAction`), for the keymap work to bind a key to; the switch
 applies on the next frame without a restart.
 
@@ -447,6 +457,12 @@ validated by the integration tests on every run.
 the shortcut string of every named action) as JSON. It is gated by the same
 `vintelli.inspect.enabled` switch and exists so the TamboUI binding presets
 are exercised on every run, including the native runner.
+
+`GET /inspect/editor` and its `POST /open`, `/insert`, `/undo` and `/save`
+actions expose a small headless editor inspection surface for native
+integration tests and local debugging. It is off unless
+`vintelli.editor.inspect.enabled=true`; open paths remain confined to the
+configured project root, and saves retain the editor's external-change checks.
 
 ### Browser terminal
 

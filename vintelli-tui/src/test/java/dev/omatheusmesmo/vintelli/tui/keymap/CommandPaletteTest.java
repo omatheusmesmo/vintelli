@@ -71,7 +71,8 @@ class CommandPaletteTest {
         for (int index = 0; index < 40; index++) {
             palette.handleKey(KeyEvent.ofKey(KeyCode.DOWN));
         }
-        assertEquals(Optional.of(action("SearchEverywhere")), palette.handleKey(KeyEvent.ofKey(KeyCode.ENTER)),
+        // Catalog is sorted by label; "Widen Project Panel" (W) comes after "Search Everywhere" (S)
+        assertEquals(Optional.of(action("layout_project_wider")), palette.handleKey(KeyEvent.ofKey(KeyCode.ENTER)),
                 "down clamps at the last result");
 
         for (int index = 0; index < 40; index++) {
