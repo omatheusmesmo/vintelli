@@ -57,6 +57,15 @@ import java.util.Map;
 @Singleton
 public final class ShellInspectResource {
 
+    /**
+     * The palette variables the render payload reports: one chrome
+     * background, foreground and accent plus an editor background, keyword
+     * and comment, so a caller sees both palettes of the active theme
+     * without the payload carrying the whole stylesheet.
+     */
+    private static final List<String> INSPECTED_VARIABLES = List.of(
+            "panel", "chrome-fg", "tab-selected-bg", "editor-bg", "editor-keyword", "editor-comment");
+
     private static final Rect VIEWPORT = new Rect(0, 0, 80, 24);
     private static final int TAB_ROW = 1;
     private static final int MAIN_AREA_TOP_ROW = 2;
@@ -126,12 +135,31 @@ public final class ShellInspectResource {
     private static ShellRenderView renderView(VintelliShell liveShell) {
         Buffer buffer = Buffer.empty(VIEWPORT);
         liveShell.paint(Frame.forTesting(buffer));
+        ShellThemes themes = liveShell.themes();
         return new ShellRenderView(
                 rowText(buffer, TAB_ROW),
                 rowText(buffer, MAIN_AREA_TOP_ROW),
                 editorRows(buffer),
                 rowText(buffer, STATUS_ROW).strip(),
-                liveShell.activeTheme());
+                liveShell.activeTheme(),
+                themes.colorLevel().name().toLowerCase(Locale.ROOT),
+                inspectedPalette(themes));
+    }
+
+    /**
+     * The inspected variables of the active theme as the active color depth
+     * serves them: the authored hex value on truecolor, the rewritten index
+     * on 256 colors. The payload therefore tells the two depths apart without
+     * a terminal, which is what the integration tests assert on the native
+     * runner, where the environment would otherwise decide.
+     */
+    private static Map<String, String> inspectedPalette(ShellThemes themes) {
+        Map<String, String> variables = themes.variablesOf(themes.activeTheme());
+        Map<String, String> palette = new LinkedHashMap<>();
+        for (String name : INSPECTED_VARIABLES) {
+            palette.put(name, variables.get(name));
+        }
+        return palette;
     }
 
     /**
@@ -198,7 +226,9 @@ public final class ShellInspectResource {
      * Payload offered only while {@code vintelli.inspect.enabled} is
      * {@code true}: the plain text of the tool window tab row, the top border
      * row of the project and editor panels, the content rows of the editor
-     * panel joined by newlines, the status row and the active theme name.
+     * panel joined by newlines, the status row, the active theme name, the
+     * color depth the active theme renders with and the {@link
+     * #INSPECTED_VARIABLES} of that theme as the depth serves them.
      * {@code POST /tui/theme} answers with the same shape after the switch,
      * so one payload carries both the new theme name and a frame painted in
      * it. Rows are returned without their trailing padding, and the status
@@ -206,7 +236,8 @@ public final class ShellInspectResource {
      * reads the same whatever the viewport width. Leading indentation of the
      * editor rows is kept, because diff context lines start with a space.
      */
-    record ShellRenderView(String tabRow, String mainAreaTop, String editorArea, String status, String theme) {
+    record ShellRenderView(String tabRow, String mainAreaTop, String editorArea, String status, String theme,
+            String colorLevel, Map<String, String> colors) {
     }
 
     /**

@@ -11,6 +11,7 @@ import java.util.Set;
 import dev.omatheusmesmo.vintelli.api.ShellEditorPalette;
 import dev.tamboui.style.AnsiColor;
 import dev.tamboui.style.Color;
+import dev.tamboui.style.ColorConverter;
 import dev.tamboui.style.Style;
 import dev.tamboui.text.Line;
 import dev.tamboui.text.Span;
@@ -148,7 +149,8 @@ final class EditorSyntaxHighlighter implements SyntaxHighlighter {
     }
 
     private static Style foreground(String color) {
-        return Style.EMPTY.fg(Color.hex(color));
+        return Style.EMPTY.fg(ColorConverter.INSTANCE.convert(color).orElseThrow(
+                () -> new IllegalStateException("editor palette value '" + color + "' is not a color")));
     }
 
     @Override

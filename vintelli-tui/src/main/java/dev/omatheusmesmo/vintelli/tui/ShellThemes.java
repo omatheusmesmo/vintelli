@@ -10,6 +10,8 @@ import dev.tamboui.css.model.Stylesheet;
 import dev.tamboui.css.parser.CssParser;
 import dev.tamboui.css.parser.CssParseException;
 import dev.tamboui.style.Color;
+import dev.tamboui.style.Color.Rgb;
+import dev.tamboui.style.ColorConverter;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -53,6 +55,15 @@ import java.util.regex.Pattern;
  * theme or that does not declare the required palette variables fails fast
  * with the file and the detail in the message; no theme registers without a
  * complete palette.
+ *
+ * <p>The color depth comes from {@code vintelli.tui.color-level} (default
+ * {@code auto}) and, for {@code auto}, from the {@code COLORTERM}
+ * environment variable, both read as configuration properties. On
+ * {@link ColorLevel#INDEXED_256} every hex value of a stylesheet is replaced
+ * by {@code indexed(n)} before the sheet is parsed and registered, so the
+ * engine resolves the same variables and rules to indexed colors and nothing
+ * keeps a truecolor value alive; on {@link ColorLevel#TRUECOLOR} the text
+ * stays byte identical and the terminal receives the authored hex values.
  */
 @Singleton
 public final class ShellThemes {
@@ -62,6 +73,17 @@ public final class ShellThemes {
     static final Pattern THEME_DIRECTIVE =
             Pattern.compile("(?m)^\\s*@theme\\s+([A-Za-z0-9_.-]+)(?:\\s+extends\\s+([A-Za-z0-9_.-]+))?\\s*$");
     private static final Pattern DIRECTIVE_LINE = Pattern.compile("(?m)^\\s*@theme[^\\n]*(?:\\n|$)");
+    private static final Pattern COMMENT = Pattern.compile("/\\*.*?\\*/", Pattern.DOTALL);
+    private static final Pattern DECLARATION = Pattern.compile(":[^;{}]*");
+    private static final Pattern HEX_VALUE = Pattern.compile("#[0-9A-Fa-f]{6}(?![0-9A-Fa-f])");
+    /**
+     * The terminal variable that advertises 24-bit color support, named the
+     * way MicroProfile Config exposes the {@code COLORTERM} environment
+     * variable. It is only consulted for {@link ColorLevel#AUTO} and may be
+     * absent, hence the {@code Optional} in the constructor.
+     */
+    private static final String COLORTERM_PROPERTY = "colorterm";
+    private static final String COLOR_LEVEL_AUTO = "auto";
 
     static final List<String> REQUIRED_VARIABLES = List.of(
             "panel",
@@ -92,16 +114,43 @@ public final class ShellThemes {
     private final StyleEngine engine = StyleEngine.create();
     private final Map<String, Stylesheet> parsed = new LinkedHashMap<>();
     private final Map<String, String> sources = new LinkedHashMap<>();
+    private final ColorLevel colorLevel;
     private volatile String activeTheme;
 
     @Inject
     public ShellThemes(@ConfigProperty(name = "vintelli.tui.theme", defaultValue = DEFAULT_THEME) String configuredTheme,
                        @ConfigProperty(name = "vintelli.tui.theme.file") Optional<String> configuredUserFile,
-                       @ConfigProperty(name = "vintelli.config.dir") Optional<String> configuredConfigDir) {
-        this(configuredTheme, userThemePath(configuredUserFile, configuredConfigDir));
+                       @ConfigProperty(name = "vintelli.config.dir") Optional<String> configuredConfigDir,
+                       @ConfigProperty(name = ColorLevel.CONFIG_PROPERTY, defaultValue = COLOR_LEVEL_AUTO) String configuredColorLevel,
+                       @ConfigProperty(name = COLORTERM_PROPERTY) Optional<String> colorterm) {
+        this(configuredTheme, userThemePath(configuredUserFile, configuredConfigDir),
+                ColorLevel.of(configuredColorLevel, Map.of(ColorLevel.COLORTERM, colorterm.orElse(""))));
     }
 
+    /**
+     * Themes with the authored color values; the depth of a session is picked
+     * by the constructor that reads the configuration.
+     */
     public ShellThemes(String configuredTheme, Path userThemeFile) {
+        this(configuredTheme, userThemeFile, ColorLevel.TRUECOLOR);
+    }
+
+    /**
+     * Themes with the authored color values and the user file of the
+     * configured config directory; the depth of a session is picked by the
+     * constructor that reads the configuration.
+     */
+    public ShellThemes(String configuredTheme, Optional<String> configuredUserFile, Optional<String> configuredConfigDir) {
+        this(configuredTheme, userThemePath(configuredUserFile, configuredConfigDir), ColorLevel.TRUECOLOR);
+    }
+
+    /**
+     * Themes for an explicit color depth. {@link ColorLevel#AUTO} without a
+     * terminal variable resolves to 256 colors, the fallback the detection
+     * uses as well.
+     */
+    public ShellThemes(String configuredTheme, Path userThemeFile, ColorLevel colorLevel) {
+        this.colorLevel = colorLevel.resolve(Map.of());
         String userCss = userThemeFile == null ? null : readThemeText(userThemeFile);
         UserDirective directive = userCss == null ? null : directiveOf(userThemeFile, userCss);
         if (directive == null) {
@@ -139,6 +188,14 @@ public final class ShellThemes {
     }
 
     /**
+     * The depth the registered stylesheets are written for: the authored hex
+     * values or their nearest 256 color index.
+     */
+    public ColorLevel colorLevel() {
+        return colorLevel;
+    }
+
+    /**
      * Activates another stylesheet. Unknown names fail with the available
      * names in the message, mirroring the fail fast at startup.
      */
@@ -158,8 +215,16 @@ public final class ShellThemes {
         return engine.resolve(new StyledRole(role), PseudoClassState.NONE, List.of());
     }
 
+    /**
+     * The color of a palette variable as the active theme carries it, hex on
+     * truecolor and {@code indexed(n)} on the 256 color depth, so callers see
+     * what the engine resolves and not the authored value of another depth.
+     */
     public Color color(String variableName) {
-        return Color.hex(variable(variableName));
+        String value = variable(variableName);
+        return ColorConverter.INSTANCE.convert(value).orElseThrow(() -> new IllegalStateException(
+                "theme '" + activeTheme + "' declares variable '" + variableName + "' as '" + value
+                        + "', which is not a color"));
     }
 
     /**
@@ -204,12 +269,65 @@ public final class ShellThemes {
     }
 
     private void register(String name, String subject, String shippedCss, String userPatch) {
-        String css = userPatch == null ? shippedCss : shippedCss + "\n" + userPatch;
+        String css = indexedPalette(userPatch == null ? shippedCss : shippedCss + "\n" + userPatch);
         Stylesheet stylesheet = CssParser.parse(css);
         ensureVariables(subject, stylesheet);
         engine.addStylesheet(name, css);
         sources.put(name, css);
         parsed.put(name, stylesheet);
+    }
+
+    /**
+     * The stylesheet text of the active color depth: on 256 colors every hex
+     * value is replaced by the nearest index, on truecolor the text is handed
+     * over unchanged. Stylesheet variables and rules carry their colors as
+     * text, so the representation has to change before the parser sees it;
+     * rewriting the text covers the shipped themes, a user patch and a user
+     * theme alike, because all three are registered as text here.
+     */
+    private String indexedPalette(String css) {
+        if (colorLevel == ColorLevel.TRUECOLOR) {
+            return css;
+        }
+        StringBuilder rewritten = new StringBuilder(css.length());
+        Matcher comments = COMMENT.matcher(css);
+        int consumed = 0;
+        while (comments.find()) {
+            rewritten.append(indexedDeclarations(css.substring(consumed, comments.start())));
+            rewritten.append(comments.group());
+            consumed = comments.end();
+        }
+        return rewritten.append(indexedDeclarations(css.substring(consumed))).toString();
+    }
+
+    /**
+     * Rewrites the declarations of a stylesheet fragment. Only the value part
+     * of a declaration is a candidate, never a selector, so an id selector
+     * that happens to spell six hex digits stays a selector.
+     */
+    private static String indexedDeclarations(String css) {
+        Matcher declarations = DECLARATION.matcher(css);
+        StringBuilder rewritten = new StringBuilder(css.length());
+        while (declarations.find()) {
+            declarations.appendReplacement(rewritten, Matcher.quoteReplacement(indexedValues(declarations.group())));
+        }
+        declarations.appendTail(rewritten);
+        return rewritten.toString();
+    }
+
+    private static String indexedValues(String declaration) {
+        Matcher values = HEX_VALUE.matcher(declaration);
+        StringBuilder rewritten = new StringBuilder(declaration.length());
+        while (values.find()) {
+            values.appendReplacement(rewritten, Matcher.quoteReplacement(indexedValue(values.group())));
+        }
+        values.appendTail(rewritten);
+        return rewritten.toString();
+    }
+
+    private static String indexedValue(String hex) {
+        Rgb rgb = Rgb.fromHex(hex);
+        return "indexed(" + PaletteDowngrade.nearestIndex(rgb.r(), rgb.g(), rgb.b()) + ")";
     }
 
     private void registerUserTheme(Path userThemeFile, UserDirective directive, String userCss) {

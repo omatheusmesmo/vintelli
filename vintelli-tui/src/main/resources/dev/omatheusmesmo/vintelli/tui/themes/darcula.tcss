@@ -16,11 +16,12 @@
  * only styles editor text, keywords, strings and comments and never leaks
  * into the UI chrome.
  *
- * Truecolor: the hex values are always emitted as truecolor and nothing
- * downgrades them for 256/16 color terminals (see spike
- * docs/spikes/spike-27-keyboard-and-colors.md); the mapping table in the
- * README documents the intended 256 color index per value, and making the
- * shell honor it is tracked in issue #139.
+ * Color depth: the hex values below are the authored palette of the theme and
+ * the source of the index table in the README. A session that does not run
+ * with truecolor (property `vintelli.tui.color-level`, see the README) gets
+ * every hex value of this sheet replaced by the nearest fixed 256 color index
+ * before the stylesheet is parsed, so the README indices are what such a
+ * terminal renders (issue #139).
  */
 $panel            : #3C3F41;       /* ui["*"].background */
 $chrome-fg        : #BBBBBB;       /* ui["*"].foreground */

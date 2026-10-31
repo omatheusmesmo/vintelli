@@ -55,4 +55,25 @@ class EditorSyntaxHighlighterTest {
         assertEquals(Color.hex(palette.keyword()), buffer.get(0, 0).style().fg().orElseThrow());
         assertEquals(Color.hex(palette.keyword()), buffer.get(1, 0).style().fg().orElseThrow());
     }
+
+    @Test
+    void renderedJavaKeywordsUseAnIndexedEditorPaletteAsWell() {
+        EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
+        ShellEditorPalette palette = new ShellEditorPalette(
+                "indexed(234)", "indexed(250)", "indexed(173)", "indexed(71)", "indexed(244)", "indexed(37)", "indexed(175)",
+                "indexed(24)", "indexed(250)");
+        highlighter.editorPalette(palette);
+        TextArea textArea = TextArea.builder()
+                .style(Style.EMPTY)
+                .highlighter(highlighter, "java", SyntaxTheme.DEFAULTS)
+                .build();
+        Rect area = new Rect(0, 0, 12, 1);
+        Buffer buffer = Buffer.empty(area);
+
+        textArea.render(area, buffer, new TextAreaState("public class"));
+
+        assertEquals(Color.indexed(173), buffer.get(0, 0).style().fg().orElseThrow(),
+                "an indexed editor palette renders indexed keywords instead of failing on the hex parser");
+        assertEquals(Color.indexed(173), buffer.get(1, 0).style().fg().orElseThrow());
+    }
 }

@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -17,6 +18,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ShellThemesTest {
+
+    private static final Pattern INDEXED_VALUE = Pattern.compile("indexed\\((1[6-9]|[2-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\)");
 
     @TempDir
     Path temp;
@@ -213,6 +216,82 @@ class ShellThemesTest {
                 themes.resolver("menu-entry").toStyle().fg().orElse(null),
                 "the engine styles the replaced name from the replacement, not from the shipped sheet");
         assertEquals(List.of("darcula", "dark"), themes.availableThemeNames());
+    }
+
+    @Test
+    void truecolorLevelKeepsTheAuthoredPaletteUntouched() {
+        ShellThemes themes = new ShellThemes("dark", (Path) null);
+
+        assertEquals(ColorLevel.TRUECOLOR, themes.colorLevel());
+        assertEquals("#2B2D30", themes.variablesOf("dark").get("panel"));
+        assertTrue(themes.variablesOf("dark").values().stream().noneMatch(value -> value.startsWith("indexed(")),
+                "no authored value is rewritten on truecolor");
+        assertEquals(Color.hex("#DFE1E5"), themes.color("chrome-fg"));
+        assertEquals(Color.hex("#DFE1E5"), themes.resolver("menu-entry").toStyle().fg().orElse(null),
+                "the engine keeps resolving the authored hex values");
+        assertEquals("#BCBEC4", themes.editorPalette().text());
+    }
+
+    @Test
+    void indexedLevelCarriesEveryRequiredVariableAsAFixedPaletteIndex() {
+        ShellThemes themes = new ShellThemes("dark", (Path) null, ColorLevel.INDEXED_256);
+
+        assertEquals(ColorLevel.INDEXED_256, themes.colorLevel());
+        assertEquals("indexed(236)", themes.variablesOf("dark").get("panel"));
+        assertEquals("indexed(173)", themes.variablesOf("dark").get("editor-keyword"));
+        for (String theme : themes.availableThemeNames()) {
+            for (String variable : ShellThemes.REQUIRED_VARIABLES) {
+                String value = themes.variablesOf(theme).get(variable);
+                assertTrue(INDEXED_VALUE.matcher(value).matches(),
+                        "theme '" + theme + "' must serve '" + variable + "' as an index, not as '" + value + "'");
+            }
+        }
+    }
+
+    @Test
+    void indexedLevelResolvesRulesAndTheEditorPaletteToIndicesToo() {
+        ShellThemes themes = new ShellThemes("dark", (Path) null, ColorLevel.INDEXED_256);
+
+        assertEquals(Color.indexed(254), themes.color("chrome-fg"));
+        assertEquals(Color.indexed(254), themes.resolver("menu-entry").toStyle().fg().orElse(null),
+                "a rule that reads a variable resolves to the same index as the variable");
+        assertEquals(Color.indexed(234), themes.resolver("tool-window").borderColor().orElse(null));
+        assertEquals(themes.variablesOf("dark").get("editor-keyword"), themes.editorPalette().keyword(),
+                "the editor palette carries the depth of the active theme");
+        assertEquals("indexed(250)", themes.editorPalette().text());
+    }
+
+    @Test
+    void runtimeThemeSwitchKeepsTheDowngradedPalette() {
+        ShellThemes themes = new ShellThemes("dark", (Path) null, ColorLevel.INDEXED_256);
+
+        themes.switchTheme("darcula");
+
+        assertEquals("darcula", themes.activeTheme());
+        assertEquals("indexed(237)", themes.variablesOf("darcula").get("panel"));
+        assertEquals(Color.indexed(250), themes.color("chrome-fg"));
+        assertEquals(Color.indexed(250), themes.resolver("menu-entry").toStyle().fg().orElse(null));
+        assertEquals(Color.indexed(239), themes.resolver("tool-window").borderColor().orElse(null));
+        assertEquals("indexed(146)", themes.editorPalette().text());
+    }
+
+    @Test
+    void userPatchAndUserThemeValuesAreDowngradedAsWell() throws IOException {
+        ShellThemes patched = new ShellThemes("dark",
+                writeUserFile("patch.tcss", "$chrome-fg: #123456;\n.menu-entry { color: #123456; }\n"),
+                ColorLevel.INDEXED_256);
+        ShellThemes derived = new ShellThemes("midnight",
+                writeUserFile("midnight.tcss", "@theme midnight extends dark\n$chrome-fg: #123456;\n"),
+                ColorLevel.INDEXED_256);
+
+        assertEquals("indexed(23)", patched.variablesOf("dark").get("chrome-fg"),
+                "a patch variable is downgraded");
+        assertEquals(Color.indexed(23), patched.resolver("menu-entry").toStyle().fg().orElse(null),
+                "a hex written straight into a rule is downgraded as well");
+        assertEquals("indexed(23)", derived.variablesOf("midnight").get("chrome-fg"),
+                "a user theme of its own is downgraded");
+        assertEquals(Color.indexed(234), derived.resolver("tool-window").borderColor().orElse(null),
+                "the rules a derived theme inherits from its base carry indices too");
     }
 
     private Path writeUserFile(String name, String content) throws IOException {
