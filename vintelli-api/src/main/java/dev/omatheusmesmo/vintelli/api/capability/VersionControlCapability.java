@@ -9,8 +9,8 @@ import java.util.Objects;
  * statuses, the current branch, ahead and behind counts and unified diffs of
  * single paths or of the whole working tree against {@code HEAD}.
  *
- * <p>Implementations are read only providers; writing operations (stage,
- * commit, switch branch) come in a later iteration. The project root may sit
+ * <p>Writing operations require an explicit confirmation flag; callers must
+ * obtain a separate user confirmation before passing {@code true}. The project root may sit
  * below the repository root: the entries of a status and every diff stay
  * inside the project root, while the branch and the tracking counts describe
  * the whole repository. Ports never declare checked exceptions: an expected
@@ -43,6 +43,18 @@ public interface VersionControlCapability extends ProviderDescriptor {
      *         repository root, empty when nothing is changed
      */
     CapabilityResult<String> diffWorkingTree();
+
+    /** Adds one project file to the Git index after the caller confirms. */
+    CapabilityResult<Boolean> stage(Path path, boolean confirmed);
+
+    /** Removes one project file from the Git index after the caller confirms. */
+    CapabilityResult<Boolean> unstage(Path path, boolean confirmed);
+
+    /** Commits the staged index with the supplied message after confirmation. */
+    CapabilityResult<Boolean> commit(String message, boolean confirmed);
+
+    /** Checks out an existing local branch without forcing worktree changes. */
+    CapabilityResult<Boolean> switchBranch(String branch, boolean confirmed);
 
     /**
      * Snapshot of the worktree status. {@code branch} names the checked out

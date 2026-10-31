@@ -552,6 +552,95 @@ class LocalVersionControlCapabilityTest {
     }
 
     @Test
+    void requiresConfirmationAndConfinesIndexMutationsToTheProject() throws IOException, GitAPIException {
+        Path repo = temp.resolve("repo");
+        Files.createDirectories(repo);
+        try (Git git = initRepository(repo)) {
+            Files.writeString(repo.resolve("tracked.txt"), "first\n");
+            commitAll(git, "initial");
+            Files.writeString(repo.resolve("tracked.txt"), "second\n");
+            var capability = capabilityAt(repo);
+
+            assertEquals("Confirmation is required for this Git operation",
+                    failure(capability.stage(Path.of("tracked.txt"), false)).reason());
+            assertEquals("The path is outside the project root",
+                    failure(capability.stage(temp.resolve("outside.txt"), true)).reason());
+
+            assertEquals(State.MODIFIED, value(capability.status()).entries().getFirst().state());
+            assertTrue(value(capability.stage(Path.of("tracked.txt"), true)));
+            assertTrue(git.status().call().getChanged().contains("tracked.txt"));
+            assertTrue(value(capability.unstage(Path.of("tracked.txt"), true)));
+            assertEquals(State.MODIFIED, value(capability.status()).entries().getFirst().state());
+        }
+    }
+
+    @Test
+    void commitsOnlyStagedChangesAndSwitchesOnlyToAnExistingLocalBranch()
+            throws IOException, GitAPIException {
+        Path repo = temp.resolve("repo");
+        Files.createDirectories(repo);
+        try (Git git = initRepository(repo)) {
+            git.getRepository().getConfig().setString("user", null, "name", AUTHOR);
+            git.getRepository().getConfig().setString("user", null, "email", EMAIL);
+            git.getRepository().getConfig().save();
+            Files.writeString(repo.resolve("tracked.txt"), "first\n");
+            commitAll(git, "initial");
+            git.branchCreate().setName("feature").call();
+            Files.writeString(repo.resolve("tracked.txt"), "second\n");
+            var capability = capabilityAt(repo);
+
+            assertEquals("Confirmation is required for this Git operation",
+                    failure(capability.commit("no confirmation", false)).reason());
+            assertEquals("The staged changes could not be committed",
+                    failure(capability.commit("nothing staged", true)).reason());
+            assertEquals("The local branch could not be checked out",
+                    failure(capability.switchBranch("missing", true)).reason());
+            assertEquals("main", value(capability.status()).branch());
+
+            assertTrue(value(capability.stage(Path.of("tracked.txt"), true)));
+            assertTrue(value(capability.commit("update tracked file", true)));
+            assertTrue(value(capability.status()).entries().isEmpty());
+            assertTrue(value(capability.switchBranch("feature", true)));
+            assertEquals("feature", value(capability.status()).branch());
+        }
+    }
+
+    @Test
+    void stagesDeletedAndSpecialCharacterPathsAndCanUnstageInAnUnbornRepository()
+            throws IOException, GitAPIException {
+        Path repo = temp.resolve("repo");
+        Files.createDirectories(repo);
+        try (Git git = initRepository(repo)) {
+            Path special = repo.resolve("space and ü.txt");
+            Files.writeString(special, "first\n");
+            Files.writeString(repo.resolve("deleted.txt"), "tracked\n");
+            commitAll(git, "initial");
+            Files.writeString(special, "second\n");
+            Files.delete(repo.resolve("deleted.txt"));
+            var capability = capabilityAt(repo);
+
+            assertTrue(value(capability.stage(Path.of("space and ü.txt"), true)));
+            assertTrue(git.status().call().getChanged().contains("space and ü.txt"));
+            assertTrue(value(capability.stage(Path.of("deleted.txt"), true)));
+            assertTrue(git.status().call().getRemoved().contains("deleted.txt"));
+            assertTrue(value(capability.unstage(Path.of("deleted.txt"), true)));
+            assertEquals(State.DELETED, value(capability.status()).entries().stream()
+                    .filter(entry -> entry.path().equals("deleted.txt")).findFirst().orElseThrow().state());
+        }
+
+        Path unborn = temp.resolve("unborn");
+        Files.createDirectories(unborn);
+        try (Git ignored = initRepository(unborn)) {
+            Files.writeString(unborn.resolve("initial.txt"), "uncommitted\n");
+            var capability = capabilityAt(unborn);
+
+            assertTrue(value(capability.stage(Path.of("initial.txt"), true)));
+            assertTrue(value(capability.unstage(Path.of("initial.txt"), true)));
+            assertEquals(List.of(new Entry(State.UNTRACKED, "initial.txt")), value(capability.status()).entries());
+        }
+    }
+
+    @Test
     void aProjectRootBelowTheRepositoryRootSeesOnlyItsOwnPaths() throws IOException, GitAPIException {
         Path repo = temp.resolve("repo");
         Path project = repo.resolve("app");

@@ -692,12 +692,22 @@ over a real temporary repository the test prepares through JGit before
 boot. They answer 404 unless `vintelli.vcs.debug-endpoint.enabled=true`; a
 selection without a healthy provider answers 503 and a failed capability
 result (not a repository, a path outside the project root) answers 409 with
-the provider's reason. The project root may sit below the repository root:
+the provider's reason. Confirmed `PUT /vcs/stage`, `PUT /vcs/unstage`,
+`POST /vcs/commit` and `PUT /vcs/branch` operations use the same opt-in debug
+setting and require `confirm=true`; branch switching accepts existing local
+branches only and lets JGit refuse any checkout that would overwrite work.
+The project root may sit below the repository root:
 the provider confines every requested diff path and every status entry to the
 project root, so no answer carries state from outside the project, and a
 status longer than its bound says so with `truncated`. JGit needs no `git`
 executable for status and diff; it may spawn one only to discover system wide
 configuration when such a file exists.
+
+The TUI VCS refresh marks changed files in the Project tree and editor tabs;
+the active file's gutter marks lines changed against `HEAD`, and the VCS menu
+can open that file's unified diff or the full working tree diff. Its write
+actions stage or unstage the active file, commit staged changes, and switch
+local branches after an on-screen confirmation.
 
 ## Status
 

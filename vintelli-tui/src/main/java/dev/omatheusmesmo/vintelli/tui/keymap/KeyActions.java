@@ -46,6 +46,13 @@ public final class KeyActions {
     public static final String SWITCH_SHELL_THEME = SWITCH_THEME;
     public static final String SHELL_THEME_SWITCH = SWITCH_THEME;
         public static final String TOGGLE_TOOL_WINDOW = "ToggleToolWindow";
+    public static final String VCS_REFRESH = "vcs_refresh";
+    public static final String VCS_SHOW_DIFF = "vcs_showDiff";
+    public static final String VCS_DIFF_WORKING_TREE = "vcs_diffWorkingTree";
+    public static final String VCS_STAGE = "vcs_stage";
+    public static final String VCS_UNSTAGE = "vcs_unstage";
+    public static final String VCS_COMMIT = "vcs_commit";
+    public static final String VCS_SWITCH_BRANCH = "vcs_switchBranch";
 
     public static List<KeyAction> shellActions() {
         return List.of(new KeyAction(MENU, "Open Menu", ""),

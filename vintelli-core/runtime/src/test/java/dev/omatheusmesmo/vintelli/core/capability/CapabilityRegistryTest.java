@@ -595,6 +595,26 @@ class CapabilityRegistryTest {
         }
 
         @Override
+        public CapabilityResult<Boolean> stage(Path path, boolean confirmed) {
+            return CapabilityResult.ok(confirmed);
+        }
+
+        @Override
+        public CapabilityResult<Boolean> unstage(Path path, boolean confirmed) {
+            return CapabilityResult.ok(confirmed);
+        }
+
+        @Override
+        public CapabilityResult<Boolean> commit(String message, boolean confirmed) {
+            return CapabilityResult.ok(confirmed);
+        }
+
+        @Override
+        public CapabilityResult<Boolean> switchBranch(String branch, boolean confirmed) {
+            return CapabilityResult.ok(confirmed);
+        }
+
+        @Override
         public String identifier() {
             return "vcs-standalone";
         }

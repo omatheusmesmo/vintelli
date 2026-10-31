@@ -79,6 +79,12 @@ public final class LocalVersionControlCapability implements VersionControlCapabi
     private static final String REPOSITORY_NOT_READABLE = "The Git repository cannot be read";
     private static final String PROJECT_OUTSIDE_REPOSITORY = "The project root is outside the repository";
     private static final String PATH_OUTSIDE_PROJECT = "The path is outside the project root";
+    private static final String CONFIRMATION_REQUIRED = "Confirmation is required for this Git operation";
+    private static final String STAGE_FAILED = "The file could not be staged";
+    private static final String UNSTAGE_FAILED = "The file could not be unstaged";
+    private static final String COMMIT_FAILED = "The staged changes could not be committed";
+    private static final String BRANCH_SWITCH_FAILED = "The local branch could not be checked out";
+    private static final int MAX_COMMIT_MESSAGE_LENGTH = 1000;
     private static final int MAX_DIFF_BYTES = 256 * 1024;
     static final int MAX_STATUS_ENTRIES = 1000;
     private static final String TRUNCATION_MARKER = "[The diff is truncated at the 256 KiB cap]\n";
@@ -219,6 +225,111 @@ public final class LocalVersionControlCapability implements VersionControlCapabi
     @Override
     public CapabilityResult<String> diffWorkingTree() {
         return withRepository((repository, projectPrefix) -> diffAgainstHead(repository, projectPrefix));
+    }
+
+    @Override
+    public CapabilityResult<Boolean> stage(Path path, boolean confirmed) {
+        if (!confirmed) {
+            return confirmationRequired();
+        }
+        if (path == null) {
+            return pathOutsideProject(null);
+        }
+        return withRepository((repository, projectPrefix) -> {
+            Optional<String> relative = repositoryRelative(repository, path);
+            if (relative.isEmpty() || relative.get().isBlank()) {
+                return pathOutsideProject(path);
+            }
+            try {
+                var add = Git.wrap(repository).add().addFilepattern(relative.get());
+                Path worktreePath = repository.getWorkTree().toPath().resolve(relative.get());
+                if (!Files.exists(worktreePath) && repository.readDirCache().getEntry(relative.get()) != null) {
+                    add.setUpdate(true);
+                }
+                add.call();
+                return CapabilityResult.ok(true);
+            } catch (GitAPIException failure) {
+                return CapabilityResult.failed(new CapabilityFailure(STAGE_FAILED, messageOf(failure)));
+            }
+        });
+    }
+
+    @Override
+    public CapabilityResult<Boolean> unstage(Path path, boolean confirmed) {
+        if (!confirmed) {
+            return confirmationRequired();
+        }
+        if (path == null) {
+            return pathOutsideProject(null);
+        }
+        return withRepository((repository, projectPrefix) -> {
+            Optional<String> relative = repositoryRelative(repository, path);
+            if (relative.isEmpty() || relative.get().isBlank()) {
+                return pathOutsideProject(path);
+            }
+            try {
+                Git.wrap(repository).reset().addPath(relative.get()).call();
+                return CapabilityResult.ok(true);
+            } catch (GitAPIException failure) {
+                return CapabilityResult.failed(new CapabilityFailure(UNSTAGE_FAILED, messageOf(failure)));
+            }
+        });
+    }
+
+    @Override
+    public CapabilityResult<Boolean> commit(String message, boolean confirmed) {
+        if (!confirmed) {
+            return confirmationRequired();
+        }
+        if (message == null || message.isBlank() || message.length() > MAX_COMMIT_MESSAGE_LENGTH) {
+            return CapabilityResult.failed(new CapabilityFailure(COMMIT_FAILED,
+                    "The commit message must contain 1 to " + MAX_COMMIT_MESSAGE_LENGTH + " characters"));
+        }
+        return withRepository((repository, projectPrefix) -> {
+            try {
+                var status = Git.wrap(repository).status().call();
+                if (status.getAdded().isEmpty() && status.getChanged().isEmpty() && status.getRemoved().isEmpty()) {
+                    return CapabilityResult.failed(new CapabilityFailure(COMMIT_FAILED,
+                            "There are no staged changes to commit"));
+                }
+                Git.wrap(repository).commit().setMessage(message.strip()).call();
+                return CapabilityResult.ok(true);
+            } catch (GitAPIException failure) {
+                return CapabilityResult.failed(new CapabilityFailure(COMMIT_FAILED, messageOf(failure)));
+            }
+        });
+    }
+
+    @Override
+    public CapabilityResult<Boolean> switchBranch(String branch, boolean confirmed) {
+        if (!confirmed) {
+            return confirmationRequired();
+        }
+        String name = branch == null ? "" : branch.strip();
+        if (!Repository.isValidRefName(Constants.R_HEADS + name)) {
+            return CapabilityResult.failed(new CapabilityFailure(BRANCH_SWITCH_FAILED, "Invalid local branch name"));
+        }
+        return withRepository((repository, projectPrefix) -> {
+            if (repository.exactRef(Constants.R_HEADS + name) == null) {
+                return CapabilityResult.failed(new CapabilityFailure(BRANCH_SWITCH_FAILED,
+                        "Local branch not found: " + name));
+            }
+            try {
+                Git.wrap(repository).checkout().setName(name).call();
+                return CapabilityResult.ok(true);
+            } catch (GitAPIException failure) {
+                return CapabilityResult.failed(new CapabilityFailure(BRANCH_SWITCH_FAILED, messageOf(failure)));
+            }
+        });
+    }
+
+    private static CapabilityResult<Boolean> confirmationRequired() {
+        return CapabilityResult.failed(new CapabilityFailure(CONFIRMATION_REQUIRED, "Confirm the action first"));
+    }
+
+    private static CapabilityResult<Boolean> pathOutsideProject(Path path) {
+        return CapabilityResult.failed(new CapabilityFailure(PATH_OUTSIDE_PROJECT,
+                path == null ? "A file path is required" : path.toString()));
     }
 
     /**

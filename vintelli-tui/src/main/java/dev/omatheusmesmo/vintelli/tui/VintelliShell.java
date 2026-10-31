@@ -21,9 +21,11 @@ import dev.omatheusmesmo.vintelli.tui.search.ProjectSearchModel;
 import dev.omatheusmesmo.vintelli.tui.search.ProjectSearchOverlay;
 import dev.omatheusmesmo.vintelli.api.search.ProjectSearch;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityRegistry;
+import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability;
+import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityStatus;
-import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability;
+import dev.omatheusmesmo.vintelli.api.capability.CapabilityFailure;
 import dev.omatheusmesmo.vintelli.api.capability.EditorBridge.OpenRequest;
 import dev.omatheusmesmo.vintelli.api.statusbar.StatusBarWidget;
 import dev.omatheusmesmo.vintelli.api.statusbar.StatusBarWidgetContributor;
@@ -64,11 +66,16 @@ import java.nio.file.Path;
 import java.nio.file.Files;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -146,6 +153,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             MenuPopup menuPopup, ProjectSearchModel searchModel, ProjectSearchOverlay searchOverlay) {
     }
 
+    private enum VcsWriteAction { STAGE, UNSTAGE, COMMIT, SWITCH_BRANCH }
+
+    private enum VcsPrompt { NONE, CONFIRM, COMMIT_MESSAGE, BRANCH_NAME }
+
     private final ShellThemes themes;
     private final ShellState state;
     private final List<ToolWindow> toolWindows;
@@ -154,12 +165,19 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private final List<NavigationCapability> navigationProviders;
     private final CapabilityRegistry capabilityRegistry;
     private final List<StatusBarWidgetContributor> statusBarContributors;
+    private final List<VersionControlCapability> vcsProviders;
     private final ShellLayout shellLayout;
     private final ShellLayoutStore layoutStore;
     private volatile DockElement layoutDock;
     private int nextDiagnosticIndex;
     private final Map<ToolWindow.Anchor, List<ToolWindow>> windowsByAnchor;
     private final ReentrantLock frameLock = new ReentrantLock();
+    private final AtomicLong vcsRefreshSequence = new AtomicLong();
+    private VcsWriteAction pendingVcsAction;
+    private VcsPrompt vcsPrompt = VcsPrompt.NONE;
+    private Path pendingVcsFile;
+    private String pendingVcsValue = "";
+    private volatile boolean vcsWriteInProgress;
     private final Supplier<Keymap> keymapSupplier;
     private final StackElement rootBase;
     private final Element lockedRoot;
@@ -168,6 +186,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private final ListElement<?> projectList;
     private Panel centerPanel;
     private volatile List<String> projectFiles;
+    private volatile Map<String, VersionControlCapability.State> vcsStates = Map.of();
     private volatile boolean projectFilesLoading;
     private volatile Runnable quitAction;
     private volatile KeymapParts overlays;
@@ -187,9 +206,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     public VintelliShell(ToolWindowRegistry registry, ShellState state, KeymapRegistry keymapRegistry,
             Instance<ShellThemes> themes, ProjectSearch projectSearch,
             @All List<NavigationCapability> navigationProviders, CapabilityRegistry capabilityRegistry,
-            @All List<StatusBarWidgetContributor> statusBarContributors) {
+            @All List<StatusBarWidgetContributor> statusBarContributors,
+            @All List<VersionControlCapability> vcsProviders) {
         this(registry.toolWindows(), state, keymapRegistry::get, themes.get(), projectSearch, navigationProviders,
-                capabilityRegistry, true, statusBarContributors);
+                capabilityRegistry, vcsProviders, true, statusBarContributors);
     }
 
     /** Backward-compatible construction surface for embedders that wire providers manually. */
@@ -197,98 +217,89 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             Instance<ShellThemes> themes, ProjectSearch projectSearch,
             List<NavigationCapability> navigationProviders, CapabilityRegistry capabilityRegistry) {
         this(registry.toolWindows(), state, keymapRegistry::get, themes.get(), projectSearch, navigationProviders,
-                capabilityRegistry, true, registry.toolWindows());
+                capabilityRegistry, List.of(), true, registry.toolWindows());
     }
 
-    /**
-     * Direct construction shell used by tests and the offscreen inspection
-     * surface. The list must already be in deterministic tab order, so it
-     * should come from a {@link ToolWindowRegistry}, and the default keymap
-     * profile drives it.
-     */
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state, ShellThemes themes) {
-        this(toolWindows, state, () -> Keymap.defaultKeymap(toolWindows), themes, null, List.of(), null, false);
+        this(toolWindows, state, () -> Keymap.defaultKeymap(toolWindows), themes, null, List.of(), null,
+                List.of(), false, toolWindows);
     }
 
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state, ShellThemes themes,
             CapabilityRegistry capabilityRegistry) {
-        this(toolWindows, state, () -> Keymap.defaultKeymap(toolWindows), themes, null, List.of(),
-                capabilityRegistry, false);
+        this(toolWindows, state, () -> Keymap.defaultKeymap(toolWindows), themes, null, List.of(), capabilityRegistry,
+                List.of(), false, toolWindows);
     }
 
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state, ShellThemes themes,
             List<NavigationCapability> navigationProviders, CapabilityRegistry capabilityRegistry) {
         this(toolWindows, state, () -> Keymap.defaultKeymap(toolWindows), themes, null, navigationProviders,
-                capabilityRegistry, false);
+                capabilityRegistry, List.of(), false, toolWindows);
     }
 
-    /**
-     * Direct construction with one explicit keymap, for tests that assert a
-     * named profile or a user keymap source.
-     */
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Keymap keymap, ShellThemes themes) {
-        this(toolWindows, state, () -> keymap, themes, null, List.of(), null, false);
+        this(toolWindows, state, () -> keymap, themes, null, List.of(), null, List.of(), false, toolWindows);
     }
 
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Keymap keymap, ShellThemes themes,
             CapabilityRegistry capabilityRegistry) {
-        this(toolWindows, state, () -> keymap, themes, null, List.of(), capabilityRegistry, false);
+        this(toolWindows, state, () -> keymap, themes, null, List.of(), capabilityRegistry, List.of(), false,
+                toolWindows);
     }
 
-    /**
-     * Lazy constructor: the keymap is built only when the shell first handles
-     * a key or renders, so a headless or MCP-only process never builds it.
-     */
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
             ShellThemes themes) {
-        this(toolWindows, state, keymapSupplier, themes, null, List.of(), null, false);
+        this(toolWindows, state, keymapSupplier, themes, null, List.of(), null, List.of(), false, toolWindows);
     }
 
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
             ShellThemes themes, CapabilityRegistry capabilityRegistry) {
-        this(toolWindows, state, keymapSupplier, themes, null, List.of(), capabilityRegistry, false);
+        this(toolWindows, state, keymapSupplier, themes, null, List.of(), capabilityRegistry, List.of(), false,
+                toolWindows);
     }
 
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
             ShellThemes themes, ProjectSearch projectSearch) {
-        this(toolWindows, state, keymapSupplier, themes, projectSearch, List.of(), null, false);
+        this(toolWindows, state, keymapSupplier, themes, projectSearch, List.of(), null, List.of(), false, toolWindows);
     }
 
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
             ShellThemes themes, ProjectSearch projectSearch, CapabilityRegistry capabilityRegistry) {
-        this(toolWindows, state, keymapSupplier, themes, projectSearch, List.of(), capabilityRegistry, false);
+        this(toolWindows, state, keymapSupplier, themes, projectSearch, List.of(), capabilityRegistry, List.of(), false,
+                toolWindows);
     }
 
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
             ShellThemes themes, ProjectSearch projectSearch, List<NavigationCapability> navigationProviders) {
-        this(toolWindows, state, keymapSupplier, themes, projectSearch, navigationProviders, null, false);
+        this(toolWindows, state, keymapSupplier, themes, projectSearch, navigationProviders, null, List.of(), false,
+                toolWindows);
     }
 
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
             ShellThemes themes, ProjectSearch projectSearch, List<NavigationCapability> navigationProviders,
             CapabilityRegistry capabilityRegistry) {
-        this(toolWindows, state, keymapSupplier, themes, projectSearch, navigationProviders, capabilityRegistry, false);
-    }
-
-
-
-    private VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
-            ShellThemes themes, ProjectSearch projectSearch, List<NavigationCapability> navigationProviders,
-            CapabilityRegistry capabilityRegistry, boolean persistLayout) {
         this(toolWindows, state, keymapSupplier, themes, projectSearch, navigationProviders, capabilityRegistry,
-                persistLayout, toolWindows);
+                List.of(), false, toolWindows);
+    }
+
+    public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
+            ShellThemes themes, ProjectSearch projectSearch, List<NavigationCapability> navigationProviders,
+            List<VersionControlCapability> vcsProviders) {
+        this(toolWindows, state, keymapSupplier, themes, projectSearch, navigationProviders, null, vcsProviders, false,
+                toolWindows);
     }
 
     private VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
             ShellThemes themes, ProjectSearch projectSearch, List<NavigationCapability> navigationProviders,
-            CapabilityRegistry capabilityRegistry, boolean persistLayout,
-            List<? extends StatusBarWidgetContributor> statusBarContributors) {
+            CapabilityRegistry capabilityRegistry, List<VersionControlCapability> vcsProviders,
+            boolean persistLayout, List<? extends StatusBarWidgetContributor> statusBarContributors) {
         this.themes = themes;
         this.state = state;
         this.projectSearch = projectSearch;
         this.navigationProviders = List.copyOf(navigationProviders);
         this.capabilityRegistry = capabilityRegistry;
         this.statusBarContributors = List.copyOf(statusBarContributors);
+        this.vcsProviders = List.copyOf(vcsProviders);
         this.editor = toolWindows.stream().filter(BuiltinEditor.class::isInstance)
                 .map(BuiltinEditor.class::cast).findFirst().orElse(null);
         this.toolWindows = toolWindows.stream().filter(window -> !(window instanceof BuiltinEditor)).toList();
@@ -549,7 +560,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private ListElement<?> projectPanel() {
         ListElement<?> panel = Toolkit.list(projectFiles.isEmpty()
                 ? List.of(projectFilesLoading ? "Loading project files..." : "No project files found")
-                : projectFiles);
+                : projectFileRows());
         panel.id("project-panel");
         panel.addClass("tool-panel");
         panel.title("Project");
@@ -567,7 +578,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             try {
                 projectFiles = discovered;
                 projectFilesLoading = false;
-                projectList.items(discovered.isEmpty() ? List.of("No project files found") : discovered);
+                projectList.items(discovered.isEmpty() ? List.of("No project files found") : projectFileRows());
                 projectList.selectFirst();
                 syncedFileIndex = projectList.selected();
                 state.selectFile(discovered.isEmpty() ? "" : discovered.getFirst());
@@ -587,6 +598,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 frameLock.unlock();
             }
         }
+        refreshVcs();
     }
 
     /**
@@ -750,13 +762,15 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 if (parts.searchModel() != null) {
                     parts.searchModel().close();
                 }
-                parts.menuPopup().open(menu);
+                openMenu(parts, menu);
                 inputCaptured = false;
                 return EventResult.HANDLED;
             }
         }
         if (parts.menuPopup().isOpen()) {
-            parts.menuPopup().click(mouse.x(), mouse.y()).ifPresent(action -> dispatch(parts, action));
+            Optional<String> action = parts.menuPopup().click(mouse.x(), mouse.y());
+            syncEditorMenuNavigation(parts);
+            action.ifPresent(value -> dispatch(parts, value));
             return EventResult.HANDLED;
         }
         return EventResult.UNHANDLED;
@@ -788,6 +802,14 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             status = editor.status();
             return EventResult.HANDLED;
         }
+        if (vcsPrompt != VcsPrompt.NONE) {
+            handleVcsPromptKey(key);
+            return EventResult.HANDLED;
+        }
+        if (vcsWriteInProgress) {
+            status = "Git operation in progress";
+            return EventResult.HANDLED;
+        }
         KeymapParts parts = overlays();
         if (!inputCaptured && parts.keymap().matches(key, KeyActions.QUIT)) {
             return EventResult.UNHANDLED;
@@ -809,7 +831,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             return EventResult.HANDLED;
         }
         if (parts.menuPopup().isOpen()) {
-            parts.menuPopup().handleKey(key).ifPresent(action -> dispatch(parts, action));
+            Optional<String> action = parts.menuPopup().handleKey(key);
+            syncEditorMenuNavigation(parts);
+            action.ifPresent(value -> dispatch(parts, value));
             return EventResult.HANDLED;
         }
         if (parts.searchModel() != null && parts.searchModel().isOpen()) {
@@ -817,7 +841,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             return EventResult.HANDLED;
         }
         if (parts.keymap().matchesReserved(key, KeyActions.MENU)) {
-            parts.menuPopup().open(0);
+            openMenu(parts, 0);
             inputCaptured = false;
             return EventResult.HANDLED;
         }
@@ -921,7 +945,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             case KeyActions.MENU -> {
                 parts.commandPalette().close();
                 parts.keymapHelp().close();
-                parts.menuPopup().open(0);
+                openMenu(parts, 0);
                 inputCaptured = false;
             }
             case KeyActions.OPEN_FILE -> {
@@ -980,6 +1004,34 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             case KeyActions.NEXT_PROBLEM -> {
                 closeOverlays(parts);
                 nextProblem();
+            }
+            case KeyActions.VCS_REFRESH -> {
+                closeOverlays(parts);
+                refreshVcsAsync();
+            }
+            case KeyActions.VCS_SHOW_DIFF -> {
+                closeOverlays(parts);
+                showVcsDiff();
+            }
+            case KeyActions.VCS_DIFF_WORKING_TREE -> {
+                closeOverlays(parts);
+                showVcsWorkingTreeDiff();
+            }
+            case KeyActions.VCS_STAGE -> {
+                closeOverlays(parts);
+                requestStage(false);
+            }
+            case KeyActions.VCS_UNSTAGE -> {
+                closeOverlays(parts);
+                requestStage(true);
+            }
+            case KeyActions.VCS_COMMIT -> {
+                closeOverlays(parts);
+                requestCommit();
+            }
+            case KeyActions.VCS_SWITCH_BRANCH -> {
+                closeOverlays(parts);
+                requestBranchSwitch();
             }
             case KeyActions.PROJECT_WIDER -> {
                 closeOverlays(parts);
@@ -1054,6 +1106,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             status = editor.status();
             return;
         }
+        refreshVcsAsync();
         status = editor.status();
     }
 
@@ -1063,6 +1116,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             return;
         }
         editor.save();
+        refreshVcsAsync();
         status = editor.status();
     }
 
@@ -1089,7 +1143,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         }
         parts.commandPalette().close();
         parts.keymapHelp().close();
-        parts.menuPopup().close();
+        closeMenu(parts);
         inputCaptured = false;
         parts.searchModel().open(mode);
         status = mode == ProjectSearchModel.Mode.FILES ? "Go to File: type to filter" : "Find in Files: type to search";
@@ -1230,7 +1284,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private void toggleCommandPalette(KeymapParts parts) {
         inputCaptured = false;
         parts.keymapHelp().close();
-        parts.menuPopup().close();
+        closeMenu(parts);
         if (parts.searchModel() != null) {
             parts.searchModel().close();
         }
@@ -1246,7 +1300,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private void toggleKeymapHelp(KeymapParts parts) {
         inputCaptured = false;
         parts.commandPalette().close();
-        parts.menuPopup().close();
+        closeMenu(parts);
         if (parts.searchModel() != null) {
             parts.searchModel().close();
         }
@@ -1299,6 +1353,22 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         for (ToolWindow window : toolWindows) {
             entries.addAll(window.menuEntries());
         }
+        String vcsUnavailable = availableVcsProvider() == null
+                ? vcsProviders.isEmpty() ? "Version control provider unavailable"
+                        : vcsProviders.stream().map(provider -> provider.health().reason())
+                                .filter(Objects::nonNull).findFirst().orElse("Version control provider unavailable")
+                : "";
+        addMenu(entries, "VCS", KeyActions.VCS_REFRESH, "Refresh", vcsUnavailable);
+        addMenu(entries, "VCS", KeyActions.VCS_SHOW_DIFF, "Show Diff", canEdit ? vcsUnavailable : editorUnavailable);
+        addMenu(entries, "VCS", KeyActions.VCS_DIFF_WORKING_TREE, "Diff Working Tree", vcsUnavailable);
+        String writeUnavailable = vcsWriteInProgress ? "A Git operation is already running" : vcsUnavailable;
+        String fileWriteUnavailable = !canEdit ? editorUnavailable : writeUnavailable;
+        String branchUnavailable = editor != null && editor.tabs().stream().anyMatch(BuiltinEditor.TabView::dirty)
+                ? "Save or close dirty editor tabs before switching branches" : writeUnavailable;
+        addMenu(entries, "VCS", KeyActions.VCS_STAGE, "Stage Active File...", fileWriteUnavailable);
+        addMenu(entries, "VCS", KeyActions.VCS_UNSTAGE, "Unstage Active File...", fileWriteUnavailable);
+        addMenu(entries, "VCS", KeyActions.VCS_COMMIT, "Commit Staged Changes...", writeUnavailable);
+        addMenu(entries, "VCS", KeyActions.VCS_SWITCH_BRANCH, "Switch Branch...", branchUnavailable);
         return List.copyOf(entries);
     }
 
@@ -1307,10 +1377,342 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 .findFirst().orElse(null);
     }
 
+    private VersionControlCapability availableVcsProvider() {
+        return vcsProviders.stream().filter(candidate -> candidate.health().isAvailable())
+                .findFirst().orElse(null);
+    }
+
+    public void refreshVcs() {
+        refreshVcs(vcsRefreshSequence.incrementAndGet());
+    }
+
+    private void refreshVcsAsync() {
+        long request = vcsRefreshSequence.incrementAndGet();
+        frameLock.lock();
+        try {
+            status = "Refreshing Git status...";
+        } finally {
+            frameLock.unlock();
+        }
+        Thread.ofVirtual().start(() -> refreshVcs(request));
+    }
+
+    private void refreshVcs(long request) {
+        VersionControlCapability provider = availableVcsProvider();
+        if (provider == null) {
+            publishVcsRefresh(request, Map.of(), Map.of(), vcsProviders.isEmpty() ? "Version control unavailable"
+                    : "Version control unavailable: "
+                            + vcsProviders.stream().map(p -> p.health().reason()).filter(Objects::nonNull)
+                                    .findFirst().orElse("no healthy provider"));
+            return;
+        }
+        CapabilityResult<VersionControlCapability.Status> result = provider.status();
+        if (result instanceof CapabilityResult.Failed<VersionControlCapability.Status> failed) {
+            publishVcsRefresh(request, Map.of(), Map.of(), "VCS refresh failed: " + failed.failure().reason());
+            return;
+        }
+        VersionControlCapability.Status statusValue =
+                ((CapabilityResult.Ok<VersionControlCapability.Status>) result).value();
+        Map<String, VersionControlCapability.State> states = new HashMap<>();
+        statusValue.entries().forEach(entry -> states.put(entry.path().replace('\\', '/'), entry.state()));
+        Map<String, Set<Integer>> changedLines = new HashMap<>();
+        String activeFile = null;
+        Path activePath = null;
+        frameLock.lock();
+        try {
+            if (editor != null) {
+                activeFile = editor.currentFile().map(file -> editor.project().relativize(file).toString()
+                        .replace('\\', '/')).orElse(null);
+                if (activeFile != null) { activePath = editor.project().resolve(activeFile); }
+            }
+        } finally {
+            frameLock.unlock();
+        }
+        if (activeFile != null && activePath != null
+                && states.get(activeFile) == VersionControlCapability.State.MODIFIED) {
+            CapabilityResult<String> fileDiff = provider.diff(activePath);
+            if (fileDiff instanceof CapabilityResult.Ok<String> ok && ok.value() != null) {
+                changedLines.put(activeFile, changedLines(ok.value()));
+            }
+        }
+        String branch = statusValue.isDetached() ? "detached HEAD" : statusValue.branch();
+        publishVcsRefresh(request, states, changedLines,
+                "VCS: " + branch + " (+" + (statusValue.ahead() == null ? 0 : statusValue.ahead())
+                        + "/-" + (statusValue.behind() == null ? 0 : statusValue.behind()) + "), "
+                        + statusValue.entries().size() + " changed");
+    }
+
+    private void publishVcsRefresh(long request, Map<String, VersionControlCapability.State> states,
+            Map<String, Set<Integer>> changedLines, String newStatus) {
+        frameLock.lock();
+        try {
+            if (request != vcsRefreshSequence.get()) { return; }
+            vcsStates = Map.copyOf(states);
+            if (editor != null) { editor.vcsStatus(vcsStates, changedLines); }
+            if (!projectFiles.isEmpty()) { projectList.items(projectFileRows()); }
+            status = newStatus;
+        } finally {
+            frameLock.unlock();
+        }
+    }
+
+    private List<String> projectFileRows() {
+        return projectFiles.stream().map(file -> {
+            VersionControlCapability.State state = vcsStates.get(file.replace('\\', '/'));
+            return state == null ? file : vcsMarker(state) + " " + file;
+        }).toList();
+    }
+
+    private static String vcsMarker(VersionControlCapability.State state) {
+        return switch (state) {
+            case ADDED -> "A";
+            case DELETED -> "D";
+            case MODIFIED -> "M";
+            case UNTRACKED -> "?";
+            case UNMERGED -> "!";
+        };
+    }
+
+    static Set<Integer> changedLines(String diffText) {
+        Set<Integer> rows = new HashSet<>();
+        int newLine = 0;
+        boolean inHunk = false;
+        for (String line : diffText.split("\\R")) {
+            if (line.startsWith("@@")) {
+                inHunk = true;
+                int plus = line.indexOf('+');
+                int end = plus < 0 ? -1 : line.indexOf(' ', plus);
+                if (end > plus) {
+                    String range = line.substring(plus + 1, end);
+                    int comma = range.indexOf(',');
+                    try { newLine = Integer.parseInt(comma < 0 ? range : range.substring(0, comma)) - 1; }
+                    catch (NumberFormatException ignored) { newLine = 0; }
+                }
+            } else if (inHunk && line.startsWith("+")) {
+                rows.add(Math.max(0, newLine++));
+            } else if (inHunk && line.startsWith("-")) {
+                rows.add(Math.max(0, newLine - 1));
+            } else if (inHunk && line.startsWith(" ")) {
+                newLine++;
+            }
+        }
+        return Set.copyOf(rows);
+    }
+
+    public void showVcsDiff() {
+        VersionControlCapability provider = availableVcsProvider();
+        if (provider == null) {
+            status = "Version control unavailable";
+            return;
+        }
+        if (editor == null || editor.activeDocument().isEmpty()) {
+            status = "Open a project file first";
+            return;
+        }
+        Path file = Path.of(editor.activeDocument().get().file());
+        CapabilityResult<String> result = provider.diff(file);
+        if (result instanceof CapabilityResult.Failed<String> failed) {
+            status = "VCS diff failed: " + failed.failure().reason();
+            return;
+        }
+        String text = ((CapabilityResult.Ok<String>) result).value();
+        this.show(new ShellUnifiedDiff(file.toString(), text == null ? "" : text));
+        status = "VCS diff: " + file;
+    }
+
+    public void showVcsWorkingTreeDiff() {
+        VersionControlCapability provider = availableVcsProvider();
+        if (provider == null) {
+            status = "Version control unavailable";
+            return;
+        }
+        CapabilityResult<String> result = provider.diffWorkingTree();
+        if (result instanceof CapabilityResult.Failed<String> failed) {
+            status = "VCS diff failed: " + failed.failure().reason();
+            return;
+        }
+        String text = ((CapabilityResult.Ok<String>) result).value();
+        this.show(new ShellUnifiedDiff("working tree", text == null ? "" : text));
+        status = "VCS diff: working tree";
+    }
+
+    private void requestStage(boolean unstage) {
+        if (availableVcsProvider() == null) {
+            status = "Version control unavailable";
+            return;
+        }
+        if (editor == null || editor.currentFile().isEmpty()) {
+            status = "Open a project file first";
+            return;
+        }
+        pendingVcsAction = unstage ? VcsWriteAction.UNSTAGE : VcsWriteAction.STAGE;
+        pendingVcsFile = editor.currentFile().orElseThrow();
+        pendingVcsValue = "";
+        vcsPrompt = VcsPrompt.CONFIRM;
+        status = (unstage ? "Unstage " : "Stage ") + projectRelative(pendingVcsFile) + "? [y/N]";
+    }
+
+    private void requestCommit() {
+        if (availableVcsProvider() == null) {
+            status = "Version control unavailable";
+            return;
+        }
+        pendingVcsAction = VcsWriteAction.COMMIT;
+        pendingVcsFile = null;
+        pendingVcsValue = "";
+        vcsPrompt = VcsPrompt.COMMIT_MESSAGE;
+        status = "Commit message: " + pendingVcsValue + " (Enter to continue, Esc cancels)";
+    }
+
+    private void requestBranchSwitch() {
+        if (availableVcsProvider() == null) {
+            status = "Version control unavailable";
+            return;
+        }
+        if (editor != null && editor.tabs().stream().anyMatch(BuiltinEditor.TabView::dirty)) {
+            status = "Save or close dirty editor tabs before switching branches";
+            return;
+        }
+        pendingVcsAction = VcsWriteAction.SWITCH_BRANCH;
+        pendingVcsFile = null;
+        pendingVcsValue = "";
+        vcsPrompt = VcsPrompt.BRANCH_NAME;
+        status = "Local branch name: " + pendingVcsValue + " (Enter to continue, Esc cancels)";
+    }
+
+    private void handleVcsPromptKey(KeyEvent key) {
+        if (key.isKey(KeyCode.ESCAPE)) {
+            cancelVcsPrompt("Git operation cancelled");
+            return;
+        }
+        if (vcsPrompt == VcsPrompt.CONFIRM) {
+            if (key.isCharIgnoreCase('y')) {
+                vcsPrompt = VcsPrompt.NONE;
+                performVcsWrite();
+            } else if (key.isCharIgnoreCase('n') || key.isKey(KeyCode.ENTER)) {
+                cancelVcsPrompt("Git operation cancelled");
+            }
+            return;
+        }
+        if (key.isKey(KeyCode.BACKSPACE)) {
+            if (!pendingVcsValue.isEmpty()) {
+                int codePoint = pendingVcsValue.codePointBefore(pendingVcsValue.length());
+                pendingVcsValue = pendingVcsValue.substring(0, pendingVcsValue.length() - Character.charCount(codePoint));
+            }
+        } else if (key.isKey(KeyCode.ENTER)) {
+            if (pendingVcsValue.isBlank()) {
+                status = vcsPrompt == VcsPrompt.COMMIT_MESSAGE ? "Commit message cannot be empty"
+                        : "Branch name cannot be empty";
+                return;
+            }
+            vcsPrompt = VcsPrompt.CONFIRM;
+            status = (pendingVcsAction == VcsWriteAction.COMMIT ? "Commit '" : "Switch to branch '")
+                    + pendingVcsValue + "'? [y/N]";
+        } else if (key.code() == KeyCode.CHAR && !key.hasCtrl() && !key.hasAlt()
+                && !Character.isISOControl(key.codePoint())) {
+            int limit = vcsPrompt == VcsPrompt.COMMIT_MESSAGE ? 1000 : 255;
+            if (pendingVcsValue.codePointCount(0, pendingVcsValue.length()) < limit) {
+                pendingVcsValue += new String(Character.toChars(key.codePoint()));
+            }
+        }
+        if (vcsPrompt == VcsPrompt.COMMIT_MESSAGE) {
+            status = "Commit message: " + pendingVcsValue + " (Enter to continue, Esc cancels)";
+        } else if (vcsPrompt == VcsPrompt.BRANCH_NAME) {
+            status = "Local branch name: " + pendingVcsValue + " (Enter to continue, Esc cancels)";
+        }
+    }
+
+    private void cancelVcsPrompt(String message) {
+        vcsPrompt = VcsPrompt.NONE;
+        pendingVcsAction = null;
+        pendingVcsFile = null;
+        pendingVcsValue = "";
+        status = message;
+    }
+
+    private void performVcsWrite() {
+        VcsWriteAction action = pendingVcsAction;
+        Path file = pendingVcsFile;
+        String value = pendingVcsValue;
+        pendingVcsAction = null;
+        pendingVcsFile = null;
+        pendingVcsValue = "";
+        VersionControlCapability provider = availableVcsProvider();
+        if (provider == null) {
+            status = "Version control unavailable";
+            return;
+        }
+        vcsWriteInProgress = true;
+        status = switch (action) {
+            case STAGE -> "Staging " + projectRelative(file) + "...";
+            case UNSTAGE -> "Unstaging " + projectRelative(file) + "...";
+            case COMMIT -> "Committing staged changes...";
+            case SWITCH_BRANCH -> "Switching branch...";
+        };
+        Thread.ofVirtual().start(() -> {
+            CapabilityResult<Boolean> result;
+            try {
+                result = switch (action) {
+                    case STAGE -> provider.stage(file, true);
+                    case UNSTAGE -> provider.unstage(file, true);
+                    case COMMIT -> provider.commit(value, true);
+                    case SWITCH_BRANCH -> provider.switchBranch(value, true);
+                };
+            } catch (RuntimeException failure) {
+                String detail = failure.getMessage() == null ? failure.getClass().getSimpleName() : failure.getMessage();
+                result = CapabilityResult.failed(new CapabilityFailure("Git operation failed", detail));
+            }
+            long refresh = vcsRefreshSequence.incrementAndGet();
+            refreshVcs(refresh);
+            frameLock.lock();
+            try {
+                if (refresh == vcsRefreshSequence.get()) {
+                    status = result instanceof CapabilityResult.Ok<Boolean> ok && ok.value()
+                            ? vcsWriteSuccess(action, file, value)
+                            : "Git operation failed: " + result.failureOf().map(CapabilityFailure::detail)
+                                    .filter(detail -> !detail.isBlank()).orElse("the provider rejected the action");
+                }
+                vcsWriteInProgress = false;
+            } finally {
+                frameLock.unlock();
+            }
+        });
+    }
+
+    private String vcsWriteSuccess(VcsWriteAction action, Path file, String value) {
+        return switch (action) {
+            case STAGE -> "Staged " + projectRelative(file);
+            case UNSTAGE -> "Unstaged " + projectRelative(file);
+            case COMMIT -> "Committed: " + value;
+            case SWITCH_BRANCH -> "Switched to " + value + "; reopen tabs to load branch files";
+        };
+    }
+
+    private String projectRelative(Path file) {
+        if (file == null || editor == null) { return ""; }
+        try { return editor.project().relativize(file).toString(); }
+        catch (IllegalArgumentException outsideProject) { return file.toString(); }
+    }
+
     private static void addMenu(List<MenuEntry> entries, String menu, String action, String label, String reason) {
         entries.add(new MenuEntry(menu, action, label, reason));
     }
 
+    private void openMenu(KeymapParts parts, int index) {
+        parts.menuPopup().open(index);
+        syncEditorMenuNavigation(parts);
+    }
+
+    private void closeMenu(KeymapParts parts) {
+        parts.menuPopup().close();
+        syncEditorMenuNavigation(parts);
+    }
+
+    private void syncEditorMenuNavigation(KeymapParts parts) {
+        if (editor != null) {
+            editor.menuNavigationActive(parts.menuPopup().isOpen());
+        }
+    }
 
     /**
      * Closes the overlays; the keymap runs the closing at every non overlay
@@ -1319,7 +1721,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private boolean closeOverlays(KeymapParts parts) {
         parts.commandPalette().close();
         parts.keymapHelp().close();
-        parts.menuPopup().close();
+        closeMenu(parts);
         if (parts.searchModel() != null) {
             parts.searchModel().close();
         }
@@ -1570,7 +1972,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         if (current != null) {
             current.commandPalette().close();
             current.keymapHelp().close();
-            current.menuPopup().close();
+            closeMenu(current);
             if (current.searchModel() != null) {
                 current.searchModel().close();
             }
