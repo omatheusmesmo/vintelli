@@ -37,6 +37,9 @@ import org.eclipse.lsp4j.CompletionList;
 import org.eclipse.lsp4j.CompletionParams;
 import org.eclipse.lsp4j.DefinitionCapabilities;
 import org.eclipse.lsp4j.DefinitionParams;
+import org.eclipse.lsp4j.DocumentSymbol;
+import org.eclipse.lsp4j.DocumentSymbolParams;
+import org.eclipse.lsp4j.SymbolInformation;
 import org.eclipse.lsp4j.Diagnostic;
 import org.eclipse.lsp4j.DidChangeTextDocumentParams;
 import org.eclipse.lsp4j.DidCloseTextDocumentParams;
@@ -211,6 +214,14 @@ final class LspServerSession implements AutoCloseable {
             throws ExecutionException, InterruptedException, TimeoutException {
         return server.getTextDocumentService()
                 .prepareCallHierarchy(new CallHierarchyPrepareParams(new TextDocumentIdentifier(uri), position))
+                .get(REQUEST_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+    }
+
+    List<Either<SymbolInformation, DocumentSymbol>> documentSymbol(String uri)
+            throws ExecutionException, InterruptedException, TimeoutException {
+        DocumentSymbolParams params = new DocumentSymbolParams(new TextDocumentIdentifier(uri));
+        return server.getTextDocumentService()
+                .documentSymbol(params)
                 .get(REQUEST_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
     }
 

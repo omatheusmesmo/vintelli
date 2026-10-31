@@ -1,6 +1,7 @@
 package dev.omatheusmesmo.vintelli.web;
 
 import java.nio.file.FileSystems;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -12,11 +13,13 @@ import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityRegistry;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilitySelection;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability;
+import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability;
 import dev.omatheusmesmo.vintelli.lsp.CodeReference;
 import dev.omatheusmesmo.vintelli.lsp.CompletionEntry;
 import dev.omatheusmesmo.vintelli.lsp.LspClient;
 import dev.omatheusmesmo.vintelli.lsp.LspProfileConfig;
 import io.smallrye.common.annotation.Blocking;
+import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import jakarta.ws.rs.DefaultValue;
@@ -47,12 +50,15 @@ public final class LspResource {
 
     private final CapabilityRegistry registry;
     private final LspClient client;
+    private final List<NavigationCapability> navigationProviders;
     private final boolean enabled;
 
     @Inject
-    LspResource(CapabilityRegistry registry, LspClient client, LspProfileConfig config) {
+    LspResource(CapabilityRegistry registry, LspClient client, LspProfileConfig config,
+            Instance<NavigationCapability> navigationProviders) {
         this.registry = registry;
         this.client = client;
+        this.navigationProviders = navigationProviders.stream().toList();
         this.enabled = config.debugEndpointEnabled();
     }
 
@@ -168,6 +174,33 @@ public final class LspResource {
                 .orElseGet(() -> rejected("file is required"));
     }
 
+    @GET
+    @Path("/symbols")
+    @Blocking
+    public RestResponse<LspReply> symbols(@QueryParam("file") String file) {
+        if (!enabled) {
+            return disabled();
+        }
+        return optionalFile(file).map(FileSystems.getDefault()::getPath).map(path -> {
+            NavigationCapability provider = navigationProviders.stream()
+                    .filter(candidate -> candidate.health() != null && candidate.health().isAvailable())
+                    .findFirst().orElse(null);
+            if (provider == null) {
+                String reason = navigationProviders.stream().map(NavigationCapability::health)
+                        .filter(health -> health != null && !health.isAvailable())
+                        .map(health -> health.reason()).findFirst()
+                        .orElse("no navigation provider configured");
+                return RestResponse.status(RestResponse.Status.SERVICE_UNAVAILABLE,
+                        new LspReply("UNAVAILABLE", reason, ""));
+            }
+            return reply(provider.documentSymbols(path), symbols -> {
+                List<String> lines = new ArrayList<>();
+                appendSymbols(lines, symbols, 0);
+                return String.join("\n", lines);
+            });
+        }).orElseGet(() -> rejected("file is required"));
+    }
+
     @POST
     @Path("/shutdown")
     @Blocking
@@ -237,6 +270,16 @@ public final class LspResource {
 
     private static String entryLine(CompletionEntry entry) {
         return entry.label() + (entry.detail().isBlank() ? "" : " (" + entry.detail() + ")");
+    }
+
+    private static void appendSymbols(List<String> lines, List<NavigationCapability.DocumentSymbol> symbols,
+            int depth) {
+        for (NavigationCapability.DocumentSymbol symbol : symbols) {
+            lines.add("  ".repeat(depth) + symbol.name());
+            if (symbol.children() != null && !symbol.children().isEmpty()) {
+                appendSymbols(lines, symbol.children(), depth + 1);
+            }
+        }
     }
 
     private static RestResponse<LspReply> disabled() {

@@ -291,6 +291,16 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         this.editor = toolWindows.stream().filter(BuiltinEditor.class::isInstance)
                 .map(BuiltinEditor.class::cast).findFirst().orElse(null);
         this.toolWindows = toolWindows.stream().filter(window -> !(window instanceof BuiltinEditor)).toList();
+        this.toolWindows.stream().filter(StructureToolWindow.class::isInstance)
+                .map(StructureToolWindow.class::cast)
+                .forEach(window -> window.setNavigateHandler(symbol -> {
+                    if (editor != null) {
+                        editor.activeDocument().ifPresent(document -> {
+                            releaseCapture();
+                            openFile(Path.of(document.file()), symbol.selectionStartLine());
+                        });
+                    }
+                }));
         this.projectFiles = projectSearch == null ? PROJECT_FILES : List.of();
         this.projectFilesLoading = projectSearch != null;
         Path resolvedRoot = editor == null ? Path.of("").toAbsolutePath().normalize() : editor.project();
