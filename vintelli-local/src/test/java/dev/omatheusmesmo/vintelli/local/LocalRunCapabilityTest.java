@@ -88,6 +88,7 @@ class LocalRunCapabilityTest {
         assertOk(capability.start(new RunCapability.RunRequest("maven:clean", temp, Map.of()), observed::add));
 
         TestProcesses.awaitUntil(GENEROUS, () -> observed.contains("goal-finished"));
+        awaitSummary(observed);
         assertTrue(observed.contains("mvnw-wrapper-called-quick"), observed.toString());
     }
 

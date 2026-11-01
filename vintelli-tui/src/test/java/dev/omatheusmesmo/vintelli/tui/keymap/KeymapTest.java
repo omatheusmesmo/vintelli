@@ -112,6 +112,7 @@ class KeymapTest {
                 "editor_close", "editor_nextTab", "editor_previousTab", "editor_definition",
                 "editor_usages", "editor_nextProblem", "editor_toggleImportFold", "navigation_goToFile", "navigation_findInFiles",
                 "layout_project_wider", "layout_project_narrower", "layout_bottom_taller", "layout_bottom_shorter",
+                "shell.theme.switch",
                 "ActivateRunToolWindow", "ActivateTerminalToolWindow", "ActivateProblemsToolWindow",
                 "ActivateAcpAgentsToolWindow");
         assertEquals(expected, ids);
