@@ -63,7 +63,7 @@ class CapabilitiesResourceIT {
                         "AVAILABLE"))
                 .body("health.reason", contains(
                         nullValue(), nullValue(), nullValue(),
-                        containsString("no healthy provider for 'diagnostics': lsp"),
+                        containsString("no healthy provider for 'diagnostics': idea"),
                         containsString("no healthy provider for 'call-hierarchy': lsp"),
                         nullValue(),
                         nullValue()))

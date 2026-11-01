@@ -611,6 +611,51 @@ which is unrelated to Vintelli, so merge the `vintelli` entry into your
 config instead of replacing the file. The port above is the Quarkus default;
 change it with `quarkus.http.port`.
 
+### IntelliJ IDEA as an optional provider
+
+Vintelli can use a running IntelliJ IDEA instance as a provider for the Run,
+Terminal, Problems and call-hierarchy capabilities through IDEA's MCP server.
+IDEA is optional and never required: with no URL configured the IDEA
+contributor reports `off` and every capability keeps its standalone provider.
+
+Configure the connection in `application.properties` (or a profile):
+
+```properties
+# Required: the streamable HTTP endpoint IDEA prints on startup. There is no
+# default because IDEA picks a free port.
+vintelli.idea.mcp.url=http://127.0.0.1:<port>/stream
+
+# Optional: project path header some IDEA servers expect.
+vintelli.idea.mcp.project-path=/path/to/project
+
+# Optional: bearer token when IDEA requires authentication.
+vintelli.idea.mcp.auth-token=<token>
+```
+
+For development, a `%dev.` profile keeps the settings local:
+
+```properties
+%dev.vintelli.idea.mcp.url=http://127.0.0.1:<port>/stream
+%dev.vintelli.idea.mcp.project-path=${PWD}
+```
+
+Obtain the URL from IDEA: **Settings | Tools | MCP Server**, then **Copy HTTP
+Stream Config** (or read it from the headless starter output). The first call
+to a tool triggers IDEA's consent dialog unless *brave mode* is enabled in
+IDEA's MCP settings; in headless operation brave mode may allow
+unauthenticated command execution, so enable it only with that risk in mind.
+
+Status bar states reported by the IDEA contributor:
+- `off` - no URL configured or client closed
+- `on` - connected and initialized
+- `down` - endpoint unreachable or not found
+- `auth` - authentication required
+- `wait` - consent pending on the IDEA side
+- `slow` - request timed out
+- `error` - classified failure
+
+Startup is unaffected when IDEA is absent or unreachable.
+
 ## Native image
 
 The project is kept reflection-free (final beans, no client proxies) so it is

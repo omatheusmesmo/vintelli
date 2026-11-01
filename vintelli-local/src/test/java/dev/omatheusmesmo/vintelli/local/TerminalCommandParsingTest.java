@@ -7,6 +7,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 
+import dev.omatheusmesmo.vintelli.api.terminal.DangerousCommands;
+import dev.omatheusmesmo.vintelli.api.terminal.TerminalCommandParser;
+
 import org.junit.jupiter.api.Test;
 
 /**
