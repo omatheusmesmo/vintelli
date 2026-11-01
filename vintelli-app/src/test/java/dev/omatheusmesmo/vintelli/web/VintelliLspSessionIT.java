@@ -64,6 +64,21 @@ class VintelliLspSessionIT {
     }
 
     @Test
+    void documentSymbolsAreAvailableThroughTheNavigationPort() throws IOException {
+        Files.writeString(LspTwinResource.document(), "class Fake {}\n");
+
+        given().queryParam("file", LspTwinResource.document().toAbsolutePath().toString())
+                .get("/lsp/symbols")
+                .then()
+                .statusCode(200)
+                .body("state", equalTo("OK"))
+                .body("text", containsString("FakeClass"))
+                .body("text", containsString("  fakeMethod"));
+
+        assertTrue(LspTwinResource.trace().contains("documentSymbol\n"), LspTwinResource.trace());
+    }
+
+    @Test
     void shutdownReachesTheServerAndEndsTheProcess() {
         given().queryParam("file", LspTwinResource.document().toAbsolutePath().toString())
                 .get("/lsp/hover")

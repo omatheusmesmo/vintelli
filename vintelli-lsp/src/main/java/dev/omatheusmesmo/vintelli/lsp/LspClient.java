@@ -26,6 +26,7 @@ import jakarta.inject.Singleton;
 import org.eclipse.lsp4j.CallHierarchyIncomingCall;
 import org.eclipse.lsp4j.CallHierarchyItem;
 import org.eclipse.lsp4j.CallHierarchyOutgoingCall;
+import org.eclipse.lsp4j.SymbolInformation;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionList;
 import org.eclipse.lsp4j.Diagnostic;
@@ -202,6 +203,47 @@ public final class LspClient implements AutoCloseable {
     }
 
     /**
+     * @return the document outline (classes, methods, fields, ...) the server
+     *         returns for the file; an empty list when the server has no
+     *         symbols for it
+     */
+    public CapabilityResult<List<DocumentSymbol>> documentSymbols(Path file) {
+        Selection selection = selection();
+        if (selection.failure() != null) {
+            return CapabilityResult.failed(new CapabilityFailure("unavailable", selection.failure()));
+        }
+        try {
+            LspServerSession current = ensureStarted(selection);
+            String content = Files.readString(file);
+            if (!current.isOpen(file)) {
+                current.openDocument(file, content);
+            }
+            List<Either<SymbolInformation, org.eclipse.lsp4j.DocumentSymbol>> result = current.documentSymbol(
+                    LspServerSession.uriFor(file));
+            return CapabilityResult.ok(documentSymbolsOf(result));
+        } catch (IOException | InterruptedException | ExecutionException | TimeoutException | RuntimeException failure) {
+            if (failure instanceof InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+            return CapabilityResult.failed(failureDetail(selection, failure));
+        }
+    }
+
+    /**
+     * Alias for {@link #documentSymbols(Path)} matching the LSP request name.
+     */
+    public CapabilityResult<List<DocumentSymbol>> documentSymbol(Path file) {
+        return documentSymbols(file);
+    }
+
+    /**
+     * Alias for {@link #documentSymbols(Path)}.
+     */
+    public CapabilityResult<List<DocumentSymbol>> symbols(Path file) {
+        return documentSymbols(file);
+    }
+
+    /**
      * @return call sites that call the symbol under the position
      */
     public CapabilityResult<List<CallHierarchyCapability.CallSite>> callers(
@@ -305,6 +347,52 @@ public final class LspClient implements AutoCloseable {
         LOG.debug(detail, failure);
         return new CapabilityFailure("unavailable", detail);
     }
+
+
+    private static List<DocumentSymbol> documentSymbolsOf(
+            List<Either<SymbolInformation, org.eclipse.lsp4j.DocumentSymbol>> result) {
+        if (result == null) {
+            return List.of();
+        }
+        List<DocumentSymbol> mapped = new ArrayList<>();
+        for (Either<SymbolInformation, org.eclipse.lsp4j.DocumentSymbol> item : result) {
+            if (item.isLeft()) {
+                mapped.add(documentSymbolOf(item.getLeft()));
+            } else if (item.getRight() != null) {
+                mapped.add(documentSymbolOf(item.getRight()));
+            }
+        }
+        return mapped;
+    }
+
+    private static DocumentSymbol documentSymbolOf(org.eclipse.lsp4j.DocumentSymbol symbol) {
+        Range range = symbol.getRange();
+        Range selection = symbol.getSelectionRange();
+        List<DocumentSymbol> children = symbol.getChildren() == null ? List.of()
+                : symbol.getChildren().stream().map(LspClient::documentSymbolOf).toList();
+        return new DocumentSymbol(symbol.getName(), symbol.getDetail(), symbol.getKind(),
+                lineOf(range), characterOf(range),
+                range == null || range.getEnd() == null ? 0 : range.getEnd().getLine(),
+                range == null || range.getEnd() == null ? 0 : range.getEnd().getCharacter(),
+                lineOf(selection), characterOf(selection),
+                selection == null || selection.getEnd() == null ? 0 : selection.getEnd().getLine(),
+                selection == null || selection.getEnd() == null ? 0 : selection.getEnd().getCharacter(),
+                children);
+    }
+
+    private static DocumentSymbol documentSymbolOf(SymbolInformation info) {
+        Location location = info.getLocation();
+        Range range = location == null ? null : location.getRange();
+        return new DocumentSymbol(info.getName(), "", info.getKind(),
+                lineOf(range), characterOf(range),
+                range == null || range.getEnd() == null ? 0 : range.getEnd().getLine(),
+                range == null || range.getEnd() == null ? 0 : range.getEnd().getCharacter(),
+                lineOf(range), characterOf(range),
+                range == null || range.getEnd() == null ? 0 : range.getEnd().getLine(),
+                range == null || range.getEnd() == null ? 0 : range.getEnd().getCharacter(),
+                List.of());
+    }
+
 
     private static String hoverText(Hover hover) {
         if (hover == null || hover.getContents() == null) {

@@ -671,7 +671,8 @@ vintelli.lsp.profiles.jdtls.initialization-options={"bundles":["..."]}
 A missing binary or a server still indexing never breaks a call: the selection
 and the status row carry an explicit unavailable reason instead.
 `/lsp/diagnostics?file=...`, `/lsp/callers`, `/lsp/callees`, `/lsp/hover`,
-`/lsp/definition`, `/lsp/references` and `/lsp/completion` expose the session
+`/lsp/definition`, `/lsp/references`, `/lsp/completion` and `/lsp/symbols`
+expose the session
 over HTTP for the native ITs, which run against the fake language server of
 `vintelli-lsp`; they answer 404 unless
 `vintelli.lsp.debug-endpoint.enabled=true`.

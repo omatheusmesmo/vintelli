@@ -33,6 +33,7 @@ class ToolWindowDiscoveryTest {
                         "terminal",
                         "problems",
                         "acp.agents",
+                        "structure",
                         "editor"),
                 registry.toolWindows().stream()
                         .map(ToolWindow::id)

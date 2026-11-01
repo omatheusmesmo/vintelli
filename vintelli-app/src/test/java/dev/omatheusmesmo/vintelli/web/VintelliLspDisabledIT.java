@@ -19,6 +19,7 @@ class VintelliLspDisabledIT {
         given().queryParam("file", "/etc/hostname").get("/lsp/diagnostics").then()
                 .statusCode(404).body("state", equalTo("DISABLED"));
         given().queryParam("file", "/etc/hostname").get("/lsp/hover").then().statusCode(404);
+        given().queryParam("file", "/etc/hostname").get("/lsp/symbols").then().statusCode(404);
         given().queryParam("file", "/etc/hostname").get("/lsp/definition").then().statusCode(404);
         given().queryParam("file", "/etc/hostname").get("/lsp/references").then().statusCode(404);
         given().queryParam("file", "/etc/hostname").get("/lsp/completion").then().statusCode(404);

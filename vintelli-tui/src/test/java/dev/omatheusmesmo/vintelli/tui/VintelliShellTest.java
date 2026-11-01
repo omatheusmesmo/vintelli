@@ -9,6 +9,7 @@ import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
 import dev.omatheusmesmo.vintelli.api.capability.EditorBridge.OpenRequest;
+import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability.DocumentSymbol;
 import dev.tamboui.buffer.Buffer;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.layout.Size;
@@ -203,6 +204,40 @@ class VintelliShellTest {
         shell.handle(KeyEvent.ofKey(KeyCode.ENTER));
 
         assertTrue(shell.status().startsWith("Project panel:"), shell.status());
+    }
+
+    @Test
+    void structureFiltersSymbolsAndNavigatesTheMatchingEntry() {
+        StructureToolWindow structure = new StructureToolWindow(defaultThemes());
+        DocumentSymbol first = new DocumentSymbol("first", 6, 1, 0, 1, 10, 1, 0, 1, 5, List.of());
+        DocumentSymbol second = new DocumentSymbol("second", 6, 2, 0, 2, 10, 2, 0, 2, 6, List.of());
+        AtomicReference<DocumentSymbol> navigated = new AtomicReference<>();
+        structure.setSymbols(List.of(first, second));
+        structure.setNavigateHandler(navigated::set);
+
+        structure.handleKey(KeyEvent.ofChar('e'));
+        assertEquals(second, structure.selectedSymbol());
+        structure.handleKey(KeyEvent.ofKey(KeyCode.ENTER));
+        assertEquals(second, navigated.get());
+        structure.handleKey(KeyEvent.ofKey(KeyCode.BACKSPACE));
+        assertEquals(first, structure.selectedSymbol());
+    }
+
+    @Test
+    void structureSelectionNavigatesTheActiveEditor() throws IOException {
+        Path file = project.resolve("Example.java");
+        Files.writeString(file, "class Example {\n  void first() {}\n  void second() {}\n}\n");
+        ShellThemes themes = defaultThemes();
+        BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
+        StructureToolWindow structure = new StructureToolWindow(themes);
+        VintelliShell shell = new VintelliShell(List.of(editor, structure), new ShellState(), themes);
+        editor.open(new OpenRequest(file, 0));
+        structure.setSymbols(List.of(new DocumentSymbol("second", 6, 2, 2, 2, 18,
+                2, 7, 2, 13, List.of())));
+
+        assertEquals(EventResult.HANDLED, shell.handle(KeyEvent.ofChar('6', KeyModifiers.ALT)));
+        assertEquals(EventResult.HANDLED, shell.handle(KeyEvent.ofKey(KeyCode.ENTER)));
+        assertEquals(2, editor.activeDocument().orElseThrow().line());
     }
 
     @Test

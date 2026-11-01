@@ -168,6 +168,7 @@ public final class FakeLspServer {
             capabilities.setReferencesProvider(true);
             capabilities.setCompletionProvider(new CompletionOptions());
             capabilities.setCallHierarchyProvider(true);
+            capabilities.setDocumentSymbolProvider(true);
             return CompletableFuture.completedFuture(new InitializeResult(capabilities,
                     new ServerInfo("fake-language-server", "1.0.0")));
         }
@@ -304,6 +305,27 @@ public final class FakeLspServer {
             return CompletableFuture.completedFuture(Either.forLeft(List.of(
                     new CompletionItem("fake_completion_" + server.marker()),
                     new CompletionItem("fake_second"))));
+        }
+
+        @Override
+        public CompletableFuture<List<Either<org.eclipse.lsp4j.SymbolInformation, org.eclipse.lsp4j.DocumentSymbol>>> documentSymbol(
+                org.eclipse.lsp4j.DocumentSymbolParams params) {
+            server.trace("documentSymbol");
+            org.eclipse.lsp4j.Range classRange = new org.eclipse.lsp4j.Range(new org.eclipse.lsp4j.Position(0, 0),
+                    new org.eclipse.lsp4j.Position(2, 0));
+            org.eclipse.lsp4j.Range classSelection = new org.eclipse.lsp4j.Range(new org.eclipse.lsp4j.Position(0, 6),
+                    new org.eclipse.lsp4j.Position(0, 15));
+            org.eclipse.lsp4j.DocumentSymbol clazz = new org.eclipse.lsp4j.DocumentSymbol("FakeClass",
+                    org.eclipse.lsp4j.SymbolKind.Class, classRange, classSelection);
+            org.eclipse.lsp4j.Range methodRange = new org.eclipse.lsp4j.Range(new org.eclipse.lsp4j.Position(1, 4),
+                    new org.eclipse.lsp4j.Position(1, 20));
+            org.eclipse.lsp4j.Range methodSelection = new org.eclipse.lsp4j.Range(new org.eclipse.lsp4j.Position(1, 9),
+                    new org.eclipse.lsp4j.Position(1, 19));
+            org.eclipse.lsp4j.DocumentSymbol method = new org.eclipse.lsp4j.DocumentSymbol("fakeMethod",
+                    org.eclipse.lsp4j.SymbolKind.Method, methodRange, methodSelection);
+            clazz.setChildren(java.util.List.of(method));
+            return java.util.concurrent.CompletableFuture.completedFuture(
+                    java.util.List.of(org.eclipse.lsp4j.jsonrpc.messages.Either.forRight(clazz)));
         }
 
         @Override

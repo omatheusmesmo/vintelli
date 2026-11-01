@@ -45,6 +45,24 @@ public final class LspNavigationProvider implements NavigationCapability {
         return map(client.references(position.filePath(), position.line(), position.column(), includeDeclaration));
     }
 
+    @Override
+    public CapabilityResult<List<NavigationCapability.DocumentSymbol>> documentSymbols(Path file) {
+        CapabilityResult<List<dev.omatheusmesmo.vintelli.lsp.DocumentSymbol>> result = client.documentSymbols(file);
+        if (result instanceof CapabilityResult.Ok<List<dev.omatheusmesmo.vintelli.lsp.DocumentSymbol>> ok) {
+            return CapabilityResult.ok(ok.value().stream().map(LspNavigationProvider::map).toList());
+        }
+        CapabilityResult.Failed<List<dev.omatheusmesmo.vintelli.lsp.DocumentSymbol>> failed =
+                (CapabilityResult.Failed<List<dev.omatheusmesmo.vintelli.lsp.DocumentSymbol>>) result;
+        return CapabilityResult.failed(failed.failure());
+    }
+
+    private static NavigationCapability.DocumentSymbol map(dev.omatheusmesmo.vintelli.lsp.DocumentSymbol symbol) {
+        return new NavigationCapability.DocumentSymbol(symbol.name(), symbol.kind().getValue(), symbol.startLine(), symbol.startColumn(),
+                symbol.endLine(), symbol.endColumn(), symbol.selectionStartLine(), symbol.selectionStartColumn(),
+                symbol.selectionEndLine(), symbol.selectionEndColumn(),
+                symbol.children().stream().map(LspNavigationProvider::map).toList());
+    }
+
     private static CapabilityResult<List<Location>> map(CapabilityResult<List<CodeReference>> result) {
         if (result instanceof CapabilityResult.Ok<List<CodeReference>> ok) {
             return CapabilityResult.ok(ok.value().stream()

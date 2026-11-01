@@ -44,6 +44,7 @@ class LspClientTest {
 
     @Test
     void sessionServesHoverDefinitionReferencesAndCompletion() throws Exception {
+        Files.writeString(document(), "class Fake { void fakeMethod() {} }");
         Path traceFile = trace("features");
         try (LspClient client = new LspClient(config("unit", fakeCommand(traceFile, PROFILE_MARKER),
                 Optional.empty()))) {
@@ -66,6 +67,11 @@ class LspClientTest {
             assertEquals(2, ok(references).size());
             assertEquals(Path.of("/fake/other.java").toString(), ok(references).get(1).targetFile());
 
+            CapabilityResult<List<DocumentSymbol>> symbols = client.documentSymbols(document());
+            assertFalse(symbols.isFailure(), symbols.toString());
+            assertEquals("FakeClass", ok(symbols).getFirst().name());
+            assertEquals("fakeMethod", ok(symbols).getFirst().children().getFirst().name());
+
             CapabilityResult<List<CompletionEntry>> completions = client.completion(document(), 0, 0);
             assertFalse(completions.isFailure(), completions.toString());
             assertEquals(List.of("fake_completion_" + PROFILE_MARKER, "fake_second"), ok(completions).stream()
@@ -73,7 +79,7 @@ class LspClientTest {
                     .toList());
 
             assertTraceContains(traceFile, "initialize", "initialized", "hover", "definition", "references",
-                    "completion");
+                    "documentSymbol", "completion");
         }
         assertTraceContains(traceFile, "shutdown", "exit");
     }
