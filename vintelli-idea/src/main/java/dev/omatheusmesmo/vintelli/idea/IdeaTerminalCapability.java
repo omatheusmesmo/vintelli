@@ -20,10 +20,6 @@ import jakarta.inject.Singleton;
 @Singleton
 public final class IdeaTerminalCapability implements TerminalCapability {
 
-    private record IdeaTerminalResult(String command_output, Integer command_exit_code,
-            Boolean is_timed_out) {
-    }
-
     private final IdeaMcpClient client;
 
     @Inject
@@ -87,9 +83,31 @@ public final class IdeaTerminalCapability implements TerminalCapability {
         }
         try {
             McpJsonMapper mapper = client.jsonMapper();
-            IdeaTerminalResult result = mapper.readValue(call.resultText(), IdeaTerminalResult.class);
-            String output = result.command_output() == null ? "" : result.command_output();
-            int exitCode = result.command_exit_code() == null ? 0 : result.command_exit_code();
+            Map<?, ?> result = mapper.readValue(call.resultText(), Map.class);
+            Object rawOutput = result.get("command_output");
+            if (rawOutput != null && !(rawOutput instanceof String)) {
+                throw new IllegalArgumentException("command_output must be a string");
+            }
+            String output = rawOutput == null ? "" : (String) rawOutput;
+            Object timedOut = result.get("is_timed_out");
+            if (timedOut != null && !(timedOut instanceof Boolean)) {
+                throw new IllegalArgumentException("is_timed_out must be a boolean");
+            }
+            if (Boolean.TRUE.equals(timedOut)) {
+                return CapabilityResult.failed(new CapabilityFailure("IDEA terminal command timed out", output));
+            }
+            Object rawExitCode = result.get("command_exit_code");
+            if (rawExitCode == null) {
+                return CapabilityResult.failed(new CapabilityFailure("IDEA terminal result is missing an exit code", output));
+            }
+            if (!(rawExitCode instanceof Integer) && !(rawExitCode instanceof Long)) {
+                throw new IllegalArgumentException("command_exit_code must be an integer");
+            }
+            long exitCodeLong = ((Number) rawExitCode).longValue();
+            if (exitCodeLong < Integer.MIN_VALUE || exitCodeLong > Integer.MAX_VALUE) {
+                throw new IllegalArgumentException("command_exit_code is outside the integer range");
+            }
+            int exitCode = (int) exitCodeLong;
             return CapabilityResult.ok(new TerminalResult(TerminalOutcome.EXECUTED, exitCode, output));
         } catch (Exception failure) {
             return CapabilityResult.failed(new CapabilityFailure("Cannot parse terminal result", failure.getMessage()));

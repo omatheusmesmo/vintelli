@@ -6,6 +6,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.ServerSocket;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -16,6 +22,9 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 import dev.omatheusmesmo.vintelli.acp.EchoAcpAgentResource;
+import dev.omatheusmesmo.vintelli.idea.FakeIdeaMcpServer;
+import dev.omatheusmesmo.vintelli.web.IdeaMcpTwinResource;
+import io.quarkus.test.common.WithTestResource;
 import io.quarkus.test.junit.QuarkusIntegrationTest;
 import org.junit.jupiter.api.Test;
 
@@ -29,6 +38,7 @@ import org.junit.jupiter.api.Test;
  * actually printed.
  */
 @QuarkusIntegrationTest
+@WithTestResource(IdeaMcpTwinResource.class)
 class VintelliCliCommandsIT {
 
     private static final long TIMEOUT_SECONDS = 60;
@@ -89,6 +99,24 @@ class VintelliCliCommandsIT {
     }
 
     @Test
+    void ideaTerminalTimeoutFailsInThePackagedRunner() throws Exception {
+        CliRun run = ideaTerminal("{\"command_output\":\"partial output\",\"command_exit_code\":124,\"is_timed_out\":true}");
+        assertTrue(run.stdout().contains("IDEA terminal command timed out: partial output"), run.describe());
+    }
+
+    @Test
+    void ideaTerminalResultWithoutExitCodeFailsInThePackagedRunner() throws Exception {
+        CliRun run = ideaTerminal("{\"command_output\":\"partial output\"}");
+        assertTrue(run.stdout().contains("IDEA terminal result is missing an exit code: partial output"), run.describe());
+    }
+
+    @Test
+    void malformedIdeaTerminalResultFailsInThePackagedRunner() throws Exception {
+        CliRun run = ideaTerminal("not-json");
+        assertTrue(run.stdout().contains("Cannot parse terminal result"), run.describe());
+    }
+
+    @Test
     void agentPromptCompletesTheSessionRoundTrip() throws Exception {
         CliRun run = cli("agents", "prompt", "echo:hello");
         assertExit(run, 0);
@@ -140,6 +168,69 @@ class VintelliCliCommandsIT {
         } finally {
             agent.stop();
         }
+    }
+
+    private static CliRun ideaTerminal(String terminalResult) throws Exception {
+        FakeIdeaMcpServer twin = IdeaMcpTwinResource.twin();
+        twin.behaveNormally();
+        twin.terminalResult(terminalResult);
+
+        int port;
+        try (ServerSocket socket = new ServerSocket(0)) {
+            port = socket.getLocalPort();
+        }
+        List<String> options = List.of(
+                "-Dvintelli.idea.mcp.url=" + twin.baseUrl(),
+                "-Dvintelli.idea.mcp.auth-token=vintelli-token",
+                "-Dvintelli.idea.debug-endpoint.enabled=true",
+                "-Dquarkus.http.port=" + port,
+                "-Dquarkus.log.file.enabled=false");
+        List<String> command = new ArrayList<>(runner(options));
+        command.add("--repl");
+        Process process = new ProcessBuilder(command).start();
+        CompletableFuture<String> stdout = read(process.getInputStream());
+        CompletableFuture<String> stderr = read(process.getErrorStream());
+        try {
+            awaitIdeaConnection(process, port);
+            try (OutputStream input = process.getOutputStream()) {
+                input.write("terminal --yes echo marker\nexit\n".getBytes(StandardCharsets.UTF_8));
+            }
+            if (!process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                process.destroyForcibly();
+                CliRun partial = new CliRun(List.of("terminal", "--yes", "echo", "marker"), -1,
+                        stdout.get(), stderr.get());
+                throw new IllegalStateException("The IDEA terminal CLI did not finish within "
+                        + TIMEOUT_SECONDS + "s\n" + partial.describe());
+            }
+            return new CliRun(List.of("terminal", "--yes", "echo", "marker"), process.exitValue(),
+                    stdout.get(), stderr.get());
+        } finally {
+            if (process.isAlive()) {
+                process.destroyForcibly();
+            }
+        }
+    }
+
+    private static void awaitIdeaConnection(Process process, int port) throws Exception {
+        HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(1)).build();
+        HttpRequest request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/idea/reconnect"))
+                .timeout(Duration.ofSeconds(2))
+                .POST(HttpRequest.BodyPublishers.noBody())
+                .build();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(TIMEOUT_SECONDS);
+        while (System.nanoTime() < deadline && process.isAlive()) {
+            try {
+                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() == 200) {
+                    return;
+                }
+            } catch (IOException ignored) {
+                // The Quarkus HTTP listener is not ready yet.
+            }
+            Thread.sleep(100);
+        }
+        throw new IllegalStateException("The packaged runner did not connect to the IDEA MCP twin on port " + port
+                + "; process alive: " + process.isAlive());
     }
 
     private static CliRun run(Map<String, String> agentProperties, String stdin, String... arguments)

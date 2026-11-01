@@ -35,6 +35,68 @@ class IdeaTerminalCapabilityTest {
     }
 
     @Test
+    void rejectsTimedOutTerminalResultsAndPreservesPartialOutput() throws Exception {
+        try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
+                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), "/proj", null, "test", MAPPER, VALIDATOR)) {
+            server.terminalResult("{\"command_output\":\"partial\",\"command_exit_code\":124,\"is_timed_out\":true}");
+            client.reconnect();
+
+            var result = new IdeaTerminalCapability(client).execute(
+                    new TerminalCapability.TerminalRequest("echo hi", Paths.get("/proj"), true));
+
+            assertTrue(result.isFailure(), result.toString());
+            assertTrue(result.failureOf().orElseThrow().reason().contains("timed out"));
+            assertEquals("partial", result.failureOf().orElseThrow().detail());
+        }
+    }
+
+    @Test
+    void rejectsTerminalResultsWithoutExitCode() throws Exception {
+        try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
+                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), "/proj", null, "test", MAPPER, VALIDATOR)) {
+            server.terminalResult("{\"command_output\":\"partial\"}");
+            client.reconnect();
+
+            var result = new IdeaTerminalCapability(client).execute(
+                    new TerminalCapability.TerminalRequest("echo hi", Paths.get("/proj"), true));
+
+            assertTrue(result.isFailure(), result.toString());
+            assertTrue(result.failureOf().orElseThrow().reason().contains("missing an exit code"));
+            assertEquals("partial", result.failureOf().orElseThrow().detail());
+        }
+    }
+
+    @Test
+    void rejectsMalformedTerminalJson() throws Exception {
+        try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
+                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), "/proj", null, "test", MAPPER, VALIDATOR)) {
+            server.terminalResult("not-json");
+            client.reconnect();
+
+            var result = new IdeaTerminalCapability(client).execute(
+                    new TerminalCapability.TerminalRequest("echo hi", Paths.get("/proj"), true));
+
+            assertTrue(result.isFailure(), result.toString());
+            assertTrue(result.failureOf().orElseThrow().reason().contains("Cannot parse terminal result"));
+        }
+    }
+
+    @Test
+    void rejectsTerminalResultWithANonIntegerExitCode() throws Exception {
+        try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
+                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), "/proj", null, "test", MAPPER, VALIDATOR)) {
+            server.terminalResult("{\"command_output\":\"partial\",\"command_exit_code\":\"0\"}");
+            client.reconnect();
+
+            var result = new IdeaTerminalCapability(client).execute(
+                    new TerminalCapability.TerminalRequest("echo hi", Paths.get("/proj"), true));
+
+            assertTrue(result.isFailure(), result.toString());
+            assertTrue(result.failureOf().orElseThrow().reason().contains("Cannot parse terminal result"));
+        }
+    }
+
+    @Test
     void doesNotCallIdeaForDangerousCommandWithoutConfirmation() throws Exception {
         try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
                 IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), "/proj", null, "test", MAPPER, VALIDATOR)) {
