@@ -6,7 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -163,18 +162,16 @@ class LocalProjectSearchTest {
     @Test
     void aFilesystemFailureDuringTheWalkCompletesTheTaskExceptionally() throws Exception {
         write("a.txt", "needle");
-        write("z-dir/b.txt", "");
         LocalProjectSearch search = search();
-        // The first (empty) snapshot is delivered before the walk starts, so the file is
-        // already gone when the walker reads its attributes.
+        // Callbacks run inline on the worker thread, so deleting a file from a
+        // callback happens before the walk starts and the walker never sees it.
+        // Removing the project root is the one deterministic way to reach
+        // visitFileFailed: walkFileTree fails to read the start file's attributes
+        // and reports it, on every platform.
+        Files.delete(root);
         assertThrows(CompletionException.class,
-                () -> search.files("needle", ignored -> {
-                    try {
-                        Files.deleteIfExists(root.resolve("z-dir/b.txt"));
-                    } catch (IOException failure) {
-                        throw new UncheckedIOException(failure);
-                    }
-                }).completion().toCompletableFuture().join());
+                () -> search.files("needle", ignored -> { })
+                        .completion().toCompletableFuture().join());
     }
 
     private LocalProjectSearch search() {
