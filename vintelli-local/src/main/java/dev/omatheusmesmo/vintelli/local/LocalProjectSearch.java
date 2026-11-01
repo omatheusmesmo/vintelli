@@ -199,8 +199,11 @@ public final class LocalProjectSearch implements ProjectSearch {
             }
 
             @Override
-            public FileVisitResult visitFileFailed(Path file, IOException failure) {
-                return task.stopped() ? FileVisitResult.TERMINATE : FileVisitResult.CONTINUE;
+            public FileVisitResult visitFileFailed(Path file, IOException failure) throws IOException {
+                if (task.stopped()) {
+                    return FileVisitResult.TERMINATE;
+                }
+                throw failure;
             }
 
             private boolean ignored(Path path, boolean directory) {

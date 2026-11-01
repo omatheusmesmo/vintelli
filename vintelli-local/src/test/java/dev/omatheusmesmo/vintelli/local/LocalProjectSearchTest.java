@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -157,6 +158,23 @@ class LocalProjectSearchTest {
             Files.deleteIfExists(outside.resolve("secret.txt"));
             Files.deleteIfExists(outside);
         }
+    }
+
+    @Test
+    void aFilesystemFailureDuringTheWalkCompletesTheTaskExceptionally() throws Exception {
+        write("a.txt", "needle");
+        write("z-dir/b.txt", "");
+        LocalProjectSearch search = search();
+        // The first (empty) snapshot is delivered before the walk starts, so the file is
+        // already gone when the walker reads its attributes.
+        assertThrows(CompletionException.class,
+                () -> search.files("needle", ignored -> {
+                    try {
+                        Files.deleteIfExists(root.resolve("z-dir/b.txt"));
+                    } catch (IOException failure) {
+                        throw new UncheckedIOException(failure);
+                    }
+                }).completion().toCompletableFuture().join());
     }
 
     private LocalProjectSearch search() {
