@@ -17,6 +17,11 @@ public interface ProjectSearch {
     /** Blocking discovery for background project-tree loading, honoring the same ignore rules. */
     List<Path> listFiles();
 
+    /** Project-relative directories for the tree, including empty directories. */
+    default List<Path> listDirectories() {
+        return List.of();
+    }
+
     record FileMatch(Path file, int score) {
     }
 

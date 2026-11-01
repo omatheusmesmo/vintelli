@@ -45,6 +45,11 @@ public final class KeyActions {
     public static final String THEME_SWITCH = SWITCH_THEME;
     public static final String SWITCH_SHELL_THEME = SWITCH_THEME;
     public static final String SHELL_THEME_SWITCH = SWITCH_THEME;
+    public static final String PROJECT_NEW_FILE = "project_new_file";
+    public static final String PROJECT_NEW_DIRECTORY = "project_new_directory";
+    public static final String PROJECT_RENAME = "project_rename";
+    public static final String PROJECT_DELETE = "project_delete";
+    public static final String PROJECT_REFRESH = "project_refresh";
         public static final String TOGGLE_TOOL_WINDOW = "ToggleToolWindow";
     public static final String VCS_REFRESH = "vcs_refresh";
     public static final String VCS_SHOW_DIFF = "vcs_showDiff";
@@ -73,6 +78,14 @@ public final class KeyActions {
                 new KeyAction(BOTTOM_TALLER, "Grow Tool Window", ""),
                 new KeyAction(BOTTOM_SHORTER, "Shrink Tool Window", ""),
                 new KeyAction(SWITCH_THEME, "Switch Shell Theme", ""));
+    }
+
+    public static List<KeyAction> projectActions() {
+        return List.of(new KeyAction(PROJECT_NEW_FILE, "New Project File", ""),
+                new KeyAction(PROJECT_NEW_DIRECTORY, "New Project Directory", ""),
+                new KeyAction(PROJECT_RENAME, "Rename Project Entry", ""),
+                new KeyAction(PROJECT_DELETE, "Delete Project Entry", ""),
+                new KeyAction(PROJECT_REFRESH, "Refresh Project Tree", ""));
     }
 
     private KeyActions() {

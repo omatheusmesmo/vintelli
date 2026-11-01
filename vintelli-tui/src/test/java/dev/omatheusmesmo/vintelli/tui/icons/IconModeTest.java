@@ -10,6 +10,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class IconModeTest {
 
+    @Test
+    void detectedTerminalIsOnlyAHintAndExplicitChoiceWins() {
+        assertEquals(IconMode.NERD, IconMode.AUTO.resolveTerminalName("kitty"));
+        assertEquals(IconMode.ASCII, IconMode.AUTO.resolveTerminalName("alacritty"));
+        assertEquals(IconMode.ASCII, IconMode.ASCII.resolveTerminalName("kitty"));
+        assertEquals(IconMode.NERD, IconMode.NERD.resolveTerminalName("unknown"));
+    }
+
     private static final Map<String, String> PLAIN_TERMINAL = Map.of("TERM", "xterm-256color", "TERM_PROGRAM", "vscode");
 
     @Test

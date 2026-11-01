@@ -141,7 +141,23 @@ public final class LocalProjectSearch implements ProjectSearch {
         return List.copyOf(paths);
     }
 
+    @Override
+    public List<Path> listDirectories() {
+        List<Path> paths = new ArrayList<>();
+        try {
+            walk(new Task(), ignored -> { }, paths::add);
+        } catch (IOException failure) {
+            throw new UncheckedIOException(failure);
+        }
+        paths.sort(Comparator.comparing(LocalProjectSearch::portable));
+        return List.copyOf(paths);
+    }
+
     private void walk(Task task, FileConsumer files) throws IOException {
+        walk(task, files, ignored -> { });
+    }
+
+    private void walk(Task task, FileConsumer files, FileConsumer directories) throws IOException {
         Path root = projectRoot.canonical();
         Map<Path, IgnoreNode> ignores = new HashMap<>();
         Files.walkFileTree(root, new SimpleFileVisitor<>() {
@@ -153,6 +169,9 @@ public final class LocalProjectSearch implements ProjectSearch {
                 if (!directory.equals(root) && (directory.getFileName().toString().equals(".git")
                         || projectRoot.confine(directory) == null || ignored(directory, true))) {
                     return FileVisitResult.SKIP_SUBTREE;
+                }
+                if (!directory.equals(root)) {
+                    directories.accept(root.relativize(directory));
                 }
                 Path ignoreFile = directory.resolve(".gitignore");
                 Path confined = projectRoot.confine(ignoreFile);
