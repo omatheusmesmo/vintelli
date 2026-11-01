@@ -104,8 +104,8 @@ inspect endpoints is registered there too. Only
 `vintelli-local` is the standalone provider behind the `vintelli-api`
 capability ports: it runs Maven and Gradle goals and tasks through real
 processes (wrapper first, installed command as fallback, always an argument
-list and never a shell command line), executes terminal commands the same
-way with a confirmation gate for system or destructive programs, and reads
+list and never a shell command line), executes explicitly confirmed terminal
+commands through the host shell, and reads
 the project files within a configurable project root
 (`vintelli.local.project-root`, the working directory by default) refusing
 every traversal or symlink escape. A timeout
@@ -115,16 +115,39 @@ capability registry ranks them like every other provider.
 
 Decisions of the local provider:
 
-- Terminal commands always run inside the project root, with no opt-out. A
-  relative working directory resolves against the root, and a directory that
-  lands outside it, through `..` or a symlink, is refused before any process
-  starts. A timed out command reports the output read so far.
-- The terminal is not a shell: pipes, redirects, `cd`, globbing and variable
-  expansion are not interpreted, and each word is one argument. The real
-  interactive terminal is tracked separately.
-- The confirmation gate for `sudo`, machine control and `rm -rf` is a
-  name-based heuristic, not a sandbox; its limits are listed on
-  `DangerousCommands`.
+- One shot terminal commands and interactive terminal sessions start inside
+  the project root. A relative initial working directory resolves against the
+  root, and a directory that lands outside it, through `..` or a symlink, is
+  refused before a process starts. A timed out one shot command reports the
+  output read so far.
+- The Terminal tool window starts a persistent host shell for the window. It
+  keeps shell state, including the current directory, between commands. The
+  initial directory is checked against the project root; after startup, the
+  shell can change directory and access the filesystem with the current user's
+  permissions. It is not a filesystem sandbox. Starting a session requires
+  confirmation, and potentially dangerous or compound commands prompt again.
+- `vintelli.local.terminal.shell` selects the shell for both one shot commands
+  and persistent terminal sessions. `auto` is the default: Unix honors the
+  current `$SHELL` executable, including an absolute path outside `PATH`, then
+  falls back to installed common shells; Windows uses Command Prompt through
+  `%COMSPEC%`. Explicit choices are `powershell`, `cmd`, `git-bash`, `sh`,
+  `bash`, `zsh` and `fish`. An absolute executable path can select another
+  Unix shell or a custom installation of a known shell. The path is passed as
+  one executable argument, not parsed as a command string. An unavailable
+  explicit choice fails at startup instead of silently switching shells.
+  PowerShell can also use `pwsh` on Unix when installed. Git Bash is discovered
+  under common Git for Windows install roots. The resolver accepts a shell id
+  or absolute executable path, not an arbitrary command line.
+- Shell command confirmation remains a heuristic. It catches the dangerous
+  command forms Vintelli knows, but aliases, functions, shell-specific syntax
+  and indirection can bypass it; confirmation is not a filesystem sandbox.
+- POSIX sessions use the host `script` utility to allocate a PTY, so that
+  utility must be installed. Its command string contains only the resolved,
+  quoted executable path and Vintelli's fixed interactive arguments; user
+  command text is sent over the PTY input stream. Windows sessions use pty4j
+  with ConPTY enabled.
+  Terminal resizing is currently supported on Windows; the POSIX `script`
+  wrapper does not expose resize control.
 - Build wrappers are chosen per host: `mvnw` or `gradlew` on Unix (executable
   only), `mvnw.cmd` or `gradlew.bat` on Windows, run through `cmd /c`. The
   Unix script is never tried on Windows.

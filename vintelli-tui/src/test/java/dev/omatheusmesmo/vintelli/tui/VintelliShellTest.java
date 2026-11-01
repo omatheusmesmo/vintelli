@@ -99,6 +99,11 @@ class VintelliShellTest {
             assertEquals(1, shell.toolIndex()); // Terminal is at bottom index 1
             assertEquals("Tool window: Terminal", shell.status());
 
+            // The terminal captures input while a shell session is focused.
+            // Escape returns keyboard control to the shell so bare digit
+            // shortcuts can switch windows again.
+            pilot.press(KeyCode.ESCAPE);
+            pilot.pause(EVENT_WINDOW);
             press(pilot, '3');
             assertEquals(2, shell.toolIndex()); // Problems is at bottom index 2
             assertEquals("Tool window: Problems", shell.status());

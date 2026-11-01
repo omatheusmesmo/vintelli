@@ -11,6 +11,8 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.Socket;
 import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -22,6 +24,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import dev.omatheusmesmo.vintelli.tui.VintelliShell;
+import dev.omatheusmesmo.vintelli.tui.TerminalToolWindow;
 import io.quarkus.test.common.TestResourceScope;
 import io.quarkus.test.common.WithTestResource;
 import io.quarkus.test.common.http.TestHTTPResource;
@@ -67,7 +70,13 @@ class WebTerminalTest {
 
     @BeforeEach
     void resetSharedState() {
+        CDI.current().select(TerminalToolWindow.class).get().closeSession();
         CDI.current().select(VintelliShell.class).get().reset();
+    }
+
+    @AfterEach
+    void closeInteractiveShell() {
+        CDI.current().select(TerminalToolWindow.class).get().closeSession();
     }
 
     @AfterEach
@@ -135,6 +144,80 @@ class WebTerminalTest {
                 .then()
                 .statusCode(200)
                 .body("status", containsString("Tool window: Terminal"));
+    }
+
+    @Test
+    void terminalWindowKeepsARealShellSessionAcrossCommands() throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeFalse(isWindows(), "Interactive shell pty is not reliable on Windows CI");
+        WebTerminalHandshakeClient client = handshakeUp(basic(), WebTerminalResource.TRUSTED_ORIGIN);
+        client.sendInput("2");
+        awaitScreen(client, screen -> screen.contains("Tool window: Terminal"));
+
+        client.sendInput("\r");
+        awaitScreen(client, screen -> screen.contains("Interactive shell started"));
+
+        Path markerDirectory = isWindows()
+                ? Files.createTempDirectory("vintelli-terminal-confirmation-")
+                : Files.createTempDirectory(Path.of("/tmp"), "vintelli-terminal-confirmation-").toRealPath();
+        Path marker = Files.writeString(markerDirectory.resolve("keep.txt"), "keep");
+        try {
+            client.sendInput(isWindows()
+                    ? "rmdir /s /q " + quoteForShell(markerDirectory) + "\r"
+                    : "rm -rf " + quoteForShell(markerDirectory) + "\r");
+            awaitScreen(client, screen -> screen.contains("This command needs confirmation"));
+            client.sendInput("n\r");
+            awaitScreen(client, screen -> screen.contains("Command cancelled"));
+            assertTrue(Files.exists(marker), "cancelled removal must leave the marker file in place");
+
+            Path initialDirectory = WebTerminalResource.PROJECT_ROOT;
+            client.sendInput(showDirectoryCommand() + "\r");
+            awaitScreen(client, screen -> containsDirectoryLine(screen, initialDirectory));
+
+            client.sendInput(changeDirectoryCommand(markerDirectory) + "\r");
+            client.sendInput(showDirectoryCommand() + "\r");
+            awaitScreen(client, screen -> containsDirectoryLine(screen, markerDirectory));
+        } finally {
+            Files.deleteIfExists(marker);
+            Files.deleteIfExists(markerDirectory);
+        }
+    }
+
+    private static boolean isWindows() {
+        return System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win");
+    }
+
+    private static String showDirectoryCommand() {
+        return isWindows() ? "cd" : "pwd";
+    }
+
+    private static String changeDirectoryCommand(Path path) {
+        return isWindows() ? "cd /d " + quoteForShell(path) : "cd " + quoteForShell(path);
+    }
+
+    private static String quoteForShell(Path path) {
+        String value = path.toAbsolutePath().normalize().toString();
+        return isWindows() ? "\"" + value + "\"" : "'" + value.replace("'", "'\\''") + "'";
+    }
+
+    private static boolean containsDirectoryLine(String screen, Path path) {
+        String expected = normalizePath(path.toAbsolutePath().normalize().toString());
+        return screen.lines().map(String::strip)
+                .map(line -> line.replace("│", "").strip())
+                .map(WebTerminalTest::stripShellPrompt)
+                .map(WebTerminalTest::normalizePath)
+                .anyMatch(expected::equals);
+    }
+
+    private static String stripShellPrompt(String line) {
+        if (line.startsWith("$ ") || line.startsWith("# ")) {
+            return line.substring(2).strip();
+        }
+        return line;
+    }
+
+    private static String normalizePath(String path) {
+        String value = path.strip();
+        return isWindows() ? value.replace('/', '\\').toLowerCase(java.util.Locale.ROOT) : value;
     }
 
     @Test

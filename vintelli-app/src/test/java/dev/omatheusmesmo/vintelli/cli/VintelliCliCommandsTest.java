@@ -61,7 +61,7 @@ class VintelliCliCommandsTest {
     }
 
     @Test
-    @Launch(value = {"terminal", "java", "--version"}, exitCode = 0)
+    @Launch(value = {"terminal", "--yes", "java", "--version"}, exitCode = 0)
     void terminalRunsTheCommandThroughTheSelectedProvider(LaunchResult result) {
         assertTrue(result.getOutput().contains("openjdk"), result.getOutput());
     }
