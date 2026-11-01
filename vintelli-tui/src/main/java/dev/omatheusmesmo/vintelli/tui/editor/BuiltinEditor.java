@@ -29,6 +29,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.function.Supplier;
 
@@ -38,6 +39,7 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     public enum CloseResult { CLOSED, CONFIRM_REQUIRED, EMPTY }
     public record TabView(String file, boolean dirty, boolean active) {}
     public record DocumentView(String file, String text, int line, int column, boolean dirty) {}
+    public record StatusBarInfo(int line, int column, String encoding, String lineSeparator, String fileType) {}
     private static final long MAX_FILE_BYTES = 4L * 1024 * 1024;
     private final List<EditorDocument> documents = new ArrayList<>();
     private final Supplier<ShellEditorPalette> palette;
@@ -147,6 +149,20 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
         EditorDocument document = document();
         return document == null ? Optional.empty() : Optional.of(new DocumentView(document.file().toString(), document.text(),
                 document.row(), document.column(), document.dirty()));
+    }
+
+    public synchronized Optional<StatusBarInfo> statusBarInfo() {
+        ensureSession();
+        EditorDocument document = document();
+        if (document == null) {
+            return Optional.empty();
+        }
+        String name = document.file().getFileName().toString();
+        int extension = name.lastIndexOf('.');
+        String fileType = extension < 0 ? "Plain Text" : name.substring(extension + 1).toUpperCase(Locale.ROOT);
+        String lineSeparator = document.lineSeparator().equals("\r\n") ? "CRLF" : "LF";
+        return Optional.of(new StatusBarInfo(document.row() + 1, document.column() + 1, "UTF-8", lineSeparator,
+                fileType));
     }
 
     public synchronized List<TabView> tabs() {

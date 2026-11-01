@@ -5,6 +5,8 @@ import dev.tamboui.terminal.Frame;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
 import dev.omatheusmesmo.vintelli.tui.menu.MenuEntry;
+import dev.omatheusmesmo.vintelli.api.statusbar.StatusBarWidget;
+import dev.omatheusmesmo.vintelli.api.statusbar.StatusBarWidgetContributor;
 
 import java.util.List;
 
@@ -37,11 +39,10 @@ import java.util.List;
  * tab is reselected, so the capturing window receives no other keys in
  * between.
  *
- * <p>Lifecycle, focus, status bar and menu bar hooks will be added later as
- * {@code default} methods, so new implementations keep compiling while the
- * interface grows.
+ * <p>Status bar and menu contributions use default methods, so existing
+ * implementations keep compiling as the shell grows.
  */
-public interface ToolWindow {
+public interface ToolWindow extends StatusBarWidgetContributor {
 
     /**
      * Dock anchor for the tool window: left, right, or bottom stripe.
@@ -55,6 +56,15 @@ public interface ToolWindow {
     }
 
     default List<MenuEntry> menuEntries() {
+        return List.of();
+    }
+
+    /**
+     * Optional status bar items contributed by this tool window. The shell
+     * reads them on every render, so implementations can reflect live state.
+     */
+    @Override
+    default List<StatusBarWidget> statusBarWidgets() {
         return List.of();
     }
 

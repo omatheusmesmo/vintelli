@@ -5,7 +5,10 @@ public class Detacher {
 
     public static void main(String[] args) throws Exception {
         String java = ProcessHandle.current().info().command().orElseThrow();
-        Process child = new ProcessBuilder(java, args[0], "30").inheritIO().start();
+        Process child = new ProcessBuilder(java, args[0], "30")
+                .directory(Path.of(args[2]).toFile())
+                .inheritIO()
+                .start();
         System.out.println("child:" + child.pid());
         Files.writeString(Path.of(args[1]), Long.toString(child.pid()));
         System.out.println("detached");

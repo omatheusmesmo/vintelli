@@ -15,6 +15,11 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.List;
+import java.time.Duration;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.eclipse.jgit.api.Git;
@@ -40,9 +45,12 @@ import org.eclipse.jgit.treewalk.filter.TreeFilter;
 
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityFailure;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
+import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
+import dev.omatheusmesmo.vintelli.api.statusbar.StatusBarWidget;
 import io.quarkus.arc.Unremovable;
+import jakarta.annotation.PreDestroy;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
@@ -65,7 +73,7 @@ import jakarta.inject.Singleton;
  */
 @Unremovable
 @Singleton
-public final class LocalVersionControlCapability implements VersionControlCapability {
+public final class LocalVersionControlCapability implements VersionControlCapability, AutoCloseable {
 
     private static final String NOT_A_REPOSITORY = "Not a Git repository";
     private static final String REPOSITORY_NOT_READABLE = "The Git repository cannot be read";
@@ -76,9 +84,15 @@ public final class LocalVersionControlCapability implements VersionControlCapabi
     private static final String TRUNCATION_MARKER = "[The diff is truncated at the 256 KiB cap]\n";
     private static final String OLD_PREFIX = "a/";
     private static final String NEW_PREFIX = "b/";
+    private static final long BRANCH_REFRESH_NANOS = Duration.ofSeconds(30).toNanos();
 
     private final LocalProjectRoot projectRoot;
     private final AtomicBoolean repositoryKnown = new AtomicBoolean();
+    private final AtomicBoolean branchRefreshInFlight = new AtomicBoolean();
+    private final ExecutorService branchRefreshExecutor = Executors.newSingleThreadExecutor(
+            Thread.ofVirtual().name("vintelli-vcs-status-").factory());
+    private volatile long branchCacheUpdatedAt;
+    private volatile String cachedBranch;
 
     /**
      * Writes at most {@link #MAX_DIFF_BYTES} bytes and remembers that anything
@@ -165,6 +179,28 @@ public final class LocalVersionControlCapability implements VersionControlCapabi
     }
 
     @Override
+    public List<StatusBarWidget> statusBarWidgets(CapabilityType capability) {
+        if (capability != CapabilityType.VERSION_CONTROL) {
+            return List.of();
+        }
+        refreshBranchAsyncIfStale();
+        String branch = cachedBranch;
+        String value = branch == null ? "loading" : branch;
+        return List.of(new StatusBarWidget("vcs-branch", 7, "Branch: " + value, "Git:" + value));
+    }
+
+    @Override
+    @PreDestroy
+    public void close() {
+        branchRefreshExecutor.shutdownNow();
+        try {
+            branchRefreshExecutor.awaitTermination(Duration.ofSeconds(2).toMillis(), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    @Override
     public CapabilityResult<VersionControlCapability.Status> status() {
         return withRepository(this::readStatus);
     }
@@ -217,6 +253,7 @@ public final class LocalVersionControlCapability implements VersionControlCapabi
         }
 
         String branch = currentBranch(repository);
+        cacheBranch(branch);
         Integer ahead = null;
         Integer behind = null;
         if (branch != null) {
@@ -417,6 +454,45 @@ public final class LocalVersionControlCapability implements VersionControlCapabi
         } catch (IOException | UncheckedIOException failure) {
             return ProviderHealth.unavailable(REPOSITORY_NOT_READABLE + ": " + messageOf(failure));
         }
+    }
+
+    private void refreshBranchAsyncIfStale() {
+        if (!branchRefreshInFlight.compareAndSet(false, true)) {
+            return;
+        }
+        long now = System.nanoTime();
+        long lastUpdated = branchCacheUpdatedAt;
+        if (lastUpdated != 0 && now - lastUpdated < BRANCH_REFRESH_NANOS) {
+            branchRefreshInFlight.set(false);
+            return;
+        }
+        try {
+            branchRefreshExecutor.execute(() -> {
+                try {
+                    Optional<Repository> opened = openWorktree();
+                    if (opened.isEmpty()) {
+                        cacheBranch("unavailable");
+                        return;
+                    }
+                    try (Repository repository = opened.get()) {
+                        String branch = currentBranch(repository);
+                        cacheBranch(branch);
+                    }
+                } catch (IOException | UncheckedIOException failure) {
+                    cacheBranch("unavailable");
+                } finally {
+                    branchRefreshInFlight.set(false);
+                }
+            });
+        } catch (RuntimeException rejected) {
+            branchRefreshInFlight.set(false);
+            cacheBranch("unavailable");
+        }
+    }
+
+    private void cacheBranch(String branch) {
+        cachedBranch = branch == null ? "detached" : branch;
+        branchCacheUpdatedAt = System.nanoTime();
     }
 
     private static String messageOf(Exception failure) {
