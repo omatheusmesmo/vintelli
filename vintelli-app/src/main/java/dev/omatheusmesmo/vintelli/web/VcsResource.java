@@ -13,8 +13,11 @@ import io.smallrye.common.annotation.Blocking;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import jakarta.ws.rs.GET;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import org.jboss.resteasy.reactive.RestResponse;
@@ -84,13 +87,12 @@ public final class VcsResource {
             return RestResponse.status(RestResponse.Status.BAD_REQUEST,
                     new VcsDiffReply("REJECTED", "file is too long", ""));
         }
-        java.nio.file.Path requested;
-        try {
-            requested = FileSystems.getDefault().getPath(file);
-        } catch (InvalidPathException invalid) {
+        String validFile = validateFile(file);
+        if (validFile == null) {
             return RestResponse.status(RestResponse.Status.BAD_REQUEST,
                     new VcsDiffReply("REJECTED", "invalid path", ""));
         }
+        var requestedPath = FileSystems.getDefault().getPath(validFile);
         CapabilitySelection<VersionControlCapability> selection = registry.versionControl();
         if (!selection.isAvailable()) {
             return RestResponse.status(RestResponse.Status.SERVICE_UNAVAILABLE, VcsDiffReply.unavailable(
@@ -98,7 +100,103 @@ public final class VcsResource {
         }
         return asDiffReply(((CapabilitySelection.Selected<VersionControlCapability>) selection)
                 .provider()
-                .diff(requested));
+                .diff(requestedPath));
+    }
+
+    @PUT
+    @Path("/stage")
+    @Blocking
+    public RestResponse<VcsMutationReply> stage(@QueryParam("file") String file,
+            @QueryParam("confirm") boolean confirmed) {
+        if (!enabled) { return disabledMutation(); }
+        if (!confirmed) { return confirmationRequired(); }
+        String validFile = validateFile(file);
+        if (validFile == null) { return rejectedMutation("file is required or invalid"); }
+        var requested = FileSystems.getDefault().getPath(validFile);
+        CapabilitySelection<VersionControlCapability> selection = registry.versionControl();
+        if (!selection.isAvailable()) { return unavailableMutation(selection); }
+        return asMutationReply(((CapabilitySelection.Selected<VersionControlCapability>) selection)
+                .provider().stage(requested, true));
+    }
+
+    @PUT
+    @Path("/unstage")
+    @Blocking
+    public RestResponse<VcsMutationReply> unstage(@QueryParam("file") String file,
+            @QueryParam("confirm") boolean confirmed) {
+        if (!enabled) { return disabledMutation(); }
+        if (!confirmed) { return confirmationRequired(); }
+        String validFile = validateFile(file);
+        if (validFile == null) { return rejectedMutation("file is required or invalid"); }
+        var requested = FileSystems.getDefault().getPath(validFile);
+        CapabilitySelection<VersionControlCapability> selection = registry.versionControl();
+        if (!selection.isAvailable()) { return unavailableMutation(selection); }
+        return asMutationReply(((CapabilitySelection.Selected<VersionControlCapability>) selection)
+                .provider().unstage(requested, true));
+    }
+
+    @POST
+    @Path("/commit")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Blocking
+    public RestResponse<VcsMutationReply> commit(CommitRequest request,
+            @QueryParam("confirm") boolean confirmed) {
+        if (!enabled) { return disabledMutation(); }
+        if (!confirmed) { return confirmationRequired(); }
+        if (request == null || request.message() == null) { return rejectedMutation("message is required"); }
+        CapabilitySelection<VersionControlCapability> selection = registry.versionControl();
+        if (!selection.isAvailable()) { return unavailableMutation(selection); }
+        return asMutationReply(((CapabilitySelection.Selected<VersionControlCapability>) selection)
+                .provider().commit(request.message(), true));
+    }
+
+    @PUT
+    @Path("/branch")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Blocking
+    public RestResponse<VcsMutationReply> switchBranch(BranchRequest request,
+            @QueryParam("confirm") boolean confirmed) {
+        if (!enabled) { return disabledMutation(); }
+        if (!confirmed) { return confirmationRequired(); }
+        if (request == null || request.name() == null) { return rejectedMutation("branch name is required"); }
+        CapabilitySelection<VersionControlCapability> selection = registry.versionControl();
+        if (!selection.isAvailable()) { return unavailableMutation(selection); }
+        return asMutationReply(((CapabilitySelection.Selected<VersionControlCapability>) selection)
+                .provider().switchBranch(request.name(), true));
+    }
+
+    private static String validateFile(String file) {
+        if (file == null || file.isBlank() || file.length() > MAX_FILE_PARAMETER_LENGTH) { return null; }
+        try { FileSystems.getDefault().getPath(file); return file; }
+        catch (InvalidPathException invalid) { return null; }
+    }
+
+    private static RestResponse<VcsMutationReply> disabledMutation() {
+        return RestResponse.status(RestResponse.Status.NOT_FOUND, new VcsMutationReply("DISABLED", "", false));
+    }
+
+    private static RestResponse<VcsMutationReply> confirmationRequired() {
+        return RestResponse.status(RestResponse.Status.PRECONDITION_REQUIRED,
+                new VcsMutationReply("CONFIRMATION_REQUIRED", "confirm=true is required", false));
+    }
+
+    private static RestResponse<VcsMutationReply> rejectedMutation(String detail) {
+        return RestResponse.status(RestResponse.Status.BAD_REQUEST, new VcsMutationReply("REJECTED", detail, false));
+    }
+
+    private static RestResponse<VcsMutationReply> unavailableMutation(
+            CapabilitySelection<VersionControlCapability> selection) {
+        return RestResponse.status(RestResponse.Status.SERVICE_UNAVAILABLE,
+                new VcsMutationReply("UNAVAILABLE",
+                        ((CapabilitySelection.Unavailable<VersionControlCapability>) selection).reason(), false));
+    }
+
+    private static RestResponse<VcsMutationReply> asMutationReply(CapabilityResult<Boolean> result) {
+        return switch (result) {
+            case CapabilityResult.Failed<Boolean> failed -> RestResponse.status(RestResponse.Status.CONFLICT,
+                    new VcsMutationReply("FAILED", failureDetail(failed.failure()), false));
+            case CapabilityResult.Ok<Boolean> ok -> RestResponse.ok(new VcsMutationReply("OK", "", ok.value()));
+        };
     }
 
     private static RestResponse<VcsStatusReply> asStatusReply(CapabilityResult<VersionControlCapability.Status> result) {
@@ -180,6 +278,12 @@ public final class VcsResource {
             return new VcsDiffReply("DISABLED", "", "");
         }
     }
+
+    public record VcsMutationReply(String state, String detail, boolean success) {}
+
+    public record CommitRequest(String message) {}
+
+    public record BranchRequest(String name) {}
 
     private static String failureDetail(CapabilityFailure failure) {
         return failure.detail().isBlank()

@@ -59,6 +59,7 @@ public final class TemporaryGitRepositoryResource implements QuarkusTestResource
                 git.add().addFilepattern("tracked.txt").call();
                 git.commit().setMessage("initial")
                         .setAuthor(AUTHOR, EMAIL).setCommitter(AUTHOR, EMAIL).setSign(false).call();
+                git.branchCreate().setName("feature").call();
             }
             Files.writeString(root.resolve("tracked.txt"), "first line\nsecond line\n");
             Files.writeString(root.resolve("untracked.txt"), "not tracked\n");
@@ -98,6 +99,7 @@ public final class TemporaryGitRepositoryResource implements QuarkusTestResource
         StoredConfig config = git.getRepository().getConfig();
         config.setBoolean("core", null, "autocrlf", false);
         config.setString("core", null, "excludesFile", emptyExcludes.toAbsolutePath().toString().replace('\\', '/'));
+        config.setBoolean("commit", null, "gpgSign", false);
         config.save();
     }
 

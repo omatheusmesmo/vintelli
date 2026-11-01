@@ -6,6 +6,7 @@ import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Diagnostic;
 import dev.omatheusmesmo.vintelli.api.capability.EditorBridge;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
+import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
 import dev.omatheusmesmo.vintelli.tui.ShellThemes;
 import dev.omatheusmesmo.vintelli.tui.ToolWindow;
 import dev.omatheusmesmo.vintelli.tui.keymap.ConfigDirectory;
@@ -31,6 +32,8 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Map;
+import java.util.Set;
 import java.util.function.Supplier;
 
 /** Built-in adapter. All document, element and external inspection access shares this monitor. */
@@ -50,7 +53,10 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     private Path pendingClose;
     private String status = "Open a file from Project or Go to File";
     private boolean sessionLoaded;
+    private boolean menuNavigationActive;
     private String focusRequest;
+    private Map<String, VersionControlCapability.State> vcsStates = Map.of();
+    private Map<String, Set<Integer>> vcsChangedLines = Map.of();
 
     @Inject
     public BuiltinEditor(@ConfigProperty(name = "vintelli.local.project-root") Optional<String> configuredRoot,
@@ -91,6 +97,8 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     }
 
     public Element element() { return element; }
+    public synchronized void menuNavigationActive(boolean active) { menuNavigationActive = active; }
+    synchronized boolean menuNavigationActive() { return menuNavigationActive; }
     public synchronized Path project() { return project; }
     public synchronized String status() { return status; }
     synchronized ShellEditorPalette palette() { return palette.get(); }
@@ -173,6 +181,25 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
             result.add(new TabView(project.relativize(document.file()).toString(), document.dirty(), i == active));
         }
         return List.copyOf(result);
+    }
+
+    public synchronized void vcsStatus(
+            Map<String, VersionControlCapability.State> states,
+            Map<String, Set<Integer>> changedLines) {
+        vcsStates = Map.copyOf(states);
+        vcsChangedLines = changedLines.entrySet().stream().collect(java.util.stream.Collectors.toUnmodifiableMap(
+                Map.Entry::getKey, entry -> Set.copyOf(entry.getValue())));
+    }
+
+    synchronized Optional<VersionControlCapability.State> vcsState(String file) {
+        return Optional.ofNullable(vcsStates.get(file.replace('\\', '/')));
+    }
+
+    synchronized boolean vcsChangedLine(int row) {
+        EditorDocument document = document();
+        if (document == null) { return false; }
+        String file = project.relativize(document.file()).toString().replace('\\', '/');
+        return vcsChangedLines.getOrDefault(file, Set.of()).contains(row);
     }
 
     public synchronized CapabilityResult<Boolean> save() {

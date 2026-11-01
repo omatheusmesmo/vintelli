@@ -5,6 +5,10 @@ import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeymapProfile;
 import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
+import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
+import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
+import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
+import dev.omatheusmesmo.vintelli.api.capability.EditorBridge.OpenRequest;
 import dev.tamboui.buffer.Buffer;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.layout.Size;
@@ -28,6 +32,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -201,6 +206,68 @@ class VintelliShellTest {
     }
 
     @Test
+    void menuNavigationBubblesFromAnEditorWithFocusSoStageCanBeSelected() throws Exception {
+        Path file = project.resolve("sample.txt");
+        Files.writeString(file, "first line\nsecond line\n");
+        ShellThemes themes = defaultThemes();
+        BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
+        assertFalse(editor.open(new OpenRequest(file, 0)).isFailure());
+        List<ToolWindow> windows = new ArrayList<>(defaultWindows());
+        windows.add(editor);
+        VersionControlCapability vcs = new VersionControlCapability() {
+            @Override public CapabilityResult<Status> status() {
+                return CapabilityResult.ok(new Status("main", 0, 0, List.of()));
+            }
+            @Override public CapabilityResult<String> diff(Path changedFile) { return CapabilityResult.ok(""); }
+            @Override public CapabilityResult<String> diffWorkingTree() { return CapabilityResult.ok(""); }
+            @Override public CapabilityResult<Boolean> stage(Path changedFile, boolean confirmed) {
+                return CapabilityResult.ok(confirmed);
+            }
+            @Override public CapabilityResult<Boolean> unstage(Path changedFile, boolean confirmed) {
+                return CapabilityResult.ok(confirmed);
+            }
+            @Override public CapabilityResult<Boolean> commit(String message, boolean confirmed) {
+                return CapabilityResult.ok(confirmed);
+            }
+            @Override public CapabilityResult<Boolean> switchBranch(String branch, boolean confirmed) {
+                return CapabilityResult.ok(confirmed);
+            }
+            @Override public String identifier() { return "menu-test"; }
+            @Override public ProviderHealth health() { return ProviderHealth.available(); }
+            @Override public String provenance() { return "temporary menu test provider"; }
+        };
+        VintelliShell shell = new VintelliShell(new ToolWindowRegistry(windows).toolWindows(),
+                new ShellState(), () -> Keymap.defaultKeymap(windows), themes, null, List.of(), List.of(vcs));
+
+        try (ToolkitTestRunner test = runShell(shell)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+            pilot.press(KeyCode.RIGHT);
+            pause(pilot);
+            assertEquals(1, editor.activeDocument().orElseThrow().column(), "the editor has keyboard focus initially");
+
+            pilot.press(KeyCode.F10);
+            pause(pilot);
+            for (int menu = 0; menu < 8; menu++) {
+                pilot.press(KeyCode.RIGHT);
+                pause(pilot);
+            }
+            for (int row = 0; row < 3; row++) {
+                pilot.press(KeyCode.DOWN);
+                pause(pilot);
+            }
+            pilot.press(KeyCode.ENTER);
+            pause(pilot);
+
+            assertEquals(1, editor.activeDocument().orElseThrow().column(),
+                    "menu keys must not move the text cursor or insert a newline");
+            assertTrue(shell.status().startsWith("Stage sample.txt? [y/N]"), shell.status());
+            pilot.press('n');
+            pause(pilot);
+        }
+    }
+
+    @Test
     void enterOpensTheSelectedProjectFileInTheCenterEditor() throws IOException {
         Path file = project.resolve("vintelli/pom.xml");
         Files.createDirectories(file.getParent());
@@ -218,6 +285,65 @@ class VintelliShellTest {
         assertEquals("<project>shell editor</project>", editor.activeDocument().orElseThrow().text());
         String rendered = bufferText(offlineFrame(shell));
         assertTrue(rendered.contains("<project>shell"), "opened file contents must render in the editor:\n" + rendered);
+    }
+
+    @Test
+    void refreshShowsGitStateInProjectTreeTabsAndChangedLineGutter() throws IOException {
+        Path file = project.resolve("vintelli/pom.xml");
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, "first\nchanged\nlast\n");
+        ShellThemes themes = defaultThemes();
+        BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
+        List<ToolWindow> windows = new ArrayList<>(defaultWindows());
+        windows.add(editor);
+        VersionControlCapability vcs = new VersionControlCapability() {
+            @Override public CapabilityResult<Status> status() {
+                return CapabilityResult.ok(new Status("main", 0, 0,
+                        List.of(new Entry(State.MODIFIED, "vintelli/pom.xml"))));
+            }
+            @Override public CapabilityResult<String> diff(Path changedFile) {
+                return CapabilityResult.ok("diff --git a/vintelli/pom.xml b/vintelli/pom.xml\n"
+                        + "--- a/vintelli/pom.xml\n+++ b/vintelli/pom.xml\n@@ -1,3 +1,3 @@\n"
+                        + " first\n-changed\n+changed again\n last\n");
+            }
+            @Override public CapabilityResult<String> diffWorkingTree() { return CapabilityResult.ok(""); }
+            @Override public CapabilityResult<Boolean> stage(Path path, boolean confirmed) {
+                return CapabilityResult.ok(confirmed);
+            }
+            @Override public CapabilityResult<Boolean> unstage(Path path, boolean confirmed) {
+                return CapabilityResult.ok(confirmed);
+            }
+            @Override public CapabilityResult<Boolean> commit(String message, boolean confirmed) {
+                return CapabilityResult.ok(confirmed);
+            }
+            @Override public CapabilityResult<Boolean> switchBranch(String branch, boolean confirmed) {
+                return CapabilityResult.ok(confirmed);
+            }
+            @Override public String identifier() { return "test-vcs"; }
+            @Override public ProviderHealth health() { return ProviderHealth.available(); }
+            @Override public String provenance() { return "temporary test provider"; }
+        };
+        VintelliShell shell = new VintelliShell(new ToolWindowRegistry(windows).toolWindows(),
+                new ShellState(), () -> Keymap.defaultKeymap(windows), themes, null, List.of(), List.of(vcs));
+
+        shell.handle(KeyEvent.ofKey(KeyCode.ENTER));
+        shell.refreshVcs();
+        String rendered = bufferText(offlineFrame(shell));
+
+        assertTrue(rendered.contains("M vintelli/pom.xml"), "the tree should show the changed file: " + rendered);
+        assertTrue(rendered.contains("vintelli/pom.xml M"), "the editor tab should show Git state: " + rendered);
+        assertTrue(rendered.contains("+ 2"), "the gutter should mark changed line 2: " + rendered);
+    }
+
+    @Test
+    void parsesChangedLinesOnlyInsideHunksAndCountsLiteralPlusAndMinusPrefixes() {
+        String diff = "diff --git a/sample.txt b/sample.txt\n"
+                + "--- a/sample.txt\n+++ b/sample.txt\n"
+                + "@@ -1,3 +1,3 @@\n context\n---literal removed prefix\n+++literal added prefix\n last\n";
+
+        assertEquals(Set.of(0, 1), VintelliShell.changedLines(diff));
+        assertEquals(Set.of(0), VintelliShell.changedLines("@@ -3 +2,0 @@\n-removed\n"));
+        assertEquals(Set.of(2, 3), VintelliShell.changedLines("@@ -2,0 +3,2 @@\n+first\n+second\n"));
     }
 
     @Test

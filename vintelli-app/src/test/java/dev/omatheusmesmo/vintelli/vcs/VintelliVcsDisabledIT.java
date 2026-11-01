@@ -18,5 +18,15 @@ class VintelliVcsDisabledIT {
     void servesNothingUnlessTheDebugEndpointIsEnabled() {
         given().get("/vcs/status").then().statusCode(404).body("state", equalTo("DISABLED"));
         given().get("/vcs/diff").then().statusCode(404);
+        given().queryParam("file", "tracked.txt").queryParam("confirm", true).put("/vcs/stage").then()
+                .statusCode(404).body("state", equalTo("DISABLED"));
+        given().queryParam("file", "tracked.txt").queryParam("confirm", true).put("/vcs/unstage").then()
+                .statusCode(404).body("state", equalTo("DISABLED"));
+        given().queryParam("confirm", true).body("{\"message\":\"must stay disabled\"}")
+                .contentType("application/json").post("/vcs/commit").then()
+                .statusCode(404).body("state", equalTo("DISABLED"));
+        given().queryParam("confirm", true).body("{\"name\":\"main\"}")
+                .contentType("application/json").put("/vcs/branch").then()
+                .statusCode(404).body("state", equalTo("DISABLED"));
     }
 }

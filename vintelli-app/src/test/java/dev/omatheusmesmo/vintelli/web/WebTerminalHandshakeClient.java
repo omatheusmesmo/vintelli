@@ -115,18 +115,28 @@ final class WebTerminalHandshakeClient implements WebSocket.Listener {
 
     void close() {
         WebSocket socket = connected;
-        if (socket == null || socket.isOutputClosed()) {
+        if (socket == null) {
             return;
         }
+        if (!socket.isOutputClosed()) {
+            try {
+                socket.sendClose(WebSocket.NORMAL_CLOSURE, "done").join();
+            } catch (CompletionException e) {
+                if (!(e.getCause() instanceof IOException failure)) {
+                    throw e;
+                }
+                if (closed.getCount() > 0) {
+                    throw new UncheckedIOException(failure);
+                }
+            }
+        }
         try {
-            socket.sendClose(WebSocket.NORMAL_CLOSURE, "done").join();
-        } catch (CompletionException e) {
-            if (!(e.getCause() instanceof IOException failure)) {
-                throw e;
+            if (!closed.await(2, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("terminal server did not complete the WebSocket close handshake");
             }
-            if (closed.getCount() > 0) {
-                throw new UncheckedIOException(failure);
-            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("interrupted while waiting for the terminal WebSocket to close", interrupted);
         }
     }
 
