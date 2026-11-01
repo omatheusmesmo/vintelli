@@ -43,6 +43,8 @@ public final class FakeIdeaMcpServer implements AutoCloseable {
     private volatile HttpServer server;
     private volatile int rejectionStatus;
     private volatile Duration toolsCallDelay = Duration.ZERO;
+    private volatile String terminalResult = "{\"command_output\":\"hello\",\"command_exit_code\":0}";
+    private volatile String runOutput = "started\nfinished";
 
     public FakeIdeaMcpServer() throws IOException {
         server = bind(0);
@@ -72,6 +74,16 @@ public final class FakeIdeaMcpServer implements AutoCloseable {
     public void behaveNormally() {
         rejectionStatus = 0;
         toolsCallDelay = Duration.ZERO;
+        terminalResult = "{\"command_output\":\"hello\",\"command_exit_code\":0}";
+        runOutput = "started\nfinished";
+    }
+
+    public void terminalResult(String result) {
+        terminalResult = result;
+    }
+
+    public void runOutput(String output) {
+        runOutput = output;
     }
 
     public synchronized void stop() {
@@ -161,7 +173,7 @@ public final class FakeIdeaMcpServer implements AutoCloseable {
         }
     }
 
-    private static String resultFor(String method, JsonNode id, String toolName) {
+    private String resultFor(String method, JsonNode id, String toolName) {
         String idText = id.isMissingNode() || id.isNull() ? "null" : id.toString();
         String prefix = "{\"jsonrpc\":\"2.0\",\"id\":" + idText + ",\"result\":";
         return switch (method) {
@@ -182,7 +194,7 @@ public final class FakeIdeaMcpServer implements AutoCloseable {
         };
     }
 
-    private static String toolCallResult(String prefix, String toolName) {
+    private String toolCallResult(String prefix, String toolName) {
         return switch (toolName) {
             case ERROR_TOOL -> prefix
                     + "{\"isError\":true,\"content\":[{\"type\":\"text\",\"text\":\"IDEA refused the tool\"}]}}";
@@ -195,10 +207,9 @@ public final class FakeIdeaMcpServer implements AutoCloseable {
                     + "\"structuredContent\":{\"configurations\":[{\"name\":\"Vintelli\","
                     + "\"description\":\"Quarkus application\",\"supportsDynamicLaunchOverrides\":false}]}}}";
             case "execute_run_configuration" -> prefix
-                    + "{\"isError\":false,\"content\":[{\"type\":\"text\","
-                    + "\"text\":\"{\\\"output\\\":\\\"started\\nfinished\\\","
-                    + "\\\"exitCode\\\":0,\\\"sessionId\\\":\\\"s1\\\"}\"}],"
-                    + "\"structuredContent\":{\"output\":\"started\\nfinished\",\"exitCode\":0,\"sessionId\":\"s1\"}}}";
+                    + "{\"isError\":false,\"content\":[{\"type\":\"text\",\"text\":"
+                    + writeJsonString("{\"output\":" + writeJsonString(runOutput)
+                            + ",\"exitCode\":0,\"sessionId\":\"s1\"}") + "}]}}";
             case "get_file_problems" -> prefix
                     + "{\"isError\":false,\"content\":[{\"type\":\"text\","
                     + "\"text\":\"{\\\"filePath\\\":\\\"src/Foo.java\\\","
@@ -206,12 +217,19 @@ public final class FakeIdeaMcpServer implements AutoCloseable {
                     + "\\\"description\\\":\\\"cannot find symbol\\\","
                     + "\\\"line\\\":2,\\\"column\\\":5}]}\"}]}}";
             case "execute_terminal_command" -> prefix
-                    + "{\"isError\":false,\"content\":[{\"type\":\"text\","
-                    + "\"text\":\"{\\\"command_output\\\":\\\"hello\\\","
-                    + "\\\"command_exit_code\\\":0}\"}]}}";
+                    + "{\"isError\":false,\"content\":[{\"type\":\"text\",\"text\":"
+                    + writeJsonString(terminalResult) + "}]}}";
             default -> prefix
                     + "{\"isError\":false,\"content\":[{\"type\":\"text\","
                     + "\"text\":\"Run configuration 'Vintelli' started\"}]}}";
         };
+    }
+
+    private static String writeJsonString(String value) {
+        try {
+            return JSON.writeValueAsString(value);
+        } catch (IOException failure) {
+            throw new IllegalStateException("Cannot encode fake terminal result", failure);
+        }
     }
 }

@@ -43,8 +43,15 @@ class IdeaRunCapabilityTest {
                     new RunCapability.RunRequest("vintelli-app", java.nio.file.Paths.get("/proj"), Map.of()),
                     lines::add);
             assertTrue(!started.isFailure(), started.toString());
-            assertTrue(lines.contains("started"), lines.toString());
-            assertTrue(lines.contains("finished"), lines.toString());
+            assertEquals(List.of("started", "finished", "Run finished with exit code 0"), lines);
+
+            server.runOutput("started\r\nfinished");
+            lines.clear();
+            var crlfStarted = capability.start(
+                    new RunCapability.RunRequest("vintelli-app", java.nio.file.Paths.get("/proj"), Map.of()),
+                    lines::add);
+            assertTrue(!crlfStarted.isFailure(), crlfStarted.toString());
+            assertEquals(List.of("started", "finished", "Run finished with exit code 0"), lines);
         }
     }
 }
