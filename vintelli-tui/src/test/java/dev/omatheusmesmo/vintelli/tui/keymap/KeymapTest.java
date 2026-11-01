@@ -110,7 +110,7 @@ class KeymapTest {
                 "shell_menu",
                 "editor_open", "editor_save", "editor_undo", "editor_redo", "editor_find",
                 "editor_close", "editor_nextTab", "editor_previousTab", "editor_definition",
-                "editor_usages", "editor_nextProblem", "navigation_goToFile", "navigation_findInFiles",
+                "editor_usages", "editor_nextProblem", "editor_toggleImportFold", "navigation_goToFile", "navigation_findInFiles",
                 "layout_project_wider", "layout_project_narrower", "layout_bottom_taller", "layout_bottom_shorter",
                 "ActivateRunToolWindow", "ActivateTerminalToolWindow", "ActivateProblemsToolWindow",
                 "ActivateAcpAgentsToolWindow");
