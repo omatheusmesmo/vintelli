@@ -15,6 +15,11 @@
 
     <dependencies>
         <dependency>
+            <groupId>org.jetbrains.pty4j</groupId>
+            <artifactId>pty4j</artifactId>
+            <version>0.13.4</version>
+        </dependency>
+        <dependency>
             <groupId>dev.omatheusmesmo</groupId>
             <artifactId>vintelli-api</artifactId>
             <version>${project.version}</version>

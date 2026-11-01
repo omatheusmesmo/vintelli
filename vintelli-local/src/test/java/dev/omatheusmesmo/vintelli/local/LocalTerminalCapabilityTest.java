@@ -10,7 +10,9 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -20,14 +22,15 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
+import dev.omatheusmesmo.vintelli.api.capability.TerminalCapability;
 import dev.omatheusmesmo.vintelli.api.capability.TerminalCapability.TerminalOutcome;
 import dev.omatheusmesmo.vintelli.api.capability.TerminalCapability.TerminalRequest;
 import dev.omatheusmesmo.vintelli.api.capability.TerminalCapability.TerminalResult;
+import dev.omatheusmesmo.vintelli.api.capability.TerminalSession;
 
 /**
- * The terminal provider parses the line into argv entries, gates dangerous
- * commands behind an explicit confirmation and executes everything else as a
- * real short process. All assertions are platform neutral.
+ * The terminal provider requires confirmation and executes the command line
+ * through the host shell. All assertions are platform neutral.
  */
 class LocalTerminalCapabilityTest {
 
@@ -41,7 +44,7 @@ class LocalTerminalCapabilityTest {
     /*
      * Single file source launcher line of the form
      * {@code java /abs/Ping.java args}, where tokens with spaces stay inside
-     * one quoted argv entry, parsed by the provider like any user line.
+     * one shell-quoted argument, interpreted by the host shell.
      */
     private static String launch(Path source, String... args) {
         List<String> tokens = new ArrayList<>();
@@ -52,7 +55,11 @@ class LocalTerminalCapabilityTest {
     }
 
     private static String quoted(String token) {
-        return token.strip().contains(" ") ? "'" + token + "'" : token;
+        if (!token.strip().contains(" ")) {
+            return token;
+        }
+        String quote = TestProcesses.isWindows() ? "\"" : "'";
+        return quote + token + quote;
     }
 
     @Test
@@ -99,6 +106,90 @@ class LocalTerminalCapabilityTest {
     }
 
     @Test
+    void refusesToStartAnInteractiveSessionWithoutExplicitConfirmation() {
+        var result = capability().startSession(new TerminalCapability.TerminalSessionRequest(temp, false));
+
+        assertTrue(result.isFailure());
+        assertTrue(result.failureOf().orElseThrow().reason().contains("requires explicit confirmation"));
+    }
+
+    @Test
+    void requiresConfirmationForRecursiveRemovalOnTheHostShell() {
+        String command = TestProcesses.isWindows()
+                ? "rmdir /s /q \"" + temp.toAbsolutePath() + "\""
+                : "rm -rf '" + temp.toAbsolutePath() + "'";
+
+        assertTrue(capability().requiresSessionCommandConfirmation(command));
+    }
+
+    @Test
+    void keepsAnInteractiveShellAcrossCommandsAndAllowsChangingItsInitialDirectory() throws Exception {
+        Path project = Files.createDirectories(temp.resolve("project"));
+        Path outside = Files.createDirectories(temp.resolve("outside"));
+        String shellId = TestProcesses.isWindows() ? "cmd" : "sh";
+        TerminalShellResolver shells = new TerminalShellResolver(shellId, System.getProperty("os.name", ""),
+                System.getenv());
+        LocalTerminalCapability provider = LocalTerminalCapability.of(new LocalProjectRoot(project),
+                Duration.ofMinutes(5), shells);
+        var started = provider.startSession(new TerminalCapability.TerminalSessionRequest(Path.of("."), true));
+        assertFalse(started.isFailure(), started.failureOf().map(Object::toString).orElse(""));
+        TerminalSession session = ((CapabilityResult.Ok<TerminalSession>) started).value();
+        try {
+            session.write((workingDirectoryCommand() + "\r").getBytes(StandardCharsets.UTF_8));
+            TestProcesses.awaitUntil(Duration.ofSeconds(10),
+                    () -> outputContainsPath(session, project));
+
+            session.write((changeDirectoryCommand(outside) + "\r").getBytes(StandardCharsets.UTF_8));
+            session.write((workingDirectoryCommand() + "\r").getBytes(StandardCharsets.UTF_8));
+            TestProcesses.awaitUntil(Duration.ofSeconds(10),
+                    () -> outputContainsPath(session, outside));
+        } finally {
+            session.close();
+        }
+    }
+
+    private static String workingDirectoryCommand() {
+        return TestProcesses.isWindows() ? "echo %CD%" : "pwd";
+    }
+
+    private static String changeDirectoryCommand(Path directory) {
+        String value = directory.toAbsolutePath().normalize().toString();
+        if (TestProcesses.isWindows()) {
+            return "cd /d \"" + value + "\"";
+        }
+        return "cd '" + value.replace("'", "'\\''") + "'";
+    }
+
+    private static boolean outputContainsPath(TerminalSession session, Path expected) {
+        String normalizedExpected = normalizePath(expected.getFileName().toString());
+        for (String line : session.output()) {
+            String value = line.strip();
+            String normalizedValue = normalizePath(value);
+            boolean match = normalizedValue.contains(normalizedExpected);
+            if (match) {
+                return true;
+            }
+            // On Windows, also try resolving the path to handle short names
+            if (TestProcesses.isWindows()) {
+                try {
+                    String resolved = normalizePath(Path.of(value).toRealPath().toString());
+                    if (resolved.equals(normalizedExpected) || resolved.contains(normalizedExpected)) {
+                        return true;
+                    }
+                } catch (IOException | InvalidPathException ignored) {
+                }
+            }
+        }
+        return false;
+    }
+
+    private static String normalizePath(String path) {
+        return TestProcesses.isWindows()
+                ? path.replace('/', '\\').toLowerCase(Locale.ROOT)
+                : path;
+    }
+
+    @Test
     void carriesANonZeroExitAsAnExecutedOutcomeWithItsCode() {
         Path failer = TestProcesses.extractSource(temp, "Failer.java");
 
@@ -111,11 +202,41 @@ class LocalTerminalCapabilityTest {
     }
 
     @Test
-    void reportsASpawnThatCannotHappenAsAFailedResult() {
+    void confirmedShellCommandInterpretsRedirection() throws Exception {
+        TerminalResult result = resultOf(capability().execute(
+                new TerminalRequest("echo shell-output > output.txt", temp, true)));
+
+        assertEquals(TerminalOutcome.EXECUTED, result.outcome());
+        assertEquals(0, result.exitCode());
+        assertEquals("shell-output", Files.readString(temp.resolve("output.txt")).strip());
+    }
+
+    @Test
+    void shellCompoundCommandsRequireConfirmationBeforeExecution() {
+        TerminalResult result = resultOf(capability().execute(
+                new TerminalRequest("echo harmless; rm -rf build", temp, false)));
+
+        assertEquals(TerminalOutcome.REQUIRES_CONFIRMATION, result.outcome());
+    }
+
+    @Test
+    void shellExpansionsRequireConfirmationBeforeExecution() {
+        TerminalResult result = resultOf(capability().execute(
+                new TerminalRequest("echo $(rm -rf build)", temp, false)));
+
+        assertEquals(TerminalOutcome.REQUIRES_CONFIRMATION, result.outcome());
+    }
+
+    @Test
+    void reportsAMissingExecutableAsANonZeroExitInsteadOfASpawnFailure() {
+        assumeFalse(TestProcesses.isWindows(), "Shell error wording differs on Windows");
+
         var result = capability().execute(new TerminalRequest("vintelli-no-such-executable", temp, true));
 
-        assertTrue(result.isFailure());
-        assertTrue(result.failureOf().orElseThrow().reason().contains("Cannot start"));
+        assertFalse(result.isFailure());
+        TerminalResult terminalResult = ((CapabilityResult.Ok<TerminalResult>) result).value();
+        assertEquals(TerminalOutcome.EXECUTED, terminalResult.outcome());
+        assertEquals(127, terminalResult.exitCode());
     }
 
     @Test

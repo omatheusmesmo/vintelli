@@ -12,12 +12,40 @@ import java.util.Objects;
 public interface TerminalCapability extends ProviderDescriptor {
 
     /**
+     * Starts a persistent interactive shell in the requested initial working
+     * directory. Starting a shell requires explicit confirmation because the
+     * session can run arbitrary commands.
+     *
+     * @return the live session, or a failed result when this provider does not
+     *         support interactive shells or the process cannot be started
+     */
+    default CapabilityResult<TerminalSession> startSession(TerminalSessionRequest request) {
+        return CapabilityResult.failed(new CapabilityFailure("Interactive terminal sessions are unavailable",
+                identifier()));
+    }
+
+    /**
+     * Reports whether a line entered into an interactive session needs a
+     * second explicit confirmation before the provider sends it to the shell.
+     */
+    default boolean requiresSessionCommandConfirmation(String commandLine) {
+        return false;
+    }
+
+    /**
      * @param request command to execute, working directory and whether the
      *                caller already confirmed it
      * @return the command outcome, or a failed result when the provider cannot
      *         execute commands, for example when its shell is not running
      */
     CapabilityResult<TerminalResult> execute(TerminalRequest request);
+
+    record TerminalSessionRequest(Path workingDirectory, boolean confirmed) {
+
+        public TerminalSessionRequest {
+            Objects.requireNonNull(workingDirectory, "workingDirectory");
+        }
+    }
 
     record TerminalRequest(String commandLine, Path workingDirectory, boolean confirmed) {
 

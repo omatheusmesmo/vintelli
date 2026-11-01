@@ -18,10 +18,13 @@ import java.util.Set;
  * 'rm -rf x'}, {@code find . -delete}, {@code git clean -fdx}, {@code dd},
  * {@code mkfs}, {@code cmd}, {@code powershell} or {@code pwsh} (which
  * interpret their own command lines) or a program reached through an alias or
- * a path that differs from its name. A forced recursive removal is recognised
- * only from the separate flags {@code -r}, {@code -R}, {@code -f},
- * {@code --recursive} and {@code --force}, in any order. Nothing here limits
- * what an approved command does once it runs.
+ * a path that differs from its name. Forced recursive removal is recognised
+ * from POSIX short or long flags, PowerShell {@code Remove-Item}/{@code ri}/
+ * {@code rm -Recurse -Force} parameters, or Windows {@code rmdir /s /q},
+ * {@code rd /s /q} and {@code del /s /q} forms. Parsing is heuristic and does
+ * not cover every spelling, abbreviation, parameter combination or
+ * shell-specific interpretation. Nothing here limits what an approved command
+ * does once it runs.
  */
 public final class DangerousCommands {
 
@@ -45,7 +48,13 @@ public final class DangerousCommands {
             return true;
         }
         if ("rm".equals(base)) {
-            return recursesForcibly(args);
+            return recursesForcibly(args) || powershellRecursiveForce(args);
+        }
+        if ("remove-item".equals(base) || "ri".equals(base)) {
+            return powershellRecursiveForce(args);
+        }
+        if ("rmdir".equals(base) || "rd".equals(base) || "del".equals(base)) {
+            return hasOption(args, "/s") && hasOption(args, "/q");
         }
         return false;
     }
@@ -62,6 +71,10 @@ public final class DangerousCommands {
         int backslash = lower.lastIndexOf('\\');
         int last = Math.max(separator, backslash);
         return last >= 0 ? lower.substring(last + 1) : lower;
+    }
+
+    private static boolean hasOption(List<String> args, String option) {
+        return args.stream().anyMatch(argument -> option.equalsIgnoreCase(argument));
     }
 
     private static boolean recursesForcibly(List<String> args) {
@@ -86,6 +99,12 @@ public final class DangerousCommands {
                 }
             }
         }
+        return recursive && force;
+    }
+
+    private static boolean powershellRecursiveForce(List<String> args) {
+        boolean recursive = hasOption(args, "-recurse") || hasOption(args, "-r");
+        boolean force = hasOption(args, "-force") || hasOption(args, "-f");
         return recursive && force;
     }
 }

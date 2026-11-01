@@ -3,6 +3,7 @@ package dev.omatheusmesmo.vintelli.web;
 import io.quarkus.test.common.TestResourceScope;
 import io.quarkus.test.common.WithTestResource;
 import io.quarkus.test.junit.QuarkusIntegrationTest;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 
 /**
@@ -22,5 +23,10 @@ class WebTerminalIT extends WebTerminalTest {
     @BeforeEach
     @Override
     void resetSharedState() {
+    }
+
+    @AfterEach
+    @Override
+    void closeInteractiveShell() {
     }
 }

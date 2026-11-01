@@ -598,8 +598,17 @@ public final class ProcessRunner {
         }
 
         private void destroyTree() {
-            process.toHandle().descendants().forEach(ProcessHandle::destroyForcibly);
-            process.toHandle().destroyForcibly();
+            try {
+                process.toHandle().descendants().forEach(ProcessHandle::destroyForcibly);
+            } catch (UnsupportedOperationException ignored) {
+                // Some PTY-backed processes (e.g. pty4j's WinConPtyProcess) do
+                // not expose a ProcessHandle; fall back to destroying the root.
+            }
+            try {
+                process.toHandle().destroyForcibly();
+            } catch (UnsupportedOperationException ignored) {
+                process.destroyForcibly();
+            }
         }
     }
 }

@@ -75,8 +75,15 @@ class VintelliCliCommandsIT {
     }
 
     @Test
+    void compoundTerminalCommandRequiresConfirmation() throws Exception {
+        CliRun run = cli("terminal", "echo", "hello;", "echo", "unexpected");
+        assertExit(run, 1);
+        assertTrue(run.stdout().contains("Vintelli asks for explicit confirmation"), run.describe());
+    }
+
+    @Test
     void terminalRunsTheCommandThroughTheSelectedProvider() throws Exception {
-        CliRun run = cli("terminal", "java", "--version");
+        CliRun run = cli("terminal", "--yes", "java", "--version");
         assertExit(run, 0);
         assertTrue(run.stdout().contains("openjdk"), run.describe());
     }

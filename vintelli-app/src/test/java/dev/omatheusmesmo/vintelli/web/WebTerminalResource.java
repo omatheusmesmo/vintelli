@@ -1,5 +1,6 @@
 package dev.omatheusmesmo.vintelli.web;
 
+import java.nio.file.Path;
 import java.util.Map;
 
 import io.quarkus.test.common.QuarkusTestResourceLifecycleManager;
@@ -15,6 +16,7 @@ import io.quarkus.test.common.QuarkusTestResourceLifecycleManager;
  */
 public final class WebTerminalResource implements QuarkusTestResourceLifecycleManager {
 
+    public static final Path PROJECT_ROOT = Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize();
     public static final String TRUSTED_ORIGIN = "http://trusted.example:6274";
     public static final String FOREIGN_ORIGIN = "http://browser.example:9999";
     public static final String USER = "terminal";
@@ -24,6 +26,7 @@ public final class WebTerminalResource implements QuarkusTestResourceLifecycleMa
     public Map<String, String> start() {
         return Map.ofEntries(
                 Map.entry("vintelli.web.enabled", "true"),
+                Map.entry("vintelli.local.project-root", PROJECT_ROOT.toString()),
                 Map.entry("vintelli.mcp.allowed-origins", TRUSTED_ORIGIN),
                 Map.entry("quarkus.http.cors.origins", TRUSTED_ORIGIN + "," + FOREIGN_ORIGIN),
                 Map.entry("vintelli.inspect.enabled", "true"),
