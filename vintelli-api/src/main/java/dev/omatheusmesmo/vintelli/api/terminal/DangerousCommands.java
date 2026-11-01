@@ -1,4 +1,4 @@
-package dev.omatheusmesmo.vintelli.local;
+package dev.omatheusmesmo.vintelli.api.terminal;
 
 import java.util.List;
 import java.util.Locale;
@@ -18,13 +18,12 @@ import java.util.Set;
  * 'rm -rf x'}, {@code find . -delete}, {@code git clean -fdx}, {@code dd},
  * {@code mkfs}, {@code cmd}, {@code powershell} or {@code pwsh} (which
  * interpret their own command lines) or a program reached through an alias or
- * a path that differs from its name. A forced recursive removal is recognised only from the
- * separate flags {@code -r}, {@code -R}, {@code -f}, {@code --recursive} and
- * {@code --force}, in any order. Nothing here limits what an approved command
- * does once it runs; the process runs inside the project root only as far as
- * its working directory goes.
+ * a path that differs from its name. A forced recursive removal is recognised
+ * only from the separate flags {@code -r}, {@code -R}, {@code -f},
+ * {@code --recursive} and {@code --force}, in any order. Nothing here limits
+ * what an approved command does once it runs.
  */
-final class DangerousCommands {
+public final class DangerousCommands {
 
     private static final Set<String> SESSION_AND_MACHINE_CONTROL = Set.of(
             "sudo", "su", "doas", "shutdown", "reboot", "halt", "poweroff", "init");
@@ -40,7 +39,7 @@ final class DangerousCommands {
      * @return true when the caller must reissue the request with an explicit
      *         confirmation flag
      */
-    static boolean requiresConfirmation(String program, List<String> args) {
+    public static boolean requiresConfirmation(String program, List<String> args) {
         String base = programBaseName(program);
         if (SESSION_AND_MACHINE_CONTROL.contains(base)) {
             return true;
@@ -65,11 +64,6 @@ final class DangerousCommands {
         return last >= 0 ? lower.substring(last + 1) : lower;
     }
 
-    /**
-     * Matches both the verbose {@code --recursive} with {@code --force} and
-     * the affinity groups inside one dashed short flag such as {@code -rf} or
-     * {@code -fr}.
-     */
     private static boolean recursesForcibly(List<String> args) {
         boolean recursive = false;
         boolean force = false;

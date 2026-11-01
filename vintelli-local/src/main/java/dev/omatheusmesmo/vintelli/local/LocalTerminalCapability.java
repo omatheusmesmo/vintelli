@@ -12,6 +12,8 @@ import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import dev.omatheusmesmo.vintelli.api.capability.TerminalCapability;
 import dev.omatheusmesmo.vintelli.api.capability.TerminalCapability.TerminalRequest;
+import dev.omatheusmesmo.vintelli.api.terminal.DangerousCommands;
+import dev.omatheusmesmo.vintelli.api.terminal.TerminalCommandParser;
 import io.quarkus.arc.Unremovable;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;

@@ -187,6 +187,28 @@ public final class FakeIdeaMcpServer implements AutoCloseable {
             case ERROR_TOOL -> prefix
                     + "{\"isError\":true,\"content\":[{\"type\":\"text\",\"text\":\"IDEA refused the tool\"}]}}";
             case MALFORMED_TOOL -> "this is not a json-rpc payload";
+            case "get_run_configurations" -> prefix
+                    + "{\"isError\":false,\"content\":[{\"type\":\"text\","
+                    + "\"text\":\"{\\\"configurations\\\":[{\\\"name\\\":\\\"Vintelli\\\","
+                    + "\\\"description\\\":\\\"Quarkus application\\\","
+                    + "\\\"supportsDynamicLaunchOverrides\\\":false}]}\"}],"
+                    + "\"structuredContent\":{\"configurations\":[{\"name\":\"Vintelli\","
+                    + "\"description\":\"Quarkus application\",\"supportsDynamicLaunchOverrides\":false}]}}}";
+            case "execute_run_configuration" -> prefix
+                    + "{\"isError\":false,\"content\":[{\"type\":\"text\","
+                    + "\"text\":\"{\\\"output\\\":\\\"started\\nfinished\\\","
+                    + "\\\"exitCode\\\":0,\\\"sessionId\\\":\\\"s1\\\"}\"}],"
+                    + "\"structuredContent\":{\"output\":\"started\\nfinished\",\"exitCode\":0,\"sessionId\":\"s1\"}}}";
+            case "get_file_problems" -> prefix
+                    + "{\"isError\":false,\"content\":[{\"type\":\"text\","
+                    + "\"text\":\"{\\\"filePath\\\":\\\"src/Foo.java\\\","
+                    + "\\\"errors\\\":[{\\\"severity\\\":\\\"ERROR\\\","
+                    + "\\\"description\\\":\\\"cannot find symbol\\\","
+                    + "\\\"line\\\":2,\\\"column\\\":5}]}\"}]}}";
+            case "execute_terminal_command" -> prefix
+                    + "{\"isError\":false,\"content\":[{\"type\":\"text\","
+                    + "\"text\":\"{\\\"command_output\\\":\\\"hello\\\","
+                    + "\\\"command_exit_code\\\":0}\"}]}}";
             default -> prefix
                     + "{\"isError\":false,\"content\":[{\"type\":\"text\","
                     + "\"text\":\"Run configuration 'Vintelli' started\"}]}}";

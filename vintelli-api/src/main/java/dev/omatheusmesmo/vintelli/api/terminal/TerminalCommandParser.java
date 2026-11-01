@@ -1,4 +1,4 @@
-package dev.omatheusmesmo.vintelli.local;
+package dev.omatheusmesmo.vintelli.api.terminal;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -10,13 +10,16 @@ import java.util.List;
  * as {@code ls -la} becomes the two argument list {@code ls, -la}, and a
  * quoted path stays one argument.
  */
-final class TerminalCommandParser {
+public final class TerminalCommandParser {
+
+    private TerminalCommandParser() {
+    }
 
     /**
      * @throws IllegalArgumentException when the line ends inside an
      *         unterminated quote or carries no command word
      */
-    static List<String> parse(String commandLine) {
+    public static List<String> parse(String commandLine) {
         List<String> tokens = new ArrayList<>();
         StringBuilder current = new StringBuilder();
         char openQuote = 0;
@@ -54,8 +57,5 @@ final class TerminalCommandParser {
             throw new IllegalArgumentException("The command line carries no command word");
         }
         return List.copyOf(tokens);
-    }
-
-    private TerminalCommandParser() {
     }
 }

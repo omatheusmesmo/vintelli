@@ -108,6 +108,14 @@ public final class IdeaMcpClient implements AutoCloseable, StatusBarWidgetContri
         return status;
     }
 
+    public String projectPath() {
+        return projectPath;
+    }
+
+    public McpJsonMapper jsonMapper() {
+        return jsonMapper;
+    }
+
     @Override
     public List<StatusBarWidget> statusBarWidgets() {
         ConnectionStatus current = status;
@@ -345,7 +353,11 @@ public final class IdeaMcpClient implements AutoCloseable, StatusBarWidgetContri
             }
         }
         if (result.structuredContent() != null) {
-            LOG.warn("Dropping structuredContent from IDEA tool response; capture the real payload in spike #25");
+            try {
+                return jsonMapper.writeValueAsString(result.structuredContent());
+            } catch (Exception ignored) {
+                LOG.warn("Could not serialize structuredContent; falling back to text content");
+            }
         }
         return String.join("\n", texts);
     }
