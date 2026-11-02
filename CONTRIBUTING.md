@@ -215,6 +215,58 @@ first, security, and that the tests cannot pass without the change. If changes
 are requested, amend the single commit and force-push with
 `--force-with-lease`.
 
+## Releasing
+
+Releases follow the Quarkiverse flow. There are no release branches and no
+manual tags: a release is a normal pull request that edits
+`.github/project.yml`.
+
+1. Open a pull request that sets `release.current-version` in
+   `.github/project.yml` to the version to release, for example `0.1.0`. Leave
+   `release.next-version` at `999-SNAPSHOT` unless the next development
+   version needs to change.
+2. The `Release Pre-Check` workflow checks the file: the version must be plain
+   semver (no `SNAPSHOT`), the tag must not exist yet, and the pull request must
+   come from a branch of this repository, not a fork.
+3. Merge the pull request. The `Release Prepare` workflow runs the Maven release
+   on `main`: it sets the pom versions to the release version, commits and tags
+   it with the plain version (`0.1.0`, no `v`), moves `main` to the next
+   development version, and pushes both. It then builds the native binaries.
+
+`[skip release]` in the pull request body edits the file without releasing,
+for example to change `next-version`. Manual runs of `Release Prepare` always
+release whatever `project.yml` says on `main`.
+
+The release workflow (`release-perform.yml`) builds the archives
+`vintelli-<version>-<os>-<arch>.tar.gz` (`.zip` on Windows) for Linux (amd64
+and arm64), macOS (arm64) and Windows (amd64), plus `SHA256SUMS`, runs the
+native integration tests, attests build provenance, and publishes the GitHub
+Release with generated notes. It refuses to publish a tag that is not semver,
+whose tagged commit's pom version differs from the tag, or that is not
+reachable from `main`.
+
+Never create release branches or push tags by hand. The pom versions are
+changed only by the release run.
+
+To rehearse the build without publishing, run `Release Perform` manually with
+`tag` set to an existing release tag (the default `dry_run` is `true`). It
+uploads the archives and checksums as workflow artifacts and leaves GitHub
+Releases untouched.
+
+Pushing with `GITHUB_TOKEN` does not start other workflows, so the release
+run calls the build directly. The build also runs on pushed version tags, for
+a future token that can trigger workflows.
+
+If `main` gets a ruleset that blocks direct pushes, the `Release Prepare` job
+needs a bypass, for example a GitHub App token as Quarkiverse uses. Nothing in
+this repository configures that.
+
+To check an archive, verify its provenance against the repository:
+
+```bash
+gh attestation verify vintelli-0.1.0-linux-amd64.tar.gz --repo omatheusmesmo/vintelli
+```
+
 ## Reporting bugs and security issues
 
 Open an issue with reproduction steps. For vulnerabilities, use the
