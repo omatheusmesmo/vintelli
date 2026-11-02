@@ -29,7 +29,7 @@ public final class IdeaMcpTwinResource implements QuarkusTestResourceLifecycleMa
             throw new UncheckedIOException(e);
         }
         return Map.of(
-                "vintelli.idea.mcp.url", twin.baseUrl(),
+                "vintelli.idea.mcp.url", twin.streamUrl(),
                 "vintelli.idea.mcp.auth-token", "vintelli-token",
                 "vintelli.idea.debug-endpoint.enabled", "true");
     }

@@ -28,7 +28,7 @@ class IdeaRunCapabilityTest {
     @Test
     void listsAndRunsIdeaRunConfigurations() throws Exception {
         try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
-                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), "/proj", null, "test", MAPPER, VALIDATOR)) {
+                IdeaMcpClient client = new IdeaMcpClient(server.streamUrl(), "/proj", null, "test", MAPPER, VALIDATOR)) {
             client.reconnect();
             IdeaRunCapability capability = new IdeaRunCapability(client);
 

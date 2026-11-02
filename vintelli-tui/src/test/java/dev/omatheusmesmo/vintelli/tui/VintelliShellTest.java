@@ -8,6 +8,7 @@ import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
 import dev.omatheusmesmo.vintelli.tui.layout.ShellLayoutStore;
 import dev.omatheusmesmo.vintelli.tui.layout.ShellLayout;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
+import dev.omatheusmesmo.vintelli.api.idea.IdeaMcpConnection;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
 import dev.omatheusmesmo.vintelli.api.capability.EditorBridge.OpenRequest;
@@ -44,6 +45,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -847,6 +850,114 @@ class VintelliShellTest {
     }
 
     @Test
+    void paletteConnectActionShowsRenderedProgressAndSuccessWithoutBlockingInput() throws Exception {
+        CountDownLatch connecting = new CountDownLatch(1);
+        CountDownLatch finishConnection = new CountDownLatch(1);
+        AtomicInteger requests = new AtomicInteger();
+        IdeaMcpConnection connection = new IdeaMcpConnection() {
+            @Override
+            public Snapshot connectionStatus() {
+                return new Snapshot("DISCONNECTED", "not connected yet");
+            }
+
+            @Override
+            public Snapshot reconnectFromUserAction() {
+                requests.incrementAndGet();
+                connecting.countDown();
+                try {
+                    finishConnection.await(10, TimeUnit.SECONDS);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    return new Snapshot("ERROR", "connection interrupted");
+                }
+                return new Snapshot("CONNECTED", "IntelliJ IDEA MCP server reachable");
+            }
+        };
+        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), connection);
+
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+            press(pilot, 'p', KeyModifiers.CTRL);
+            type(pilot, "connect to intellij idea");
+            pilot.press(KeyCode.ENTER);
+            pause(pilot);
+
+            assertTrue(connecting.await(1, TimeUnit.SECONDS), "the named palette action starts the connection");
+            assertTrue(shell.status().contains("connecting"), shell.status());
+            String connectingFrame = awaitRenderedFrame(pilot, test, "IDEA MCP: connecting");
+            assertTrue(connectingFrame.contains("IDEA MCP: connecting"),
+                    "the connecting state is visible on the rendered shell; status=" + shell.status()
+                            + "\nframe:\n" + connectingFrame);
+
+            press(pilot, 'p', KeyModifiers.CTRL);
+            type(pilot, "connect to intellij idea");
+            pilot.press(KeyCode.ENTER);
+            pause(pilot);
+            assertEquals(1, requests.get(), "repeated activation does not start another handshake");
+            assertTrue(shell.status().contains("already in progress"), shell.status());
+
+            finishConnection.countDown();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+            while (!shell.status().contains("connected") && System.nanoTime() < deadline) {
+                pause(pilot, Duration.ofMillis(30));
+            }
+            assertTrue(shell.status().contains("connected"), shell.status());
+            pilot.press(KeyCode.ESCAPE);
+            pause(pilot, Duration.ofMillis(30));
+            String connectedFrame = awaitRenderedFrame(pilot, test, "IDEA MCP: connected");
+            assertTrue(connectedFrame.contains("IDEA MCP: connected"),
+                    "the result is visible on the rendered shell; status=" + shell.status()
+                            + "\nframe:\n" + connectedFrame);
+            pressCtrlC(pilot);
+        } finally {
+            finishConnection.countDown();
+        }
+    }
+
+    @Test
+    void mouseActivationOfToolsMenuUsesTheSameIdeaConnectionAction() throws Exception {
+        AtomicInteger requests = new AtomicInteger();
+        IdeaMcpConnection connection = new IdeaMcpConnection() {
+            @Override
+            public Snapshot connectionStatus() {
+                return new Snapshot("DISCONNECTED", "not connected yet");
+            }
+
+            @Override
+            public Snapshot reconnectFromUserAction() {
+                requests.incrementAndGet();
+                return new Snapshot("CONNECTED", "IntelliJ IDEA MCP server reachable");
+            }
+        };
+        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), connection);
+
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+            pilot.press(KeyCode.F10);
+            pause(pilot);
+            for (int menu = 0; menu < 7; menu++) {
+                pilot.press(KeyCode.RIGHT);
+                pause(pilot);
+            }
+            String menuRow = test.renderedFrame().lines().skip(2).findFirst().orElse("");
+            int x = menuRow.indexOf("Connect / Reconnect");
+            assertTrue(x >= 0, menuRow);
+            pilot.click(x + 2, 2);
+            pause(pilot);
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+            while (!shell.status().contains("connected") && System.nanoTime() < deadline) {
+                pause(pilot, Duration.ofMillis(30));
+            }
+
+            assertEquals(1, requests.get());
+            assertTrue(shell.status().contains("connected"), shell.status());
+            pressCtrlC(pilot);
+        }
+    }
+
+    @Test
     void keymapHelpOverlayListsTheActiveKeymap() throws Exception {
         VintelliShell shell = defaultShell();
         try (ToolkitTestRunner test = runShell(shell)) {
@@ -1173,6 +1284,16 @@ class VintelliShellTest {
 
     private static MouseShellRunner runMouseShell(VintelliShell shell, Size size) throws Exception {
         return new MouseShellRunner(shell, size);
+    }
+
+    private static String awaitRenderedFrame(Pilot pilot, MouseShellRunner test, String text) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        String rendered = test.renderedFrame();
+        while (!rendered.contains(text) && System.nanoTime() < deadline) {
+            pause(pilot, Duration.ofMillis(30));
+            rendered = test.renderedFrame();
+        }
+        return rendered;
     }
 
     /** Captures rendered text from Toolkit's post-render callback on the runner thread. */

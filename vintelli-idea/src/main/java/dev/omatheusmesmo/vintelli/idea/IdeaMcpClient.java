@@ -14,6 +14,7 @@ import io.modelcontextprotocol.spec.McpSchema.TextContent;
 import io.modelcontextprotocol.spec.McpSchema.Tool;
 import dev.omatheusmesmo.vintelli.api.statusbar.StatusBarWidget;
 import dev.omatheusmesmo.vintelli.api.statusbar.StatusBarWidgetContributor;
+import dev.omatheusmesmo.vintelli.api.idea.IdeaMcpConnection;
 import io.smallrye.config.ConfigMapping;
 import jakarta.annotation.PreDestroy;
 import jakarta.inject.Inject;
@@ -43,8 +44,9 @@ import java.util.concurrent.TimeoutException;
  * Blocking bridge to the IntelliJ IDEA MCP server (Settings | Tools | MCP
  * Server, IDEA 2025.2+). Connects lazily on first use, so Vintelli boots
  * cleanly without IDEA running. Streamable HTTP is served by a dedicated IDEA
- * server with an auto-picked port on {@code /stream}; the user copies the
- * endpoint via "Copy HTTP Stream Config", so there is no default URL. IDEA
+ * server with an auto-picked port; the user copies its complete streamable
+ * HTTP endpoint via "Copy HTTP Stream Config", so there is no default URL.
+ * The configured path is preserved because IDEA may choose or change it. IDEA
  * reads the project selection from {@code IJ_MCP_SERVER_PROJECT_PATH} and the
  * restricted-mode token from {@code IJ_MCP_AUTH_TOKEN} on every request.
  *
@@ -62,11 +64,10 @@ import java.util.concurrent.TimeoutException;
  * aborts the in-flight request.
  */
 @Singleton
-public final class IdeaMcpClient implements AutoCloseable, StatusBarWidgetContributor {
+public final class IdeaMcpClient implements AutoCloseable, StatusBarWidgetContributor, IdeaMcpConnection {
 
     private static final Logger LOG = Logger.getLogger(IdeaMcpClient.class);
 
-    private static final String STREAMABLE_ENDPOINT = "/stream";
     private static final String PROJECT_PATH_HEADER = "IJ_MCP_SERVER_PROJECT_PATH";
     private static final String AUTH_TOKEN_HEADER = "IJ_MCP_AUTH_TOKEN";
     private static final Duration TRANSPORT_REQUEST_TIMEOUT = Duration.ofSeconds(120);
@@ -106,6 +107,21 @@ public final class IdeaMcpClient implements AutoCloseable, StatusBarWidgetContri
 
     public ConnectionStatus status() {
         return status;
+    }
+
+    @Override
+    public IdeaMcpConnection.Snapshot connectionStatus() {
+        ConnectionStatus current = baseUri == null || baseUri.isBlank()
+                ? ConnectionStatus.disconnected("vintelli.idea.mcp.url is not set: Copy the HTTP Stream Config "
+                        + "from IDEA Settings | Tools | MCP Server")
+                : status;
+        return new IdeaMcpConnection.Snapshot(current.state().name(), current.detail());
+    }
+
+    @Override
+    public IdeaMcpConnection.Snapshot reconnectFromUserAction() {
+        ConnectionStatus result = reconnect();
+        return new IdeaMcpConnection.Snapshot(result.state().name(), result.detail());
     }
 
     public String projectPath() {
@@ -218,13 +234,13 @@ public final class IdeaMcpClient implements AutoCloseable, StatusBarWidgetContri
 
     private synchronized ConnectionStatus connect() {
         if (baseUri == null || baseUri.isBlank()) {
-            return ConnectionStatus.disconnected("vintelli.idea.mcp.url is not set: copy the HTTP Stream Config "
+            return ConnectionStatus.disconnected("vintelli.idea.mcp.url is not set: Copy the HTTP Stream Config "
                     + "from IDEA Settings | Tools | MCP Server");
         }
         try {
             HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport
                     .builder(baseUri)
-                    .endpoint(STREAMABLE_ENDPOINT)
+                    .endpoint(baseUri)
                     .connectTimeout(CONNECT_TIMEOUT)
                     .jsonMapper(jsonMapper)
                     .httpRequestCustomizer(ideaHeaders())
@@ -239,7 +255,7 @@ public final class IdeaMcpClient implements AutoCloseable, StatusBarWidgetContri
             client = fresh;
             status = ConnectionStatus.connected();
         } catch (Exception e) {
-            LOG.warn("IDEA MCP connect failed", e);
+            LOG.warnf("IDEA MCP connect failed (%s)", e.getClass().getSimpleName());
             status = classify(e);
         }
         return status;
@@ -279,20 +295,20 @@ public final class IdeaMcpClient implements AutoCloseable, StatusBarWidgetContri
         }
         Integer statusCode = statusCode(failure);
         if (statusCode != null) {
-            return ConnectionStatus.endpointNotFound("404 on " + STREAMABLE_ENDPOINT
-                    + ": re-copy the HTTP Stream Config from IDEA (" + truncated(failure) + ")");
+            return ConnectionStatus.endpointNotFound("404 at the configured IDEA endpoint: re-copy the HTTP Stream "
+                    + "Config from IDEA (" + safeFailureDetail(failure) + ")");
         }
         if (chainContains(failure, JacksonException.class)) {
-            return ConnectionStatus.error("IDEA answered with a malformed payload: " + truncated(failure));
+            return ConnectionStatus.error("IDEA answered with a malformed payload: " + safeFailureDetail(failure));
         }
         if (chainContains(failure, ConnectException.class)) {
-            return ConnectionStatus.unreachable("IDEA not reachable at " + baseUri
+            return ConnectionStatus.unreachable("IDEA not reachable at the configured URL"
                     + "; start IDEA or check the copied endpoint");
         }
         if (chainContains(failure, IOException.class)) {
-            return ConnectionStatus.unreachable(truncated(failure));
+            return ConnectionStatus.unreachable(safeFailureDetail(failure));
         }
-        return ConnectionStatus.error(truncated(failure));
+        return ConnectionStatus.error(safeFailureDetail(failure));
     }
 
     private Integer authorizationStatus(Throwable failure) {
@@ -376,5 +392,16 @@ public final class IdeaMcpClient implements AutoCloseable, StatusBarWidgetContri
     private static String truncated(Throwable failure) {
         String message = failure.getMessage() == null ? failure.getClass().getSimpleName() : failure.getMessage();
         return message.length() > 180 ? message.substring(0, 180) : message;
+    }
+
+    private String safeFailureDetail(Throwable failure) {
+        String message = truncated(failure);
+        if (baseUri != null && !baseUri.isBlank()) {
+            message = message.replace(baseUri, "configured IDEA URL");
+        }
+        if (authToken != null && !authToken.isBlank()) {
+            message = message.replace(authToken, "[redacted]");
+        }
+        return message;
     }
 }

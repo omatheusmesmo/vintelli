@@ -80,6 +80,21 @@ class VintelliCliCommandsTest {
     }
 
     @Test
+    @Launch(value = {"idea", "status"}, exitCode = 1)
+    void ideaStatusExplainsHowToConfigureAMissingEndpoint(LaunchResult result) {
+        assertTrue(result.getOutput().contains("IDEA MCP status: disconnected"), result.getOutput());
+        assertTrue(result.getOutput().contains("vintelli.idea.mcp.url is not set"), result.getOutput());
+        assertTrue(result.getOutput().contains("Copy the HTTP Stream Config"), result.getOutput());
+    }
+
+    @Test
+    @Launch(value = {"idea", "connect"}, exitCode = 1)
+    void ideaConnectReportsTheMissingEndpointWithoutHanging(LaunchResult result) {
+        assertTrue(result.getOutput().contains("IDEA MCP status: disconnected"), result.getOutput());
+        assertTrue(result.getOutput().contains("Settings | Tools | MCP Server"), result.getOutput());
+    }
+
+    @Test
     @Launch(value = {"run", "--help"}, exitCode = 0)
     void commandHelpPrintsItsUsageAndExitsZero(LaunchResult result) {
         assertTrue(result.getOutput().contains("Usage: run"), result.getOutput());
@@ -96,6 +111,7 @@ class VintelliCliCommandsTest {
     void bareHelpListsTheAvailableCommands(LaunchResult result) {
         assertTrue(result.getOutput().contains("Available commands: "), result.getOutput());
         assertTrue(result.getOutput().contains("agents"), result.getOutput());
+        assertTrue(result.getOutput().contains("idea"), result.getOutput());
     }
 
     @Test
