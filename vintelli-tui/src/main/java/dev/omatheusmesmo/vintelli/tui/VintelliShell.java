@@ -312,6 +312,24 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                         });
                     }
                 }));
+        this.toolWindows.stream().filter(ProblemsToolWindow.class::isInstance)
+                .map(ProblemsToolWindow.class::cast)
+                .forEach(window -> window.setNavigateHandler(problem -> {
+                    if (editor == null) {
+                        status = "Built-in editor unavailable";
+                        return;
+                    }
+                    Path root = editor.project().normalize();
+                    Path file = problem.filePath().isAbsolute() ? problem.filePath() : root.resolve(problem.filePath());
+                    file = file.normalize();
+                    if (!file.startsWith(root)) {
+                        status = "Diagnostic file is outside the project";
+                        return;
+                    }
+                    selectPath(root.relativize(file).toString().replace('\\', '/'));
+                    releaseCapture();
+                    openFile(file, problem.startLine());
+                }));
         this.projectFiles = projectSearch == null ? PROJECT_FILES : List.of();
         this.projectFilesLoading = projectSearch != null;
         Path resolvedRoot = editor == null ? Path.of("").toAbsolutePath().normalize() : editor.project();
@@ -956,7 +974,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         ActionSurface previous = actionSurface.get();
         actionSurface.set(surface == null ? ActionSurface.TUI : surface);
         try {
-            if (event instanceof MouseEvent mouse && mouse.isClick()) {
+            if (event instanceof MouseEvent mouse && (mouse.isClick() || mouse.isScroll())) {
                 return handleMouse(mouse);
             }
             return accept(event);
@@ -968,7 +986,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     private EventResult handleMouse(MouseEvent mouse) {
         KeymapParts parts = overlays();
-        if (mouse.y() == 0) {
+        if (mouse.isClick() && mouse.y() == 0) {
             int menu = menuAt(mouse.x());
             if (menu >= 0) {
                 parts.commandPalette().close();
@@ -982,9 +1000,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             }
         }
         if (parts.menuPopup().isOpen()) {
-            Optional<String> action = parts.menuPopup().click(mouse.x(), mouse.y());
-            syncEditorMenuNavigation(parts);
-            action.ifPresent(value -> dispatch(parts, value));
+            if (mouse.isClick()) {
+                Optional<String> action = parts.menuPopup().click(mouse.x(), mouse.y());
+                syncEditorMenuNavigation(parts);
+                action.ifPresent(value -> dispatch(parts, value));
+            }
             return EventResult.HANDLED;
         }
         ToolWindow activeWindow = activeBottomWindow();
@@ -1138,9 +1158,6 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             }
             return EventResult.HANDLED;
         }
-        if (routeToToolWindow(key)) {
-            return EventResult.HANDLED;
-        }
         if (parts.keymap().matches(key, KeyActions.MOVE_UP)) {
             moveSelection(-1);
             return EventResult.HANDLED;
@@ -1189,6 +1206,12 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             closeOverlays(parts);
             status = "Action disabled for " + actionSurface.get().name().toLowerCase() + " surface: " + actionId;
             return;
+        }
+        for (ToolWindow window : toolWindows) {
+            if (window.performAction(actionId, sourceKey)) {
+                closeOverlays(parts);
+                return;
+            }
         }
         switch (actionId) {
             case KeyActions.QUIT -> {
@@ -1340,16 +1363,6 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 int themeIndex = themeNames.indexOf(themes.activeTheme());
                 themes.switchTheme(themeNames.get(Math.floorMod(themeIndex + 1, themeNames.size())));
                 status = "Theme: " + themes.activeTheme();
-            }
-            case KeyActions.RUN_EXECUTE, KeyActions.RUN_REFRESH, KeyActions.RUN_SELECT_NEXT,
-                    KeyActions.RUN_SELECT_PREVIOUS, KeyActions.RUN_STOP, KeyActions.TERMINAL_EXECUTE -> {
-                for (ToolWindow window : toolWindows) {
-                    if (window.performAction(actionId, sourceKey)) {
-                        closeOverlays(parts);
-                        return;
-                    }
-                }
-                status = "Action unavailable: " + actionId;
             }
             case KeyActions.MOVE_UP -> {
                 closeOverlays(parts);

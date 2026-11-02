@@ -171,11 +171,12 @@ Decisions of the local provider:
 
 The tool window SPI lives in `vintelli-tui` because its render and key
 handling signatures use TamboUI types: a `ToolWindow` declares an id, a
-title, a `char` shortcut, an `ordinal` position, rendering and key
-handling, implementations are CDI beans, and the shell needs no change when
-a new window appears. The shell state read model stays in `vintelli-api`
-(`ShellStateSnapshot` and `ShellStateView`) without TamboUI, so the MCP
-server can read what the user is looking at, and the write ports
+title, a `char` shortcut, an `ordinal` position, rendering and input
+handling. Implementations are CDI beans discovered by the tool window
+registry; windows that navigate the editor receive a shell callback. The
+shell state read model stays in `vintelli-api` (`ShellStateSnapshot` and
+`ShellStateView`) without TamboUI, so the MCP server can read what the user is
+looking at, and the write ports
 `ShellHighlightPort` and `ShellDiffViewPort` (implemented by the shell) let
 it push a highlight and a diff back into the TUI.
 
@@ -325,6 +326,12 @@ for confirmation). `F10` opens the menu bar; menu headings also respond to
 mouse clicks, and long unavailable reasons can be scrolled with Page Up/Down.
 `Ctrl+O` opens Go to File, `Alt+F` searches file contents, `F12` requests a
 definition, `Alt+U` requests references, and `F8` moves to the next diagnostic, and `Alt+I` folds or unfolds the import block.
+The Problems window refreshes diagnostics for files open in the editor with
+`R`; `A`, `E`, and `W` show all, errors, or warnings. Arrow keys move through
+the list, Enter opens the selected file at its diagnostic line, clicking a row
+navigates there, and the mouse wheel scrolls the list. The window shows the
+selected diagnostics provider and distinguishes loading, unavailable, error,
+and empty results.
 `Alt+=`/`Alt+-` resize the project pane and `Alt+.`/`Alt+,` resize the bottom
 tool window pane; the ratios are saved per project under the user config
 directory. `Tab`/`Shift+Tab` move focus through the focusable panels

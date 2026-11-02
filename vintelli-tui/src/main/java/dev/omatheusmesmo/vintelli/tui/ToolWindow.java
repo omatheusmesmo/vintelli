@@ -111,6 +111,7 @@ public interface ToolWindow extends StatusBarWidgetContributor {
     boolean handleKey(KeyEvent event);
 
     /**
+    /**
      * Names a command action produced by a key before it reaches this window.
      * The shell dispatches and authorizes named actions centrally.
      */
@@ -138,7 +139,11 @@ public interface ToolWindow extends StatusBarWidgetContributor {
         return null;
     }
 
-    /** Handles a non-command mouse interaction, such as changing selection. */
+    /**
+     * Handles mouse input for a window that owns a coordinate-based list.
+     *
+     * @return true when the event was consumed
+     */
     default boolean handleMouse(MouseEvent event) {
         return false;
     }

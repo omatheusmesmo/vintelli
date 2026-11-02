@@ -64,6 +64,13 @@ public final class KeyActions {
     public static final String RUN_SELECT_NEXT = "run.select-next";
     public static final String RUN_SELECT_PREVIOUS = "run.select-previous";
     public static final String TERMINAL_EXECUTE = "terminal.execute";
+    public static final String PROBLEMS_NAVIGATE = "problems.navigate";
+    public static final String PROBLEMS_REFRESH = "problems.refresh";
+    public static final String PROBLEMS_SELECT_NEXT = "problems.select-next";
+    public static final String PROBLEMS_SELECT_PREVIOUS = "problems.select-previous";
+    public static final String PROBLEMS_FILTER_ALL = "problems.filter-all";
+    public static final String PROBLEMS_FILTER_ERRORS = "problems.filter-errors";
+    public static final String PROBLEMS_FILTER_WARNINGS = "problems.filter-warnings";
 
     public static List<KeyAction> shellActions() {
         return List.of(new KeyAction(MENU, "Open Menu", ""),
@@ -87,7 +94,14 @@ public final class KeyActions {
                 new KeyAction(RUN_EXECUTE, "Run Selected Configuration", ""),
                 new KeyAction(RUN_REFRESH, "Refresh Run Configurations", ""),
                 new KeyAction(RUN_STOP, "Stop Current Run", ""),
-                new KeyAction(TERMINAL_EXECUTE, "Execute Terminal Command", ""));
+                new KeyAction(TERMINAL_EXECUTE, "Execute Terminal Command", ""),
+                new KeyAction(PROBLEMS_NAVIGATE, "Open Selected Problem", ""),
+                new KeyAction(PROBLEMS_REFRESH, "Refresh Problems", ""),
+                new KeyAction(PROBLEMS_SELECT_NEXT, "Select Next Problem", ""),
+                new KeyAction(PROBLEMS_SELECT_PREVIOUS, "Select Previous Problem", ""),
+                new KeyAction(PROBLEMS_FILTER_ALL, "Show All Problems", ""),
+                new KeyAction(PROBLEMS_FILTER_ERRORS, "Show Problem Errors", ""),
+                new KeyAction(PROBLEMS_FILTER_WARNINGS, "Show Problem Warnings", ""));
     }
 
     public static List<KeyAction> projectActions() {
