@@ -63,6 +63,7 @@ import dev.tamboui.widgets.common.ScrollBarPolicy;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import io.quarkus.arc.All;
 import java.nio.file.Path;
 import java.nio.file.Files;
@@ -206,12 +207,22 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private volatile Path copiedPath;
     private volatile Runnable quitAction;
     private volatile KeymapParts overlays;
+    private final ThreadLocal<ActionSurface> actionSurface = ThreadLocal.withInitial(() -> ActionSurface.TUI);
+    @Inject
+    private UiWorkQueue uiWorkQueue;
+    @ConfigProperty(name = "vintelli.tui.allowed-actions", defaultValue = "*")
+    private String tuiAllowedActions = "*";
+    @ConfigProperty(name = "vintelli.web.allowed-actions", defaultValue = "none")
+    private String webAllowedActions = "none";
+    @ConfigProperty(name = "vintelli.mcp.allowed-actions", defaultValue = "none")
+    private String mcpAllowedActions = "none";
 
     private volatile ShellHighlightTarget highlight;
     private volatile ShellUnifiedDiff diff;
     private volatile String status = "Vintelli ready | IDEA MCP: disconnected | ACP: stopped";
     private volatile boolean inputCaptured;
     private volatile ToolWindow capturedWindow;
+    private volatile String focusedToolWindowId;
     private volatile int toolIndex;
     private volatile int syncedFileIndex = -1;
 
@@ -301,6 +312,28 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                         });
                     }
                 }));
+        this.toolWindows.stream().filter(ProblemsToolWindow.class::isInstance)
+                .map(ProblemsToolWindow.class::cast)
+                .forEach(window -> window.setNavigateHandler(problem -> {
+                    if (editor == null) {
+                        status = "Built-in editor unavailable";
+                        return;
+                    }
+                    try {
+                        Path root = editor.project().toRealPath();
+                        Path file = problem.filePath().isAbsolute() ? problem.filePath() : root.resolve(problem.filePath());
+                        file = file.toRealPath();
+                        if (!file.startsWith(root)) {
+                            status = "Diagnostic file is outside the project";
+                            return;
+                        }
+                        selectPath(root.relativize(file).toString().replace('\\', '/'));
+                        releaseCapture();
+                        openFile(file, problem.startLine());
+                    } catch (IOException unavailable) {
+                        status = "Diagnostic file is unavailable";
+                    }
+                }));
         this.projectFiles = projectSearch == null ? PROJECT_FILES : List.of();
         this.projectFilesLoading = projectSearch != null;
         Path resolvedRoot = editor == null ? Path.of("").toAbsolutePath().normalize() : editor.project();
@@ -385,6 +418,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     private Element shellLayout() {
+        if (uiWorkQueue != null) {
+            uiWorkQueue.drain();
+        }
         boolean persisted = layoutStore.file() != null && Files.isRegularFile(layoutStore.file());
         Constraint projectWidth = persisted ? ratioConstraint(shellLayout.projectRatio())
                 : Constraint.length(PROJECT_PANEL_WIDTH);
@@ -542,7 +578,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         int index = activeToolIndexByAnchor.getOrDefault(anchor, 0);
         int clamped = Math.min(index, windows.size() - 1);
         if (clamped < 0) { clamped = 0; }
-        return new ToolWindowElement(windows.get(clamped), anchor == ToolWindow.Anchor.BOTTOM ? TOOL_WINDOW_HEIGHT : -1);
+        return new ToolWindowElement(windows.get(clamped), anchor == ToolWindow.Anchor.BOTTOM ? TOOL_WINDOW_HEIGHT : -1,
+                this);
     }
 
     private TabsElement toolWindowTabs() {
@@ -932,20 +969,28 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     @Override
     public EventResult handle(Event event) {
+        return handle(event, ActionSurface.TUI);
+    }
+
+    /** Routes input with the allow-list of its originating surface. */
+    public EventResult handle(Event event, ActionSurface surface) {
         frameLock.lock();
+        ActionSurface previous = actionSurface.get();
+        actionSurface.set(surface == null ? ActionSurface.TUI : surface);
         try {
-            if (event instanceof MouseEvent mouse && mouse.isClick()) {
+            if (event instanceof MouseEvent mouse && (mouse.isClick() || mouse.isScroll())) {
                 return handleMouse(mouse);
             }
             return accept(event);
         } finally {
+            actionSurface.set(previous);
             frameLock.unlock();
         }
     }
 
     private EventResult handleMouse(MouseEvent mouse) {
         KeymapParts parts = overlays();
-        if (mouse.y() == 0) {
+        if (mouse.isClick() && mouse.y() == 0) {
             int menu = menuAt(mouse.x());
             if (menu >= 0) {
                 parts.commandPalette().close();
@@ -959,10 +1004,25 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             }
         }
         if (parts.menuPopup().isOpen()) {
-            Optional<String> action = parts.menuPopup().click(mouse.x(), mouse.y());
-            syncEditorMenuNavigation(parts);
-            action.ifPresent(value -> dispatch(parts, value));
+            if (mouse.isClick()) {
+                Optional<String> action = parts.menuPopup().click(mouse.x(), mouse.y());
+                syncEditorMenuNavigation(parts);
+                action.ifPresent(value -> dispatch(parts, value));
+            }
             return EventResult.HANDLED;
+        }
+        ToolWindow activeWindow = activeBottomWindow();
+        if (activeWindow != null) {
+            String action = activeWindow.actionForMouse(mouse);
+            if (action != null) {
+                focusToolWindow(activeWindow);
+                dispatch(parts, action);
+                return EventResult.HANDLED;
+            }
+            if (activeWindow.handleMouse(mouse)) {
+                focusToolWindow(activeWindow);
+                return EventResult.HANDLED;
+            }
         }
         return EventResult.UNHANDLED;
     }
@@ -1066,6 +1126,13 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             switchToToolWindow(activation.getAsInt());
             return EventResult.HANDLED;
         }
+        if (!inputCaptured) {
+            ToolWindow active = activeBottomWindow();
+            if (active != null && active.id().equals(focusedToolWindowId)
+                    && active.shouldHandleKeyBeforeShell(key)) {
+                return handleToolWindowKey(parts, active, key) ? EventResult.HANDLED : EventResult.UNHANDLED;
+            }
+        }
         for (KeyAction action : KeyActions.shellActions()) {
             if (KeyActions.QUIT.equals(action.id()) || KeyActions.MENU.equals(action.id())) {
                 continue;
@@ -1091,10 +1158,15 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 }
             }
             if (capturing != null) {
-                capturing.handleKey(key);
+                handleToolWindowKey(parts, capturing, key);
             }
             return EventResult.HANDLED;
         }
+        // Give the active non-capturing tool window the same first refusal it
+        // gets after mouse focus. In particular this preserves legacy tool
+        // windows that consume ordinary keys without declaring named actions.
+        // Run is intentionally focus-scoped because its j/k bindings would
+        // otherwise shadow project navigation while the editor owns focus.
         if (routeToToolWindow(key)) {
             return EventResult.HANDLED;
         }
@@ -1138,6 +1210,21 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     private void dispatch(KeymapParts parts, String actionId) {
+        dispatch(parts, actionId, null);
+    }
+
+    private void dispatch(KeymapParts parts, String actionId, KeyEvent sourceKey) {
+        if (isCommandAction(actionId) && !actionAllowed(actionSurface.get(), actionId)) {
+            closeOverlays(parts);
+            status = "Action disabled for " + actionSurface.get().name().toLowerCase() + " surface: " + actionId;
+            return;
+        }
+        for (ToolWindow window : toolWindows) {
+            if (window.performAction(actionId, sourceKey)) {
+                closeOverlays(parts);
+                return;
+            }
+        }
         switch (actionId) {
             case KeyActions.QUIT -> {
                 closeOverlays(parts);
@@ -1314,7 +1401,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                     inputCaptured = false;
                     status = "Editor focused";
                 } else if (toolWindowIndex.isEmpty()) {
-                    status = "Unhandled action: " + actionId;
+                    status = parts.keymap().actions().stream().anyMatch(action -> action.id().equals(actionId))
+                            ? "Action unavailable: " + actionId
+                            : "Unhandled action: " + actionId;
                 } else {
                     switchToToolWindow(toolWindowIndex.getAsInt());
                 }
@@ -1991,6 +2080,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
         inputCaptured = window.capturesInput();
         capturedWindow = inputCaptured ? window : null;
+        focusToolWindow(window);
         toolTabs.selected(activeToolIndexByAnchor.getOrDefault(ToolWindow.Anchor.BOTTOM, 0));
         state.selectToolWindow(window.id());
         status = "Tool window: " + window.title();
@@ -2010,7 +2100,57 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         if (active.capturesInput()) {
             return false;
         }
-        return active.handleKey(key);
+        if (active instanceof RunToolWindow && !active.id().equals(focusedToolWindowId)) {
+            return false;
+        }
+        return handleToolWindowKey(overlays(), active, key);
+    }
+
+    private boolean handleToolWindowKey(KeymapParts parts, ToolWindow window, KeyEvent key) {
+        String action = window.actionForKey(key);
+        if (action != null) {
+            dispatch(parts, action, key);
+            return true;
+        }
+        return window.handleKey(key);
+    }
+
+    EventResult routeToolWindowKey(ToolWindow window, KeyEvent key) {
+        frameLock.lock();
+        ActionSurface previous = actionSurface.get();
+        actionSurface.set(ActionSurface.TUI);
+        try {
+            return handleToolWindowKey(overlays(), window, key) ? EventResult.HANDLED : EventResult.UNHANDLED;
+        } finally {
+            actionSurface.set(previous);
+            frameLock.unlock();
+        }
+    }
+
+    private ToolWindow activeBottomWindow() {
+        List<ToolWindow> bottomWindows = windowsByAnchor.getOrDefault(ToolWindow.Anchor.BOTTOM, List.of());
+        int index = activeToolIndexByAnchor.getOrDefault(ToolWindow.Anchor.BOTTOM, 0);
+        return index >= 0 && index < bottomWindows.size() ? bottomWindows.get(index) : null;
+    }
+
+    private void focusToolWindow(ToolWindow window) {
+        focusedToolWindowId = window.id();
+    }
+
+    private static boolean isCommandAction(String actionId) {
+        return KeyActions.RUN_EXECUTE.equals(actionId) || KeyActions.RUN_STOP.equals(actionId)
+                || KeyActions.TERMINAL_EXECUTE.equals(actionId);
+    }
+
+    private boolean actionAllowed(ActionSurface surface, String actionId) {
+        String allowed = switch (surface) {
+            case TUI -> tuiAllowedActions;
+            case WEB -> webAllowedActions;
+            case MCP -> mcpAllowedActions;
+        };
+        return java.util.Arrays.stream(allowed.split(","))
+                .map(String::trim)
+                .anyMatch(value -> value.equals("*") || value.equals(actionId));
     }
 
     public void moveSelection(int delta) {
@@ -2055,6 +2195,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private void releaseCapture() {
         inputCaptured = false;
         capturedWindow = null;
+        focusedToolWindowId = null;
+        pendingProjectFocus = true;
         status = "Focus: shell navigation";
     }
 

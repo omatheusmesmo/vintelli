@@ -5,6 +5,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Consumer;
 
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -13,6 +14,8 @@ import dev.omatheusmesmo.vintelli.api.capability.CapabilityFailure;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import dev.omatheusmesmo.vintelli.api.capability.RunCapability;
+import dev.omatheusmesmo.vintelli.api.capability.RunCapability.RunCompletion;
+import dev.omatheusmesmo.vintelli.api.capability.RunCapability.RunOutcome;
 import io.quarkus.arc.Unremovable;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -99,6 +102,13 @@ public final class LocalRunCapability implements RunCapability {
 
     @Override
     public CapabilityResult<RunHandle> start(RunRequest request, Consumer<String> outputLines) {
+        return start(request, outputLines, ignored -> { });
+    }
+
+    @Override
+    public CapabilityResult<RunHandle> start(RunRequest request, Consumer<String> outputLines,
+            Consumer<RunCompletion> completion) {
+        Objects.requireNonNull(completion, "completion");
         Path confined = projectRoot.confine(request.workingDirectory());
         if (confined == null) {
             return CapabilityResult.failed(new CapabilityFailure(
@@ -111,7 +121,7 @@ public final class LocalRunCapability implements RunCapability {
         }
         for (BuildToolDetector.RunConfigurationSpecification specification : detector.specifications()) {
             if (specification.identifier().equals(request.configurationName())) {
-                return run(specification, request, outputLines, confined);
+                return run(specification, request, outputLines, completion, confined);
             }
         }
         return CapabilityResult.failed(new CapabilityFailure(
@@ -120,11 +130,19 @@ public final class LocalRunCapability implements RunCapability {
     }
 
     private CapabilityResult<RunHandle> run(BuildToolDetector.RunConfigurationSpecification specification,
-            RunRequest request, Consumer<String> outputLines, Path workingDirectory) {
+            RunRequest request, Consumer<String> outputLines, Consumer<RunCompletion> completion,
+            Path workingDirectory) {
         try {
             ProcessRunner.Handle handle = runner.start(new ProcessRunner.CommandPlan(specification.command(),
                     workingDirectory, request.environment(), defaultTimeout), outputLines,
-                    termination -> outputLines.accept(summaryLine(termination)));
+                    termination -> {
+                        outputLines.accept(summaryLine(termination));
+                        completion.accept(new RunCompletion(switch (termination.outcome()) {
+                            case EXITED -> RunOutcome.EXITED;
+                            case CANCELLED -> RunOutcome.CANCELLED;
+                            case TIMED_OUT -> RunOutcome.TIMED_OUT;
+                        }, termination.exitCode()));
+                    });
             return CapabilityResult.ok(handle::cancel);
         } catch (ProcessRunner.UncheckedProcessFailure failure) {
             return CapabilityResult.failed(

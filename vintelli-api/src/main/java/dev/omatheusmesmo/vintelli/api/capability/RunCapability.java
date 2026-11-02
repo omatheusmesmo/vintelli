@@ -4,6 +4,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Consumer;
 
 /**
@@ -23,8 +24,7 @@ public interface RunCapability extends ProviderDescriptor {
 
     /**
      * Starts the run described by the request. Output lines stream into the
-     * consumer while the run executes; a provider announces termination with a
-     * final summary line in the stream.
+     * consumer while the run executes.
      *
      * @param request what to run and where
      * @param outputLines consumer that receives the output lines live, never null
@@ -32,6 +32,40 @@ public interface RunCapability extends ProviderDescriptor {
      *         cannot start the run, for example an unknown configuration name
      */
     CapabilityResult<RunHandle> start(RunRequest request, Consumer<String> outputLines);
+
+    /**
+     * Starts a run and reports its lifecycle through a typed completion
+     * callback, separate from user process output. Existing providers may keep
+     * implementing the two-argument method; providers with lifecycle data
+     * should override this method.
+     */
+    default CapabilityResult<RunHandle> start(RunRequest request, Consumer<String> outputLines,
+            Consumer<RunCompletion> completion) {
+        Objects.requireNonNull(completion, "completion");
+        return start(request, outputLines);
+    }
+
+    enum RunOutcome {
+        EXITED,
+        CANCELLED,
+        TIMED_OUT
+    }
+
+    record RunCompletion(RunOutcome outcome, Optional<Integer> exitCode) {
+
+        public RunCompletion {
+            Objects.requireNonNull(outcome, "outcome");
+            exitCode = exitCode == null ? Optional.empty() : exitCode;
+        }
+
+        public String summary() {
+            return switch (outcome) {
+                case EXITED -> "Run finished with exit code " + exitCode.map(String::valueOf).orElse("unknown");
+                case CANCELLED -> "Run cancelled";
+                case TIMED_OUT -> "Run timed out";
+            };
+        }
+    }
 
     record RunConfiguration(String identifier, String summary) {
 
@@ -66,5 +100,13 @@ public interface RunCapability extends ProviderDescriptor {
          * run is a harmless no op.
          */
         void cancel();
+
+        /**
+         * Whether the provider can stop an active run. Snapshot providers may
+         * return a handle for API compatibility while exposing no cancellation.
+         */
+        default boolean supportsCancellation() {
+            return true;
+        }
     }
 }

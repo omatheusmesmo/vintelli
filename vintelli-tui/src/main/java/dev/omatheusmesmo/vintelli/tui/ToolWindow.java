@@ -4,6 +4,7 @@ import dev.tamboui.layout.Rect;
 import dev.tamboui.terminal.Frame;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
+import dev.tamboui.tui.event.MouseEvent;
 import dev.omatheusmesmo.vintelli.tui.menu.MenuEntry;
 import dev.omatheusmesmo.vintelli.api.statusbar.StatusBarWidget;
 import dev.omatheusmesmo.vintelli.api.statusbar.StatusBarWidgetContributor;
@@ -108,6 +109,44 @@ public interface ToolWindow extends StatusBarWidgetContributor {
      * or {@code false} to let the shell fall back to its defaults.
      */
     boolean handleKey(KeyEvent event);
+
+    /**
+    /**
+     * Names a command action produced by a key before it reaches this window.
+     * The shell dispatches and authorizes named actions centrally.
+     */
+    default String actionForKey(KeyEvent event) {
+        return null;
+    }
+
+    /** Whether this window needs first refusal before shell navigation bindings. */
+    default boolean shouldHandleKeyBeforeShell(KeyEvent event) {
+        return actionForKey(event) != null;
+    }
+
+    /** Executes one named window action after the shell has authorized it. */
+    default boolean performAction(String actionId) {
+        return false;
+    }
+
+    /** Executes a keyboard-triggered named action after shell authorization. */
+    default boolean performAction(String actionId, KeyEvent event) {
+        return performAction(actionId);
+    }
+
+    /** Names a command action produced by a mouse click, if any. */
+    default String actionForMouse(MouseEvent event) {
+        return null;
+    }
+
+    /**
+     * Handles mouse input for a window that owns a coordinate-based list.
+     *
+     * @return true when the event was consumed
+     */
+    default boolean handleMouse(MouseEvent event) {
+        return false;
+    }
 
     /**
      * Claims the whole keyboard while this tool window is active: the shell

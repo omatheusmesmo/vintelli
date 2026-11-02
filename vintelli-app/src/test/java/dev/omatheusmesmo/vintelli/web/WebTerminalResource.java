@@ -26,6 +26,7 @@ public final class WebTerminalResource implements QuarkusTestResourceLifecycleMa
     public Map<String, String> start() {
         return Map.ofEntries(
                 Map.entry("vintelli.web.enabled", "true"),
+                Map.entry("vintelli.web.allowed-actions", "terminal.execute"),
                 Map.entry("vintelli.local.project-root", PROJECT_ROOT.toString()),
                 Map.entry("vintelli.mcp.allowed-origins", TRUSTED_ORIGIN),
                 Map.entry("quarkus.http.cors.origins", TRUSTED_ORIGIN + "," + FOREIGN_ORIGIN),
