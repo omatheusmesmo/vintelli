@@ -16,6 +16,7 @@ public enum RunMode {
     SERVER;
 
     static final String TUI_FLAG = "--tui";
+    static final String SERVE_FLAG = "serve";
     static final String REPL_FLAG = "--repl";
 
     /**
@@ -26,6 +27,9 @@ public enum RunMode {
             return TUI;
         }
         if (args.isEmpty()) {
+            return TUI;
+        }
+        if (SERVE_FLAG.equals(args.get(0))) {
             return SERVER;
         }
         if (REPL_FLAG.equals(args.get(0))) {

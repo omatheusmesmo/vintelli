@@ -9,8 +9,13 @@ import org.junit.jupiter.api.Test;
 class RunModeTest {
 
     @Test
-    void noArgumentsServeHeadless() {
-        assertEquals(RunMode.SERVER, RunMode.of(List.of()));
+    void noArgumentsOpenTheTui() {
+        assertEquals(RunMode.TUI, RunMode.of(List.of()));
+    }
+
+    @Test
+    void serveSelectsTheHeadlessServer() {
+        assertEquals(RunMode.SERVER, RunMode.of(List.of("serve")));
     }
 
     @Test

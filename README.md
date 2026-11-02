@@ -39,14 +39,20 @@ Backend (headless, dev mode with live reload):
 
 ```bash
 sdk env            # honors .sdkmanrc (Java 25)
-./mvnw -pl vintelli-app -am quarkus:dev
+./mvnw -pl vintelli-app -am quarkus:dev -Dquarkus.args=serve
 ```
 
-TUI (real terminal required):
+TUI (default, real terminal required):
 
 ```bash
 ./mvnw package
-java -jar vintelli-app/target/quarkus-app/quarkus-run.jar --tui
+java -jar vintelli-app/target/quarkus-app/quarkus-run.jar
+```
+
+Headless server (HTTP, MCP endpoint, web terminal):
+
+```bash
+java -jar vintelli-app/target/quarkus-app/quarkus-run.jar serve
 ```
 
 The application lives in the `vintelli-app` module; the other modules are
@@ -93,9 +99,11 @@ beans annotated with `@CommandDefinition`, and the `aesh-processor` module
 generates the command metadata at build time, so there is no reflective
 annotation-scan fallback and the native image needs no extra configuration
 beyond the registry classes derived by the build steps in
-`vintelli-core/deployment`. `VintelliMain` decides the surface: `--tui`
-starts the shell, `--repl` the interactive console, any other argument one
-shot command execution, and no argument the headless server.
+`vintelli-core/deployment`. `VintelliMain` decides the surface: no argument
+(or `--tui`) starts the shell, `serve` starts the headless server (HTTP, MCP
+endpoint, web terminal), `--repl` the interactive console, and any other
+argument one shot command execution. `--tui` stays as an alias for
+compatibility.
 
 Scripted, one command per process (`java -jar vintelli-app/target/quarkus-app/quarkus-run.jar <command>...`):
 
@@ -785,7 +793,10 @@ native-ready. Verify with the `native` profile and Mandrel 25 from SDKMAN:
 The native runner is written to `vintelli-app/target/`.
 
 Integration tests (`*IT`) run against the native runner in CI with
-`./mvnw verify -Dnative -Dquarkus.native.container-build`. `GET /tui/render`
+`./mvnw verify -Dnative -Dquarkus.native.container-build`. The test launchers
+start their HTTP fixture with `serve`; the TUI startup test separately checks
+both the no-argument default and the `--tui` alias through tape playback.
+`GET /tui/render`
 renders one offscreen frame of the live shell through the CSS style engine
 and returns the tool window tab row, the editor area, the status row and the
 active theme as JSON; it exists so the render pipeline can be validated on
