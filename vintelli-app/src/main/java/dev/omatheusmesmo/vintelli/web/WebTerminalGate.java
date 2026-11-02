@@ -45,10 +45,14 @@ public final class WebTerminalGate implements HttpUpgradeCheck {
 
     @Override
     public Uni<HttpUpgradeCheck.CheckResult> perform(HttpUpgradeCheck.HttpUpgradeContext context) {
-        Config config = ConfigProvider.getConfig();
-        if (!config.getOptionalValue(ENABLED, Boolean.class).orElse(Boolean.FALSE)) {
+        if (!enabled()) {
             return HttpUpgradeCheck.CheckResult.rejectUpgrade(404);
         }
         return HttpUpgradeCheck.CheckResult.permitUpgrade();
+    }
+
+    static boolean enabled() {
+        Config config = ConfigProvider.getConfig();
+        return config.getOptionalValue(ENABLED, Boolean.class).orElse(Boolean.FALSE);
     }
 }

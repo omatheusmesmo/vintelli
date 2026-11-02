@@ -613,6 +613,20 @@ credentials of the account above. Sessions of other surfaces (the local TUI
 and every browser terminal) share the shell state, so all of them show the
 same tool windows; the sessions themselves stay independent.
 
+The xterm.js client ships with the application: open
+`http://127.0.0.1:8080/tui/terminal` in a browser on the same origin. The page
+and its script answer 404 while the surface is off, and the browser asks for
+the basic credentials of the account above once. The WebSocket that the page
+opens to `/tui/ws` reuses those cached credentials, so no token or query
+parameter is needed. The client sends key bytes as they are typed (Alt chords
+arrive as ESC-prefixed sequences, and `macOptionIsMeta` maps Option on macOS),
+reports its size with `resize COLSxROWS` on connect and on window resize, and
+reconnects with a backoff (0.5 s doubling to 8 s) when the socket closes. The
+xterm.js library and its fit addon are served from the mvnpm artifacts
+`org.mvnpm.at.xterm:xterm` and `org.mvnpm.at.xterm:addon-fit` (versions in the
+root `pom.xml`) under `/_static/at/xterm/`; those two library files stay public
+because they carry no shell state.
+
 Security notes for the browser terminal:
 
 - Credentials travel as HTTP basic authentication. Over `ws://` or `http://`
