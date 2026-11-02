@@ -12,6 +12,7 @@ import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilitySelection;
 import dev.omatheusmesmo.vintelli.api.capability.TerminalCapability;
 import dev.omatheusmesmo.vintelli.api.capability.TerminalSession;
+import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.style.Style;
 import dev.tamboui.terminal.Frame;
@@ -87,6 +88,22 @@ public final class TerminalToolWindow implements ToolWindow {
     @Override
     public boolean capturesInput() {
         return true;
+    }
+
+    @Override
+    public String actionForKey(KeyEvent key) {
+        if (key.isKey(KeyCode.ENTER) || confirmationLine != null && key.isCharIgnoreCase('y')) {
+            return KeyActions.TERMINAL_EXECUTE;
+        }
+        return null;
+    }
+
+    @Override
+    public boolean performAction(String actionId, KeyEvent key) {
+        if (!KeyActions.TERMINAL_EXECUTE.equals(actionId)) {
+            return false;
+        }
+        return handleKey(key == null ? KeyEvent.ofKey(KeyCode.ENTER) : key);
     }
 
     @Override

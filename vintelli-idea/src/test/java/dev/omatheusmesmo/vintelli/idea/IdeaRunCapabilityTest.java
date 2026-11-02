@@ -14,6 +14,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -39,18 +40,24 @@ class IdeaRunCapabilityTest {
             assertEquals("Vintelli", okList.value().getFirst().identifier());
 
             List<String> lines = new ArrayList<>();
+            AtomicReference<RunCapability.RunCompletion> completion = new AtomicReference<>();
+            server.runOutput("started\nRun finished with exit code 75");
             var started = capability.start(
                     new RunCapability.RunRequest("vintelli-app", java.nio.file.Paths.get("/proj"), Map.of()),
-                    lines::add);
+                    lines::add, completion::set);
             assertTrue(!started.isFailure(), started.toString());
-            assertEquals(List.of("started", "finished", "Run finished with exit code 0"), lines);
+            assertTrue(lines.contains("started"), lines.toString());
+            assertTrue(lines.contains("Run finished with exit code 75"), lines.toString());
+            assertEquals(new RunCapability.RunCompletion(RunCapability.RunOutcome.EXITED,
+                    java.util.Optional.of(0)), completion.get());
+            assertTrue(!((CapabilityResult.Ok<RunCapability.RunHandle>) started).value().supportsCancellation());
 
             server.runOutput("started\r\nfinished");
             lines.clear();
-            var crlfStarted = capability.start(
+            var legacyStarted = capability.start(
                     new RunCapability.RunRequest("vintelli-app", java.nio.file.Paths.get("/proj"), Map.of()),
                     lines::add);
-            assertTrue(!crlfStarted.isFailure(), crlfStarted.toString());
+            assertTrue(!legacyStarted.isFailure(), legacyStarted.toString());
             assertEquals(List.of("started", "finished", "Run finished with exit code 0"), lines);
         }
     }

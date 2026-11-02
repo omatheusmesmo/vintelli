@@ -6,6 +6,7 @@ import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 
 import dev.omatheusmesmo.vintelli.tui.VintelliShell;
+import dev.omatheusmesmo.vintelli.tui.ActionSurface;
 import dev.tamboui.terminal.Frame;
 import dev.tamboui.tui.TuiConfig;
 import dev.tamboui.tui.TuiRunner;
@@ -202,7 +203,7 @@ final class WebTerminalSession {
         if (event instanceof UiRunnable runnable) {
             runnable.run();
         } else if (!(event instanceof TickEvent)) {
-            shell.handle(event);
+            shell.handle(event, ActionSurface.WEB);
         }
     }
 }
