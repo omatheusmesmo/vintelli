@@ -58,6 +58,10 @@ ruleset does not need to list each matrix entry.
 - Any other pull request runs the JVM matrix and the native image job. A failure
   in either one turns `CI gate` red.
 - The merge queue always runs the full build, whatever the files changed.
+- `Lint workflows` runs `actionlint` (with shellcheck for `run:` scripts) on every
+  pull request, docs-only ones included, and a failure turns `CI gate` red.
+- Dependabot keeps the pinned action SHAs and the Maven dependencies current with
+  weekly pull requests, with Quarkus updates in their own group.
 
 ## Workflow
 
