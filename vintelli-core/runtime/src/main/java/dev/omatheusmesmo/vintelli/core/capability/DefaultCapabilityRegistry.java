@@ -7,6 +7,7 @@ import java.util.Map;
 
 import dev.omatheusmesmo.vintelli.api.capability.CallHierarchyCapability;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityRegistry;
+import dev.omatheusmesmo.vintelli.api.capability.CodeActionCapability;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilitySelection;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityStatus;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
@@ -40,6 +41,7 @@ public final class DefaultCapabilityRegistry implements CapabilityRegistry {
     private final ProviderGroup<ReadFileCapability> readGroup;
     private final ProviderGroup<DiagnosticsCapability> diagnosticsGroup;
     private final ProviderGroup<CallHierarchyCapability> callHierarchyGroup;
+    private final ProviderGroup<CodeActionCapability> codeActionGroup;
     private final ProviderGroup<EditorBridge> editorBridgeGroup;
     private final ProviderGroup<VersionControlCapability> versionControlGroup;
 
@@ -47,16 +49,26 @@ public final class DefaultCapabilityRegistry implements CapabilityRegistry {
     DefaultCapabilityRegistry(Instance<RunCapability> runProviders, Instance<TerminalCapability> terminalProviders,
             Instance<ReadFileCapability> readFileProviders, Instance<DiagnosticsCapability> diagnosticsProviders,
             Instance<CallHierarchyCapability> callHierarchyProviders, Instance<EditorBridge> editorBridgeProviders,
-            Instance<VersionControlCapability> versionControlProviders, CapabilityOrders orders) {
+            Instance<VersionControlCapability> versionControlProviders,
+            Instance<CodeActionCapability> codeActionProviders, CapabilityOrders orders) {
         this(collect(runProviders), collect(terminalProviders), collect(readFileProviders),
                 collect(diagnosticsProviders), collect(callHierarchyProviders), collect(editorBridgeProviders),
-                collect(versionControlProviders), orders);
+                collect(versionControlProviders), collect(codeActionProviders), orders);
     }
 
     DefaultCapabilityRegistry(List<RunCapability> runProviders, List<TerminalCapability> terminalProviders,
             List<ReadFileCapability> readFileProviders, List<DiagnosticsCapability> diagnosticsProviders,
             List<CallHierarchyCapability> callHierarchyProviders, List<EditorBridge> editorBridgeProviders,
             List<VersionControlCapability> versionControlProviders, CapabilityOrders orders) {
+        this(runProviders, terminalProviders, readFileProviders, diagnosticsProviders, callHierarchyProviders,
+                editorBridgeProviders, versionControlProviders, List.of(), orders);
+    }
+
+    DefaultCapabilityRegistry(List<RunCapability> runProviders, List<TerminalCapability> terminalProviders,
+            List<ReadFileCapability> readFileProviders, List<DiagnosticsCapability> diagnosticsProviders,
+            List<CallHierarchyCapability> callHierarchyProviders, List<EditorBridge> editorBridgeProviders,
+            List<VersionControlCapability> versionControlProviders, List<CodeActionCapability> codeActionProviders,
+            CapabilityOrders orders) {
         this.orders = orders;
         this.runGroup = ProviderGroup.of(CapabilityType.RUN, runProviders);
         this.terminalGroup = ProviderGroup.of(CapabilityType.TERMINAL, terminalProviders);
@@ -65,6 +77,7 @@ public final class DefaultCapabilityRegistry implements CapabilityRegistry {
         this.callHierarchyGroup = ProviderGroup.of(CapabilityType.CALL_HIERARCHY, callHierarchyProviders);
         this.editorBridgeGroup = ProviderGroup.of(CapabilityType.EDITOR_BRIDGE, editorBridgeProviders);
         this.versionControlGroup = ProviderGroup.of(CapabilityType.VERSION_CONTROL, versionControlProviders);
+        this.codeActionGroup = ProviderGroup.of(CapabilityType.CODE_ACTION, codeActionProviders);
     }
 
     @Override
@@ -93,6 +106,11 @@ public final class DefaultCapabilityRegistry implements CapabilityRegistry {
     }
 
     @Override
+    public CapabilitySelection<CodeActionCapability> codeActions() {
+        return select(codeActionGroup);
+    }
+
+    @Override
     public CapabilitySelection<EditorBridge> editorBridge() {
         return select(editorBridgeGroup);
     }
@@ -112,6 +130,7 @@ public final class DefaultCapabilityRegistry implements CapabilityRegistry {
         rows.add(status(callHierarchyGroup));
         rows.add(status(editorBridgeGroup));
         rows.add(status(versionControlGroup));
+        rows.add(status(codeActionGroup));
         return List.copyOf(rows);
     }
 
@@ -119,7 +138,8 @@ public final class DefaultCapabilityRegistry implements CapabilityRegistry {
     public List<CapabilityStatusWidgets> statusBarSnapshot() {
         return List.of(statusBarStatus(runGroup), statusBarStatus(terminalGroup), statusBarStatus(readGroup),
                 statusBarStatus(diagnosticsGroup), statusBarStatus(callHierarchyGroup),
-                statusBarStatus(editorBridgeGroup), statusBarStatus(versionControlGroup));
+                statusBarStatus(editorBridgeGroup), statusBarStatus(versionControlGroup),
+                statusBarStatus(codeActionGroup));
     }
 
     private <T extends ProviderDescriptor> CapabilityStatus status(ProviderGroup<T> group) {

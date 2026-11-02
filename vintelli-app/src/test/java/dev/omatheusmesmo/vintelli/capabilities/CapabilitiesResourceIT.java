@@ -52,21 +52,24 @@ class CapabilitiesResourceIT {
                 .when().get(capabilities)
                 .then()
                 .statusCode(200)
-                .body("", hasSize(7))
-                .body("providerIdentifier", contains("local", "local", "local", null, null, "builtin", "local"))
+                .body("", hasSize(8))
+                .body("providerIdentifier", contains("local", "local", "local", null, null, "builtin", "local", null))
                 .body("provenance", contains(
                         "local process runner via mvn", "local shell process",
                         "local filesystem, confined to the project root", null, null,
-                        "built-in TamboUI TextArea editor", "JGit, repository discovered from the project root"))
+                        "built-in TamboUI TextArea editor", "JGit, repository discovered from the project root",
+                        null))
                 .body("health.state", contains(
                         "AVAILABLE", "AVAILABLE", "AVAILABLE", "UNAVAILABLE", "UNAVAILABLE", "AVAILABLE",
-                        "AVAILABLE"))
+                        "AVAILABLE", "UNAVAILABLE"))
                 .body("health.reason", contains(
                         nullValue(), nullValue(), nullValue(),
                         containsString("no healthy provider for 'diagnostics': idea"),
                         containsString("no healthy provider for 'call-hierarchy': lsp"),
                         nullValue(),
-                        nullValue()))
-                .body("capability", hasItem("VERSION_CONTROL"));
+                        nullValue(),
+                        containsString("no healthy provider for 'code-action': lsp")))
+                .body("capability", hasItem("VERSION_CONTROL"))
+                .body("capability", hasItem("CODE_ACTION"));
     }
 }

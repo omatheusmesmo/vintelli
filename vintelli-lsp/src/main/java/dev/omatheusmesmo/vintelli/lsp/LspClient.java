@@ -18,6 +18,7 @@ import java.util.stream.Collectors;
 import dev.omatheusmesmo.vintelli.api.capability.CallHierarchyCapability;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityFailure;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
+import dev.omatheusmesmo.vintelli.api.capability.CodeActionCapability;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import jakarta.annotation.PreDestroy;
@@ -241,6 +242,38 @@ public final class LspClient implements AutoCloseable {
      */
     public CapabilityResult<List<DocumentSymbol>> symbols(Path file) {
         return documentSymbols(file);
+    }
+
+    /**
+     * @return the code actions the server offers for the range, the diagnostics
+     *         overlapping it are handed over as context; a failed result with
+     *         reason {@code malformed} when the server answers with a payload that
+     *         breaks the protocol
+     */
+    public CapabilityResult<List<CodeActionCapability.CodeAction>> codeActions(Path file,
+            CodeActionCapability.SourceRange range, List<DiagnosticsCapability.Diagnostic> diagnostics) {
+        Selection selection = selection();
+        if (selection.failure() != null) {
+            return CapabilityResult.failed(new CapabilityFailure("unavailable", selection.failure()));
+        }
+        try {
+            LspServerSession current = ensureStarted(selection);
+            if (!current.isOpen(file)) {
+                current.openDocument(file, Files.readString(file));
+            }
+            return CapabilityResult.ok(LspCodeActionMapper.codeActionsOf(current.codeAction(
+                    LspServerSession.uriFor(file), LspCodeActionMapper.rangeOf(range),
+                    LspCodeActionMapper.lspDiagnosticsOf(diagnostics))));
+        } catch (LspCodeActionMapper.MalformedPayload malformed) {
+            return CapabilityResult.failed(new CapabilityFailure("malformed",
+                    "the language server of profile '" + selection.profile() + "' sent a malformed code action: "
+                            + malformed.getMessage()));
+        } catch (IOException | InterruptedException | ExecutionException | TimeoutException | RuntimeException failure) {
+            if (failure instanceof InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+            return CapabilityResult.failed(failureDetail(selection, failure));
+        }
     }
 
     /**

@@ -949,6 +949,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             case READ_FILE -> "Read File";
             case DIAGNOSTICS -> "Problems";
             case CALL_HIERARCHY -> "Call Hierarchy";
+            case CODE_ACTION -> "Code Actions";
             case EDITOR_BRIDGE -> "Editor";
             case VERSION_CONTROL -> "VCS";
         };
@@ -958,6 +959,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             case READ_FILE -> "RF";
             case DIAGNOSTICS -> "P";
             case CALL_HIERARCHY -> "CH";
+            case CODE_ACTION -> "CA";
             case EDITOR_BRIDGE -> "E";
             case VERSION_CONTROL -> "VCS";
         };

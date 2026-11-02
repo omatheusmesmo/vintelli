@@ -18,6 +18,7 @@ import dev.omatheusmesmo.vintelli.api.capability.CapabilitySelection;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityStatus;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityRegistry;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
+import dev.omatheusmesmo.vintelli.api.capability.CodeActionCapability;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Diagnostic;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderDescriptor;
@@ -97,6 +98,23 @@ class CapabilityRegistryTest {
         CapabilitySelection<ReadFileCapability> read = registry.readFile();
         assertTrue(read instanceof CapabilitySelection.Selected<ReadFileCapability>);
         assertEquals("local-reader", selectedIdentifierOf(read));
+    }
+
+    @Test
+    void reportsCodeActionsUnavailableWithoutAProviderAndSelectsTheHealthyOneOnceRegistered() {
+        DefaultCapabilityRegistry empty = registryWith(NO_ORDER);
+
+        assertFalse(empty.codeActions().isAvailable());
+        CapabilityStatus unavailable = statusOf(empty, CapabilityType.CODE_ACTION);
+        assertFalse(unavailable.isAvailable());
+        assertTrue(unavailable.health().reason().contains("'code-action'"), unavailable.health().reason());
+
+        DefaultCapabilityRegistry registry = new DefaultCapabilityRegistry(
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(new TestingCodeActionProvider()), orders(NO_ORDER));
+
+        assertEquals("code-stub", selectedIdentifierOf(registry.codeActions()));
+        assertEquals("code-stub", statusOf(registry, CapabilityType.CODE_ACTION).providerIdentifier());
     }
 
     @Test
@@ -574,6 +592,29 @@ class CapabilityRegistryTest {
         @Override
         public String provenance() {
             return "stub hierarchy";
+        }
+    }
+
+    private static final class TestingCodeActionProvider implements CodeActionCapability {
+
+        @Override
+        public CapabilityResult<List<CodeAction>> codeActions(Path file, SourceRange range, List<Diagnostic> problems) {
+            return CapabilityResult.ok(List.of());
+        }
+
+        @Override
+        public String identifier() {
+            return "code-stub";
+        }
+
+        @Override
+        public ProviderHealth health() {
+            return ProviderHealth.available();
+        }
+
+        @Override
+        public String provenance() {
+            return "stub code actions";
         }
     }
 

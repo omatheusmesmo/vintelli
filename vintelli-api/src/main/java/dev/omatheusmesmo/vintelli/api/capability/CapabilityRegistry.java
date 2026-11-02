@@ -42,6 +42,11 @@ public interface CapabilityRegistry {
     CapabilitySelection<CallHierarchyCapability> callHierarchy();
 
     /**
+     * @return the current code action provider, or an explicit unavailable state
+     */
+    CapabilitySelection<CodeActionCapability> codeActions();
+
+    /**
      * @return the current editor bridging provider, or an explicit unavailable state
      */
     CapabilitySelection<EditorBridge> editorBridge();

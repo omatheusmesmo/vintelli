@@ -31,6 +31,14 @@ import org.eclipse.lsp4j.CallHierarchyOutgoingCallsParams;
 import org.eclipse.lsp4j.CallHierarchyPrepareParams;
 import org.eclipse.lsp4j.ClientCapabilities;
 import org.eclipse.lsp4j.ClientInfo;
+import org.eclipse.lsp4j.CodeAction;
+import org.eclipse.lsp4j.CodeActionCapabilities;
+import org.eclipse.lsp4j.CodeActionContext;
+import org.eclipse.lsp4j.CodeActionKind;
+import org.eclipse.lsp4j.CodeActionKindCapabilities;
+import org.eclipse.lsp4j.CodeActionLiteralSupportCapabilities;
+import org.eclipse.lsp4j.CodeActionParams;
+import org.eclipse.lsp4j.Command;
 import org.eclipse.lsp4j.CompletionCapabilities;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionList;
@@ -54,6 +62,7 @@ import org.eclipse.lsp4j.Location;
 import org.eclipse.lsp4j.LocationLink;
 import org.eclipse.lsp4j.MarkupKind;
 import org.eclipse.lsp4j.Position;
+import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.ReferenceContext;
 import org.eclipse.lsp4j.ReferenceParams;
 import org.eclipse.lsp4j.ReferencesCapabilities;
@@ -222,6 +231,15 @@ final class LspServerSession implements AutoCloseable {
         DocumentSymbolParams params = new DocumentSymbolParams(new TextDocumentIdentifier(uri));
         return server.getTextDocumentService()
                 .documentSymbol(params)
+                .get(REQUEST_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+    }
+
+    List<Either<Command, CodeAction>> codeAction(String uri, Range range, List<Diagnostic> diagnostics)
+            throws ExecutionException, InterruptedException, TimeoutException {
+        CodeActionParams params = new CodeActionParams(new TextDocumentIdentifier(uri), range,
+                new CodeActionContext(diagnostics));
+        return server.getTextDocumentService()
+                .codeAction(params)
                 .get(REQUEST_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
     }
 
@@ -405,9 +423,25 @@ final class LspServerSession implements AutoCloseable {
         textDocument.setDefinition(new DefinitionCapabilities());
         textDocument.setReferences(new ReferencesCapabilities());
         textDocument.setCompletion(new CompletionCapabilities());
+        textDocument.setCodeAction(codeActionCapabilities());
         ClientCapabilities capabilities = new ClientCapabilities();
         capabilities.setWorkspace(workspace);
         capabilities.setTextDocument(textDocument);
+        return capabilities;
+    }
+
+    /**
+     * Literal code actions with preferred marks and no lazy resolve: the editor
+     * applies the edit the server sends with the action, so no data round trip
+     * is advertised.
+     */
+    private static CodeActionCapabilities codeActionCapabilities() {
+        CodeActionKindCapabilities kinds = new CodeActionKindCapabilities(List.of(CodeActionKind.QuickFix,
+                CodeActionKind.Refactor, CodeActionKind.RefactorExtract, CodeActionKind.RefactorInline,
+                CodeActionKind.RefactorRewrite, CodeActionKind.Source, CodeActionKind.SourceOrganizeImports));
+        CodeActionCapabilities capabilities = new CodeActionCapabilities(
+                new CodeActionLiteralSupportCapabilities(kinds), Boolean.FALSE);
+        capabilities.setIsPreferredSupport(Boolean.TRUE);
         return capabilities;
     }
 
