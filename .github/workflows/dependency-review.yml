@@ -1,0 +1,38 @@
+name: Dependency review
+
+on:
+  pull_request:
+    branches: [main]
+  merge_group:
+    types: [checks_requested]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  dependency-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge queue entry (dependency review already ran on the pull request)
+        if: github.event_name == 'merge_group'
+        run: |
+          echo "Merge group entry: the dependency review was already evaluated on the pull_request event."
+
+      - name: Dependency review
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+          allow-licenses: >-
+            Apache-2.0, MIT, MIT-0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD,
+            Unlicense, Zlib, EPL-1.0, EPL-2.0, MPL-2.0,
+            LGPL-2.1-only, LGPL-2.1-or-later, LGPL-3.0-only, LGPL-3.0-or-later,
+            GPL-2.0-only WITH Classpath-exception-2.0,
+            GPL-2.0-or-later WITH Classpath-exception-2.0,
+            CDDL-1.0, CDDL-1.1, UPL-1.0, CC0-1.0
+          allow-dependencies-licenses: >-
+            pkg:maven/io.quarkus.platform/quarkus-bom,
+            pkg:maven/io.quarkus.platform/quarkus-maven-plugin,
+            pkg:maven/io.netty/netty-bom
+          comment-summary-in-pr: on-failure
