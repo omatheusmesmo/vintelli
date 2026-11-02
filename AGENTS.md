@@ -71,7 +71,12 @@ proven on the native runner, not just on the JVM.
   `@QuarkusIntegrationTest`. Unit tests stay `*Test` and run on the JVM.
 - Integration tests run outside the app process and cannot inject its beans.
   Make the behavior observable through the headless surface (HTTP, the MCP
-  endpoint, or a CLI command) and assert there. Do not drive `--tui` from ITs.
+  endpoint, or a CLI command) and assert there. Behavior checks never drive
+  `--tui`; the one exception is the startup smoke test `VintelliTuiStartupIT`,
+  which drives `--tui` headlessly through TamboUI's tape playback (`tamboui.record.config`) to prove
+  the real terminal backend starts. Running the TUI by hand to look at a
+  change is fine, but keep it occasional: no screenshot after every edit. The
+  proof of a change is its automated test.
 - External collaborators (IntelliJ MCP server, jdtls, agents) are replaced by
   twins: fake servers started by a `QuarkusTestResourceLifecycleManager` in
   the test JVM, wired to the app through the config properties the manager
