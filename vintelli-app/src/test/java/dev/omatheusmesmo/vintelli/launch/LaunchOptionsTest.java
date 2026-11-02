@@ -31,11 +31,19 @@ class LaunchOptionsTest {
     }
 
     @Test
-    void debugAloneStillServesHeadless() {
+    void debugAloneOpensTheTui() {
         LaunchOptions options = parse(Map.of(), "--debug");
         assertTrue(options.debug());
-        assertEquals(RunMode.SERVER, options.mode());
+        assertEquals(RunMode.TUI, options.mode());
         assertEquals(List.of(), options.args());
+    }
+
+    @Test
+    void debugBeforeServeKeepsTheHeadlessServer() {
+        LaunchOptions options = parse(Map.of(), "--debug", "serve");
+        assertTrue(options.debug());
+        assertEquals(RunMode.SERVER, options.mode());
+        assertEquals(List.of("serve"), options.args());
     }
 
     @Test

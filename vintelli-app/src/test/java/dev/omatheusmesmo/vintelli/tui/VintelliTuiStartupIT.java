@@ -14,12 +14,14 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 import io.quarkus.test.junit.QuarkusIntegrationTest;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * Starts the packaged runner (the Mandrel image under {@code -Dnative}, the
- * runnable jar otherwise) with {@code --tui} and drives it headlessly through
+ * runnable jar otherwise) with no arguments and with the {@code --tui} alias,
+ * and drives it headlessly through
  * TamboUI's Recording and Playback: a VHS tape waits for the menu bar and then
  * quits, and the frames are written to an asciinema cast. TamboUI resolves its
  * terminal backend through the ServiceLoader, which the native build disables,
@@ -44,8 +46,9 @@ class VintelliTuiStartupIT {
     @TempDir
     Path workDir;
 
-    @Test
-    void theTuiStartsAndDrawsTheMenuBarThroughTapePlayback() throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = { false, true })
+    void theTuiStartsAndDrawsTheMenuBarThroughTapePlayback(boolean explicitTui) throws Exception {
         Path tape = Files.writeString(workDir.resolve("startup.tape"), TAPE);
         Path cast = workDir.resolve("startup.cast");
         Path config = Files.createDirectories(workDir.resolve("config"));
@@ -59,7 +62,9 @@ class VintelliTuiStartupIT {
                 "-Dquarkus.log.file.enabled=false",
                 "-Dvintelli.config.dir=" + config);
         List<String> command = new ArrayList<>(runner(options));
-        command.add("--tui");
+        if (explicitTui) {
+            command.add("--tui");
+        }
 
         Process process = new ProcessBuilder(command).start();
         process.getOutputStream().close();
