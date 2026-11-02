@@ -12,6 +12,7 @@ import dev.omatheusmesmo.vintelli.api.capability.CallHierarchyCapability;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityRegistry;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilitySelection;
+import dev.omatheusmesmo.vintelli.api.capability.CodeActionCapability;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability;
 import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability;
 import dev.omatheusmesmo.vintelli.lsp.CodeReference;
@@ -201,6 +202,29 @@ public final class LspResource {
         }).orElseGet(() -> rejected("file is required"));
     }
 
+    @GET
+    @Path("/code-actions")
+    @Blocking
+    public RestResponse<LspReply> codeActions(@QueryParam("file") String file,
+                                              @QueryParam("line") @DefaultValue("0") int line,
+                                              @QueryParam("column") @DefaultValue("0") int column,
+                                              @QueryParam("endLine") Integer endLine,
+                                              @QueryParam("endColumn") Integer endColumn) {
+        if (!enabled) {
+            return disabled();
+        }
+        return optionalFile(file)
+                .map(name -> {
+                    CodeActionCapability.SourceRange range = new CodeActionCapability.SourceRange(line, column,
+                            endLine == null ? line : endLine, endColumn == null ? column : endColumn);
+                    return overPort(registry.codeActions(),
+                            provider -> provider.codeActions(FileSystems.getDefault().getPath(name), range,
+                                    problemsOverlapping(name, range)),
+                            actions -> lines(actions, LspResource::codeActionLine));
+                })
+                .orElseGet(() -> rejected("file is required"));
+    }
+
     @POST
     @Path("/shutdown")
     @Blocking
@@ -211,6 +235,45 @@ public final class LspResource {
         client.close();
         return RestResponse.status(RestResponse.Status.OK,
                 new LspReply("SHUTDOWN", "the language server session was shut down", ""));
+    }
+
+    /**
+     * The problems the diagnostics port reports for the file that touch the range,
+     * handed to the code action request as context; an unavailable diagnostics
+     * port leaves the context empty instead of failing the request.
+     */
+    private List<DiagnosticsCapability.Diagnostic> problemsOverlapping(String file,
+            CodeActionCapability.SourceRange range) {
+        CapabilitySelection<DiagnosticsCapability> selection = registry.diagnostics();
+        if (!selection.isAvailable()) {
+            return List.of();
+        }
+        var path = FileSystems.getDefault().getPath(file);
+        CapabilityResult<List<DiagnosticsCapability.Diagnostic>> problems =
+                ((CapabilitySelection.Selected<DiagnosticsCapability>) selection).provider().diagnostics(path);
+        if (!(problems instanceof CapabilityResult.Ok<List<DiagnosticsCapability.Diagnostic>> ok)) {
+            return List.of();
+        }
+        return ok.value().stream()
+                .filter(problem -> problem.startLine() <= range.endLine() && problem.endLine() >= range.startLine())
+                .toList();
+    }
+
+    private static String codeActionLine(CodeActionCapability.CodeAction action) {
+        StringBuilder line = new StringBuilder(action.title())
+                .append(" [").append(action.kind().isBlank() ? "command" : action.kind()).append(']');
+        if (action.preferred()) {
+            line.append(" preferred");
+        }
+        if (action.edit() != null) {
+            int textEdits = action.edit().documents().stream()
+                    .mapToInt(document -> document.edits().size()).sum();
+            line.append(" edits=").append(textEdits).append(" unsupported=").append(action.edit().unsupported().size());
+        }
+        if (action.command() != null) {
+            line.append(" command=").append(action.command().identifier());
+        }
+        return line.toString();
     }
 
     private static Optional<String> optionalFile(String file) {

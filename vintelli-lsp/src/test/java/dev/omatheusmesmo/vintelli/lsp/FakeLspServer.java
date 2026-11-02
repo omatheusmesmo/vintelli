@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -20,6 +21,14 @@ import org.eclipse.lsp4j.CallHierarchyItem;
 import org.eclipse.lsp4j.CallHierarchyOutgoingCall;
 import org.eclipse.lsp4j.CallHierarchyOutgoingCallsParams;
 import org.eclipse.lsp4j.CallHierarchyPrepareParams;
+import org.eclipse.lsp4j.CodeAction;
+import org.eclipse.lsp4j.CodeActionKind;
+import org.eclipse.lsp4j.CodeActionParams;
+import org.eclipse.lsp4j.Command;
+import org.eclipse.lsp4j.CreateFile;
+import org.eclipse.lsp4j.TextDocumentEdit;
+import org.eclipse.lsp4j.TextEdit;
+import org.eclipse.lsp4j.WorkspaceEdit;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionList;
 import org.eclipse.lsp4j.CompletionOptions;
@@ -46,13 +55,17 @@ import org.eclipse.lsp4j.MessageType;
 import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.PublishDiagnosticsParams;
 import org.eclipse.lsp4j.Range;
+import org.eclipse.lsp4j.ResourceOperation;
 import org.eclipse.lsp4j.ReferenceParams;
 import org.eclipse.lsp4j.ServerCapabilities;
 import org.eclipse.lsp4j.ServerInfo;
 import org.eclipse.lsp4j.SymbolKind;
 import org.eclipse.lsp4j.TextDocumentSyncKind;
 import org.eclipse.lsp4j.jsonrpc.Launcher;
+import org.eclipse.lsp4j.jsonrpc.ResponseErrorException;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
+import org.eclipse.lsp4j.jsonrpc.messages.ResponseError;
+import org.eclipse.lsp4j.jsonrpc.messages.ResponseErrorCode;
 import org.eclipse.lsp4j.launch.LSPLauncher;
 import org.eclipse.lsp4j.services.LanguageClient;
 import org.eclipse.lsp4j.services.LanguageClientAware;
@@ -169,6 +182,7 @@ public final class FakeLspServer {
             capabilities.setCompletionProvider(new CompletionOptions());
             capabilities.setCallHierarchyProvider(true);
             capabilities.setDocumentSymbolProvider(true);
+            capabilities.setCodeActionProvider(true);
             return CompletableFuture.completedFuture(new InitializeResult(capabilities,
                     new ServerInfo("fake-language-server", "1.0.0")));
         }
@@ -326,6 +340,55 @@ public final class FakeLspServer {
             clazz.setChildren(java.util.List.of(method));
             return java.util.concurrent.CompletableFuture.completedFuture(
                     java.util.List.of(org.eclipse.lsp4j.jsonrpc.messages.Either.forRight(clazz)));
+        }
+
+        /**
+         * Answers by the start line of the requested range, so one twin serves every
+         * code action failure mode: line 0 a quick fix with a bare command, line 1 an
+         * empty list, line 2 an error response, line 3 an edit without a range (a
+         * malformed payload) and line 4 a file creation the editor cannot apply.
+         */
+        @Override
+        public CompletableFuture<List<Either<Command, CodeAction>>> codeAction(CodeActionParams params) {
+            server.trace("codeAction");
+            String uri = params.getTextDocument().getUri();
+            return switch (params.getRange().getStart().getLine()) {
+                case 0 -> CompletableFuture.completedFuture(List.of(
+                        Either.forRight(quickFix(uri)),
+                        Either.forLeft(new Command("Run the fake fixer", "fake.fixer"))));
+                case 1 -> CompletableFuture.completedFuture(List.of());
+                case 2 -> CompletableFuture.failedFuture(new ResponseErrorException(new ResponseError(
+                        ResponseErrorCode.InternalError, "the fake server cannot compute fixes", null)));
+                case 3 -> CompletableFuture.completedFuture(List.of(Either.forRight(malformedFix())));
+                default -> CompletableFuture.completedFuture(List.of(Either.forRight(createFileFix(uri))));
+            };
+        }
+
+        private static CodeAction quickFix(String uri) {
+            CodeAction fix = new CodeAction("Add missing import java.util.List");
+            fix.setKind(CodeActionKind.QuickFix);
+            fix.setIsPreferred(true);
+            fix.setEdit(new WorkspaceEdit(Map.of(uri, List.of(new TextEdit(
+                    new Range(new Position(0, 0), new Position(0, 0)), "import java.util.List;\n")))));
+            return fix;
+        }
+
+        private static CodeAction malformedFix() {
+            TextEdit broken = new TextEdit();
+            broken.setNewText("import java.util.List;\n");
+            CodeAction fix = new CodeAction("Add the import without a range");
+            fix.setKind(CodeActionKind.QuickFix);
+            fix.setEdit(new WorkspaceEdit(Map.of("file:///fake/Fake.java", List.of(broken))));
+            return fix;
+        }
+
+        private static CodeAction createFileFix(String uri) {
+            CodeAction fix = new CodeAction("Create the missing class");
+            fix.setKind(CodeActionKind.QuickFix);
+            List<Either<TextDocumentEdit, ResourceOperation>> changes = List.of(
+                    Either.forRight(new CreateFile(uri.replace("Fake.java", "Missing.java"))));
+            fix.setEdit(new WorkspaceEdit(changes));
+            return fix;
         }
 
         @Override

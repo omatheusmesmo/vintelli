@@ -12,6 +12,7 @@ public enum CapabilityType {
     READ_FILE("read-file"),
     DIAGNOSTICS("diagnostics"),
     CALL_HIERARCHY("call-hierarchy"),
+    CODE_ACTION("code-action"),
     EDITOR_BRIDGE("editor-bridge"),
     VERSION_CONTROL("vcs");
 
