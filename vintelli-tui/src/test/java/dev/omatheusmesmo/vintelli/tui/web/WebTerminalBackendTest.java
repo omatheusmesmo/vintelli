@@ -72,6 +72,18 @@ class WebTerminalBackendTest {
     }
 
     @Test
+    void mouseCaptureRequestsDragTrackingWithSgrCoordinates() throws Exception {
+        List<String> chunks = new ArrayList<>();
+        WebTerminalBackend backend = new WebTerminalBackend(chunks::add);
+
+        backend.enableMouseCapture();
+        backend.disableMouseCapture();
+
+        assertEquals(List.of("\u001b[?1002h\u001b[?1006h", "\u001b[?1002l\u001b[?1003l\u001b[?1006l"),
+                chunks);
+    }
+
+    @Test
     void inputQueuePeeksThenReadsAndReportsIdleTime() throws Exception {
         WebTerminalBackend backend = backendSink();
         assertEquals(-2, backend.peek(1));

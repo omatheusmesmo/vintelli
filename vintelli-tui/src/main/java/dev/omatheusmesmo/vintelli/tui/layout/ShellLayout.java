@@ -7,6 +7,10 @@ import java.util.Set;
 public final class ShellLayout {
     public static final double DEFAULT_PROJECT_RATIO = 34.0 / 120;
     public static final double DEFAULT_BOTTOM_RATIO = 9.0 / 40;
+    public static final int MIN_PROJECT_WIDTH = 12;
+    public static final int MIN_EDITOR_WIDTH = 16;
+    public static final int MIN_BOTTOM_HEIGHT = 3;
+    public static final int MIN_EDITOR_HEIGHT = 4;
     private double projectRatio;
     private double bottomRatio;
     private final Set<String> allWindows;
@@ -71,11 +75,11 @@ public final class ShellLayout {
     }
 
     public int projectWidth(int availableWidth) {
-        return cells(projectRatio, availableWidth, 12, 16);
+        return cells(projectRatio, availableWidth, MIN_PROJECT_WIDTH, MIN_EDITOR_WIDTH);
     }
 
     public int bottomHeight(int availableHeight) {
-        return cells(bottomRatio, availableHeight, 3, 4);
+        return cells(bottomRatio, availableHeight, MIN_BOTTOM_HEIGHT, MIN_EDITOR_HEIGHT);
     }
 
     public void resizeProject(int delta, int availableWidth) {
@@ -89,14 +93,16 @@ public final class ShellLayout {
     /** Set the left panel size from a splitter drag, measured relative to the main area's left edge. */
     public void projectWidth(int requestedCells, int availableWidth) {
         if (availableWidth > 0) {
-            projectRatio = (double) clampCells(requestedCells, availableWidth, 12, 16) / availableWidth;
+            projectRatio = (double) clampCells(requestedCells, availableWidth, MIN_PROJECT_WIDTH, MIN_EDITOR_WIDTH)
+                    / availableWidth;
         }
     }
 
     /** Set the bottom panel size from a splitter drag, measured up from the content area's bottom. */
     public void bottomHeight(int requestedCells, int availableHeight) {
         if (availableHeight > 0) {
-            bottomRatio = (double) clampCells(requestedCells, availableHeight, 3, 4) / availableHeight;
+            bottomRatio = (double) clampCells(requestedCells, availableHeight, MIN_BOTTOM_HEIGHT, MIN_EDITOR_HEIGHT)
+                    / availableHeight;
         }
     }
 

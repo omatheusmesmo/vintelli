@@ -58,6 +58,7 @@ import dev.tamboui.tui.event.Event;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
 import dev.tamboui.tui.event.MouseEvent;
+import dev.tamboui.tui.event.MouseEventKind;
 import dev.tamboui.style.Style;
 import dev.tamboui.widgets.common.ScrollBarPolicy;
 import jakarta.enterprise.inject.Instance;
@@ -160,6 +161,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     private enum VcsWriteAction { STAGE, UNSTAGE, COMMIT, SWITCH_BRANCH }
 
+    private enum SplitterDrag { PROJECT, BOTTOM }
+
     private enum VcsPrompt { NONE, CONFIRM, COMMIT_MESSAGE, BRANCH_NAME }
 
     private final ShellThemes themes;
@@ -175,6 +178,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private final ShellLayout shellLayout;
     private final ShellLayoutStore layoutStore;
     private volatile DockElement layoutDock;
+    private Rect shellArea = Rect.ZERO;
+    private boolean userResizedLayout;
+    private SplitterDrag splitterDrag;
+    private boolean splitterChanged;
     private int nextDiagnosticIndex;
     private final Map<ToolWindow.Anchor, List<ToolWindow>> windowsByAnchor;
     private final ReentrantLock frameLock = new ReentrantLock();
@@ -245,6 +252,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 false, toolWindows, null);
     }
 
+    VintelliShell(List<ToolWindow> toolWindows, ShellState state, ShellThemes themes, ShellLayoutStore layoutStore) {
+        this(toolWindows, state, () -> Keymap.defaultKeymap(toolWindows), themes, null, List.of(), null, List.of(),
+                false, toolWindows, null, layoutStore);
+    }
+
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state, ShellThemes themes,
             CapabilityRegistry capabilityRegistry) {
         this(toolWindows, state, () -> Keymap.defaultKeymap(toolWindows), themes, null, List.of(), capabilityRegistry,
@@ -291,6 +303,15 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             CapabilityRegistry capabilityRegistry, List<VersionControlCapability> vcsProviders,
             boolean persistLayout, List<? extends StatusBarWidgetContributor> statusBarContributors,
             ProjectFileOperations fileOperations) {
+        this(toolWindows, state, keymapSupplier, themes, projectSearch, navigationProviders, capabilityRegistry,
+                vcsProviders, persistLayout, statusBarContributors, fileOperations, null);
+    }
+
+    private VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
+            ShellThemes themes, ProjectSearch projectSearch, List<NavigationCapability> navigationProviders,
+            CapabilityRegistry capabilityRegistry, List<VersionControlCapability> vcsProviders,
+            boolean persistLayout, List<? extends StatusBarWidgetContributor> statusBarContributors,
+            ProjectFileOperations fileOperations, ShellLayoutStore layoutStoreOverride) {
         this.themes = themes;
         this.state = state;
         this.projectSearch = projectSearch;
@@ -349,7 +370,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         Path projectRoot = editor == null ? Path.of("").toAbsolutePath().normalize() : editor.project();
         Path configRoot = persistLayout ? ConfigDirectory.configRoot(ConfigDirectory.sharedConfigDir(),
                 System.getenv("XDG_CONFIG_HOME"), System.getenv("APPDATA"), System.getProperty("user.home")) : null;
-        this.layoutStore = new ShellLayoutStore(configRoot, projectRoot);
+        this.layoutStore = layoutStoreOverride == null ? new ShellLayoutStore(configRoot, projectRoot)
+                : layoutStoreOverride;
         java.util.Set<String> allWindowIds = this.toolWindows.stream().map(ToolWindow::id).collect(java.util.stream.Collectors.toSet());
         this.shellLayout = layoutStore.load(allWindowIds);
         this.windowsByAnchor = this.toolWindows.stream()
@@ -363,9 +385,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         syncedFileIndex = 0;
         this.toolTabs = toolWindowTabs();
         this.projectList = projectPanel();
-        this.lockedProjectList = new LockedElement(projectList, frameLock, this);
+        this.lockedProjectList = new LockedElement(projectList, frameLock, this, true, false);
         this.rootBase = buildRootContent();
-        this.lockedRoot = locked(rootBase);
+        this.lockedRoot = new LockedElement(rootBase, frameLock, this, false, true);
         // Initialize active index for each anchor to first window
         for (ToolWindow.Anchor anchor : ToolWindow.Anchor.values()) {
             List<ToolWindow> windows = windowsByAnchor.getOrDefault(anchor, List.of());
@@ -421,8 +443,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         if (uiWorkQueue != null) {
             uiWorkQueue.drain();
         }
-        boolean persisted = layoutStore.file() != null && Files.isRegularFile(layoutStore.file());
-        Constraint projectWidth = persisted ? ratioConstraint(shellLayout.projectRatio())
+        boolean persisted = userResizedLayout || layoutStore.file() != null && Files.isRegularFile(layoutStore.file());
+        Constraint projectWidth = persisted ? Constraint.length(shellLayout.projectWidth(availableWidth()))
                 : Constraint.length(PROJECT_PANEL_WIDTH);
         Constraint bottomHeight = persisted ? ratioConstraint(shellLayout.bottomRatio())
                 : Constraint.length(TOOL_WINDOW_HEIGHT + 2);
@@ -834,10 +856,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
      * frame or an inspect render.
      */
     private Element locked(Element delegate) {
-        return new LockedElement(delegate, frameLock, null);
+        return new LockedElement(delegate, frameLock, null, false, false);
     }
 
-    private Panel centerPanel() {
+    private Element centerPanel() {
         centerPanel = Toolkit.panel(Toolkit.lazy(this::editorContent))
                 .title("Editor")
                 .rounded()
@@ -845,7 +867,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 .addClass("tool-panel")
                 .focusable()
                 .fill();
-        return centerPanel;
+        return new LockedElement(centerPanel, frameLock, this, false, false);
     }
 
     private Element statusBarEntry() {
@@ -978,8 +1000,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         ActionSurface previous = actionSurface.get();
         actionSurface.set(surface == null ? ActionSurface.TUI : surface);
         try {
-            if (event instanceof MouseEvent mouse && (mouse.isClick() || mouse.isScroll())) {
+            if (event instanceof MouseEvent mouse) {
                 return handleMouse(mouse);
+            }
+            if (event instanceof KeyEvent && splitterDrag != null) {
+                finishSplitterDrag();
             }
             return accept(event);
         } finally {
@@ -989,6 +1014,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     private EventResult handleMouse(MouseEvent mouse) {
+        EventResult splitterResult = handleSplitterMouse(mouse);
+        if (splitterResult == EventResult.HANDLED) {
+            return splitterResult;
+        }
         KeymapParts parts = overlays();
         if (mouse.isClick() && mouse.y() == 0) {
             int menu = menuAt(mouse.x());
@@ -1025,6 +1054,106 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             }
         }
         return EventResult.UNHANDLED;
+    }
+
+    /**
+     * Captures only the editor panel's rendered border cells. Those are the
+     * visible boundaries between the project/editor and editor/tool panes;
+     * ordinary clicks continue to the panel, tree, tabs and tool windows.
+     */
+    private EventResult handleSplitterMouse(MouseEvent mouse) {
+        if (splitterDrag != null) {
+            if (mouse.isRelease()) {
+                finishSplitterDrag();
+                return EventResult.HANDLED;
+            }
+            if (mouse.kind() == MouseEventKind.DRAG && mouse.isLeftButton()) {
+                resizeSplitter(mouse);
+                return EventResult.HANDLED;
+            }
+            if (mouse.kind() == MouseEventKind.MOVE
+                    || mouse.isPress()) {
+                finishSplitterDrag();
+            }
+        }
+        if (!mouse.isPress() || !mouse.isLeftButton() || splitterOverlayOpen()) {
+            return EventResult.UNHANDLED;
+        }
+        Rect panel = centerPanel == null ? Rect.ZERO : centerPanel.renderedArea();
+        if (panel.width() <= 0 || panel.height() <= 0 || shellArea.width() <= 0 || shellArea.height() <= 1) {
+            return EventResult.UNHANDLED;
+        }
+        int right = panel.x() + panel.width() - 1;
+        int bottom = panel.y() + panel.height() - 1;
+        if (mouse.y() == bottom && mouse.x() >= panel.x() && mouse.x() <= right) {
+            splitterDrag = SplitterDrag.BOTTOM;
+        } else if (mouse.x() == panel.x() && mouse.y() >= panel.y() && mouse.y() <= bottom) {
+            splitterDrag = SplitterDrag.PROJECT;
+        } else {
+            return EventResult.UNHANDLED;
+        }
+        splitterChanged = false;
+        return EventResult.HANDLED;
+    }
+
+    private boolean splitterOverlayOpen() {
+        KeymapParts parts = overlays();
+        return parts.menuPopup().isOpen() || parts.commandPalette().isOpen() || parts.keymapHelp().isOpen()
+                || parts.searchModel() != null && parts.searchModel().isOpen();
+    }
+
+    private void resizeSplitter(MouseEvent mouse) {
+        if (mouse.x() < 0 || mouse.y() < 0 || shellArea.width() <= 0 || shellArea.height() <= 1
+                || centerPanel == null) {
+            return;
+        }
+        Rect panel = centerPanel.renderedArea();
+        if (panel.width() <= 0 || panel.height() <= 0 || layoutDock == null) {
+            return;
+        }
+        if (splitterDrag == SplitterDrag.PROJECT) {
+            int available = availableWidth();
+            if (available < ShellLayout.MIN_PROJECT_WIDTH + ShellLayout.MIN_EDITOR_WIDTH) {
+                return;
+            }
+            userResizedLayout = true;
+            shellLayout.projectWidth(mouse.x() - shellArea.x(), available);
+            int width = shellLayout.projectWidth(available);
+            layoutDock.leftWidth(Constraint.length(width));
+            splitterChanged = true;
+            status = "Project panel: " + width + " columns";
+        } else if (splitterDrag == SplitterDrag.BOTTOM) {
+            int available = shellArea.height() - 1;
+            if (available < ShellLayout.MIN_BOTTOM_HEIGHT + ShellLayout.MIN_EDITOR_HEIGHT) {
+                return;
+            }
+            userResizedLayout = true;
+            int mainTop = shellArea.y() + 1;
+            int editorHeight = mouse.y() - mainTop + 1;
+            shellLayout.bottomHeight(available - editorHeight, available);
+            int height = shellLayout.bottomHeight(available);
+            layoutDock.bottomHeight(Constraint.length(height));
+            splitterChanged = true;
+            status = "Tool window height: " + height + " rows";
+        }
+    }
+
+    private void finishSplitterDrag() {
+        if (splitterDrag != null && splitterChanged) {
+            persistLayout();
+        }
+        splitterDrag = null;
+        splitterChanged = false;
+    }
+
+    /** Ends an in-progress drag when its input surface stops delivering events. */
+    public void cancelSplitterDrag() {
+        frameLock.lock();
+        try {
+            finishSplitterDrag();
+        } finally {
+            frameLock.unlock();
+        }
     }
 
     private static int menuAt(int x) {
@@ -1543,6 +1672,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         }
         shellLayout.projectWidth(projectList.renderedArea().width(), available);
         shellLayout.resizeProject(delta, available);
+        userResizedLayout = true;
         layoutDock.leftWidth(Constraint.length(shellLayout.projectWidth(available)));
         persistLayout();
         status = "Project panel: " + shellLayout.projectWidth(available) + " columns";
@@ -1556,19 +1686,29 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         }
         shellLayout.bottomHeight(Math.max(0, available - centerPanel.renderedArea().height()), available);
         shellLayout.resizeBottom(delta, available);
+        userResizedLayout = true;
         layoutDock.bottomHeight(Constraint.length(shellLayout.bottomHeight(available)));
         persistLayout();
         status = "Tool window height: " + shellLayout.bottomHeight(available) + " rows";
     }
 
     private int availableWidth() {
+        if (shellArea.width() > 0) {
+            return shellArea.width() - rightStripeWidth();
+        }
         Rect project = projectList.renderedArea();
         Rect center = centerPanel == null ? Rect.ZERO : centerPanel.renderedArea();
-        return project.width() + center.width()
-                + (windowsByAnchor.getOrDefault(ToolWindow.Anchor.RIGHT, List.of()).isEmpty() ? 0 : SIDE_PANEL_WIDTH);
+        return project.width() + center.width();
+    }
+
+    private int rightStripeWidth() {
+        return visibleWindows(ToolWindow.Anchor.RIGHT).isEmpty() ? 0 : SIDE_PANEL_WIDTH;
     }
 
     private int availableHeight() {
+        if (shellArea.height() > 1) {
+            return shellArea.height() - 1;
+        }
         Rect center = centerPanel == null ? Rect.ZERO : centerPanel.renderedArea();
         return center.height() + TOOL_WINDOW_HEIGHT + 2;
     }
@@ -2770,13 +2910,18 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
      * passthrough of id, focus, constraint and area keeps registration, the
      * focus chain and the cascade identical to the unwrapped tree.
      */
-    private record LockedElement(Element delegate, ReentrantLock lock, VintelliShell projectOwner) implements Element {
+    private record LockedElement(Element delegate, ReentrantLock lock, VintelliShell projectOwner,
+            boolean projectFocusOwner, boolean shellRoot) implements Element {
 
         @Override
         public void render(Frame frame, Rect area, RenderContext context) {
             lock.lock();
             try {
-                if (projectOwner != null && projectOwner.pendingProjectFocus && context instanceof DefaultRenderContext drc) {
+                if (shellRoot && projectOwner != null) {
+                    projectOwner.shellArea = area;
+                }
+                if (projectFocusOwner && projectOwner != null && projectOwner.pendingProjectFocus
+                        && context instanceof DefaultRenderContext drc) {
                     drc.focusManager().setFocus("project-panel");
                     projectOwner.pendingProjectFocus = false;
                 }
@@ -2795,7 +2940,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         public EventResult handleKeyEvent(KeyEvent event, boolean focused) {
             lock.lock();
             try {
-                if (focused && projectOwner != null && projectOwner.handleProjectKey(event)) {
+                if (projectOwner != null && projectOwner.splitterDrag != null) {
+                    projectOwner.finishSplitterDrag();
+                }
+                if (focused && projectFocusOwner && projectOwner != null && projectOwner.handleProjectKey(event)) {
                     return EventResult.HANDLED;
                 }
                 return delegate.handleKeyEvent(event, focused);
@@ -2808,6 +2956,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         public EventResult handleMouseEvent(MouseEvent event) {
             lock.lock();
             try {
+                if (projectOwner != null && projectOwner.handleSplitterMouse(event) == EventResult.HANDLED) {
+                    return EventResult.HANDLED;
+                }
                 return delegate.handleMouseEvent(event);
             } finally {
                 lock.unlock();

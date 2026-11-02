@@ -109,6 +109,7 @@ final class WebTerminalSession {
         try {
             active = TuiRunner.create(TuiConfig.builder()
                     .backend(backend)
+                    .mouseCapture(true)
                     .noTick()
                     .rawMode(false)
                     .shutdownHook(false)
@@ -125,6 +126,7 @@ final class WebTerminalSession {
         try {
             drawInputLoop(active, painter);
         } finally {
+            shell.cancelSplitterDrag();
             closeQuietly(active);
             sessionEnded.run();
         }
