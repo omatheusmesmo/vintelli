@@ -8,7 +8,10 @@ import com.agentclientprotocol.sdk.error.AcpErrorCodes;
 import com.agentclientprotocol.sdk.error.AcpProtocolException;
 import com.agentclientprotocol.sdk.spec.AcpSchema;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -37,15 +40,22 @@ public final class EchoAcpAgent {
     private static int protocolVersion = 1;
     private static boolean mcpHttp = true;
     private static boolean mcpSse;
+    private static Path lifecycleLog;
 
     public static void main(String[] args) {
         configure(args);
+        if (lifecycleLog != null) {
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> recordLifecycle("agent-exit")));
+        }
         AcpSyncAgent agent = AcpAgent.sync(new StdioAcpAgentTransport())
                 .agentInfo(new AcpSchema.Implementation("vintelli-echo", "0.1.0"))
                 .initializeHandler(request -> new AcpSchema.InitializeResponse(protocolVersion, capabilities(), List.of()))
                 .newSessionHandler(EchoAcpAgent::newSession)
                 .promptHandler(EchoAcpAgent::prompt)
-                .closeSessionHandler(request -> new AcpSchema.CloseSessionResponse())
+                .closeSessionHandler(request -> {
+                    recordLifecycle("session-close");
+                    return new AcpSchema.CloseSessionResponse();
+                })
                 .build();
         agent.run();
     }
@@ -58,7 +68,18 @@ public final class EchoAcpAgent {
                 List<String> transports = List.of(arg.substring("--mcp=".length()).split(","));
                 mcpHttp = transports.contains("http");
                 mcpSse = transports.contains("sse");
+            } else if (arg.startsWith("--lifecycle-log=")) {
+                lifecycleLog = Path.of(arg.substring("--lifecycle-log=".length()));
             }
+        }
+    }
+
+    private static void recordLifecycle(String event) {
+        if (lifecycleLog == null) return;
+        try {
+            Files.writeString(lifecycleLog, event + "\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        } catch (IOException lifecycleLogUnavailable) {
+            return;
         }
     }
 
@@ -90,6 +111,8 @@ public final class EchoAcpAgent {
         }
         if (text.contains("kinds")) {
             streamEveryKind(context);
+        } else if (text.contains("edit")) {
+            streamEdit(context);
         } else if (text.contains("permit")) {
             context.sendMessage("result:permission=" + context.askPermission("write notes.txt", AcpSchema.ToolKind.EDIT));
         } else if (text.contains("fs:")) {
@@ -124,6 +147,16 @@ public final class EchoAcpAgent {
                 AcpSchema.ToolKind.EXECUTE, AcpSchema.ToolCallStatus.COMPLETED, List.of(), List.of(), null, null, Map.of()));
         context.sendSessionUpdate(new AcpSchema.Plan(List.of(
                 new AcpSchema.PlanEntry("read the notes", AcpSchema.PlanEntryPriority.HIGH, AcpSchema.PlanEntryStatus.COMPLETED))));
+    }
+
+    private static void streamEdit(SyncPromptContext context) {
+        AcpSchema.ToolCallDiff diff = new AcpSchema.ToolCallDiff("diff", "src/Main.java", "old line", "new line");
+        context.sendSessionUpdate(new AcpSchema.ToolCall("tool_call", "Edit source", "tool-edit", "edit_file",
+                AcpSchema.ToolKind.EDIT, AcpSchema.ToolCallStatus.PENDING, List.of(diff), List.of(), null, null, Map.of()));
+        context.sendSessionUpdate(new AcpSchema.ToolCallUpdateNotification("tool_call_update", "tool-edit", "Edit source",
+                "edit_file", AcpSchema.ToolKind.EDIT, AcpSchema.ToolCallStatus.COMPLETED,
+                List.of(diff), List.of(), null, null, Map.of()));
+        context.sendMessage("edit streamed");
     }
 
     private static void exerciseFiles(SyncPromptContext context, String root) {

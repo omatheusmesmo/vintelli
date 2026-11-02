@@ -229,7 +229,7 @@ class VintelliShellPushTest {
         ShellThemes themes = themes();
         ToolWindowRegistry registry = new ToolWindowRegistry(List.of(
                 new RunToolWindow(() -> themes), new TerminalToolWindow(() -> themes),
-                new ProblemsToolWindow(() -> themes), new AcpAgentsToolWindow(() -> themes)));
+                new ProblemsToolWindow(() -> themes)));
         return new VintelliShell(registry.toolWindows(), new ShellState(), themes);
     }
 

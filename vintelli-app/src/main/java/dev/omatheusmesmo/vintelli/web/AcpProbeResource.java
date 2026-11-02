@@ -4,6 +4,7 @@ import com.agentclientprotocol.sdk.client.AcpSyncClient;
 import com.agentclientprotocol.sdk.spec.AcpError;
 import com.agentclientprotocol.sdk.spec.AcpSchema;
 import dev.omatheusmesmo.vintelli.acp.AcpAgentClientFactory;
+import dev.omatheusmesmo.vintelli.api.acp.AcpChatPort;
 import dev.omatheusmesmo.vintelli.core.acp.AcpAgentGate;
 import dev.omatheusmesmo.vintelli.core.acp.AcpGateException;
 import io.smallrye.common.annotation.Blocking;
@@ -18,6 +19,8 @@ import org.jboss.resteasy.reactive.RestResponse;
 import java.io.IOException;
 import java.util.List;
 import java.util.Set;
+import java.util.Collections;
+import java.util.ArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -45,10 +48,12 @@ public final class AcpProbeResource {
     private static final long STREAM_POLL_MILLIS = 50;
 
     private final AcpAgentClientFactory agents;
+    private final AcpChatPort chat;
 
     @Inject
-    AcpProbeResource(AcpAgentClientFactory agents) {
+    AcpProbeResource(AcpAgentClientFactory agents, AcpChatPort chat) {
         this.agents = agents;
+        this.chat = chat;
     }
 
     @POST
@@ -56,6 +61,63 @@ public final class AcpProbeResource {
     @Blocking
     public RestResponse<AcpProbeReply> session() {
         return answer(this::runFullSession);
+    }
+
+    /**
+     * Headless native-runner proof for the production chat-session service.
+     * The probe explicitly chooses its first advertised option; the TUI path
+     * instead blocks for the user's permission chooser response.
+     */
+    @POST
+    @Path("/chat-session")
+    @Blocking
+    public RestResponse<AcpProbeReply> chatSession() {
+        if (!agents.isConfigured()) {
+            return RestResponse.status(RestResponse.Status.NOT_FOUND, new AcpProbeReply("DISABLED", List.of(), ""));
+        }
+        List<String> phases = Collections.synchronizedList(new ArrayList<>());
+        String sessionId = null;
+        String state = "OK";
+        String detail = "";
+        try {
+            sessionId = chat.openSession(update -> {
+                if (update instanceof AcpChatPort.Message message) {
+                    phases.add("message:" + message.text());
+                } else if (update instanceof AcpChatPort.ToolCall tool) {
+                    phases.add("tool:" + tool.name() + ":" + tool.status() + ":" + tool.diff().replace('\n', '|'));
+                } else if (update instanceof AcpChatPort.TurnStopped stopped) {
+                    phases.add("turn:" + stopped.reason());
+                } else if (update instanceof AcpChatPort.Failure failure) {
+                    phases.add("failure:" + failure.message());
+                }
+            }, request -> {
+                phases.add("permission:pending:" + request.toolTitle());
+                return request.options().stream().findFirst()
+                        .map(option -> AcpChatPort.PermissionChoice.select(option.id()))
+                        .orElseGet(AcpChatPort.PermissionChoice::cancel);
+            });
+            phases.add("session:new:OPENED");
+            chat.prompt(sessionId, "permit");
+            chat.prompt(sessionId, "edit");
+            phases.add("session:prompt:COMPLETE");
+        } catch (Exception failure) {
+            state = "ERROR";
+            detail = failure.getClass().getSimpleName() + ": " + failure.getMessage();
+        } finally {
+            if (sessionId != null) {
+                try {
+                    chat.close(sessionId);
+                    phases.add("session:close:CLOSED");
+                } catch (RuntimeException failure) {
+                    phases.add("session:close:FAILED:" + failure.getClass().getSimpleName());
+                    if ("OK".equals(state)) {
+                        state = "ERROR";
+                        detail = failure.getMessage();
+                    }
+                }
+            }
+        }
+        return RestResponse.ok(new AcpProbeReply(state, List.copyOf(phases), detail));
     }
 
     @POST

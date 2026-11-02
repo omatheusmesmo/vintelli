@@ -37,7 +37,7 @@ final class ToolWindowElement extends StyledElement<ToolWindowElement> {
         this.height = height;
         id("tool-" + window.id());
         addClass("tool-window");
-        focusable(shell.isFocusedBottomToolWindow(window));
+        focusable(shell.isFocusedToolWindow(window));
         if (height < 0) {
             fill();
         } else {
