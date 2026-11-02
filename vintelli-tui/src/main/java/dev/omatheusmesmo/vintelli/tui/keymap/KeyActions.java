@@ -58,6 +58,12 @@ public final class KeyActions {
     public static final String VCS_UNSTAGE = "vcs_unstage";
     public static final String VCS_COMMIT = "vcs_commit";
     public static final String VCS_SWITCH_BRANCH = "vcs_switchBranch";
+    public static final String RUN_EXECUTE = "run.execute";
+    public static final String RUN_STOP = "run.stop";
+    public static final String RUN_REFRESH = "run.refresh";
+    public static final String RUN_SELECT_NEXT = "run.select-next";
+    public static final String RUN_SELECT_PREVIOUS = "run.select-previous";
+    public static final String TERMINAL_EXECUTE = "terminal.execute";
 
     public static List<KeyAction> shellActions() {
         return List.of(new KeyAction(MENU, "Open Menu", ""),
@@ -77,7 +83,11 @@ public final class KeyActions {
                 new KeyAction(PROJECT_NARROWER, "Narrow Project Panel", ""),
                 new KeyAction(BOTTOM_TALLER, "Grow Tool Window", ""),
                 new KeyAction(BOTTOM_SHORTER, "Shrink Tool Window", ""),
-                new KeyAction(SWITCH_THEME, "Switch Shell Theme", ""));
+                new KeyAction(SWITCH_THEME, "Switch Shell Theme", ""),
+                new KeyAction(RUN_EXECUTE, "Run Selected Configuration", ""),
+                new KeyAction(RUN_REFRESH, "Refresh Run Configurations", ""),
+                new KeyAction(RUN_STOP, "Stop Current Run", ""),
+                new KeyAction(TERMINAL_EXECUTE, "Execute Terminal Command", ""));
     }
 
     public static List<KeyAction> projectActions() {

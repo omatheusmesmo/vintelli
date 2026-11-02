@@ -110,6 +110,7 @@ class KeymapTest {
         // Catalog includes: basic actions, shell actions, and tool window activations
         Set<String> expected = Set.of(QUIT, MOVE_UP, MOVE_DOWN, SEARCH_EVERYWHERE, KEYMAP_HELP,
                 "shell_menu",
+                "run.execute", "run.refresh", "run.stop", "terminal.execute",
                 "editor_open", "editor_save", "editor_undo", "editor_redo", "editor_find",
                 "editor_close", "editor_nextTab", "editor_previousTab", "editor_definition",
                 "editor_usages", "editor_nextProblem", "editor_toggleImportFold", "navigation_goToFile", "navigation_findInFiles",

@@ -113,6 +113,12 @@ every traversal or symlink escape. A timeout
 and cancellation works the same way. Its providers are CDI beans, so the
 capability registry ranks them like every other provider.
 
+The Run tool window lists configurations from the selected `RunCapability`
+provider, shows the provider and its provenance, and sends output to the console.
+Use Up/Down or `j`/`k` to select a configuration, Enter or the Run toolbar
+action to start it, and Ctrl+C or Stop to request cancellation. Maven and
+Gradle goals/tasks remain available without IDEA; an IDEA provider is optional.
+
 Decisions of the local provider:
 
 - One shot terminal commands and interactive terminal sessions start inside
@@ -564,6 +570,14 @@ The surface is a guarded, authenticated, default-off surface:
   environment variables); no credentials ship with the application, so while
   none are configured every handshake stays on the 401 challenge. Browsers
   show their own login prompt once the surface is on.
+- Command-running actions are denied on the web surface by default, even for
+  an authenticated browser session. `vintelli.web.allowed-actions` is the
+  explicit comma-separated allow-list for actions such as `run.execute`,
+  `run.stop` and `terminal.execute`. It defaults to `none`; add action IDs to
+  allow selected commands. The local TUI allows actions by default; its optional
+  allow-list is `vintelli.tui.allowed-actions` (`*` means all command actions).
+  MCP-originated shell actions default to `none` via
+  `vintelli.mcp.allowed-actions`.
 
 To use the surface end to end, turn it on and configure one account and one
 browser origin (all runtime config, for example through environment):
@@ -600,11 +614,10 @@ Security notes for the browser terminal:
   limit or delay). Keep the surface on loopback or behind TLS and a
   reverse proxy that can throttle if needed.
 - The surface inherits every key handler of the shared shell, including any
-  tool window that handles keys. Today every tool window is a placeholder
-  whose `handleKey` returns `false`, so no command runs through it; a
-  follow-up issue (#161) tracks shipping the xterm.js client page, and the
-  per-surface action gate is tracked by #163. Any future command-running
-  tool window must be gated before the surface is enabled.
+  tool window that handles keys. The shell centrally authorizes named
+  command-running actions for every key, mouse and command-palette path. The
+  web allow-list stays empty unless an operator explicitly enables named
+  actions. A follow-up issue (#161) tracks shipping the xterm.js client page.
 - Concurrent sessions are capped by `vintelli.web.max-sessions` (default 4)
   and idle sessions (no client input) close after `vintelli.web.idle-timeout`
   (default `PT5M`). Each session costs one thread, one TamboUI runner and

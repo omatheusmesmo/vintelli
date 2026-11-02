@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Consumer;
 
 import io.modelcontextprotocol.json.McpJsonMapper;
@@ -20,9 +21,10 @@ import jakarta.inject.Singleton;
 /**
  * IDEA backed implementation of {@link RunCapability}: lists the run
  * configurations exposed by the IntelliJ MCP server and executes one of them
- * through {@code execute_run_configuration}. IDEA returns a single output
- * snapshot per run, so the output consumer receives the captured lines in one
- * batch and the handle is best effort (IDEA exposes no cancel tool).
+ * through {@code execute_run_configuration}. IDEA returns one output snapshot
+ * after the run finishes, so the output consumer receives the captured lines
+ * in one batch, followed by typed completion. The handle is best effort (IDEA
+ * exposes no cancel tool).
  */
 @Unremovable
 @Singleton
@@ -95,8 +97,16 @@ public final class IdeaRunCapability implements RunCapability {
 
     @Override
     public CapabilityResult<RunHandle> start(RunRequest request, Consumer<String> outputLines) {
+        return start(request, line -> outputLines.accept(line),
+                completion -> outputLines.accept(completion.summary()));
+    }
+
+    @Override
+    public CapabilityResult<RunHandle> start(RunRequest request, Consumer<String> outputLines,
+            Consumer<RunCompletion> completion) {
         Objects.requireNonNull(request, "request");
         Objects.requireNonNull(outputLines, "outputLines");
+        Objects.requireNonNull(completion, "completion");
         Map<String, Object> arguments = new java.util.LinkedHashMap<>();
         arguments.put("configurationName", request.configurationName());
         String projectPath = client.projectPath();
@@ -125,12 +135,20 @@ public final class IdeaRunCapability implements RunCapability {
             if (output.isEmpty()) {
                 outputLines.accept("(no output)");
             }
-            if (result.exitCode() != null) {
-                outputLines.accept("Run finished with exit code " + result.exitCode());
-            }
+            completion.accept(new RunCompletion(RunOutcome.EXITED, Optional.ofNullable(result.exitCode())));
         } catch (Exception failure) {
-            outputLines.accept(call.resultText());
+            return CapabilityResult.failed(new CapabilityFailure("Cannot parse run result", failure.getMessage()));
         }
-        return CapabilityResult.ok(() -> { /* IDEA exposes no cancel tool */ });
+        return CapabilityResult.ok(new RunHandle() {
+            @Override
+            public void cancel() {
+                // IDEA exposes no cancel tool.
+            }
+
+            @Override
+            public boolean supportsCancellation() {
+                return false;
+            }
+        });
     }
 }
