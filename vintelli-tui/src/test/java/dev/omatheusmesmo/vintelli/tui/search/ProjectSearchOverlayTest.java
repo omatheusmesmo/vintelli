@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -18,6 +19,9 @@ import dev.omatheusmesmo.vintelli.api.search.ProjectSearch;
 import dev.omatheusmesmo.vintelli.api.search.ProjectSearch.FileMatch;
 import dev.omatheusmesmo.vintelli.api.search.ProjectSearch.SearchTask;
 import dev.omatheusmesmo.vintelli.api.search.ProjectSearch.TextMatch;
+import dev.tamboui.buffer.Buffer;
+import dev.tamboui.layout.Rect;
+import dev.tamboui.terminal.Frame;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
 
@@ -57,14 +61,51 @@ class ProjectSearchOverlayTest {
         assertFalse(model.isOpen());
     }
 
+    @Test
+    void resultsWithAFailedCompletionRenderAnIncompleteNoticeAfterTheMatches() throws Exception {
+        FakeSearch search = new FakeSearch();
+        ProjectSearchModel model = new ProjectSearchModel(search);
+        ProjectSearchOverlay overlay = new ProjectSearchOverlay(model);
+        model.open(ProjectSearchModel.Mode.FILES);
+        search.fileCallbacks.getLast().accept(List.of(new FileMatch(Path.of("src/First.java"), 1)));
+        search.lastTask.completion().toCompletableFuture()
+                .completeExceptionally(new IOException("Access denied"));
+
+        Rect area = new Rect(0, 0, 80, 24);
+        Buffer buffer = Buffer.empty(area);
+        overlay.render(Frame.forTesting(buffer), area);
+
+        String rendered = contentText(buffer);
+        assertTrue(rendered.contains("src/First.java"), rendered);
+        assertTrue(rendered.contains("Results may be incomplete"), rendered);
+        assertTrue(rendered.contains("Access denied"), rendered);
+    }
+
+    private static String bufferText(Buffer buffer) {
+        StringBuilder text = new StringBuilder();
+        for (int y = 0; y < buffer.height(); y++) {
+            for (int x = 0; x < buffer.width(); x++) {
+                text.append(buffer.get(x, y).symbol());
+            }
+            text.append('\n');
+        }
+        return text.toString();
+    }
+
+    private static String contentText(Buffer buffer) {
+        return bufferText(buffer).replaceAll("[┌┐└┘─│]", " ").replaceAll("\\s+", " ");
+    }
+
     private static final class FakeSearch implements ProjectSearch {
         private final List<Consumer<List<FileMatch>>> fileCallbacks = new ArrayList<>();
         private final List<Consumer<List<TextMatch>>> textCallbacks = new ArrayList<>();
+        private SearchTask lastTask;
 
         @Override
         public SearchTask files(String query, Consumer<List<FileMatch>> results) {
             fileCallbacks.add(results);
-            return new FakeTask();
+            lastTask = new FakeTask();
+            return lastTask;
         }
 
         @Override
