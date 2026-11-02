@@ -33,8 +33,8 @@
         <aesh-readline.version>1.17</aesh-readline.version>
         <xterm.version>6.0.0</xterm.version>
         <xterm-addon-fit.version>0.11.0</xterm-addon-fit.version>
-        <compiler-plugin.version>3.15.0</compiler-plugin.version>
-        <enforcer-plugin.version>3.5.0</enforcer-plugin.version>
+        <compiler-plugin.version>3.16.0</compiler-plugin.version>
+        <enforcer-plugin.version>3.7.0</enforcer-plugin.version>
         <jandex-plugin.version>3.6.0</jandex-plugin.version>
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -44,7 +44,7 @@
         <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
         <quarkus.platform.version>3.40.1.1</quarkus.platform.version>
         <skipITs>true</skipITs>
-        <surefire-plugin.version>3.5.6</surefire-plugin.version>
+        <surefire-plugin.version>3.6.1</surefire-plugin.version>
     </properties>
 
     <modules>
