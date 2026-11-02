@@ -1,0 +1,104 @@
+name: Release Prepare
+
+on:
+  pull_request:
+    types: [closed]
+    paths:
+      - '.github/project.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-prepare
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Prepare release
+    # A merged pull request releases unless its body carries [skip release]. A manual dispatch always releases.
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.pull_request.merged == true && !contains(github.event.pull_request.body, '[skip release]')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.push.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Configure git author
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+      - name: Read current and next version
+        id: current
+        uses: mikefarah/yq@504fc38780cc46be8444ea1b72fb55919fc0bfb0 # v4.54.1
+        with:
+          cmd: yq '.release.current-version' .github/project.yml
+      - id: next
+        uses: mikefarah/yq@504fc38780cc46be8444ea1b72fb55919fc0bfb0 # v4.54.1
+        with:
+          cmd: yq '.release.next-version' .github/project.yml
+      - name: Validate the release versions
+        env:
+          CURRENT_VERSION: ${{ steps.current.outputs.result }}
+          NEXT_VERSION: ${{ steps.next.outputs.result }}
+        run: |
+          if [[ "$CURRENT_VERSION" == *SNAPSHOT* ]]; then
+            echo "::error::Cannot release a SNAPSHOT version: current-version is '$CURRENT_VERSION'."
+            exit 1
+          fi
+          if ! [[ "$CURRENT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::current-version must be a plain semver version like 0.1.0, got '$CURRENT_VERSION'."
+            exit 1
+          fi
+          if [[ "$NEXT_VERSION" != *-SNAPSHOT ]]; then
+            echo "::error::next-version must be a SNAPSHOT version like 999-SNAPSHOT, got '$NEXT_VERSION'."
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/${CURRENT_VERSION}" > /dev/null 2>&1; then
+            echo "::error::Tag ${CURRENT_VERSION} already exists. Set a new current-version."
+            exit 1
+          fi
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          java-version: "25"
+          distribution: temurin
+          cache: maven
+      - name: Prepare the release commit and tag
+        env:
+          CURRENT_VERSION: ${{ steps.current.outputs.result }}
+          NEXT_VERSION: ${{ steps.next.outputs.result }}
+        run: |
+          ./mvnw -B release:prepare \
+            -DreleaseVersion="${CURRENT_VERSION}" \
+            -DdevelopmentVersion="${NEXT_VERSION}" \
+            -DtagNameFormat='@{project.version}' \
+            -DpushChanges=false \
+            -DskipTests \
+            -Darguments="-DskipTests -DskipITs"
+          ./mvnw -B release:clean
+      - name: Push the release commits and tag
+        id: push
+        env:
+          CURRENT_VERSION: ${{ steps.current.outputs.result }}
+        run: |
+          git push origin "HEAD:refs/heads/main"
+          git push origin "refs/tags/${CURRENT_VERSION}"
+          echo "version=${CURRENT_VERSION}" >> "$GITHUB_OUTPUT"
+
+  perform:
+    name: Perform release
+    needs: [prepare]
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/release-perform.yml
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+    secrets: inherit

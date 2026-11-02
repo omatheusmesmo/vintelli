@@ -1,0 +1,59 @@
+name: Release Pre-Check
+
+on:
+  pull_request:
+    paths:
+      - '.github/project.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pre-release:
+    name: Validate release metadata
+    # Edits that carry [skip release] only change the file and never release, so the release checks do not apply.
+    if: ${{ !contains(github.event.pull_request.body, '[skip release]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject pull requests from forks
+        if: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+        run: |
+          echo "::error::Release pre-check cannot run for pull requests from forks."
+          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Read current and next version
+        id: current
+        uses: mikefarah/yq@504fc38780cc46be8444ea1b72fb55919fc0bfb0 # v4.54.1
+        with:
+          cmd: yq '.release.current-version' .github/project.yml
+      - name: Read next version
+        id: next
+        uses: mikefarah/yq@504fc38780cc46be8444ea1b72fb55919fc0bfb0 # v4.54.1
+        with:
+          cmd: yq '.release.next-version' .github/project.yml
+      - name: Validate the release versions
+        env:
+          CURRENT_VERSION: ${{ steps.current.outputs.result }}
+          NEXT_VERSION: ${{ steps.next.outputs.result }}
+        run: |
+          if [[ "$CURRENT_VERSION" == *SNAPSHOT* ]]; then
+            echo "::error::Cannot release a SNAPSHOT version: current-version is '$CURRENT_VERSION'."
+            exit 1
+          fi
+          if ! [[ "$CURRENT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::current-version must be a plain semver version like 0.1.0, got '$CURRENT_VERSION'."
+            exit 1
+          fi
+          if [[ "$NEXT_VERSION" != *-SNAPSHOT ]]; then
+            echo "::error::next-version must be a SNAPSHOT version like 999-SNAPSHOT, got '$NEXT_VERSION'."
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/${CURRENT_VERSION}" > /dev/null 2>&1; then
+            echo "::error::Tag ${CURRENT_VERSION} already exists. Set a new current-version."
+            exit 1
+          fi
+          echo "::notice::Release ${CURRENT_VERSION} is valid; next development version is ${NEXT_VERSION}."
