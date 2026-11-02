@@ -55,6 +55,7 @@ import dev.tamboui.toolkit.elements.TabsElement;
 import dev.tamboui.toolkit.elements.TextElement;
 import dev.tamboui.toolkit.event.EventResult;
 import dev.tamboui.toolkit.event.GlobalEventHandler;
+import dev.tamboui.toolkit.focus.FocusManager;
 import dev.tamboui.tui.event.Event;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
@@ -182,6 +183,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private final ShellLayout shellLayout;
     private final ShellLayoutStore layoutStore;
     private volatile DockElement layoutDock;
+    private volatile FocusManager focusManager;
+    private volatile Rect activeToolWindowArea = Rect.ZERO;
     private Rect shellArea = Rect.ZERO;
     private boolean userResizedLayout;
     private SplitterDrag splitterDrag;
@@ -1075,7 +1078,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             return EventResult.HANDLED;
         }
         ToolWindow activeWindow = activeBottomWindow();
-        if (activeWindow != null) {
+        if (activeWindow != null && contains(activeToolWindowArea, mouse)) {
             String action = activeWindow.actionForMouse(mouse);
             if (action != null) {
                 focusToolWindow(activeWindow);
@@ -1086,8 +1089,23 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 focusToolWindow(activeWindow);
                 return EventResult.HANDLED;
             }
+            if (mouse.isClick()) {
+                focusToolWindow(activeWindow);
+                return EventResult.HANDLED;
+            }
         }
         return EventResult.UNHANDLED;
+    }
+
+    private static boolean contains(Rect area, MouseEvent mouse) {
+        return mouse.x() >= area.x() && mouse.x() < area.x() + area.width()
+                && mouse.y() >= area.y() && mouse.y() < area.y() + area.height();
+    }
+
+    void renderedToolWindowArea(ToolWindow window, Rect area) {
+        if (window.anchor() == ToolWindow.Anchor.BOTTOM && window == activeBottomWindow()) {
+            activeToolWindowArea = area;
+        }
     }
 
     /**
@@ -2359,6 +2377,16 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     private void focusToolWindow(ToolWindow window) {
         focusedToolWindowId = window.id();
+        FocusManager manager = focusManager;
+        if (manager != null) {
+            manager.setFocus("tool-" + window.id());
+        }
+    }
+
+    boolean isFocusedBottomToolWindow(ToolWindow window) {
+        return window.anchor() == ToolWindow.Anchor.BOTTOM
+                && window == activeBottomWindow()
+                && window.id().equals(focusedToolWindowId);
     }
 
     private static boolean isCommandAction(String actionId) {
@@ -3003,6 +3031,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             try {
                 if (shellRoot && projectOwner != null) {
                     projectOwner.shellArea = area;
+                    if (context instanceof DefaultRenderContext drc) {
+                        projectOwner.focusManager = drc.focusManager();
+                    }
                 }
                 if (projectFocusOwner && projectOwner != null && projectOwner.pendingProjectFocus
                         && context instanceof DefaultRenderContext drc) {

@@ -102,6 +102,45 @@ Every change is expected to meet all of the following.
     spelling variants. File access is confined to the project root. Apply size
     and rate limits. Never put secrets in configuration or documentation.
 
+## TUI interaction contracts
+
+Interactive tool windows must have behavior tests in the assembled app test
+suite. A key or pointer handler returning `true` only says that it consumed an
+event; it does not prove that the visible selection, named action, focus, or
+scroll position changed correctly. Drive input through the supported TamboUI
+Pilot path and assert the resulting state. When Pilot has no helper for an
+event, such as a wheel event, dispatch it through the real TuiRunner event
+queue. Do not call a handler directly as a substitute for a Pilot route test.
+
+The test inventory lists every registered `ToolWindow`. A new window must be
+added to the inventory with either its contract scenarios or an explicit
+passive classification. Interactive windows with incomplete behavior remain
+listed as tracked gaps and are not counted as compliant. The inventory covers
+registered tool windows; custom TamboUI elements and overlays need their own
+contract tests and are not automatically covered by it.
+
+The completed splitter interaction (#194) is covered by
+`VintelliShellTest.pilotDragsTheProjectSplitterAndPersistsTheRenderedRatio`
+and `VintelliShellTest.pilotDragsTheBottomSplitterAndHandlesResizeAndTinyCoordinates`.
+The current non-window follow-ups are #195 for editor pointer behavior and #196
+for overlay navigation and modal routing. Structure is a registered tool
+window tracked by #197 and appears in the inventory as an incomplete component
+until its own behavior contract lands.
+
+For a new list window, add fixtures that render it in a real shell, drive both
+keyboard and pointer activation through Pilot, and assert that both select the
+same item and dispatch the same named action. Include a scrolled row, an
+out-of-bounds click, and a resized viewport so the test observes hit-testing
+against the latest rendered geometry. Use the fixture's negative example to
+confirm that a missing pointer route fails on the expected selection/action
+assertion. Add domain-specific checks for focus transfer, empty/loading/error
+states, overlays, or authorization when they apply.
+
+The contract tests are ordinary JUnit tests in `vintelli-app`, so the existing
+CI test discovery runs them. Run the TUI contract checks with the same
+`devui-testing_runTests` or `devui-testing_runTest` Quarkus Dev MCP tools used
+for other project tests. Do not create a separate opt-in command.
+
 ## Code style
 
 Reviewers enforce the following conventions.

@@ -8,6 +8,7 @@ import dev.tamboui.toolkit.element.Size;
 import dev.tamboui.toolkit.element.StyledElement;
 import dev.tamboui.toolkit.event.EventResult;
 import dev.tamboui.tui.event.KeyEvent;
+import dev.tamboui.tui.event.MouseEvent;
 import dev.tamboui.widgets.paragraph.Paragraph;
 
 /**
@@ -36,6 +37,7 @@ final class ToolWindowElement extends StyledElement<ToolWindowElement> {
         this.height = height;
         id("tool-" + window.id());
         addClass("tool-window");
+        focusable(shell.isFocusedBottomToolWindow(window));
         if (height < 0) {
             fill();
         } else {
@@ -49,6 +51,7 @@ final class ToolWindowElement extends StyledElement<ToolWindowElement> {
 
     @Override
     protected void renderContent(Frame frame, Rect area, RenderContext context) {
+        shell.renderedToolWindowArea(window, area);
         try {
             window.render(frame, area);
         } catch (RuntimeException failure) {
@@ -65,6 +68,11 @@ final class ToolWindowElement extends StyledElement<ToolWindowElement> {
     @Override
     public EventResult handleKeyEvent(KeyEvent event, boolean focused) {
         return focused ? shell.handle(event, ActionSurface.TUI) : EventResult.UNHANDLED;
+    }
+
+    @Override
+    public EventResult handleMouseEvent(MouseEvent event) {
+        return shell.handle(event, ActionSurface.TUI);
     }
 
     private static Paragraph failureParagraph(RenderContext context, RuntimeException failure) {

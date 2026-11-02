@@ -68,7 +68,8 @@ class RunToolWindowTest {
             assertEquals("idea:Second", provider.startedConfiguration.get());
             assertTrue(window.consoleLines().contains("Second output"));
             assertTrue(window.statusMessage().contains("Running idea:Second"));
-            String screen = renderedText(window, uiWork);
+            Rect toolArea = pilot.findElement("tool-run");
+            String screen = renderedText(window, uiWork, toolArea);
             assertTrue(screen.contains("Provider: idea · IDEA MCP"), screen);
             assertTrue(screen.contains("▶ Run [Enter]"), screen);
             assertTrue(screen.contains("Configurations"), screen);
@@ -81,7 +82,6 @@ class RunToolWindowTest {
             pilot.pause(Duration.ofMillis(50));
             uiWork.drain();
             assertTrue(window.statusMessage().contains("Running idea:Second"));
-            Rect toolArea = window.lastArea();
             pilot.click(toolArea.x() + 41, toolArea.y() + 2);
             assertTrue(provider.cancelled.await(5, TimeUnit.SECONDS));
             pilot.pause(Duration.ofMillis(50));
@@ -190,16 +190,21 @@ class RunToolWindowTest {
     }
 
     private static String renderedText(RunToolWindow window, UiWorkQueue uiWork) {
-        Buffer buffer = Buffer.empty(Rect.of(100, 30));
+        return renderedText(window, uiWork, Rect.of(100, 30));
+    }
+
+    private static String renderedText(RunToolWindow window, UiWorkQueue uiWork, Rect area) {
+        Buffer buffer = Buffer.empty(area);
         uiWork.drain();
-        window.render(Frame.forTesting(buffer), Rect.of(100, 30));
+        window.render(Frame.forTesting(buffer), area);
         return bufferText(buffer);
     }
 
     private static String bufferText(Buffer buffer) {
         StringBuilder text = new StringBuilder();
-        for (int row = 0; row < buffer.height(); row++) {
-            for (int column = 0; column < buffer.width(); column++) {
+        Rect area = buffer.area();
+        for (int row = area.y(); row < area.bottom(); row++) {
+            for (int column = area.x(); column < area.right(); column++) {
                 text.append(buffer.get(column, row).symbol());
             }
             text.append('\n');
