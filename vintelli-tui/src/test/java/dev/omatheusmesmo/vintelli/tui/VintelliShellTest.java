@@ -5,6 +5,8 @@ import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeymapProfile;
 import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
+import dev.omatheusmesmo.vintelli.tui.layout.ShellLayoutStore;
+import dev.omatheusmesmo.vintelli.tui.layout.ShellLayout;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
@@ -15,6 +17,9 @@ import dev.tamboui.layout.Rect;
 import dev.tamboui.layout.Size;
 import dev.tamboui.style.Color;
 import dev.tamboui.terminal.Frame;
+import dev.tamboui.terminal.TestBackend;
+import dev.tamboui.toolkit.app.ToolkitPilot;
+import dev.tamboui.toolkit.app.ToolkitRunner;
 import dev.tamboui.toolkit.app.ToolkitTestRunner;
 import dev.tamboui.toolkit.element.DefaultRenderContext;
 import dev.tamboui.toolkit.element.Element;
@@ -22,7 +27,10 @@ import dev.tamboui.toolkit.event.EventResult;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyModifiers;
 import dev.tamboui.tui.event.KeyEvent;
+import dev.tamboui.tui.event.MouseButton;
+import dev.tamboui.tui.event.MouseEvent;
 import dev.tamboui.tui.pilot.Pilot;
+import dev.tamboui.tui.TuiConfig;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -39,6 +47,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -937,6 +946,128 @@ class VintelliShellTest {
     }
 
     @Test
+    void pilotDragsTheProjectSplitterAndPersistsTheRenderedRatio() throws Exception {
+        ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
+        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect projectBefore = pilot.findElement("project-panel");
+            Rect editorBefore = pilot.findElement("editor-panel");
+            String frameBefore = test.renderedFrame();
+            int pressY = editorBefore.y() + 2;
+
+            pilot.mousePress(MouseButton.LEFT, editorBefore.x(), pressY);
+            test.drag(MouseEvent.drag(MouseButton.LEFT, editorBefore.x() + 8, pressY));
+            pilot.mouseRelease(MouseButton.LEFT, VIEWPORT.width() - 1, VIEWPORT.height() - 1);
+            pause(pilot, EVENT_WINDOW);
+
+            Rect projectAfter = pilot.findElement("project-panel");
+            assertEquals(projectBefore.width() + 8, projectAfter.width());
+            assertNotEquals(frameBefore, test.renderedFrame(), "the runner's rendered frame should reflect the drag");
+            assertTrue(test.renderedFrame().contains("Editor"), test.renderedFrame());
+            int projectAreaWidth = VIEWPORT.width()
+                    - (pilot.hasElement("right-stripe") ? pilot.findElement("right-stripe").width() : 0);
+            assertEquals((double) projectAfter.width() / projectAreaWidth, store.load().projectRatio(), 0.0001);
+
+            int resizedWidth = projectAfter.width();
+            pilot.mousePress(MouseButton.LEFT, editorBefore.x() + 10, pressY);
+            test.drag(MouseEvent.drag(MouseButton.LEFT, editorBefore.x() + 20, pressY));
+            pilot.mouseRelease(MouseButton.LEFT, editorBefore.x() + 20, pressY);
+            pause(pilot, EVENT_WINDOW);
+            assertEquals(resizedWidth, pilot.findElement("project-panel").width(),
+                    "a press in the editor body must not continue resizing");
+
+            pilot.click("project-panel");
+            pause(pilot, EVENT_WINDOW);
+            assertEquals("project-panel", test.runner().focusManager().focusedId(),
+                    "an ordinary tree-panel click still reaches its element");
+
+            pilot.click(8, 0);
+            pause(pilot, EVENT_WINDOW);
+            assertTrue(test.renderedFrame().contains("Undo"), test.renderedFrame());
+            pilot.press(KeyCode.ESCAPE);
+            pause(pilot, EVENT_WINDOW);
+
+            pilot.click("editor-panel", 3, 3);
+            assertEquals("editor-panel", test.runner().focusManager().focusedId());
+            pilot.press('=', KeyModifiers.ALT);
+            pause(pilot, EVENT_WINDOW);
+            assertEquals(resizedWidth + 2, pilot.findElement("project-panel").width(),
+                    "keyboard resizing remains available after a drag");
+        }
+    }
+
+    @Test
+    void projectSplitterKeepsTheMinimumEditorWidthBesideTheRightToolStripe() throws Exception {
+        ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
+        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+        if (!shell.isToolWindowVisible("acp.agents")) {
+            shell.toggleToolWindow("acp.agents");
+        }
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            assertTrue(pilot.hasElement("right-stripe"), test.renderedFrame());
+            Rect editorBefore = pilot.findElement("editor-panel");
+            Rect rightBefore = pilot.findElement("right-stripe");
+            int pressY = editorBefore.y() + 2;
+
+            pilot.mousePress(MouseButton.LEFT, editorBefore.x(), pressY);
+            test.drag(MouseEvent.drag(MouseButton.LEFT, SIZE.width() - 1, pressY));
+            pilot.mouseRelease(MouseButton.LEFT, SIZE.width() - 1, SIZE.height() - 1);
+            pause(pilot, EVENT_WINDOW);
+
+            Rect editorAfter = pilot.findElement("editor-panel");
+            Rect rightAfter = pilot.findElement("right-stripe");
+            assertEquals(rightBefore.width(), rightAfter.width());
+            assertTrue(editorAfter.width() >= ShellLayout.MIN_EDITOR_WIDTH,
+                    "the right stripe must not be counted as editor space when clamping the project splitter: "
+                            + editorAfter);
+            int projectAreaWidth = SIZE.width() - rightAfter.width();
+            assertEquals((double) pilot.findElement("project-panel").width() / projectAreaWidth,
+                    store.load().projectRatio(), 0.0001);
+        }
+    }
+
+    @Test
+    void pilotDragsTheBottomSplitterAndHandlesResizeAndTinyCoordinates() throws Exception {
+        ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
+        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect editorBefore = pilot.findElement("editor-panel");
+            int pressX = editorBefore.x() + Math.max(1, editorBefore.width() / 2);
+            int dividerY = editorBefore.y() + editorBefore.height() - 1;
+
+            pilot.mousePress(MouseButton.LEFT, pressX, dividerY);
+            test.drag(MouseEvent.drag(MouseButton.LEFT, pressX, dividerY - 3));
+            pause(pilot, EVENT_WINDOW);
+            assertTrue(pilot.findElement("editor-panel").height() < editorBefore.height(),
+                    "dragging the bottom border upward must shrink the editor panel");
+            pilot.mouseRelease(MouseButton.LEFT, SIZE.width() - 1, SIZE.height() - 1);
+            pause(pilot, EVENT_WINDOW);
+            double ratioAfterRelease = store.load().bottomRatio();
+
+            test.resize(20, 5);
+            pause(pilot, EVENT_WINDOW);
+            pilot.mouseRelease(MouseButton.LEFT, 19, 4);
+            pause(pilot, EVENT_WINDOW);
+            Rect resized = pilot.findElement("editor-panel");
+            assertTrue(resized.width() >= 0 && resized.height() >= 0, resized.toString());
+            assertEquals(ratioAfterRelease, store.load().bottomRatio(), 0.0001,
+                    "terminal resize and release outside the divider preserve the last valid ratio");
+
+            pilot.mousePress(MouseButton.LEFT, -1, -1);
+            test.drag(MouseEvent.drag(MouseButton.LEFT, -40, -20));
+            pilot.mouseRelease(MouseButton.LEFT, -40, -20);
+            pause(pilot, EVENT_WINDOW);
+            Rect afterInvalidCoordinates = pilot.findElement("editor-panel");
+            assertTrue(afterInvalidCoordinates.width() >= 0 && afterInvalidCoordinates.height() >= 0,
+                    afterInvalidCoordinates.toString());
+            assertNotEquals("", test.renderedFrame());
+        }
+    }
+
+    @Test
     void tabCyclesTheFocusAcrossRegisteredPanels() throws Exception {
         VintelliShell shell = defaultShell();
         try (ToolkitTestRunner test = runShell(shell)) {
@@ -1038,6 +1169,95 @@ class VintelliShellTest {
         test.runner().eventRouter().addGlobalHandler(shell);
         shell.bindQuit(test.runner()::quit);
         return test;
+    }
+
+    private static MouseShellRunner runMouseShell(VintelliShell shell, Size size) throws Exception {
+        return new MouseShellRunner(shell, size);
+    }
+
+    /** Captures rendered text from Toolkit's post-render callback on the runner thread. */
+    private static final class MouseShellRunner implements AutoCloseable {
+        private final ToolkitRunner runner;
+        private final TestBackend backend;
+        private final Pilot pilot;
+        private final Thread renderThread;
+        private final AtomicReference<String> rendered = new AtomicReference<>("");
+        private final AtomicReference<Throwable> failure = new AtomicReference<>();
+
+        private MouseShellRunner(VintelliShell shell, Size size) throws Exception {
+            backend = new TestBackend(size.width(), size.height());
+            TuiConfig config = TuiConfig.builder()
+                    .rawMode(false)
+                    .alternateScreen(false)
+                    .hideCursor(false)
+                    .mouseCapture(true)
+                    .shutdownHook(false)
+                    .pollTimeout(Duration.ofMillis(10))
+                    .noTick()
+                    .backend(backend)
+                    .build();
+            runner = ToolkitRunner.builder()
+                    .config(config)
+                    .styleEngine(shell.themes().engine())
+                    .postRenderProcessor((frame, elements, styles, focus, elapsed) ->
+                            rendered.set(bufferText(frame.buffer())))
+                    .build();
+            runner.eventRouter().addGlobalHandler(shell);
+            shell.bindQuit(runner::quit);
+            renderThread = new Thread(() -> {
+                try {
+                    runner.run(shell::root);
+                } catch (Throwable problem) {
+                    failure.set(problem);
+                }
+            }, "vintelli-shell-mouse-test");
+            renderThread.setDaemon(true);
+            renderThread.start();
+            pilot = new ToolkitPilot(runner, backend);
+            pilot.pause(STARTUP);
+            assertHealthy();
+        }
+
+        private Pilot pilot() {
+            return pilot;
+        }
+
+        private ToolkitRunner runner() {
+            return runner;
+        }
+
+        private String renderedFrame() {
+            assertHealthy();
+            return rendered.get();
+        }
+
+        private void drag(MouseEvent event) {
+            runner.tuiRunner().dispatch(event);
+            pilot.pause(EVENT_WINDOW);
+            assertHealthy();
+        }
+
+        private void resize(int width, int height) {
+            backend.resize(width, height);
+            pilot.resize(width, height);
+            pilot.pause(EVENT_WINDOW);
+            assertHealthy();
+        }
+
+        private void assertHealthy() {
+            Throwable problem = failure.get();
+            if (problem != null) {
+                throw new AssertionError("TUI render thread failed", problem);
+            }
+        }
+
+        @Override
+        public void close() throws Exception {
+            runner.quit();
+            renderThread.join(1000);
+            runner.close();
+            assertHealthy();
+        }
     }
 
     private static VintelliShell defaultShell() {

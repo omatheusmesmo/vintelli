@@ -332,9 +332,11 @@ the list, Enter opens the selected file at its diagnostic line, clicking a row
 navigates there, and the mouse wheel scrolls the list. The window shows the
 selected diagnostics provider and distinguishes loading, unavailable, error,
 and empty results.
-`Alt+=`/`Alt+-` resize the project pane and `Alt+.`/`Alt+,` resize the bottom
-tool window pane; the ratios are saved per project under the user config
-directory. `Tab`/`Shift+Tab` move focus through the focusable panels
+Drag the editor panel's left or bottom border to resize the project pane or
+bottom tool window pane. `Alt+=`/`Alt+-` resize the project pane and
+`Alt+.`/`Alt+,` resize the bottom pane from the keyboard; the ratios are saved
+per project under the user config directory and scale with the terminal size.
+`Tab`/`Shift+Tab` move focus through the focusable panels
 (`#project-panel`, `#editor-panel`), clicking a panel focuses it, escape leaves
 captured input (a tool window that claims the keyboard) and returns to shell
 navigation, and `Ctrl+C` quits. Open editor tabs and their unsaved recovery

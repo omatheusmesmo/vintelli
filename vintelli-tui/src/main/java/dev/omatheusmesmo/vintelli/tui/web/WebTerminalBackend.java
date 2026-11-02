@@ -16,9 +16,9 @@ import org.jboss.logging.Logger;
 /**
  * The TamboUI half of one browser terminal session: a {@link Backend} that
  * streams the rendered screen to the client as ANSI bytes and accepts the
- * client's key bytes for the shell event loop to decode. A per-session TamboUI
- * runner owns one instance, so every WebSocket connection gets its own screen
- * buffer, size and render diff.
+ * client's key and mouse bytes for the shell event loop to decode. A
+ * per-session TamboUI runner owns one instance, so every WebSocket connection
+ * gets its own screen buffer, size and render diff.
  *
  * <p>Two invariants keep the surface safe. Outgoing cell symbols pass through
  * {@link #sanitize(String)}, so shell content that carries terminal control
@@ -46,7 +46,7 @@ final class WebTerminalBackend implements Backend {
     private static final String SCREEN_CLEAR = "\u001b[H\u001b[2J";
     private static final String CURSOR_SHOW = "\u001b[?25h";
     private static final String CURSOR_HIDE = "\u001b[?25l";
-    private static final String MOUSE_OFF = "\u001b[?1002l\u001b[?1003l";
+    private static final String MOUSE_OFF = "\u001b[?1002l\u001b[?1003l\u001b[?1006l";
     private static final String BRACKETED_PASTE_ON = "\u001b[?2004h";
     private static final String BRACKETED_PASTE_OFF = "\u001b[?2004l";
     private static final String SYNC_BEGIN = "\u001b[?2026h";
@@ -307,7 +307,7 @@ final class WebTerminalBackend implements Backend {
 
     @Override
     public void enableMouseCapture() throws IOException {
-        writeRaw("\u001b[?1002h");
+        writeRaw("\u001b[?1002h\u001b[?1006h");
         flush();
     }
 

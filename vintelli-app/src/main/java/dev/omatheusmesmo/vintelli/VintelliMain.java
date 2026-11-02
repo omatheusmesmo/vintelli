@@ -47,6 +47,7 @@ public final class VintelliMain implements QuarkusApplication {
                 try (ToolkitRunner runner = ToolkitRunner.builder()
                         .bindings(keymap.bindings())
                         .styleEngine(shellThemes.engine())
+                        .mouseCapture(true)
                         .faultTolerant(true)
                         .build()) {
                     runner.eventRouter().addGlobalHandler(tuiShell);
