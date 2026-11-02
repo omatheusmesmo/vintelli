@@ -6,9 +6,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Stream;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -168,7 +171,15 @@ class LocalProjectSearchTest {
         // Removing the project root is the one deterministic way to reach
         // visitFileFailed: walkFileTree fails to read the start file's attributes
         // and reports it, on every platform.
-        Files.delete(root);
+        try (Stream<Path> entries = Files.walk(root)) {
+            entries.sorted(Comparator.reverseOrder()).forEach(path -> {
+                try {
+                    Files.delete(path);
+                } catch (IOException failure) {
+                    throw new UncheckedIOException(failure);
+                }
+            });
+        }
         assertThrows(CompletionException.class,
                 () -> search.files("needle", ignored -> { })
                         .completion().toCompletableFuture().join());
