@@ -40,13 +40,14 @@ public final class VintelliCliCommands {
 
     @Inject
     VintelliCliCommands(RunCommand run, TerminalCommand terminal, ProblemsCommand problems,
-            InspectCommand inspect, AgentsCommand agents) {
+            InspectCommand inspect, AgentsCommand agents, IdeaCommand idea) {
         this.registryBuilder = AeshCommandRegistryBuilder.builder();
         register(run);
         register(terminal);
         register(problems);
         register(inspect);
         register(agents);
+        register(idea);
         this.runtime = AeshCommandRuntimeBuilder.<CommandInvocation>builder()
                 .commandRegistry(registryBuilder.create())
                 .build();

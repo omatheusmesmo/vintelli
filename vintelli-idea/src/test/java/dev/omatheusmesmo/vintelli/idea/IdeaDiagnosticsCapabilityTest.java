@@ -23,7 +23,7 @@ class IdeaDiagnosticsCapabilityTest {
     @Test
     void reportsIdeaProblems() throws Exception {
         try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
-                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), "/proj", null, "test", MAPPER, VALIDATOR)) {
+                IdeaMcpClient client = new IdeaMcpClient(server.streamUrl(), "/proj", null, "test", MAPPER, VALIDATOR)) {
             client.reconnect();
             IdeaDiagnosticsCapability capability = new IdeaDiagnosticsCapability(client);
             var result = capability.diagnostics(Paths.get("/proj/src/Foo.java"));

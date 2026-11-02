@@ -23,6 +23,7 @@ import dev.omatheusmesmo.vintelli.tui.search.ProjectSearchModel;
 import dev.omatheusmesmo.vintelli.tui.search.ProjectSearchOverlay;
 import dev.omatheusmesmo.vintelli.api.search.ProjectSearch;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityRegistry;
+import dev.omatheusmesmo.vintelli.api.idea.IdeaMcpConnection;
 import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability;
 import dev.omatheusmesmo.vintelli.api.capability.ProjectFileOperations;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
@@ -75,12 +76,14 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -172,6 +175,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private final ProjectSearch projectSearch;
     private final List<NavigationCapability> navigationProviders;
     private final CapabilityRegistry capabilityRegistry;
+    private final IdeaMcpConnection ideaMcpConnection;
     private final List<StatusBarWidgetContributor> statusBarContributors;
     private final List<VersionControlCapability> vcsProviders;
     private final ProjectFileOperations fileOperations;
@@ -186,6 +190,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private final Map<ToolWindow.Anchor, List<ToolWindow>> windowsByAnchor;
     private final ReentrantLock frameLock = new ReentrantLock();
     private final AtomicLong vcsRefreshSequence = new AtomicLong();
+    private final AtomicBoolean ideaConnectInProgress = new AtomicBoolean();
     private VcsWriteAction pendingVcsAction;
     private VcsPrompt vcsPrompt = VcsPrompt.NONE;
     private Path pendingVcsFile;
@@ -241,10 +246,12 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             Instance<ShellThemes> themes, ProjectSearch projectSearch,
             @All List<NavigationCapability> navigationProviders, CapabilityRegistry capabilityRegistry,
             @All List<StatusBarWidgetContributor> statusBarContributors,
-            @All List<VersionControlCapability> vcsProviders, @All List<ProjectFileOperations> fileOperations) {
+            @All List<VersionControlCapability> vcsProviders, @All List<ProjectFileOperations> fileOperations,
+            Instance<IdeaMcpConnection> ideaMcpConnections) {
         this(registry.toolWindows(), state, keymapRegistry::get, themes.get(), projectSearch, navigationProviders,
                 capabilityRegistry, vcsProviders, true, statusBarContributors,
-                fileOperations.isEmpty() ? null : fileOperations.getFirst());
+                fileOperations.isEmpty() ? null : fileOperations.getFirst(),
+                ideaMcpConnections.isResolvable() ? ideaMcpConnections.get() : null);
     }
 
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state, ShellThemes themes) {
@@ -304,7 +311,13 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             boolean persistLayout, List<? extends StatusBarWidgetContributor> statusBarContributors,
             ProjectFileOperations fileOperations) {
         this(toolWindows, state, keymapSupplier, themes, projectSearch, navigationProviders, capabilityRegistry,
-                vcsProviders, persistLayout, statusBarContributors, fileOperations, null);
+                vcsProviders, persistLayout, statusBarContributors, fileOperations, (IdeaMcpConnection) null);
+    }
+
+    VintelliShell(List<ToolWindow> toolWindows, ShellState state, ShellThemes themes,
+            IdeaMcpConnection ideaMcpConnection) {
+        this(toolWindows, state, () -> Keymap.defaultKeymap(toolWindows), themes, null, List.of(), null, List.of(),
+                false, toolWindows, null, ideaMcpConnection, null);
     }
 
     private VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
@@ -312,12 +325,33 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             CapabilityRegistry capabilityRegistry, List<VersionControlCapability> vcsProviders,
             boolean persistLayout, List<? extends StatusBarWidgetContributor> statusBarContributors,
             ProjectFileOperations fileOperations, ShellLayoutStore layoutStoreOverride) {
+        this(toolWindows, state, keymapSupplier, themes, projectSearch, navigationProviders, capabilityRegistry,
+                vcsProviders, persistLayout, statusBarContributors, fileOperations, (IdeaMcpConnection) null,
+                layoutStoreOverride);
+    }
+
+    private VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
+            ShellThemes themes, ProjectSearch projectSearch, List<NavigationCapability> navigationProviders,
+            CapabilityRegistry capabilityRegistry, List<VersionControlCapability> vcsProviders,
+            boolean persistLayout, List<? extends StatusBarWidgetContributor> statusBarContributors,
+            ProjectFileOperations fileOperations, IdeaMcpConnection ideaMcpConnection) {
+        this(toolWindows, state, keymapSupplier, themes, projectSearch, navigationProviders, capabilityRegistry,
+                vcsProviders, persistLayout, statusBarContributors, fileOperations, ideaMcpConnection, null);
+    }
+
+    private VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
+            ShellThemes themes, ProjectSearch projectSearch, List<NavigationCapability> navigationProviders,
+            CapabilityRegistry capabilityRegistry, List<VersionControlCapability> vcsProviders,
+            boolean persistLayout, List<? extends StatusBarWidgetContributor> statusBarContributors,
+            ProjectFileOperations fileOperations, IdeaMcpConnection ideaMcpConnection,
+            ShellLayoutStore layoutStoreOverride) {
         this.themes = themes;
         this.state = state;
         this.projectSearch = projectSearch;
         this.fileOperations = fileOperations;
         this.navigationProviders = List.copyOf(navigationProviders);
         this.capabilityRegistry = capabilityRegistry;
+        this.ideaMcpConnection = ideaMcpConnection;
         this.statusBarContributors = List.copyOf(statusBarContributors);
         this.vcsProviders = List.copyOf(vcsProviders);
         this.editor = toolWindows.stream().filter(BuiltinEditor.class::isInstance)
@@ -1377,6 +1411,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 openMenu(parts, 0);
                 inputCaptured = false;
             }
+            case KeyActions.IDEA_MCP_CONNECT -> {
+                closeOverlays(parts);
+                connectIdeaMcpAsync();
+            }
             case KeyActions.OPEN_FILE -> {
                 closeOverlays(parts);
                 openSelectedFile();
@@ -1822,6 +1860,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         for (ToolWindow window : toolWindows) {
             entries.addAll(window.menuEntries());
         }
+        addMenu(entries, "Tools", KeyActions.IDEA_MCP_CONNECT, "Connect / Reconnect IntelliJ IDEA",
+                ideaConnectInProgress.get() ? "IDEA MCP connection is already in progress" : "");
         String vcsUnavailable = availableVcsProvider() == null
                 ? vcsProviders.isEmpty() ? "Version control provider unavailable"
                         : vcsProviders.stream().map(provider -> provider.health().reason())
@@ -2165,6 +2205,50 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     private static void addMenu(List<MenuEntry> entries, String menu, String action, String label, String reason) {
         entries.add(new MenuEntry(menu, action, label, reason));
+    }
+
+    private void connectIdeaMcpAsync() {
+        if (ideaMcpConnection == null) {
+            status = "IDEA MCP connection control is unavailable";
+            return;
+        }
+        if (!ideaConnectInProgress.compareAndSet(false, true)) {
+            status = "IDEA MCP connection is already in progress";
+            return;
+        }
+        status = "IDEA MCP: connecting…";
+        Thread.ofVirtual().start(() -> {
+            IdeaMcpConnection.Snapshot result;
+            try {
+                result = ideaMcpConnection.reconnectFromUserAction();
+            } catch (RuntimeException failure) {
+                result = new IdeaMcpConnection.Snapshot("ERROR",
+                        "connection failed; check the configured HTTP Stream Config and retry");
+            }
+            IdeaMcpConnection.Snapshot completed = result;
+            Runnable update = () -> {
+                ideaConnectInProgress.set(false);
+                status = "IDEA MCP: " + completed.state().toLowerCase(Locale.ROOT).replace('_', ' ')
+                        + (completed.detail().isBlank() ? "" : " — " + completed.detail());
+                for (ToolWindow window : toolWindows) {
+                    if ("run".equals(window.id())) {
+                        window.performAction(KeyActions.RUN_REFRESH);
+                    } else if ("problems".equals(window.id())) {
+                        window.performAction(KeyActions.PROBLEMS_REFRESH);
+                    }
+                }
+            };
+            if (uiWorkQueue != null) {
+                uiWorkQueue.execute(update);
+            } else {
+                frameLock.lock();
+                try {
+                    update.run();
+                } finally {
+                    frameLock.unlock();
+                }
+            }
+        });
     }
 
     private void openMenu(KeymapParts parts, int index) {

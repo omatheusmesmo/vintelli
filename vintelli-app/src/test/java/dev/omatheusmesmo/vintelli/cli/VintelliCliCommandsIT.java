@@ -132,6 +132,67 @@ class VintelliCliCommandsIT {
     }
 
     @Test
+    void ideaCliConnectsReportsStatusAndReconnectsAgainstTheTwin() throws Exception {
+        FakeIdeaMcpServer twin = IdeaMcpTwinResource.twin();
+        twin.behaveNormally();
+        CliRun run = run(Map.of(
+                "vintelli.idea.mcp.url", twin.streamUrl(),
+                "vintelli.idea.mcp.auth-token", "vintelli-token"),
+                "idea connect\nidea status\nidea reconnect\nexit\n", "--repl");
+
+        assertExit(run, 0);
+        assertTrue(run.stdout().contains("IDEA MCP status: connected"), run.describe());
+        assertTrue(twin.paths().contains("/stream"), "the CLI must use the configured Streamable HTTP endpoint");
+        assertEquals("vintelli-token", twin.receivedHeader("IJ_MCP_AUTH_TOKEN"));
+    }
+
+    @Test
+    void ideaCliReportsConsentFailureWithoutExposingTheConfiguredToken() throws Exception {
+        FakeIdeaMcpServer twin = IdeaMcpTwinResource.twin();
+        twin.behaveNormally();
+        twin.rejectWith(403);
+        CliRun run = run(Map.of(
+                "vintelli.idea.mcp.url", twin.streamUrl(),
+                "vintelli.idea.mcp.auth-token", "vintelli-token"), null, "idea", "connect");
+
+        assertExit(run, 1);
+        assertTrue(run.stdout().contains("consent pending"), run.describe());
+        assertTrue(run.stdout().contains("approve the MCP consent dialog"), run.describe());
+        assertTrue(!run.describe().contains("vintelli-token"), run.describe());
+    }
+
+    @Test
+    void ideaCliReportsAuthenticationFailureWithASafeNextStep() throws Exception {
+        FakeIdeaMcpServer twin = IdeaMcpTwinResource.twin();
+        twin.behaveNormally();
+        twin.rejectWith(401);
+        CliRun run = run(Map.of(
+                "vintelli.idea.mcp.url", twin.streamUrl(),
+                "vintelli.idea.mcp.auth-token", "vintelli-token"), null, "idea", "connect");
+
+        assertExit(run, 1);
+        assertTrue(run.stdout().contains("IDEA MCP status: auth required"), run.describe());
+        assertTrue(run.stdout().contains("set vintelli.idea.mcp.auth-token"), run.describe());
+        assertTrue(!run.describe().contains("vintelli-token"), run.describe());
+    }
+
+    @Test
+    void ideaCliReportsAnIncorrectStreamEndpointWithARecopyStep() throws Exception {
+        FakeIdeaMcpServer twin = IdeaMcpTwinResource.twin();
+        twin.behaveNormally();
+        CliRun run = run(Map.of(
+                "vintelli.idea.mcp.url", twin.streamUrl() + "/wrong",
+                "vintelli.idea.mcp.auth-token", "vintelli-token"), null, "idea", "connect");
+
+        assertExit(run, 1);
+        assertTrue(run.stdout().contains("IDEA MCP status: endpoint not found"), run.describe());
+        assertTrue(run.stdout().contains("re-copy the HTTP Stream Config"), run.describe());
+        assertTrue(!run.describe().contains("vintelli-token"), run.describe());
+        assertTrue(twin.paths().contains("/stream/wrong"),
+                "the configured endpoint path must be used without rewriting it");
+    }
+
+    @Test
     void unknownCommandFailsWithThePosixCode() throws Exception {
         CliRun run = cli("definitely-not-a-command");
         assertExit(run, 127);
@@ -180,7 +241,7 @@ class VintelliCliCommandsIT {
             port = socket.getLocalPort();
         }
         List<String> options = List.of(
-                "-Dvintelli.idea.mcp.url=" + twin.baseUrl(),
+                "-Dvintelli.idea.mcp.url=" + twin.streamUrl(),
                 "-Dvintelli.idea.mcp.auth-token=vintelli-token",
                 "-Dvintelli.idea.debug-endpoint.enabled=true",
                 "-Dquarkus.http.port=" + port,

@@ -55,6 +55,10 @@ public final class FakeIdeaMcpServer implements AutoCloseable {
         return "http://127.0.0.1:" + port;
     }
 
+    public String streamUrl() {
+        return baseUrl() + "/stream";
+    }
+
     public List<String> paths() {
         return paths;
     }

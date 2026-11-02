@@ -23,7 +23,7 @@ class IdeaTerminalCapabilityTest {
     @Test
     void executesTerminalCommand() throws Exception {
         try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
-                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), "/proj", null, "test", MAPPER, VALIDATOR)) {
+                IdeaMcpClient client = new IdeaMcpClient(server.streamUrl(), "/proj", null, "test", MAPPER, VALIDATOR)) {
             client.reconnect();
             IdeaTerminalCapability capability = new IdeaTerminalCapability(client);
             var result = capability.execute(new TerminalCapability.TerminalRequest("echo hi", Paths.get("/proj"), false));
@@ -37,7 +37,7 @@ class IdeaTerminalCapabilityTest {
     @Test
     void rejectsTimedOutTerminalResultsAndPreservesPartialOutput() throws Exception {
         try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
-                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), "/proj", null, "test", MAPPER, VALIDATOR)) {
+                IdeaMcpClient client = new IdeaMcpClient(server.streamUrl(), "/proj", null, "test", MAPPER, VALIDATOR)) {
             server.terminalResult("{\"command_output\":\"partial\",\"command_exit_code\":124,\"is_timed_out\":true}");
             client.reconnect();
 
@@ -53,7 +53,7 @@ class IdeaTerminalCapabilityTest {
     @Test
     void rejectsTerminalResultsWithoutExitCode() throws Exception {
         try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
-                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), "/proj", null, "test", MAPPER, VALIDATOR)) {
+                IdeaMcpClient client = new IdeaMcpClient(server.streamUrl(), "/proj", null, "test", MAPPER, VALIDATOR)) {
             server.terminalResult("{\"command_output\":\"partial\"}");
             client.reconnect();
 
@@ -69,7 +69,7 @@ class IdeaTerminalCapabilityTest {
     @Test
     void rejectsMalformedTerminalJson() throws Exception {
         try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
-                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), "/proj", null, "test", MAPPER, VALIDATOR)) {
+                IdeaMcpClient client = new IdeaMcpClient(server.streamUrl(), "/proj", null, "test", MAPPER, VALIDATOR)) {
             server.terminalResult("not-json");
             client.reconnect();
 
@@ -84,7 +84,7 @@ class IdeaTerminalCapabilityTest {
     @Test
     void rejectsTerminalResultWithANonIntegerExitCode() throws Exception {
         try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
-                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), "/proj", null, "test", MAPPER, VALIDATOR)) {
+                IdeaMcpClient client = new IdeaMcpClient(server.streamUrl(), "/proj", null, "test", MAPPER, VALIDATOR)) {
             server.terminalResult("{\"command_output\":\"partial\",\"command_exit_code\":\"0\"}");
             client.reconnect();
 
@@ -99,7 +99,7 @@ class IdeaTerminalCapabilityTest {
     @Test
     void doesNotCallIdeaForDangerousCommandWithoutConfirmation() throws Exception {
         try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
-                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), "/proj", null, "test", MAPPER, VALIDATOR)) {
+                IdeaMcpClient client = new IdeaMcpClient(server.streamUrl(), "/proj", null, "test", MAPPER, VALIDATOR)) {
             client.reconnect();
             IdeaTerminalCapability capability = new IdeaTerminalCapability(client);
             var result = capability.execute(new TerminalCapability.TerminalRequest("rm -rf /", Paths.get("/proj"), false));

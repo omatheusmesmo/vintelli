@@ -26,9 +26,18 @@ class IdeaMcpClientTest {
     private static final JsonSchemaValidator VALIDATOR = new DefaultJsonSchemaValidator(MCP_JSON);
 
     @Test
+    void exposesSafeSetupGuidanceBeforeConnectingWhenNoUrlIsConfigured() {
+        try (IdeaMcpClient client = new IdeaMcpClient(null, null, null, "test", MAPPER, VALIDATOR)) {
+            assertEquals("DISCONNECTED", client.connectionStatus().state());
+            assertTrue(client.connectionStatus().detail().contains("vintelli.idea.mcp.url is not set"));
+            assertTrue(client.connectionStatus().detail().contains("Copy the HTTP Stream Config"));
+        }
+    }
+
+    @Test
     void connectsAndListsIdeaToolsOnStreamEndpoint() throws Exception {
         try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
-                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), null, null, "test", MAPPER, VALIDATOR)) {
+                IdeaMcpClient client = new IdeaMcpClient(server.streamUrl(), null, null, "test", MAPPER, VALIDATOR)) {
 
             assertEquals(ConnectionState.CONNECTED, client.reconnect().state(), client.status().detail());
 
@@ -46,7 +55,7 @@ class IdeaMcpClientTest {
     @Test
     void contributesTheLiveIdeaConnectionStateToTheStatusBar() throws Exception {
         try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
-                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), null, null, "test", MAPPER, VALIDATOR)) {
+                IdeaMcpClient client = new IdeaMcpClient(server.streamUrl(), null, null, "test", MAPPER, VALIDATOR)) {
             assertEquals("IDEA:off", client.statusBarWidgets().getFirst().compactText());
 
             client.reconnect();
@@ -58,7 +67,7 @@ class IdeaMcpClientTest {
     @Test
     void sendsProjectPathAndAuthTokenHeaders() throws Exception {
         try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
-                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), "~/work/vintelli", "idea-token", "test", MAPPER, VALIDATOR)) {
+                IdeaMcpClient client = new IdeaMcpClient(server.streamUrl(), "~/work/vintelli", "idea-token", "test", MAPPER, VALIDATOR)) {
 
             assertEquals(ConnectionState.CONNECTED, client.reconnect().state(), client.status().detail());
             client.listIdeaTools();
@@ -71,7 +80,7 @@ class IdeaMcpClientTest {
     @Test
     void reportsAuthRequiredOn401() throws Exception {
         try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
-                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), null, null, "test", MAPPER, VALIDATOR)) {
+                IdeaMcpClient client = new IdeaMcpClient(server.streamUrl(), null, null, "test", MAPPER, VALIDATOR)) {
             server.rejectWith(401);
 
             assertEquals(ConnectionState.AUTH_REQUIRED, client.reconnect().state(), client.status().detail());
@@ -81,7 +90,7 @@ class IdeaMcpClientTest {
     @Test
     void reportsConsentPendingOn403() throws Exception {
         try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
-                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), null, null, "test", MAPPER, VALIDATOR)) {
+                IdeaMcpClient client = new IdeaMcpClient(server.streamUrl(), null, null, "test", MAPPER, VALIDATOR)) {
             server.rejectWith(403);
 
             assertEquals(ConnectionState.CONSENT_PENDING, client.reconnect().state(), client.status().detail());
@@ -91,7 +100,7 @@ class IdeaMcpClientTest {
     @Test
     void reportsEndpointNotFoundOn404() throws Exception {
         try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
-                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), null, null, "test", MAPPER, VALIDATOR)) {
+                IdeaMcpClient client = new IdeaMcpClient(server.streamUrl(), null, null, "test", MAPPER, VALIDATOR)) {
             server.rejectWith(404);
 
             assertEquals(ConnectionState.ENDPOINT_NOT_FOUND, client.reconnect().state(), client.status().detail());
@@ -117,7 +126,7 @@ class IdeaMcpClientTest {
     @Test
     void callsIdeaToolAndMapsResult() throws Exception {
         try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
-                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), null, null, "test", MAPPER, VALIDATOR)) {
+                IdeaMcpClient client = new IdeaMcpClient(server.streamUrl(), null, null, "test", MAPPER, VALIDATOR)) {
             client.reconnect();
 
             IdeaToolCall call = client.callIdeaTool("execute_run_configuration", Map.of("name", "Vintelli"));
@@ -130,7 +139,7 @@ class IdeaMcpClientTest {
     @Test
     void mapsToolLevelErrorsWithoutBreakingTheSession() throws Exception {
         try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
-                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), null, null, "test", MAPPER, VALIDATOR)) {
+                IdeaMcpClient client = new IdeaMcpClient(server.streamUrl(), null, null, "test", MAPPER, VALIDATOR)) {
             client.reconnect();
 
             IdeaToolCall call = client.callIdeaTool(FakeIdeaMcpServer.ERROR_TOOL, Map.of());
@@ -144,7 +153,7 @@ class IdeaMcpClientTest {
     @Test
     void classifiesAMalformedToolResponseAsAnError() throws Exception {
         try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
-                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), null, null, "test", MAPPER, VALIDATOR)) {
+                IdeaMcpClient client = new IdeaMcpClient(server.streamUrl(), null, null, "test", MAPPER, VALIDATOR)) {
             client.reconnect();
 
             IdeaToolCall call = client.callIdeaTool(FakeIdeaMcpServer.MALFORMED_TOOL, Map.of());
@@ -157,7 +166,7 @@ class IdeaMcpClientTest {
     @Test
     void returnsAFailedCallInsteadOfThrowingAfterClose() throws Exception {
         try (FakeIdeaMcpServer server = new FakeIdeaMcpServer()) {
-            IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), null, null, "test", MAPPER, VALIDATOR);
+            IdeaMcpClient client = new IdeaMcpClient(server.streamUrl(), null, null, "test", MAPPER, VALIDATOR);
             client.reconnect();
             client.close();
 
@@ -173,7 +182,7 @@ class IdeaMcpClientTest {
         CountDownLatch release = new CountDownLatch(1);
         List<CompletableFuture<Void>> hogs = new ArrayList<>();
         try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
-                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), null, null, "test", MAPPER, VALIDATOR)) {
+                IdeaMcpClient client = new IdeaMcpClient(server.streamUrl(), null, null, "test", MAPPER, VALIDATOR)) {
             client.reconnect();
             for (int i = 1; i < ForkJoinPool.commonPool().getParallelism(); i++) {
                 hogs.add(CompletableFuture.runAsync(() -> awaitQuietly(release)));
@@ -199,7 +208,7 @@ class IdeaMcpClientTest {
     @Test
     void timesOutLongRunningToolCalls() throws Exception {
         try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
-                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), null, null, "test", MAPPER, VALIDATOR)) {
+                IdeaMcpClient client = new IdeaMcpClient(server.streamUrl(), null, null, "test", MAPPER, VALIDATOR)) {
             server.delayToolCalls(Duration.ofSeconds(2));
             client.reconnect();
 
@@ -214,7 +223,7 @@ class IdeaMcpClientTest {
     @Test
     void recoversByReconnectingWhenIdeaRestartedWithoutLosingState() throws Exception {
         try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
-                IdeaMcpClient client = new IdeaMcpClient(server.baseUrl(), null, null, "test", MAPPER, VALIDATOR)) {
+                IdeaMcpClient client = new IdeaMcpClient(server.streamUrl(), null, null, "test", MAPPER, VALIDATOR)) {
             client.reconnect();
             assertEquals(3, client.listIdeaTools().size());
 
