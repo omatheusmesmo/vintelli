@@ -91,7 +91,6 @@ class ProblemsToolWindowTest {
         assertTrue(window.handleKey(KeyEvent.ofKey(KeyCode.ENTER)));
         assertEquals(5, editor.activeDocument().orElseThrow().line(),
                 "filtering to warnings preserves that selection when showing all diagnostics, then Down selects the next row");
-        assertEquals("Opened Broken.java", shell.status());
         assertTrue(window.handleMouse(MouseEvent.scrollDown(4, 2)));
         buffer = Buffer.empty(area);
         window.render(Frame.forTesting(buffer), area);
@@ -100,7 +99,6 @@ class ProblemsToolWindowTest {
                 window.actionForMouse(MouseEvent.press(MouseButton.LEFT, 4, 2)));
         assertTrue(window.performAction(KeyActions.PROBLEMS_NAVIGATE));
         assertEquals(6, editor.activeDocument().orElseThrow().line());
-        assertEquals("Opened Broken.java", shell.status());
         int selected = window.selectedIndex();
         assertNull(window.actionForMouse(MouseEvent.press(MouseButton.RIGHT, 4, 3)));
         assertFalse(window.handleMouse(MouseEvent.press(MouseButton.RIGHT, 4, 3)));

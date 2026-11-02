@@ -125,6 +125,27 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <groupId>dev.tamboui</groupId>
+            <artifactId>tamboui-core</artifactId>
+            <version>${tamboui.version}</version>
+            <classifier>test-fixtures</classifier>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>dev.tamboui</groupId>
+            <artifactId>tamboui-tui</artifactId>
+            <version>${tamboui.version}</version>
+            <classifier>test-fixtures</classifier>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>dev.tamboui</groupId>
+            <artifactId>tamboui-toolkit</artifactId>
+            <version>${tamboui.version}</version>
+            <classifier>test-fixtures</classifier>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>io.quarkiverse.mcp</groupId>
             <artifactId>quarkus-mcp-server-test</artifactId>
             <scope>test</scope>
