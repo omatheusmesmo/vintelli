@@ -6,9 +6,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Stream;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -157,6 +160,29 @@ class LocalProjectSearchTest {
             Files.deleteIfExists(outside.resolve("secret.txt"));
             Files.deleteIfExists(outside);
         }
+    }
+
+    @Test
+    void aFilesystemFailureDuringTheWalkCompletesTheTaskExceptionally() throws Exception {
+        write("a.txt", "needle");
+        LocalProjectSearch search = search();
+        // Callbacks run inline on the worker thread, so deleting a file from a
+        // callback happens before the walk starts and the walker never sees it.
+        // Removing the project root is the one deterministic way to reach
+        // visitFileFailed: walkFileTree fails to read the start file's attributes
+        // and reports it, on every platform.
+        try (Stream<Path> entries = Files.walk(root)) {
+            entries.sorted(Comparator.reverseOrder()).forEach(path -> {
+                try {
+                    Files.delete(path);
+                } catch (IOException failure) {
+                    throw new UncheckedIOException(failure);
+                }
+            });
+        }
+        assertThrows(CompletionException.class,
+                () -> search.files("needle", ignored -> { })
+                        .completion().toCompletableFuture().join());
     }
 
     private LocalProjectSearch search() {

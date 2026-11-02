@@ -65,7 +65,8 @@ public final class ProjectSearchOverlay {
             return;
         }
         int width = Math.min(76, area.width() - 2);
-        int height = Math.min(area.height() - 2, Math.max(5, Math.min(model.size() + 3, 20)));
+        int rows = model.size() + (model.error() != null && model.size() > 0 ? 1 : 0);
+        int height = Math.min(area.height() - 2, Math.max(5, Math.min(rows + 3, 20)));
         Rect panel = new Rect(area.x() + (area.width() - width) / 2,
                 area.y() + (area.height() - height) / 2, width, height);
         frame.renderWidget(Clear.INSTANCE, panel);
@@ -85,9 +86,11 @@ public final class ProjectSearchOverlay {
         } else if (model.mode() == ProjectSearchModel.Mode.FILES) {
             List<FileMatch> results = model.files();
             appendFiles(lines, results, first, visibleRows, model.selected(), inner.width());
+            appendIncomplete(lines, inner);
         } else {
             List<TextMatch> results = model.text();
             appendText(lines, results, first, visibleRows, model.selected(), inner.width());
+            appendIncomplete(lines, inner);
         }
         frame.renderWidget(Paragraph.builder().text(Text.from(lines)).build(), inner);
     }
@@ -117,6 +120,16 @@ public final class ProjectSearchOverlay {
     private static String fit(String value, int width) {
         if (width <= 0) return "";
         return value.length() <= width ? value : value.substring(0, width);
+    }
+
+    /** Results already on screen stay visible; the failure surfaces as a trailing line. */
+    private void appendIncomplete(List<Line> lines, Rect inner) {
+        String error = model.error();
+        if (error == null || lines.size() >= inner.height()) {
+            return;
+        }
+        lines.add(Line.from(Span.styled(fit("Results may be incomplete: " + error, inner.width()),
+                Style.create().dim())));
     }
 
     public record Target(Path file, int line) { }
