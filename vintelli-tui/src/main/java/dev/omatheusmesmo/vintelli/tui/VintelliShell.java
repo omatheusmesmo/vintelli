@@ -1908,7 +1908,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         publishVcsRefresh(request, states, changedLines,
                 "VCS: " + branch + " (+" + (statusValue.ahead() == null ? 0 : statusValue.ahead())
                         + "/-" + (statusValue.behind() == null ? 0 : statusValue.behind()) + "), "
-                        + statusValue.entries().size() + " changed");
+                        + statusValue.entries().size() + (statusValue.truncated() ? "+ changed (partial)" : " changed"));
     }
 
     private void publishVcsRefresh(long request, Map<String, VersionControlCapability.State> states,
