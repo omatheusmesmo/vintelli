@@ -267,6 +267,13 @@ To check an archive, verify its provenance against the repository:
 gh attestation verify vintelli-0.1.0-linux-amd64.tar.gz --repo omatheusmesmo/vintelli
 ```
 
+## Security checks
+
+- `CodeQL` (`codeql.yml`): static analysis of the Java sources; results appear under the Security tab.
+- `Dependency review` (`dependency-review.yml`): fails a pull request that adds a high or critical advisory or a license outside the allow-list. It is meant to become a required check later (maintainer decision).
+- To allow a license, add its SPDX identifier to `allow-licenses`. To allow a metadata-only artifact, add its purl to `allow-dependencies-licenses`. To accept a specific advisory, add its GHSA ID to `allow-ghsas`, all in `dependency-review.yml`.
+- `OpenSSF Scorecard` (`scorecard.yml`): runs on `main` and weekly, and publishes the score behind the README badge.
+
 ## Reporting bugs and security issues
 
 Open an issue with reproduction steps. For vulnerabilities, use the

@@ -1,5 +1,7 @@
 # Vintelli
 
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/omatheusmesmo/vintelli/badge)](https://scorecard.dev/viewer/?uri=github.com/omatheusmesmo/vintelli)
+
 A terminal-native IDE experience for Java: IntelliJ intelligence, in your terminal, with zero IDE UI.
 
 Vintelli is a Quarkus application that shows an IntelliJ IDEA-like TUI (built with TamboUI) and hosts AI coding agents (OpenCode, Claude Code, pi) through the Agent Client Protocol (ACP). It works standalone with open tooling only. IntelliJ IDEA, driven headlessly through its MCP server, is an optional provider and is never required.
