@@ -47,6 +47,18 @@ Native verification (run by CI on every pull request):
 CI runs the full matrix: JVM tests on three operating systems and the native
 image. Locally, a targeted test is enough.
 
+### CI checks
+
+`CI gate` is the single aggregate check meant to be required on `main`, together
+with the PR title check. It reports the result of the build jobs, so the
+ruleset does not need to list each matrix entry.
+
+- A docs-only pull request (only `docs/**` or `*.md` files changed) skips the
+  build jobs and still gets a green `CI gate`.
+- Any other pull request runs the JVM matrix and the native image job. A failure
+  in either one turns `CI gate` red.
+- The merge queue always runs the full build, whatever the files changed.
+
 ## Workflow
 
 - Work on a branch or a fork. Rebase only: no merge commits in a branch.

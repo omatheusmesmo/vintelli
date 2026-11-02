@@ -4,18 +4,15 @@ on:
   push:
     branches:
       - main
-    paths-ignore:
-      - docs/**
-      - '**.md'
   pull_request:
     branches:
       - main
-    paths-ignore:
-      - docs/**
-      - '**.md'
   merge_group:
     types: [checks_requested]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -29,8 +26,35 @@ defaults:
     shell: bash
 
 jobs:
+  changes:
+    name: Detect changes
+    permissions:
+      contents: read
+      pull-requests: read
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Filter changed paths
+        id: filter
+        uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3.0.4
+        with:
+          predicate-quantifier: every
+          filters: |
+            code:
+              - '**'
+              - '!docs/**'
+              - '!**/*.md'
+
   test-jvm:
     name: Test (JVM) ${{ matrix.os }}
+    needs: changes
+    if: github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -52,6 +76,8 @@ jobs:
 
   build-native:
     name: Native image (Mandrel container)
+    needs: changes
+    if: github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -96,3 +122,15 @@ jobs:
           fi
           kill "$PID"
           echo "native runner alive after 10s"
+
+  gate:
+    name: CI gate
+    if: always()
+    needs: [changes, test-jvm, build-native]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check required jobs
+        uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35 # v1.3.0
+        with:
+          jobs: ${{ toJSON(needs) }}
+          allowed-skips: test-jvm, build-native
