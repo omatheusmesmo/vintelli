@@ -1117,7 +1117,7 @@ class VintelliShellTest {
     @Test
     void projectSplitterKeepsTheMinimumEditorWidthBesideTheRightToolStripe() throws Exception {
         ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
-        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+        VintelliShell shell = new VintelliShell(windowsWithAcp(), new ShellState(), defaultThemes(), store);
         if (!shell.isToolWindowVisible("acp.agents")) {
             shell.toggleToolWindow("acp.agents");
         }
@@ -1445,8 +1445,15 @@ class VintelliShellTest {
     private static List<ToolWindow> defaultWindows() {
         ShellThemes themes = defaultThemes();
         ToolWindowRegistry registry = new ToolWindowRegistry(List.of(
-                new RunToolWindow(() -> themes), new TerminalToolWindow(() -> themes), new ProblemsToolWindow(() -> themes),
-                new AcpAgentsToolWindow(() -> themes)));
+                new RunToolWindow(() -> themes), new TerminalToolWindow(() -> themes), new ProblemsToolWindow(() -> themes)));
+        return registry.toolWindows();
+    }
+
+    private static List<ToolWindow> windowsWithAcp() {
+        ShellThemes themes = defaultThemes();
+        ToolWindowRegistry registry = new ToolWindowRegistry(List.of(
+                new RunToolWindow(() -> themes), new TerminalToolWindow(() -> themes),
+                new ProblemsToolWindow(() -> themes), new AcpAgentsToolWindow(() -> themes)));
         return registry.toolWindows();
     }
 

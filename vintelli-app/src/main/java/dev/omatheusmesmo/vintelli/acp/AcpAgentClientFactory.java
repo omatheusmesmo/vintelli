@@ -5,6 +5,8 @@ import java.io.UncheckedIOException;
 import java.time.Duration;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.agentclientprotocol.sdk.client.AcpClient;
@@ -34,6 +36,7 @@ public final class AcpAgentClientFactory {
 
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(20);
     private static final Duration PROMPT_TIMEOUT = Duration.ofSeconds(30);
+    private static final Duration CHAT_PROMPT_TIMEOUT = Duration.ofMinutes(5);
 
     private final AcpJsonMapper acpJsonMapper;
     private final boolean enabled;
@@ -86,6 +89,20 @@ public final class AcpAgentClientFactory {
                         chunkTexts.add(content.text());
                     }
                 })
+                .build();
+    }
+
+    /** Builds the production chat client with streamed updates and user-mediated permissions. */
+    public AcpSyncClient chatClient(Consumer<AcpSchema.SessionNotification> updates,
+            Function<AcpSchema.RequestPermissionRequest, AcpSchema.RequestPermissionResponse> permissions) {
+        AgentParameters parameters = AgentParameters.builder(command).args(args).build();
+        StdioAcpClientTransport transport = new StdioAcpClientTransport(parameters, acpJsonMapper);
+        return AcpClient.sync(transport)
+                .requestTimeout(REQUEST_TIMEOUT)
+                .promptTimeout(CHAT_PROMPT_TIMEOUT)
+                .clientInfo(new AcpSchema.Implementation("vintelli", "1.0.0"))
+                .requestPermissionHandler(permissions)
+                .sessionUpdateHandler(updates)
                 .build();
     }
 

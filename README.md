@@ -107,10 +107,15 @@ Scripted, one command per process (`java -jar vintelli-app/target/quarkus-app/qu
 - `problems <file>` lists the problems reported for one file
 - `inspect` prints the shell selection and the capability status rows, the
   same read model as the HTTP `/capabilities` endpoint and the MCP state tool
-- `agents prompt <text>` sends one prompt to the configured ACP agent over
-  stdio and reports the streamed chunks and the stop reason; the agent
-  process comes from `vintelli.acp.probe.agent-command` and
-  `vintelli.acp.probe.agent-args` (shared with the HTTP probe surface)
+- `Alt+4` opens the `ACP Agents` side panel, where Enter starts a persistent
+  ACP chat session against the configured stdio agent. Type prompts and press Enter to send, use
+  Shift+Enter for a line break, Ctrl+N to open a session, and Ctrl+W to close
+  the active session. Markdown streams live; tool calls and file diffs appear
+  inline. The agent waits while a permission request is visible until you
+  choose an option or decline it. The standalone `agents prompt <text>` command
+  remains available for one-shot prompts. The agent process comes from
+  `vintelli.acp.probe.agent-command` and `vintelli.acp.probe.agent-args`,
+  shared with the HTTP probe surface.
 - unknown names fail with exit code 127, failed commands with 1, misuse
   with 2, so scripts can branch on the outcome
 

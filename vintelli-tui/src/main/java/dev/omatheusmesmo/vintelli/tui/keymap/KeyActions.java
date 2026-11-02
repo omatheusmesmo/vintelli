@@ -65,6 +65,12 @@ public final class KeyActions {
     public static final String RUN_SELECT_NEXT = "run.select-next";
     public static final String RUN_SELECT_PREVIOUS = "run.select-previous";
     public static final String TERMINAL_EXECUTE = "terminal.execute";
+    public static final String ACP_CHAT_NEW = "acp.chat.new";
+    public static final String ACP_CHAT_SEND = "acp.chat.send";
+    public static final String ACP_CHAT_CANCEL = "acp.chat.cancel";
+    public static final String ACP_CHAT_PERMISSION = "acp.chat.permission";
+    public static final String ACP_CHAT_CLOSE = "acp.chat.close";
+    public static final String ACP_CHAT_SELECT_TAB = "acp.chat.select-tab";
     public static final String PROBLEMS_NAVIGATE = "problems.navigate";
     public static final String PROBLEMS_REFRESH = "problems.refresh";
     public static final String PROBLEMS_SELECT_NEXT = "problems.select-next";

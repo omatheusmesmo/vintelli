@@ -49,6 +49,20 @@ class VintelliAcpClientIT {
     }
 
     @Test
+    void productionChatServiceStreamsMarkdownToolDiffAndWaitsForPermissionChoice() {
+        given().post("/acp/probe/chat-session").then()
+                .statusCode(200)
+                .body("state", equalTo("OK"))
+                .body("phases", hasItem("session:new:OPENED"))
+                .body("phases", hasItem("permission:pending:write notes.txt"))
+                .body("phases", hasItem("message:result:permission=true"))
+                .body("phases", hasItem(startsWith("tool:edit_file:completed:--- a/src/Main.java|+++ b/src/Main.java|- old line|+ new line|")))
+                .body("phases", hasItem("message:edit streamed"))
+                .body("phases", hasItem("session:prompt:COMPLETE"))
+                .body("phases", hasItem("session:close:CLOSED"));
+    }
+
+    @Test
     void gatesMcpServersByTheTransportsTheAgentAdvertises() {
         given().post("/acp/probe/mcp").then()
                 .statusCode(200)
