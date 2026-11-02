@@ -26,6 +26,7 @@ import dev.omatheusmesmo.vintelli.api.capability.RunCapability;
 import dev.omatheusmesmo.vintelli.api.capability.TerminalCapability;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
+import dev.tamboui.layout.Rect;
 import dev.tamboui.layout.Size;
 import dev.tamboui.tui.event.KeyCode;
 import org.junit.jupiter.api.Test;
@@ -90,7 +91,17 @@ class RunToolWindowInteractionContractTest {
         ToolWindowPilotFixture fixture = session.fixture();
         RunContext context = session.context(RunContext.class);
         fixture.press('1');
-        fixture.pilot().click("tool-run", 2, 2);
+        Rect area = fixture.pilot().findElement("tool-run");
+        List<String> rows = fixture.renderedText().lines().toList();
+        int runRow = -1;
+        for (int row = area.y(); row < Math.min(area.bottom(), rows.size()); row++) {
+            if (rows.get(row).contains("▶ Run")) {
+                runRow = row;
+                break;
+            }
+        }
+        assertTrue(runRow >= 0, "the Run button is visible in the Run tool window");
+        fixture.pilot().click(rows.get(runRow).indexOf("▶ Run") + 2, runRow);
         awaitUi(context.uiWork(), () -> context.provider().startedConfiguration.get() != null
                 && context.window().statusMessage().startsWith("Running "));
         fixture.press('r');

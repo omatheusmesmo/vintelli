@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.Optional;
@@ -38,6 +39,7 @@ import dev.tamboui.tui.event.MouseButton;
 import dev.tamboui.tui.event.MouseEvent;
 import dev.tamboui.tui.pilot.Pilot;
 import dev.tamboui.toolkit.app.ToolkitTestRunner;
+import dev.tamboui.toolkit.element.DefaultRenderContext;
 import org.junit.jupiter.api.Test;
 
 class RunToolWindowTest {
@@ -70,7 +72,7 @@ class RunToolWindowTest {
             assertTrue(window.consoleLines().contains("Second output"));
             assertTrue(window.statusMessage().contains("Running idea:Second"));
             Rect toolArea = pilot.findElement("tool-run");
-            String screen = renderedText(window, uiWork, toolArea);
+            String screen = renderedShellText(shell, test, uiWork, new Size(100, 30));
             assertTrue(screen.contains("Provider: idea · IDEA MCP"), screen);
             assertTrue(screen.contains("▶ Run [Enter]"), screen);
             assertTrue(screen.contains("Configurations"), screen);
@@ -83,7 +85,11 @@ class RunToolWindowTest {
             pilot.pause(Duration.ofMillis(50));
             uiWork.drain();
             assertTrue(window.statusMessage().contains("Running idea:Second"));
-            pilot.click(toolArea.x() + 41, toolArea.y() + 2);
+            List<String> rows = screen.lines().toList();
+            int stopRow = rowContaining(rows, "■ Stop");
+            assertTrue(stopRow >= toolArea.y() && stopRow < toolArea.bottom(), screen);
+            int stopColumn = rows.get(stopRow).indexOf("■ Stop") + 2;
+            pilot.click(stopColumn, stopRow);
             assertTrue(provider.cancelled.await(5, TimeUnit.SECONDS));
             pilot.pause(Duration.ofMillis(50));
             uiWork.drain();
@@ -132,8 +138,8 @@ class RunToolWindowTest {
         for (int index = 0; index < 19; index++) {
             window.performAction(KeyActions.RUN_SELECT_NEXT);
         }
-        Buffer buffer = Buffer.empty(Rect.of(100, 12));
-        window.render(Frame.forTesting(buffer), Rect.of(100, 12));
+        Buffer buffer = Buffer.empty(Rect.of(100, 10));
+        window.render(Frame.forTesting(buffer), Rect.of(100, 10));
         String screen = bufferText(buffer);
         assertTrue(screen.contains("Provider: idea"), screen);
         assertTrue(screen.contains("▶ Run [Enter]"), screen);
@@ -143,7 +149,7 @@ class RunToolWindowTest {
 
         // The first visible row is Config16 after scrolling; clicking it must
         // select that item, not a hidden row based on the original list offset.
-        assertTrue(window.handleMouse(MouseEvent.press(MouseButton.LEFT, 5, 5)));
+        assertTrue(window.handleMouse(MouseEvent.press(MouseButton.LEFT, 5, 4)));
         assertEquals(16, window.selectedIndex());
         assertNull(window.actionForMouse(MouseEvent.press(MouseButton.RIGHT, 41, 2)));
     }
@@ -199,6 +205,30 @@ class RunToolWindowTest {
         uiWork.drain();
         window.render(Frame.forTesting(buffer), area);
         return bufferText(buffer);
+    }
+
+    private static String renderedShellText(VintelliShell shell, ToolkitTestRunner test,
+            UiWorkQueue uiWork, Size size) throws Exception {
+        uiWork.drain();
+        FutureTask<String> render = new FutureTask<>(() -> {
+            Rect area = new Rect(0, 0, size.width(), size.height());
+            Buffer buffer = Buffer.empty(area);
+            DefaultRenderContext context = DefaultRenderContext.createEmpty();
+            context.setStyleEngine(shell.themes().engine());
+            shell.root().render(Frame.forTesting(buffer), area, context);
+            return bufferText(buffer);
+        });
+        test.runner().runOnRenderThread(render);
+        return render.get(2, TimeUnit.SECONDS);
+    }
+
+    private static int rowContaining(List<String> rows, String text) {
+        for (int row = 0; row < rows.size(); row++) {
+            if (rows.get(row).contains(text)) {
+                return row;
+            }
+        }
+        return -1;
     }
 
     private static String bufferText(Buffer buffer) {

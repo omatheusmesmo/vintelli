@@ -103,7 +103,8 @@ class ProblemsToolWindowTest {
         int selected = window.selectedIndex();
         assertNull(window.actionForMouse(MouseEvent.press(MouseButton.RIGHT, 4, 3)));
         assertFalse(window.handleMouse(MouseEvent.press(MouseButton.RIGHT, 4, 3)));
-        assertNull(window.actionForMouse(MouseEvent.press(MouseButton.LEFT, 0, 3)), "border clicks are not problem rows");
+        assertNull(window.actionForMouse(MouseEvent.press(MouseButton.LEFT, area.x() + area.width(), 3)),
+                "clicks outside the rendered content are not problem rows");
         assertNull(window.actionForMouse(MouseEvent.press(MouseButton.LEFT, 4, 0)), "title row clicks are not problem rows");
         assertEquals(selected, window.selectedIndex());
         assertEquals(6, editor.activeDocument().orElseThrow().line());

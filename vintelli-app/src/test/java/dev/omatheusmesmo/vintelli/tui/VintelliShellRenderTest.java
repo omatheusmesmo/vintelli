@@ -31,7 +31,7 @@ class VintelliShellRenderTest {
                 .body("tabRow", containsString("Project"),
                         "tabRow", containsString("4. ACP Agents"),
                         "mainAreaTop", not(isEmptyOrNullString()),
-                        "mainAreaTop", containsString("╭"),
+                        "mainAreaTop", not(containsString("╭")),
                         "status", not(isEmptyOrNullString()),
                         "status", containsString("R:"),
                         "status", containsString("T:"),

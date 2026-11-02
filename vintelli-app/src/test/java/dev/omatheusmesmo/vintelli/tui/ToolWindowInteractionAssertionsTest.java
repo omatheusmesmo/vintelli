@@ -139,7 +139,7 @@ class ToolWindowInteractionAssertionsTest {
     @Test
     void wheelScrollingKeepsVisibleRowHitTestingAlignedWithTheRenderedList() throws Exception {
         ToolWindowInteractionAssertions.Observation expected = new ToolWindowInteractionAssertions.Observation(
-                "Item 10", PROBE_ACTIVATE, TOOL_ID, 3, "Item 10");
+                "Item 10", PROBE_ACTIVATE, TOOL_ID, 4, "Item 10");
 
         assertActivationParity("scrolled list activation", expected,
                 () -> newScrollSession(),
@@ -157,10 +157,10 @@ class ToolWindowInteractionAssertionsTest {
                     var pilot = fixture.pilot();
                     fixture.press('1');
                     Rect area = pilot.findElement("tool-" + TOOL_ID);
-                    for (int index = 0; index < 3; index++) {
+                    for (int index = 0; index < 4; index++) {
                         fixture.scrollDown(area.x() + 1, area.y() + 1);
                     }
-                    pilot.click(area.x() + 1, area.y() + 7);
+                    pilot.click(area.x() + 1, area.y() + 6);
                     pilot.click(area.x() + 20, area.y() + area.height() - 1);
                 });
     }

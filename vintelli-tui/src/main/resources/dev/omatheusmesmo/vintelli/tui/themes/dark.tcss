@@ -88,11 +88,6 @@ TabsElement-divider {
 #project-panel {
   background: $panel;
   color: $chrome-fg;
-  border-color: $border;
-}
-
-#project-panel:focus {
-  border-color: $focus-border;
 }
 
 ListElement-item {
@@ -115,12 +110,6 @@ ListElement-scrollbar-track {
 #editor-panel {
   background: $editor-bg;
   color: $editor-fg;
-  border-color: $editor-border;
-  border-type: rounded;
-}
-
-#editor-panel:focus {
-  border-color: $focus-border;
 }
 
 #editor-content {
@@ -156,14 +145,32 @@ ListElement-scrollbar-track {
 
 .tool-window {
   color: $chrome-fg;
-  border-color: $border;
 }
 
 .tool-window-title {
   color: $chrome-fg-strong;
 }
 
+.pane-header {
+  color: $soft;
+}
+
+.pane-header-focused {
+  color: $chrome-fg-strong;
+  text-style: bold;
+}
+
+.pane-marker {
+  color: $focus-border;
+}
+
 #status-bar {
   background: $panel;
   color: $chrome-fg-strong;
+}
+
+/* $border equals the editor background in this theme (IntelliJ New UI separates
+   panes by tone), so the separators use $editor-border to stay visible. */
+.pane-separator {
+  background: $editor-border;
 }

@@ -46,9 +46,9 @@ import dev.tamboui.toolkit.element.RenderContext;
 import dev.tamboui.toolkit.element.Size;
 import dev.tamboui.toolkit.elements.DockElement;
 import dev.tamboui.toolkit.elements.ListElement;
-import dev.tamboui.toolkit.elements.Panel;
 import dev.tamboui.toolkit.elements.RichTextElement;
 import dev.tamboui.toolkit.elements.Row;
+import dev.tamboui.toolkit.elements.Spacer;
 import dev.tamboui.toolkit.elements.Column;
 import dev.tamboui.toolkit.elements.StackElement;
 import dev.tamboui.toolkit.elements.TabsElement;
@@ -140,6 +140,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     static final int TOOL_WINDOW_HEIGHT = 9;
     static final int PROJECT_PANEL_WIDTH = 30;
     static final int SIDE_PANEL_WIDTH = 20;
+    static final String DIRTY_MARK = "●";
 
     private static final int MAX_EDITOR_DIFF_LINES = 6;
     private static final int MAX_EDITOR_LINE_LENGTH = 40;
@@ -205,7 +206,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private final Element lockedProjectList;
     private final TabsElement toolTabs;
     private final ListElement<?> projectList;
-    private Panel centerPanel;
+    private Column centerPanel;
+    private Column paneSeparatorVertical;
+    private Column paneSeparatorHorizontal;
     private volatile List<String> projectFiles;
     private volatile Map<String, VersionControlCapability.State> vcsStates = Map.of();
     private volatile boolean projectFilesLoading;
@@ -521,12 +524,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private Element leftStripe() {
         List<ToolWindow> leftWindows = visibleWindows(ToolWindow.Anchor.LEFT);
         if (leftWindows.isEmpty()) {
-            // No left anchor tool windows: just the project panel
-            return lockedProjectList;
+            return projectPane();
         }
-        // Stack: project panel on top, left tool window tabs and content below
         Column column = Toolkit.column().id("left-stripe");
-        column.add(lockedProjectList);
+        column.add(projectPane());
         column.add(toolWindowStripe(ToolWindow.Anchor.LEFT));
         column.fill();
         return column;
@@ -537,10 +538,14 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         if (rightWindows.isEmpty()) {
             return null;
         }
-        Column column = Toolkit.column().id("right-stripe");
+        Column column = Toolkit.column().id("right-tool-stripe");
         column.add(toolWindowStripe(ToolWindow.Anchor.RIGHT));
         column.fill();
-        return column;
+        Row stripe = Toolkit.row().id("right-stripe");
+        stripe.add(separator("pane-separator-right"));
+        stripe.add(column);
+        stripe.fill();
+        return stripe;
     }
 
     private Element bottomStripe() {
@@ -637,8 +642,12 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         int index = activeToolIndexByAnchor.getOrDefault(anchor, 0);
         int clamped = Math.min(index, windows.size() - 1);
         if (clamped < 0) { clamped = 0; }
-        return new ToolWindowElement(windows.get(clamped), anchor == ToolWindow.Anchor.BOTTOM ? TOOL_WINDOW_HEIGHT : -1,
-                this);
+        ToolWindow window = windows.get(clamped);
+        Column pane = Toolkit.column().id("tool-pane-" + window.id());
+        pane.add(new PaneHeader("tool-" + window.id(), context -> isToolWindowFocused(window.id()), window::title,
+                () -> themes, this::focusMark));
+        pane.add(new ToolWindowElement(window, -1, this));
+        return anchor == ToolWindow.Anchor.BOTTOM ? pane.length(TOOL_WINDOW_HEIGHT) : pane.fill();
     }
 
     private TabsElement toolWindowTabs() {
@@ -661,15 +670,22 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 .toList();
     }
 
+    private Element projectPane() {
+        Column pane = Toolkit.column().id("project-pane");
+        pane.add(new PaneHeader("project-panel", () -> "Project", () -> themes, this::focusMark));
+        pane.add(lockedProjectList);
+        pane.fill();
+        return pane;
+    }
+
     private ListElement<?> projectPanel() {
         ListElement<?> panel = Toolkit.list(projectFiles.isEmpty()
                 ? List.of(projectFilesLoading ? "Loading project files..." : "No project files found")
                 : projectFileRows());
         panel.id("project-panel");
         panel.addClass("tool-panel");
-        panel.title("Project");
         panel.focusable();
-        panel.length(PROJECT_PANEL_WIDTH);
+        panel.fill();
         panel.scrollbar(ScrollBarPolicy.AS_NEEDED);
         panel.selected(0);
         return panel;
@@ -897,14 +913,58 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     private Element centerPanel() {
-        centerPanel = Toolkit.panel(Toolkit.lazy(this::editorContent))
-                .title("Editor")
-                .rounded()
-                .id("editor-panel")
-                .addClass("tool-panel")
-                .focusable()
-                .fill();
+        Column editorPane = Toolkit.column().id("editor-panel");
+        editorPane.addClass("tool-panel");
+        editorPane.focusable();
+        editorPane.add(new PaneHeader("editor-panel", this::editorTitle, () -> themes, this::focusMark));
+        editorPane.add(Toolkit.lazy(this::editorContent));
+        editorPane.fill();
+        paneSeparatorVertical = separator("pane-separator-vertical");
+        Row editorRow = Toolkit.row();
+        editorRow.add(paneSeparatorVertical);
+        editorRow.add(editorPane);
+        editorRow.fill();
+        paneSeparatorHorizontal = separator("pane-separator-horizontal");
+        centerPanel = Toolkit.column().id("editor-area");
+        centerPanel.add(editorRow);
+        centerPanel.add(paneSeparatorHorizontal);
+        centerPanel.fill();
         return new LockedElement(centerPanel, frameLock, this, false, false);
+    }
+
+    private static Column separator(String id) {
+        Column separator = Toolkit.column().id(id);
+        separator.addClass("pane-separator");
+        separator.add(Spacer.fill());
+        return separator.length(1);
+    }
+
+    private String editorTitle() {
+        if (editor == null) {
+            return "Editor";
+        }
+        return editor.tabs().stream()
+                .filter(BuiltinEditor.TabView::active)
+                .findFirst()
+                .map(tab -> fileName(tab.file()) + (tab.dirty() ? " " + DIRTY_MARK : ""))
+                .orElse("Editor");
+    }
+
+    private static String fileName(String file) {
+        String normalized = file.replace('\\', '/');
+        return normalized.substring(normalized.lastIndexOf('/') + 1);
+    }
+
+    String focusMark() {
+        return fileIcons.mode() == IconMode.ASCII ? PaneHeader.FOCUS_MARK_ASCII : PaneHeader.FOCUS_MARK;
+    }
+
+    ShellThemes activeThemes() {
+        return themes;
+    }
+
+    boolean isToolWindowFocused(String id) {
+        return id.equals(focusedToolWindowId);
     }
 
     private Element statusBarEntry() {
@@ -1111,9 +1171,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     /**
-     * Captures only the editor panel's rendered border cells. Those are the
-     * visible boundaries between the project/editor and editor/tool panes;
-     * ordinary clicks continue to the panel, tree, tabs and tool windows.
+     * Captures only the rendered separator cells: the column between the
+     * project and editor panes and the row between the center area and the
+     * bottom tool windows. Ordinary clicks continue to the panel, tree, tabs
+     * and tool windows.
      */
     private EventResult handleSplitterMouse(MouseEvent mouse) {
         if (splitterDrag != null) {
@@ -1133,15 +1194,17 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         if (!mouse.isPress() || !mouse.isLeftButton() || splitterOverlayOpen()) {
             return EventResult.UNHANDLED;
         }
-        Rect panel = centerPanel == null ? Rect.ZERO : centerPanel.renderedArea();
-        if (panel.width() <= 0 || panel.height() <= 0 || shellArea.width() <= 0 || shellArea.height() <= 1) {
+        Rect vertical = paneSeparatorVertical == null ? Rect.ZERO : paneSeparatorVertical.renderedArea();
+        Rect horizontal = paneSeparatorHorizontal == null ? Rect.ZERO : paneSeparatorHorizontal.renderedArea();
+        if (vertical.width() <= 0 || vertical.height() <= 0 || horizontal.width() <= 0 || horizontal.height() <= 0
+                || shellArea.width() <= 0 || shellArea.height() <= 1) {
             return EventResult.UNHANDLED;
         }
-        int right = panel.x() + panel.width() - 1;
-        int bottom = panel.y() + panel.height() - 1;
-        if (mouse.y() == bottom && mouse.x() >= panel.x() && mouse.x() <= right) {
+        int right = horizontal.x() + horizontal.width() - 1;
+        int bottom = vertical.y() + vertical.height() - 1;
+        if (mouse.y() == horizontal.y() && mouse.x() >= horizontal.x() && mouse.x() <= right) {
             splitterDrag = SplitterDrag.BOTTOM;
-        } else if (mouse.x() == panel.x() && mouse.y() >= panel.y() && mouse.y() <= bottom) {
+        } else if (mouse.x() == vertical.x() && mouse.y() >= vertical.y() && mouse.y() <= bottom) {
             splitterDrag = SplitterDrag.PROJECT;
         } else {
             return EventResult.UNHANDLED;

@@ -10,15 +10,15 @@ class ShellLayoutTest {
     void keyboardAndMouseSizesPreserveAdjoiningPanelsAndScaleWithTerminal() {
         ShellLayout layout = new ShellLayout();
         layout.resizeProject(1000, 100);
-        assertEquals(84, layout.projectWidth(100));
+        assertEquals(100 - ShellLayout.MIN_EDITOR_WIDTH, layout.projectWidth(100));
         layout.resizeProject(-1000, 100);
-        assertEquals(12, layout.projectWidth(100));
+        assertEquals(ShellLayout.MIN_PROJECT_WIDTH, layout.projectWidth(100));
         layout.projectWidth(40, 100);
         assertEquals(80, layout.projectWidth(200));
         layout.resizeBottom(1000, 40);
-        assertEquals(36, layout.bottomHeight(40));
+        assertEquals(40 - ShellLayout.MIN_EDITOR_HEIGHT, layout.bottomHeight(40));
         layout.resizeBottom(-1000, 40);
-        assertEquals(3, layout.bottomHeight(40));
+        assertEquals(ShellLayout.MIN_BOTTOM_HEIGHT, layout.bottomHeight(40));
         layout.bottomHeight(10, 40);
         assertEquals(20, layout.bottomHeight(80));
     }

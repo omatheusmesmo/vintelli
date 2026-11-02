@@ -11,16 +11,11 @@ import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.terminal.Frame;
 import dev.tamboui.style.Style;
-import dev.tamboui.text.Span;
 import dev.tamboui.text.Text;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
 import dev.tamboui.tui.event.MouseEvent;
 import dev.tamboui.tui.event.MouseEventKind;
-import dev.tamboui.widgets.block.Block;
-import dev.tamboui.widgets.block.BorderType;
-import dev.tamboui.widgets.block.Borders;
-import dev.tamboui.widgets.block.Title;
 import dev.tamboui.widgets.paragraph.Paragraph;
 import jakarta.annotation.PreDestroy;
 import jakarta.inject.Inject;
@@ -157,7 +152,7 @@ public final class ProblemsToolWindow implements ToolWindow {
             lastArea = area;
             if (state == State.IDLE) refresh();
             rebuildRows();
-            viewportRows = Math.max(1, area.height() - 2);
+            viewportRows = Math.max(1, area.height() - 1);
             scrollOffset = clamp(scrollOffset, 0, maxScroll());
             lines = displayRows.stream().skip(scrollOffset).limit(viewportRows)
                     .map(row -> singleLine(row.text())).toList();
@@ -166,13 +161,11 @@ public final class ProblemsToolWindow implements ToolWindow {
                     + "  R:Refresh" + (provenance.isBlank() ? "" : "  " + provenance);
             ShellThemes activeThemes = themes == null ? null : themes.get();
             style = activeThemes == null ? Style.EMPTY : activeThemes.resolver("tool-window").toStyle();
-            Title blockTitle = Title.from(Span.styled(title,
-                    activeThemes == null ? Style.EMPTY : activeThemes.resolver("tool-window-title").toStyle()));
-            Block.Builder block = Block.builder().title(blockTitle).borders(Borders.ALL)
-                    .borderType(BorderType.ROUNDED).style(style);
-            if (activeThemes != null) activeThemes.resolver("tool-window").borderColor().ifPresent(block::borderColor);
-            frame.renderWidget(Paragraph.builder().text(Text.from(String.join("\n", lines))).style(style)
-                    .block(block.build()).build(), area);
+            List<String> body = new ArrayList<>();
+            body.add(title);
+            body.addAll(lines);
+            frame.renderWidget(Paragraph.builder().text(Text.from(String.join("\n", body))).style(style)
+                    .build(), area);
             return;
         }
     }
@@ -360,11 +353,11 @@ public final class ProblemsToolWindow implements ToolWindow {
     private int maxScroll() { return Math.max(0, displayRows.size() - viewportRows); }
     private boolean inside(int x, int y) {
         return x >= lastArea.x() && x < lastArea.x() + lastArea.width()
-                && y > lastArea.y() && y < lastArea.y() + lastArea.height() - 1;
+                && y > lastArea.y() && y < lastArea.y() + lastArea.height();
     }
     private boolean insideContent(int x, int y) {
-        return x > lastArea.x() && x < lastArea.x() + lastArea.width() - 1
-                && y > lastArea.y() && y < lastArea.y() + lastArea.height() - 1;
+        return x >= lastArea.x() && x < lastArea.x() + lastArea.width()
+                && y > lastArea.y() && y < lastArea.y() + lastArea.height();
     }
     private String filterLabel() { return switch (filter) { case ALL -> "[A]ll  E:Err  W:Warn"; case ERRORS -> "A:All  [E]rr  W:Warn"; case WARNINGS -> "A:All  E:Err  [W]arn"; }; }
     private String stateLabel() { return switch (state) { case IDLE -> "Idle"; case LOADING -> "Loading…"; case READY -> "Ready"; case EMPTY -> "Empty"; case UNAVAILABLE -> "Unavailable"; case ERROR -> "Error"; }; }

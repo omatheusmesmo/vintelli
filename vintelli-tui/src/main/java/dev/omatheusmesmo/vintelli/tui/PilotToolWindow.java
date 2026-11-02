@@ -3,13 +3,8 @@ package dev.omatheusmesmo.vintelli.tui;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.terminal.Frame;
 import dev.tamboui.style.Style;
-import dev.tamboui.text.Span;
 import dev.tamboui.text.Text;
 import dev.tamboui.tui.event.KeyEvent;
-import dev.tamboui.widgets.block.Block;
-import dev.tamboui.widgets.block.BorderType;
-import dev.tamboui.widgets.block.Borders;
-import dev.tamboui.widgets.block.Title;
 import dev.tamboui.widgets.paragraph.Paragraph;
 
 import jakarta.inject.Provider;
@@ -80,23 +75,15 @@ abstract class PilotToolWindow implements ToolWindow {
 
     @Override
     public final void render(Frame frame, Rect area) {
-        frame.renderWidget(contentBlock(title, content), area);
+        frame.renderWidget(contentParagraph(content), area);
     }
 
-    private Paragraph contentBlock(String title, String content) {
+    private Paragraph contentParagraph(String content) {
         ShellThemes activeThemes = themes();
         Style contentStyle = activeThemes.resolver("tool-window").toStyle();
-        Title blockTitle = Title.from(Span.styled(title, activeThemes.resolver("tool-window-title").toStyle()));
-        Block.Builder blockBuilder = Block.builder()
-                .title(blockTitle)
-                .borders(Borders.ALL)
-                .borderType(BorderType.ROUNDED)
-                .style(contentStyle);
-        activeThemes.resolver("tool-window").borderColor().ifPresent(blockBuilder::borderColor);
         return Paragraph.builder()
                 .text(Text.from(content))
                 .style(contentStyle)
-                .block(blockBuilder.build())
                 .build();
     }
 }
