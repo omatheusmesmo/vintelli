@@ -68,14 +68,15 @@ class CommandPaletteTest {
                 palette.handleKey(KeyEvent.ofKey(KeyCode.ENTER)),
                 "down moves to the second result of the alphabetical catalog");
 
-        for (int index = 0; index < 40; index++) {
+        int beyondCatalog = keymap.actions().size() + 1;
+        for (int index = 0; index < beyondCatalog; index++) {
             palette.handleKey(KeyEvent.ofKey(KeyCode.DOWN));
         }
-        // Catalog is sorted by label; "Widen Project Panel" (W) comes after "Search Everywhere" (S)
+        // The keymap catalog is sorted by label, with Widen Project Panel last.
         assertEquals(Optional.of(action("layout_project_wider")), palette.handleKey(KeyEvent.ofKey(KeyCode.ENTER)),
                 "down clamps at the last result");
 
-        for (int index = 0; index < 40; index++) {
+        for (int index = 0; index < beyondCatalog; index++) {
             palette.handleKey(KeyEvent.ofKey(KeyCode.UP));
         }
         assertEquals(Optional.of(action("ActivateAcpAgentsToolWindow")), palette.handleKey(KeyEvent.ofKey(KeyCode.ENTER)),
