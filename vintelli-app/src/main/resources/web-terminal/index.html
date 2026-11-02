@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vintelli terminal</title>
+<link rel="stylesheet" href="/_static/at/xterm/xterm/6.0.0/css/xterm.css">
+<style>
+  html, body { margin: 0; height: 100%; background: #000; color: #ddd; font-family: monospace; }
+  #terminal { position: fixed; inset: 8px; box-sizing: border-box; }
+  #status { position: fixed; top: 0; right: 0; padding: 2px 8px; font-size: 12px; background: #333; z-index: 1; }
+  #status:empty { display: none; }
+</style>
+</head>
+<body>
+<div id="status" role="status" aria-live="polite"></div>
+<div id="terminal"></div>
+<script src="/_static/at/xterm/xterm/6.0.0/lib/xterm.js"></script>
+<script src="/_static/at/xterm/addon-fit/0.11.0/lib/addon-fit.js"></script>
+<script src="/tui/terminal/terminal.js"></script>
+</body>
+</html>

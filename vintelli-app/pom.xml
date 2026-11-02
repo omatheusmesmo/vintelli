@@ -105,6 +105,14 @@
             <artifactId>quarkus-elytron-security-properties-file</artifactId>
         </dependency>
         <dependency>
+            <groupId>org.mvnpm.at.xterm</groupId>
+            <artifactId>xterm</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.mvnpm.at.xterm</groupId>
+            <artifactId>addon-fit</artifactId>
+        </dependency>
+        <dependency>
             <groupId>io.quarkiverse.mcp</groupId>
             <artifactId>quarkus-mcp-server-http</artifactId>
         </dependency>

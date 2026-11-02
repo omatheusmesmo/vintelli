@@ -31,6 +31,8 @@
         <quarkus.mcp.version>2.0.4</quarkus.mcp.version>
         <aesh.version>3.18.6</aesh.version>
         <aesh-readline.version>1.17</aesh-readline.version>
+        <xterm.version>6.0.0</xterm.version>
+        <xterm-addon-fit.version>0.11.0</xterm-addon-fit.version>
         <compiler-plugin.version>3.15.0</compiler-plugin.version>
         <enforcer-plugin.version>3.5.0</enforcer-plugin.version>
         <jandex-plugin.version>3.6.0</jandex-plugin.version>
@@ -84,6 +86,16 @@
                 <groupId>io.quarkiverse.jgit</groupId>
                 <artifactId>quarkus-jgit</artifactId>
                 <version>${quarkus.jgit.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.mvnpm.at.xterm</groupId>
+                <artifactId>xterm</artifactId>
+                <version>${xterm.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.mvnpm.at.xterm</groupId>
+                <artifactId>addon-fit</artifactId>
+                <version>${xterm-addon-fit.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
