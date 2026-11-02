@@ -167,9 +167,17 @@ public final class FakeIdeaMcpServer implements AutoCloseable {
         }
     }
 
+    /**
+     * Only a successful response carries the MCP session id. A rejection must not
+     * establish a session: the SDK then opens a follow-up GET on that session whose
+     * 404 replaces the POST's 404 and makes the client report ERROR instead of
+     * ENDPOINT_NOT_FOUND, depending on which response arrives first.
+     */
     private static void respond(HttpExchange exchange, int status, String body) throws IOException {
         byte[] payload = body.getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().add("mcp-session-id", "fake-session");
+        if (status < 300) {
+            exchange.getResponseHeaders().add("mcp-session-id", "fake-session");
+        }
         exchange.getResponseHeaders().add("Content-Type", "application/json");
         exchange.sendResponseHeaders(status, payload.length);
         try (OutputStream out = exchange.getResponseBody()) {
