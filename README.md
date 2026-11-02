@@ -249,7 +249,7 @@ Themes are configurable at three levels:
   participate). The keymap binds a key to it, see the key map below. Both
   themes render the whole shell and switch without a restart.
 
-The chrome palette (menu bar, tab bar, panel borders, status bar) and the
+The chrome palette (menu bar, tab bar, pane headers, pane separators, status bar) and the
 editor palette (`$editor-*`: text, keywords, strings and comments) live in
 separate sections of each stylesheet. Shell code exposes the editor palette
 through `ShellEditorPalette` in `vintelli-api` so an editor surface follows
@@ -332,8 +332,11 @@ the list, Enter opens the selected file at its diagnostic line, clicking a row
 navigates there, and the mouse wheel scrolls the list. The window shows the
 selected diagnostics provider and distinguishes loading, unavailable, error,
 and empty results.
-Drag the editor panel's left or bottom border to resize the project pane or
-bottom tool window pane. `Alt+=`/`Alt+-` resize the project pane and
+Panes have no frames: each one starts with a header row, and the separators
+are the one-column line between the project pane and the editor (and before
+the right tool stripe) and the one-row line above the bottom tool windows.
+Drag the vertical separator to resize the project pane or the horizontal one
+to resize the bottom tool window pane. `Alt+=`/`Alt+-` resize the project pane and
 `Alt+.`/`Alt+,` resize the bottom pane from the keyboard; the ratios are saved
 per project under the user config directory and scale with the terminal size.
 `Tab`/`Shift+Tab` move focus through the focusable panels

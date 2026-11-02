@@ -56,7 +56,7 @@ class ConfiguredIndexedPaletteTest {
                 .statusCode(200)
                 .body("theme", is("darcula"),
                         "colorLevel", is("indexed_256"),
-                        "mainAreaTop", containsString("╭"),
+                        "mainAreaTop", not(containsString("╭")),
                         "colors.panel", is("indexed(237)"),
                         "colors.chrome-fg", is("indexed(250)"),
                         "colors.tab-selected-bg", is("indexed(60)"),

@@ -13,14 +13,9 @@ import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.terminal.Frame;
 import dev.tamboui.style.Style;
-import dev.tamboui.text.Span;
 import dev.tamboui.text.Text;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
-import dev.tamboui.widgets.block.Block;
-import dev.tamboui.widgets.block.BorderType;
-import dev.tamboui.widgets.block.Borders;
-import dev.tamboui.widgets.block.Title;
 import dev.tamboui.widgets.paragraph.Paragraph;
 
 import jakarta.inject.Inject;
@@ -158,16 +153,6 @@ public final class StructureToolWindow implements ToolWindow {
         ShellThemes activeThemes = themes == null ? null : themes.get();
         Style contentStyle = activeThemes == null ? Style.EMPTY
                 : activeThemes.resolver("tool-window").toStyle();
-        Title blockTitle = Title.from(Span.styled(title(),
-                activeThemes == null ? Style.EMPTY : activeThemes.resolver("tool-window-title").toStyle()));
-        Block.Builder blockBuilder = Block.builder()
-                .title(blockTitle)
-                .borders(Borders.ALL)
-                .borderType(BorderType.ROUNDED)
-                .style(contentStyle);
-        if (activeThemes != null) {
-            activeThemes.resolver("tool-window").borderColor().ifPresent(blockBuilder::borderColor);
-        }
         List<String> lines = new ArrayList<>();
         if (!filter.isEmpty()) {
             lines.add("Filter: " + filter);
@@ -186,9 +171,8 @@ public final class StructureToolWindow implements ToolWindow {
         Paragraph paragraph = Paragraph.builder()
                 .text(Text.from(String.join("\n", lines)))
                 .style(contentStyle)
-                .block(blockBuilder.build())
                 .scroll(unavailableReason == null && !roots.isEmpty()
-                        ? Math.max(0, selectedIndex + (filter.isEmpty() ? 0 : 1) - Math.max(0, area.height() - 3)) : 0)
+                        ? Math.max(0, selectedIndex + (filter.isEmpty() ? 0 : 1) - Math.max(0, area.height() - 1)) : 0)
                 .build();
         frame.renderWidget(paragraph, area);
     }

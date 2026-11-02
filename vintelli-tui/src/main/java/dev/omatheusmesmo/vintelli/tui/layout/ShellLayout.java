@@ -8,9 +8,9 @@ public final class ShellLayout {
     public static final double DEFAULT_PROJECT_RATIO = 34.0 / 120;
     public static final double DEFAULT_BOTTOM_RATIO = 9.0 / 40;
     public static final int MIN_PROJECT_WIDTH = 12;
-    public static final int MIN_EDITOR_WIDTH = 16;
+    public static final int MIN_EDITOR_WIDTH = 17;
     public static final int MIN_BOTTOM_HEIGHT = 3;
-    public static final int MIN_EDITOR_HEIGHT = 4;
+    public static final int MIN_EDITOR_HEIGHT = 5;
     private double projectRatio;
     private double bottomRatio;
     private final Set<String> allWindows;

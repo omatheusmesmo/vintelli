@@ -2,12 +2,15 @@ package dev.omatheusmesmo.vintelli.tui;
 
 import static dev.omatheusmesmo.vintelli.tui.ToolWindowInteractionAssertions.assertActivationParity;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.BooleanSupplier;
 
@@ -59,7 +62,37 @@ class ProblemsToolWindowInteractionContractTest {
                 ProblemsToolWindowInteractionContractTest::navigateWithPointer);
     }
 
+    @Test
+    void scrollingAndClickingTheVisibleBottomLeftProblemCellWorks() throws Exception {
+        try (ToolWindowInteractionAssertions.Session session = newSession(true)) {
+            ToolWindowPilotFixture fixture = session.fixture();
+            fixture.press('3', KeyModifiers.ALT);
+            Rect area = fixture.pilot().findElement("tool-problems");
+            int bottomRow = area.y() + area.height() - 1;
+            String beforeScroll = fixture.renderedText();
+            fixture.scrollDown(area.x(), bottomRow);
+            String afterScroll = fixture.renderedText();
+            assertNotEquals(beforeScroll, afterScroll,
+                    "scrolling on the final rendered row should move the visible diagnostics");
+
+            String edgeRow = renderedRow(afterScroll, bottomRow);
+            ProblemsContext context = session.context(ProblemsContext.class);
+            Diagnostic target = context.window().problems().stream()
+                    .filter(problem -> edgeRow.strip().endsWith(problem.message()))
+                    .findFirst().orElseThrow(() -> new AssertionError("No diagnostic on rendered edge row: " + edgeRow));
+
+            fixture.pilot().click(area.x(), bottomRow);
+
+            assertEquals(target, context.window().problems().get(context.window().selectedIndex()), edgeRow);
+            assertEquals(target.startLine(), context.editor().activeDocument().orElseThrow().line(), edgeRow);
+        }
+    }
+
     private ToolWindowInteractionAssertions.Session newSession() throws Exception {
+        return newSession(false);
+    }
+
+    private ToolWindowInteractionAssertions.Session newSession(boolean fillPane) throws Exception {
         project = project.toRealPath();
         Path brokenFile = Files.writeString(project.resolve("Broken.java"), String.join("\n",
                 "class Broken {", "  void first() {}", "  void second() {}", "  void third() {}",
@@ -71,20 +104,28 @@ class ProblemsToolWindowInteractionContractTest {
         editor.open(new EditorBridge.OpenRequest(brokenFile, 0));
         editor.open(new EditorBridge.OpenRequest(otherFile, 0));
 
-        TestDiagnostics provider = new TestDiagnostics(List.of(
+        List<Diagnostic> diagnostics = new ArrayList<>(List.of(
                 new Diagnostic(brokenFile, 1, 2, 1, 8, Severity.ERROR, "jdtls", "first problem"),
                 new Diagnostic(brokenFile, 5, 2, 5, 8, Severity.ERROR, "jdtls", "broken target"),
                 new Diagnostic(otherFile, 1, 2, 1, 8, Severity.WARNING, "jdtls", "other target")));
+        if (fillPane) {
+            for (int index = 0; index < 30; index++) {
+                int line = index % 6;
+                diagnostics.add(new Diagnostic(brokenFile, line, 2, line, 8,
+                        Severity.ERROR, "jdtls", "edge problem " + index));
+            }
+        }
+        TestDiagnostics provider = new TestDiagnostics(diagnostics);
         TestRegistry registry = new TestRegistry(provider);
         ProblemsToolWindow window = new ProblemsToolWindow(registry, editor, () -> themes);
         window.refresh();
-        assertTrue(await(() -> window.problems().size() == 3), "diagnostics did not load");
+        assertTrue(await(() -> window.problems().size() == diagnostics.size()), "diagnostics did not load");
 
         ShellState state = new ShellState();
         VintelliShell shell = new VintelliShell(List.of(window, editor), state, themes, registry);
         ToolWindowPilotFixture fixture = ToolWindowPilotFixture.open(shell, VIEWPORT);
         ToolWindowInteractionAssertions.Session session = new ToolWindowInteractionAssertions.Session(fixture,
-                () -> observe(window, editor, state, fixture), new ProblemsContext(window));
+                () -> observe(window, editor, state, fixture), new ProblemsContext(window, editor));
         fixture.pilot().pause(Duration.ofMillis(100));
         return session;
     }
@@ -104,7 +145,26 @@ class ProblemsToolWindowInteractionContractTest {
         fixture.press('3', KeyModifiers.ALT);
         Rect area = pilot.findElement("tool-problems");
         assertTrue(area.height() > 5, "Problems rows are not visible in the test viewport");
-        pilot.click(area.x() + 2, area.y() + 3);
+        String screen = fixture.renderedText();
+        int targetRow = rowContaining(screen, "ERROR L6", "broken target");
+        assertTrue(targetRow >= area.y() && targetRow < area.bottom(), screen);
+        pilot.click(area.x() + 2, targetRow);
+    }
+
+    private static int rowContaining(String screen, String... fragments) {
+        List<String> rows = screen.lines().toList();
+        for (int row = 0; row < rows.size(); row++) {
+            String text = rows.get(row);
+            if (Arrays.stream(fragments).allMatch(text::contains)) {
+                return row;
+            }
+        }
+        return -1;
+    }
+
+    private static String renderedRow(String screen, int row) {
+        List<String> rows = screen.lines().toList();
+        return row >= 0 && row < rows.size() ? rows.get(row) : "";
     }
 
     private static ToolWindowInteractionAssertions.Observation observe(ProblemsToolWindow window,
@@ -156,7 +216,7 @@ class ProblemsToolWindowInteractionContractTest {
         return condition.getAsBoolean();
     }
 
-    private record ProblemsContext(ProblemsToolWindow window) implements AutoCloseable {
+    private record ProblemsContext(ProblemsToolWindow window, BuiltinEditor editor) implements AutoCloseable {
         @Override
         public void close() {
             window.close();

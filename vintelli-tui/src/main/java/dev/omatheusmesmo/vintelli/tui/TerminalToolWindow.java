@@ -16,14 +16,9 @@ import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.style.Style;
 import dev.tamboui.terminal.Frame;
-import dev.tamboui.text.Span;
 import dev.tamboui.text.Text;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
-import dev.tamboui.widgets.block.Block;
-import dev.tamboui.widgets.block.BorderType;
-import dev.tamboui.widgets.block.Borders;
-import dev.tamboui.widgets.block.Title;
 import dev.tamboui.widgets.paragraph.Paragraph;
 import jakarta.annotation.PreDestroy;
 import jakarta.inject.Inject;
@@ -161,7 +156,7 @@ public final class TerminalToolWindow implements ToolWindow {
     @Override
     public void render(Frame frame, Rect area) {
         if (session != null && session.isAlive()) {
-            session.resize(area.width(), Math.max(5, area.height() - 2));
+            session.resize(area.width(), Math.max(5, area.height()));
         }
         List<String> rows = new ArrayList<>();
         if (session != null) {
@@ -179,22 +174,14 @@ public final class TerminalToolWindow implements ToolWindow {
         String editing = input.toString();
         rows.add("vintelli> " + editing.substring(0, Math.min(cursor, editing.length()))
                 + "▏" + editing.substring(Math.min(cursor, editing.length())));
-        int maxRows = Math.max(1, area.height() - 2);
+        int maxRows = Math.max(1, area.height());
         List<String> visible = rows.size() <= maxRows ? rows : rows.subList(rows.size() - maxRows, rows.size());
 
         ShellThemes activeThemes = themes.get();
         Style contentStyle = activeThemes.resolver("tool-window").toStyle();
-        Title blockTitle = Title.from(Span.styled("Terminal", activeThemes.resolver("tool-window-title").toStyle()));
-        Block.Builder block = Block.builder()
-                .title(blockTitle)
-                .borders(Borders.ALL)
-                .borderType(BorderType.ROUNDED)
-                .style(contentStyle);
-        activeThemes.resolver("tool-window").borderColor().ifPresent(block::borderColor);
         frame.renderWidget(Paragraph.builder()
                 .text(Text.from(String.join("\n", visible)))
                 .style(contentStyle)
-                .block(block.build())
                 .build(), area);
     }
 

@@ -18,15 +18,10 @@ import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.style.Style;
 import dev.tamboui.terminal.Frame;
-import dev.tamboui.text.Span;
 import dev.tamboui.text.Text;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
 import dev.tamboui.tui.event.MouseEvent;
-import dev.tamboui.widgets.block.Block;
-import dev.tamboui.widgets.block.BorderType;
-import dev.tamboui.widgets.block.Borders;
-import dev.tamboui.widgets.block.Title;
 import dev.tamboui.widgets.paragraph.Paragraph;
 import jakarta.annotation.PostConstruct;
 import jakarta.inject.Inject;
@@ -136,8 +131,8 @@ public final class RunToolWindow implements ToolWindow {
         if (!event.isClick() || !event.isLeftButton() || !insideLastArea(event)) {
             return null;
         }
-        int row = event.y() - lastArea.y() - 1;
-        int column = event.x() - lastArea.x() - 1;
+        int row = event.y() - lastArea.y();
+        int column = event.x() - lastArea.x();
         if (row == 1 && column >= 0 && column < 18) {
             return KeyActions.RUN_EXECUTE;
         }
@@ -155,7 +150,7 @@ public final class RunToolWindow implements ToolWindow {
         if (!event.isClick() || !event.isLeftButton() || !insideLastArea(event)) {
             return false;
         }
-        int row = event.y() - lastArea.y() - 1;
+        int row = event.y() - lastArea.y();
         int index = visibleConfigurationStart + row - configurationRowsStart;
         if (configurationRowsStart >= 0 && row >= configurationRowsStart
                 && row < configurationRowsStart + visibleConfigurationCount
@@ -213,7 +208,7 @@ public final class RunToolWindow implements ToolWindow {
                         ? "Stop unavailable" : "■ Stop"));
         lines.add(status);
 
-        int innerRows = Math.max(0, area.height() - 2);
+        int innerRows = Math.max(0, area.height());
         int bodyRows = Math.max(0, innerRows - lines.size());
         if (configurations.isEmpty()) {
             int consoleRows = consoleRows(bodyRows);
@@ -247,16 +242,9 @@ public final class RunToolWindow implements ToolWindow {
 
         ShellThemes activeThemes = themes.get();
         Style contentStyle = activeThemes.resolver("tool-window").toStyle();
-        Block.Builder block = Block.builder()
-                .title(Title.from(Span.styled("Run", activeThemes.resolver("tool-window-title").toStyle())))
-                .borders(Borders.ALL)
-                .borderType(BorderType.ROUNDED)
-                .style(contentStyle);
-        activeThemes.resolver("tool-window").borderColor().ifPresent(block::borderColor);
         frame.renderWidget(Paragraph.builder()
                 .text(Text.from(String.join("\n", lines)))
                 .style(contentStyle)
-                .block(block.build())
                 .build(), area);
     }
 

@@ -41,7 +41,6 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -91,13 +90,17 @@ class VintelliShellTest {
     private static final int LEFT_TAB_ROW = 1; // Left stripe tab bar (empty in default)
     private static final int FIRST_PROJECT_ROW = 2; // Project panel now starts at row 2
     private static final int SECOND_PROJECT_ROW = 3;
-    private static final int PROJECT_ROW_HIGHLIGHT = VintelliShell.PROJECT_PANEL_WIDTH - 2;
+    private static final int PROJECT_ROW_HIGHLIGHT = VintelliShell.PROJECT_PANEL_WIDTH;
+    private static final int HEADER_ROW = 1;
+    private static final int EDITOR_HEADER_X = VintelliShell.PROJECT_PANEL_WIDTH + 1;
+    private static final int SEPARATOR_X = VintelliShell.PROJECT_PANEL_WIDTH;
+    private static final List<String> FRAME_CORNERS = List.of("┌", "┐", "└", "┘", "╭", "╮", "╰", "╯");
     // Bottom stripe tab bar row (after menu + left content + editor)
     private static final int BOTTOM_TAB_ROW = 13; // approximate, will be computed dynamically
     private static final int TOOL_WINDOW_ROW = 14;
     private static final int STATUS_ROW = 23;
     private static final int EDITOR_PROBE_X = 58;
-    private static final int EDITOR_PROBE_Y = 12;
+    private static final int EDITOR_PROBE_Y = 10;
 
     @Test
     void selectsToolWindowsByDigitKeys() throws Exception {
@@ -383,7 +386,7 @@ class VintelliShellTest {
         String rendered = bufferText(offlineFrame(shell));
 
         assertTrue(rendered.contains("M vintelli/pom.xml"), "the tree should show the changed file: " + rendered);
-        assertTrue(rendered.contains("vintelli/pom.xml M"), "the editor tab should show Git state: " + rendered);
+        assertTrue(rendered.contains("pom.xml M"), "the editor tab should show Git state: " + rendered);
         assertTrue(rendered.contains("+ 2"), "the gutter should mark changed line 2: " + rendered);
     }
 
@@ -1025,7 +1028,9 @@ class VintelliShellTest {
         shell.handle(KeyEvent.ofChar('5'));
 
         Buffer buffer = offlineFrame(shell);
-        String contentRow = rowText(buffer, TOOL_WINDOW_ROW);
+        String headerRow = rowText(buffer, TOOL_WINDOW_ROW);
+        String contentRow = rowText(buffer, TOOL_WINDOW_ROW + 1);
+        assertTrue(headerRow.contains("Broken"), "the pane header survives the failure: " + headerRow);
         assertTrue(contentRow.contains("tool window render failed: boom"), contentRow);
         assertTrue(rowText(buffer, MENU_ROW).contains("File"), "the rest of the shell keeps rendering");
     }
@@ -1064,11 +1069,12 @@ class VintelliShellTest {
             Pilot pilot = test.pilot();
             Rect projectBefore = pilot.findElement("project-panel");
             Rect editorBefore = pilot.findElement("editor-panel");
+            Rect separatorBefore = pilot.findElement("pane-separator-vertical");
             String frameBefore = test.renderedFrame();
             int pressY = editorBefore.y() + 2;
 
-            pilot.mousePress(MouseButton.LEFT, editorBefore.x(), pressY);
-            test.drag(MouseEvent.drag(MouseButton.LEFT, editorBefore.x() + 8, pressY));
+            pilot.mousePress(MouseButton.LEFT, separatorBefore.x(), pressY);
+            test.drag(MouseEvent.drag(MouseButton.LEFT, separatorBefore.x() + 8, pressY));
             pilot.mouseRelease(MouseButton.LEFT, VIEWPORT.width() - 1, VIEWPORT.height() - 1);
             pause(pilot, EVENT_WINDOW);
 
@@ -1122,7 +1128,7 @@ class VintelliShellTest {
             Rect rightBefore = pilot.findElement("right-stripe");
             int pressY = editorBefore.y() + 2;
 
-            pilot.mousePress(MouseButton.LEFT, editorBefore.x(), pressY);
+            pilot.mousePress(MouseButton.LEFT, pilot.findElement("pane-separator-vertical").x(), pressY);
             test.drag(MouseEvent.drag(MouseButton.LEFT, SIZE.width() - 1, pressY));
             pilot.mouseRelease(MouseButton.LEFT, SIZE.width() - 1, SIZE.height() - 1);
             pause(pilot, EVENT_WINDOW);
@@ -1130,8 +1136,8 @@ class VintelliShellTest {
             Rect editorAfter = pilot.findElement("editor-panel");
             Rect rightAfter = pilot.findElement("right-stripe");
             assertEquals(rightBefore.width(), rightAfter.width());
-            assertTrue(editorAfter.width() >= ShellLayout.MIN_EDITOR_WIDTH,
-                    "the right stripe must not be counted as editor space when clamping the project splitter: "
+            assertTrue(editorAfter.width() + 1 >= ShellLayout.MIN_EDITOR_WIDTH,
+                    "the editor and its separator column keep the minimum width when clamping the project splitter: "
                             + editorAfter);
             int projectAreaWidth = SIZE.width() - rightAfter.width();
             assertEquals((double) pilot.findElement("project-panel").width() / projectAreaWidth,
@@ -1147,7 +1153,7 @@ class VintelliShellTest {
             Pilot pilot = test.pilot();
             Rect editorBefore = pilot.findElement("editor-panel");
             int pressX = editorBefore.x() + Math.max(1, editorBefore.width() / 2);
-            int dividerY = editorBefore.y() + editorBefore.height() - 1;
+            int dividerY = pilot.findElement("pane-separator-horizontal").y();
 
             pilot.mousePress(MouseButton.LEFT, pressX, dividerY);
             test.drag(MouseEvent.drag(MouseButton.LEFT, pressX, dividerY - 3));
@@ -1162,8 +1168,10 @@ class VintelliShellTest {
             pause(pilot, EVENT_WINDOW);
             pilot.mouseRelease(MouseButton.LEFT, 19, 4);
             pause(pilot, EVENT_WINDOW);
-            Rect resized = pilot.findElement("editor-panel");
-            assertTrue(resized.width() >= 0 && resized.height() >= 0, resized.toString());
+            if (pilot.hasElement("editor-panel")) {
+                Rect resized = pilot.findElement("editor-panel");
+                assertTrue(resized.width() >= 0 && resized.height() >= 0, resized.toString());
+            }
             assertEquals(ratioAfterRelease, store.load().bottomRatio(), 0.0001,
                     "terminal resize and release outside the divider preserve the last valid ratio");
 
@@ -1171,9 +1179,11 @@ class VintelliShellTest {
             test.drag(MouseEvent.drag(MouseButton.LEFT, -40, -20));
             pilot.mouseRelease(MouseButton.LEFT, -40, -20);
             pause(pilot, EVENT_WINDOW);
-            Rect afterInvalidCoordinates = pilot.findElement("editor-panel");
-            assertTrue(afterInvalidCoordinates.width() >= 0 && afterInvalidCoordinates.height() >= 0,
-                    afterInvalidCoordinates.toString());
+            if (pilot.hasElement("editor-panel")) {
+                Rect afterInvalidCoordinates = pilot.findElement("editor-panel");
+                assertTrue(afterInvalidCoordinates.width() >= 0 && afterInvalidCoordinates.height() >= 0,
+                        afterInvalidCoordinates.toString());
+            }
             assertNotEquals("", test.renderedFrame());
         }
     }
@@ -1200,39 +1210,82 @@ class VintelliShellTest {
     }
 
     @Test
-    void focusChangesTheFocusedPanelBorderThroughTheStylesheet() {
+    void focusMovesTheHeaderMarkerBetweenPanes() {
         ShellThemes themes = defaultThemes();
         VintelliShell shell = defaultShell(themes);
-        Color focusedBorder = themes.color("focus-border");
-        Color border = themes.color("border");
+        String mark = shell.focusMark();
+        Color focusedMarker = themes.color("focus-border");
+
+        Buffer projectFocused = offlineFocusFrame(shell, themes, "project-panel");
+        assertEquals(mark, projectFocused.get(0, HEADER_ROW).symbol(), "the project header carries the focus mark");
+        assertEquals(" ", projectFocused.get(EDITOR_HEADER_X, HEADER_ROW).symbol(),
+                "the editor header carries no mark while the project is focused");
+        assertEquals(focusedMarker, projectFocused.get(0, HEADER_ROW).style().fg().orElse(null),
+                "the focus mark is painted in the focus border color");
+
+        Buffer editorFocused = offlineFocusFrame(shell, themes, "editor-panel");
+        assertEquals(" ", editorFocused.get(0, HEADER_ROW).symbol(),
+                "the project header drops its mark when the editor takes focus");
+        assertEquals(mark, editorFocused.get(EDITOR_HEADER_X, HEADER_ROW).symbol(),
+                "the editor header carries the focus mark after the focus moved");
 
         Buffer unfocused = offlineFocusFrame(shell, themes, null);
-        Buffer focused = offlineFocusFrame(shell, themes, "project-panel");
-
-        // Project panel right border is at column PROJECT_PANEL_WIDTH - 1, first content row
-        int projectBorderCol = VintelliShell.PROJECT_PANEL_WIDTH - 1;
-        int projectRow = FIRST_PROJECT_ROW;
-
-        assertEquals(border, unfocused.get(projectBorderCol, projectRow).style().fg().orElse(null),
-                "an unfocused panel border follows the chrome border color");
-        assertEquals(focusedBorder, focused.get(projectBorderCol, projectRow).style().fg().orElse(null),
-                "the focused panel border follows the :focus rule");
+        assertEquals(" ", unfocused.get(0, HEADER_ROW).symbol());
+        assertEquals(" ", unfocused.get(EDITOR_HEADER_X, HEADER_ROW).symbol());
     }
 
     @Test
-    void theEditorBorderStaysVisibleAgainstItsOwnBackgroundInBothThemes() {
+    void defaultShellPanesAreBorderlessWithHeaderRowsAndSeparators() {
         ShellThemes themes = defaultThemes();
         VintelliShell shell = defaultShell(themes);
-        // Editor panel left border is at PROJECT_PANEL_WIDTH (right edge of project panel)
-        int editorBorderCol = VintelliShell.PROJECT_PANEL_WIDTH;
+        Buffer buffer = offlineFrame(shell);
+        String rendered = bufferText(buffer);
+        for (String corner : FRAME_CORNERS) {
+            assertFalse(rendered.contains(corner), "panes must not draw frame corners, found " + corner + ":\n" + rendered);
+        }
+        String header = rowText(buffer, HEADER_ROW);
+        assertTrue(header.contains("Project"), "the project pane header row: " + header);
+        assertTrue(header.contains("Editor"), "the editor pane header row: " + header);
+        assertTrue(buffer.get(SEPARATOR_X, FIRST_PROJECT_ROW).style().bg().isPresent(),
+                "the separator column between the project and the editor is painted");
+    }
+
+    @Test
+    void editorHeaderShowsTheFileNameAndTheDirtyDotAfterAnEdit() throws IOException {
+        Path file = project.resolve("vintelli/pom.xml");
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, "<project>header</project>");
+        ShellThemes themes = defaultThemes();
+        BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
+        List<ToolWindow> windows = new ArrayList<>(defaultWindows());
+        windows.add(editor);
+        VintelliShell shell = new VintelliShell(new ToolWindowRegistry(windows).toolWindows(),
+                new ShellState(), themes);
+        assertEquals(EventResult.HANDLED, shell.handle(KeyEvent.ofKey(KeyCode.ENTER)));
+
+        String header = rowText(offlineFrame(shell), HEADER_ROW);
+        assertTrue(header.contains("pom.xml"), "the editor header names the file: " + header);
+        assertFalse(header.contains("vintelli/pom.xml"), "the editor header shows the file name only: " + header);
+        assertFalse(header.contains("●"), "a clean buffer has no dirty dot: " + header);
+
+        editor.insert("x");
+        String edited = rowText(offlineFrame(shell), HEADER_ROW);
+        assertTrue(edited.contains("pom.xml ●"), "an edited buffer shows the dirty dot after the name: " + edited);
+    }
+
+
+    @Test
+    void theSeparatorStaysVisibleAgainstThePaneBackgroundsInBothThemes() {
+        ShellThemes themes = defaultThemes();
+        VintelliShell shell = defaultShell(themes);
         for (int round = 0; round < 2; round++) {
-            Map<String, String> values = themes.variablesOf(themes.activeTheme());
+            String separatorRole = "dark".equals(themes.activeTheme()) ? "editor-border" : "border";
             Buffer buffer = offlineFrame(shell);
-            Color border = buffer.get(editorBorderCol, 2).style().fg().orElse(null);
-            assertEquals(Color.hex(values.get("editor-border")), border,
-                    "the unfocused editor border paints the themed border color in '" + themes.activeTheme() + "'");
-            assertFalse(Color.hex(values.get("editor-bg")).equals(border),
-                    "the unfocused editor border must differ from its background in '" + themes.activeTheme() + "'");
+            Color separator = buffer.get(SEPARATOR_X, FIRST_PROJECT_ROW).style().bg().orElse(null);
+            assertEquals(themes.color(separatorRole), separator,
+                    "the separator paints the themed color in '" + themes.activeTheme() + "'");
+            assertFalse(themes.color("editor-bg").equals(separator),
+                    "the separator must differ from the editor background in '" + themes.activeTheme() + "'");
             themes.switchTheme("dark".equals(themes.activeTheme()) ? "darcula" : "dark");
         }
     }

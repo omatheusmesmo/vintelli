@@ -122,9 +122,9 @@ final class EditorElement implements Element {
                 break;
             }
         }
-        var labels = tabs.stream().map(tab -> (tab.active() ? "[" : " ") + tab.file().replace('\\', '/')
+        var labels = tabs.stream().map(tab -> fileName(tab.file())
                 + editor.vcsState(tab.file()).map(state -> " " + vcsMarker(state)).orElse("")
-                + (tab.dirty() ? " *" : "") + (tab.active() ? "]" : " ")).toList();
+                + (tab.dirty() ? " " + DIRTY_MARK : "")).toList();
         tabState.select(active);
         lastRenderedTab = active;
         TabsElement element = Toolkit.tabs(labels).id("editor-tabs").length(1).divider(" ").state(tabState);
@@ -144,6 +144,13 @@ final class EditorElement implements Element {
         }
         return Text.from(lines);
     }
+
+    private static String fileName(String file) {
+        String normalized = file.replace('\\', '/');
+        return normalized.substring(normalized.lastIndexOf('/') + 1);
+    }
+
+    private static final String DIRTY_MARK = "●";
 
     private static String vcsMarker(VersionControlCapability.State state) {
         return switch (state) {
