@@ -29,8 +29,9 @@ import dev.tamboui.widgets.syntax.TokenType;
  *   <li>per-line end-of-line lexical state, so block comments and text blocks
  *   survive across lines and edits re-tokenize forward from the edited line
  *   until the end state matches the cached one;</li>
- *   <li>diagnostic background tint and keyboard selection tint, driven from
- *   state kept outside {@code TextAreaState}.</li>
+ *   <li>diagnostic background tint with a severity-colored underline, and
+ *   keyboard selection tint, driven from state kept outside
+ *   {@code TextAreaState}.</li>
  * </ul>
  *
  * <p>The {@link Diagnostic} map is keyed by logical document row. The editor
@@ -75,17 +76,21 @@ final class EditorSyntaxHighlighter implements SyntaxHighlighter {
     }
 
     /**
-     * Diagnostic severity with the background tint the editor paints.
+     * Diagnostic severity with the background tint the editor paints and the
+     * underline color drawn on the same row. The underline uses a brighter or
+     * contrasting shade than the tint so it stays visible against it.
      */
     public enum Severity {
-        ERROR(Color.ansi(AnsiColor.RED)),
-        WARNING(Color.ansi(AnsiColor.YELLOW)),
-        INFO(Color.ansi(AnsiColor.BLUE));
+        ERROR(Color.ansi(AnsiColor.RED), Color.ansi(AnsiColor.BRIGHT_RED)),
+        WARNING(Color.ansi(AnsiColor.YELLOW), Color.ansi(AnsiColor.BRIGHT_YELLOW)),
+        INFO(Color.ansi(AnsiColor.BLUE), Color.ansi(AnsiColor.CYAN));
 
         private final Color background;
+        private final Color underline;
 
-        Severity(Color background) {
+        Severity(Color background, Color underline) {
             this.background = background;
+            this.underline = underline;
         }
     }
 
@@ -270,7 +275,10 @@ final class EditorSyntaxHighlighter implements SyntaxHighlighter {
         }
         Diagnostic diagnostic = diagnostics.get(row);
         if (diagnostic != null) {
-            styled = tintBackground(styled, diagnostic.severity().background);
+            styled = tintBackground(
+                    styled,
+                    diagnostic.severity().background,
+                    diagnostic.severity().underline);
         }
         return Line.from(styled);
     }
@@ -301,10 +309,14 @@ final class EditorSyntaxHighlighter implements SyntaxHighlighter {
         return out;
     }
 
-    private static List<Span> tintBackground(List<Span> spans, Color background) {
+    private static List<Span> tintBackground(List<Span> spans, Color background, Color underline) {
         List<Span> out = new ArrayList<>(spans.size());
         for (Span span : spans) {
-            out.add(Span.styled(span.content(), span.style().bg(background)));
+            Style style = span.style()
+                    .bg(background)
+                    .underlined()
+                    .underlineColor(underline);
+            out.add(Span.styled(span.content(), style));
         }
         return out;
     }
