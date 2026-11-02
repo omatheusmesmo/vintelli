@@ -37,6 +37,17 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <!-- Service files on the classpath for the TamboUI provider registration test. -->
+            <groupId>dev.tamboui</groupId>
+            <artifactId>tamboui-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>dev.tamboui</groupId>
+            <artifactId>tamboui-jline3-backend</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-arc-deployment</artifactId>
         </dependency>

@@ -89,8 +89,12 @@ Every change is expected to meet all of the following.
 (b) Native integration test. Any change that adds or alters runtime behaviour
     needs a `*IT` class annotated with `@QuarkusIntegrationTest` that runs in
     the native job and is observable through the headless surface (HTTP, the
-    MCP endpoint, or a CLI command). Do not drive `--tui` from integration
-    tests. External collaborators (IntelliJ MCP server, jdtls, agents) are
+    MCP endpoint, or a CLI command). Behavior checks never drive `--tui`;
+    the one exception is the startup smoke test `VintelliTuiStartupIT`, which
+    drives `--tui` headlessly through TamboUI's tape playback (`tamboui.record.config`) to prove the
+    real terminal backend starts. Running the TUI by hand to look at a
+    change is fine, but keep it occasional (no screenshot after every edit);
+    the proof of a change is its automated test. External collaborators (IntelliJ MCP server, jdtls, agents) are
     replaced by twins: fake servers started by a
     `QuarkusTestResourceLifecycleManager` in the test JVM. A twin must cover
     failure modes, not only the happy path: denied consent, missing or invalid
