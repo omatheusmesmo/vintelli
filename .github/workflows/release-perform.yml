@@ -63,7 +63,7 @@ jobs:
             echo "::error::Tag ${TAG} is not on main; release only from commits reachable from main"
             exit 1
           fi
-      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           java-version: "25"
           distribution: temurin
@@ -121,7 +121,7 @@ jobs:
           ref: refs/tags/${{ needs.verify.outputs.tag }}
       - name: Set up Java 25 (Temurin, Mandrel builds in a container)
         if: ${{ startsWith(matrix.os, 'linux') }}
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           java-version: "25"
           distribution: temurin
