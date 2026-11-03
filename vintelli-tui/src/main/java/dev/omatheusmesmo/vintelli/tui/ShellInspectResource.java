@@ -5,6 +5,9 @@ import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeymapProfile;
 import dev.tamboui.buffer.Buffer;
 import dev.tamboui.layout.Rect;
+import dev.tamboui.style.Color;
+import dev.tamboui.style.Color.Indexed;
+import dev.tamboui.style.Color.Rgb;
 import dev.tamboui.terminal.Frame;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
@@ -22,10 +25,12 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcon;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * REST anchor for inspecting the TUI shell from outside the process. Renders
@@ -132,6 +137,63 @@ public final class ShellInspectResource {
         return text.toString();
     }
 
+    /**
+     * The foreground color runs of the editor rows, in row order: one entry
+     * per maximal run of neighboring cells that share a foreground color, so a
+     * caller sees which cells carry which palette color without the payload
+     * carrying a style per cell. A row contributes no run past its last
+     * non-blank cell, matching the stripped text of {@link #editorRows(Buffer)}.
+     * Package visible so the payload can be exercised without a live shell.
+     */
+    static List<EditorRunView> editorRuns(Buffer buffer) {
+        List<EditorRunView> runs = new ArrayList<>();
+        for (int row = FIRST_EDITOR_ROW; row <= LAST_EDITOR_ROW; row++) {
+            runs.addAll(rowRuns(buffer, row));
+        }
+        return runs;
+    }
+
+    private static List<EditorRunView> rowRuns(Buffer buffer, int row) {
+        int last = -1;
+        for (int x = 0; x < buffer.width(); x++) {
+            if (!buffer.get(x, row).symbol().isBlank()) {
+                last = x;
+            }
+        }
+        List<EditorRunView> runs = new ArrayList<>();
+        int start = 0;
+        while (start <= last) {
+            String fg = colorText(buffer.get(start, row).style().fg().orElse(null));
+            StringBuilder text = new StringBuilder(buffer.get(start, row).symbol());
+            int end = start + 1;
+            while (end <= last && Objects.equals(fg, colorText(buffer.get(end, row).style().fg().orElse(null)))) {
+                text.append(buffer.get(end, row).symbol());
+                end++;
+            }
+            runs.add(new EditorRunView(row, text.toString(), fg));
+            start = end;
+        }
+        return runs;
+    }
+
+    /**
+     * A foreground color in the notation of the palette: the authored hex
+     * value for a truecolor cell and {@code indexed(n)} for a cell the active
+     * depth rewrote, so the caller compares it against a
+     * {@code colors.editor-*} entry of the same payload whatever the color
+     * depth is. A cell without a foreground color reports {@code null}, and a
+     * color that is neither representation falls back to its own text.
+     */
+    private static String colorText(Color color) {
+        if (color instanceof Rgb rgb) {
+            return String.format(Locale.ROOT, "#%02X%02X%02X", rgb.r(), rgb.g(), rgb.b());
+        }
+        if (color instanceof Indexed indexed) {
+            return "indexed(" + indexed.index() + ")";
+        }
+        return color == null ? null : color.toString();
+    }
+
     private static ShellRenderView renderView(VintelliShell liveShell) {
         Buffer buffer = Buffer.empty(VIEWPORT);
         liveShell.paint(Frame.forTesting(buffer));
@@ -140,6 +202,7 @@ public final class ShellInspectResource {
                 rowText(buffer, TAB_ROW),
                 rowText(buffer, MAIN_AREA_TOP_ROW),
                 editorRows(buffer),
+                editorRuns(buffer),
                 rowText(buffer, STATUS_ROW).strip(),
                 liveShell.activeTheme(),
                 themes.colorLevel().name().toLowerCase(Locale.ROOT),
@@ -226,18 +289,31 @@ public final class ShellInspectResource {
      * Payload offered only while {@code vintelli.inspect.enabled} is
      * {@code true}: the plain text of the tool window tab row, the top border
      * row of the project and editor panels, the content rows of the editor
-     * panel joined by newlines, the status row, the active theme name, the
-     * color depth the active theme renders with and the {@link
-     * #INSPECTED_VARIABLES} of that theme as the depth serves them.
-     * {@code POST /tui/theme} answers with the same shape after the switch,
-     * so one payload carries both the new theme name and a frame painted in
-     * it. Rows are returned without their trailing padding, and the status
-     * line without the gutter the status bar paints around it, so the text
-     * reads the same whatever the viewport width. Leading indentation of the
-     * editor rows is kept, because diff context lines start with a space.
+     * panel joined by newlines, the {@link EditorRunView} foreground color
+     * runs of those rows, the status row, the active theme name, the color
+     * depth the active theme renders with and the {@link #INSPECTED_VARIABLES}
+     * of that theme as the depth serves them. {@code POST /tui/theme} answers
+     * with the same shape after the switch, so one payload carries both the
+     * new theme name and a frame painted in it. Rows are returned without
+     * their trailing padding, and the status line without the gutter the
+     * status bar paints around it, so the text reads the same whatever the
+     * viewport width. Leading indentation of the editor rows is kept, because
+     * diff context lines start with a space.
      */
-    record ShellRenderView(String tabRow, String mainAreaTop, String editorArea, String status, String theme,
-            String colorLevel, Map<String, String> colors) {
+    record ShellRenderView(String tabRow, String mainAreaTop, String editorArea, List<EditorRunView> editorRuns,
+            String status, String theme, String colorLevel, Map<String, String> colors) {
+    }
+
+    /**
+     * One maximal run of neighboring editor cells that share a foreground
+     * color: the logical row, the text of the run and the color in the
+     * notation of the palette ({@code #RRGGBB} for a truecolor cell,
+     * {@code indexed(n)} for a cell the active depth rewrote), so a caller
+     * compares it against a {@code colors.editor-*} entry of the same payload
+     * whatever the color depth is. The color of a cell without a foreground
+     * color is {@code null}.
+     */
+    record EditorRunView(int row, String text, String fg) {
     }
 
     /**
