@@ -66,16 +66,19 @@ public final class LspClient implements AutoCloseable {
     private final LspProfileConfig profiles;
     private final Object lock = new Object();
     private volatile LspServerSession session;
+    private volatile Optional<String> runtimeFailure = Optional.empty();
 
     @Inject
     LspClient(LspProfileConfig profiles) {
         this.profiles = profiles;
+        checkRuntime();
     }
 
     /**
      * @return the health of the configured profile: unavailable with a clear
-     *         reason while no profile is selected or the command does not
-     *         resolve, available without starting the server
+     *         reason while no profile is selected, the command does not
+     *         resolve or the last Java runtime check failed, available without
+     *         starting the server
      */
     public ProviderHealth health() {
         Selection selection = selection();
@@ -96,7 +99,7 @@ public final class LspClient implements AutoCloseable {
      *         still indexing state of a server that publishes nothing in time
      */
     public CapabilityResult<List<DiagnosticsCapability.Diagnostic>> diagnostics(Path file) {
-        Selection selection = selection();
+        Selection selection = requestSelection();
         if (selection.failure() != null) {
             return CapabilityResult.failed(new CapabilityFailure("unavailable", selection.failure()));
         }
@@ -124,7 +127,7 @@ public final class LspClient implements AutoCloseable {
      *         server has no hover there
      */
     public CapabilityResult<String> hover(Path file, int line, int column) {
-        return serve(selection(),
+        return serve(requestSelection(),
                 current -> current.hover(LspServerSession.uriFor(file), new Position(line, column)),
                 LspClient::hoverText);
     }
@@ -133,7 +136,7 @@ public final class LspClient implements AutoCloseable {
      * @return the problems the server publishes after the change notification
      */
     public CapabilityResult<List<DiagnosticsCapability.Diagnostic>> modifyDocument(Path file, String content) {
-        Selection selection = selection();
+        Selection selection = requestSelection();
         if (selection.failure() != null) {
             return CapabilityResult.failed(new CapabilityFailure("unavailable", selection.failure()));
         }
@@ -178,7 +181,7 @@ public final class LspClient implements AutoCloseable {
      * @return the definitions of the symbol at the file position
      */
     public CapabilityResult<List<CodeReference>> definition(Path file, int line, int column) {
-        return serve(selection(),
+        return serve(requestSelection(),
                 current -> current.definition(LspServerSession.uriFor(file), new Position(line, column)),
                 LspClient::definitionTargets);
     }
@@ -188,7 +191,7 @@ public final class LspClient implements AutoCloseable {
      */
     public CapabilityResult<List<CodeReference>> references(Path file, int line, int column,
             boolean includeDeclaration) {
-        return serve(selection(),
+        return serve(requestSelection(),
                 current -> current.references(LspServerSession.uriFor(file), new Position(line, column),
                         includeDeclaration),
                 LspClient::referenceTargets);
@@ -198,7 +201,7 @@ public final class LspClient implements AutoCloseable {
      * @return the completion labels at the file position
      */
     public CapabilityResult<List<CompletionEntry>> completion(Path file, int line, int column) {
-        return serve(selection(),
+        return serve(requestSelection(),
                 current -> current.completion(LspServerSession.uriFor(file), new Position(line, column)),
                 LspClient::completionEntries);
     }
@@ -209,7 +212,7 @@ public final class LspClient implements AutoCloseable {
      *         symbols for it
      */
     public CapabilityResult<List<DocumentSymbol>> documentSymbols(Path file) {
-        Selection selection = selection();
+        Selection selection = requestSelection();
         if (selection.failure() != null) {
             return CapabilityResult.failed(new CapabilityFailure("unavailable", selection.failure()));
         }
@@ -252,7 +255,7 @@ public final class LspClient implements AutoCloseable {
      */
     public CapabilityResult<List<CodeActionCapability.CodeAction>> codeActions(Path file,
             CodeActionCapability.SourceRange range, List<DiagnosticsCapability.Diagnostic> diagnostics) {
-        Selection selection = selection();
+        Selection selection = requestSelection();
         if (selection.failure() != null) {
             return CapabilityResult.failed(new CapabilityFailure("unavailable", selection.failure()));
         }
@@ -281,7 +284,7 @@ public final class LspClient implements AutoCloseable {
      */
     public CapabilityResult<List<CallHierarchyCapability.CallSite>> callers(
             CallHierarchyCapability.SourcePosition position) {
-        return callSite(selection(), position, false);
+        return callSite(requestSelection(), position, false);
     }
 
     /**
@@ -289,7 +292,7 @@ public final class LspClient implements AutoCloseable {
      */
     public CapabilityResult<List<CallHierarchyCapability.CallSite>> callees(
             CallHierarchyCapability.SourcePosition position) {
-        return callSite(selection(), position, true);
+        return callSite(requestSelection(), position, true);
     }
 
     /**
@@ -533,15 +536,56 @@ public final class LspClient implements AutoCloseable {
             Path root = configuredRoot.isBlank()
                     ? Path.of(System.getProperty("user.dir"))
                     : Path.of(configuredRoot);
+            String javaHome = selection.settings().javaHome().orElse("");
+            Map<String, String> environment = javaHome.isBlank() ? Map.of() : Map.of("JAVA_HOME", javaHome.trim());
             LspServerSession.Launch launch = new LspServerSession.Launch(selection.profile(), command,
-                    root, selection.settings().initializationOptions().orElse(null));
+                    root, selection.settings().initializationOptions().orElse(null), environment);
             current = LspServerSession.start(launch);
             session = current;
             return current;
         }
     }
 
+    /**
+     * The selection of a health read: the Java runtime is taken from the last
+     * check instead of being read again, so the health path never touches
+     * the files of the Java installation.
+     */
     private Selection selection() {
+        Selection configured = configuredSelection();
+        Optional<String> failure = runtimeFailure;
+        if (configured.failure() == null && failure.isPresent()) {
+            return Selection.unavailable(failure.get());
+        }
+        return configured;
+    }
+
+    /**
+     * The selection of a request, which may block: without a live session the
+     * Java runtime is checked again first, so a runtime installed or fixed
+     * since the last check counts before the server starts.
+     */
+    private Selection requestSelection() {
+        LspServerSession current = session;
+        if (current == null || !current.isLive()) {
+            checkRuntime();
+        }
+        return selection();
+    }
+
+    /**
+     * Reads the Java runtime of the selected profile and publishes the result
+     * for {@link #selection()}. It runs when the client is created and before
+     * a launch, never on a health read.
+     */
+    private void checkRuntime() {
+        Selection configured = configuredSelection();
+        runtimeFailure = configured.failure() != null
+                ? Optional.empty()
+                : JavaRuntimeRequirement.failure(configured.profile(), configured.settings(), System.getenv());
+    }
+
+    private Selection configuredSelection() {
         Map<String, LspProfileConfig.Profile> configured = profiles.profiles();
         if (configured.isEmpty()) {
             return Selection.unavailable("no language server profile is configured; set "
@@ -571,7 +615,7 @@ public final class LspClient implements AutoCloseable {
                     + "vintelli.lsp.profiles." + profile + ".command");
         }
         String command = settings.command().orElseThrow();
-        Optional<Path> resolved = resolve(command);
+        Optional<Path> resolved = resolve(command, System.getenv("PATH"));
         if (resolved.isEmpty()) {
             return Selection.unavailable("the command '" + command + "' of profile '" + profile
                     + "' was not found; is the language server installed?");
@@ -583,13 +627,12 @@ public final class LspClient implements AutoCloseable {
      * Only resolves the command: the health contract forbids blocking I O, so
      * no session start or reachability probe happens here.
      */
-    private static Optional<Path> resolve(String command) {
+    static Optional<Path> resolve(String command, String path) {
         String trimmed = command.trim();
         if (trimmed.indexOf('/') >= 0 || trimmed.indexOf(File.separatorChar) >= 0) {
             Path candidate = Path.of(trimmed);
             return Files.isExecutable(candidate) ? Optional.of(candidate) : Optional.empty();
         }
-        String path = System.getenv("PATH");
         if (path == null || path.isBlank()) {
             return Optional.empty();
         }

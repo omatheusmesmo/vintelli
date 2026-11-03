@@ -15,7 +15,13 @@ final class StaticProfileConfig {
     }
 
     record StaticProfile(List<String> launch, Optional<String> workspaceRoot,
-            Optional<String> initializationOptions) implements LspProfileConfig.Profile {
+            Optional<String> initializationOptions, Optional<Integer> javaMinVersion,
+            Optional<String> javaHome) implements LspProfileConfig.Profile {
+
+        StaticProfile(List<String> launch, Optional<String> workspaceRoot,
+                Optional<String> initializationOptions) {
+            this(launch, workspaceRoot, initializationOptions, Optional.empty(), Optional.empty());
+        }
 
         @Override
         public Optional<String> command() {

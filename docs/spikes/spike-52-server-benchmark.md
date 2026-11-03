@@ -89,8 +89,9 @@ What these numbers do and do not support:
 ### Java runtime for jdtls
 
 - jdt.ls 1.63.0 needs a Java 25 runtime. With Temurin 21.0.12 the OSGi layer fails to resolve (`Unresolved requirement: Require-Capability: osgi.ee; filter:="(&(osgi.ee=JavaSE)(version=25))"`) and the process exits (exit code 13, re-checked while preparing this document).
-- Temurin 25.0.3 and OpenJDK 27 (build 27, 2026-09-15) both started the server and answered `initialize` and the call hierarchy requests below. An earlier note that Java 27 did not start cleanly was not reproduced and is withdrawn. Java 22 to 24 were not tested (#100).
-- This corrects the "Java 21 (minimum)" line in spike 22. #20's runtime detection must look for Java 25 or newer for this jdtls milestone.
+- Temurin 25.0.3 and OpenJDK 27 (build 27, 2026-09-15) both started the server and answered `initialize` and the call hierarchy requests below. An earlier note that Java 27 did not start cleanly was not reproduced and is withdrawn.
+- Java 22 to 24 fail the same way (checked for #100 on 2026-11-03, macOS arm64, one run each with a fresh `-data` and `-configuration`): OpenJDK 22 (22+36), OpenJDK 23 (23+37) and OpenJDK 24.0.2 (24.0.2+12) exit with code 13 after about 1 s without answering `initialize`, on the same `osgi.ee` requirement. Mandrel 25.0.2 started the server in the same setup. The archive agrees: 13 bundles declare `Bundle-RequiredExecutionEnvironment: JavaSE-25` (among them `org.eclipse.core.resources` and `org.eclipse.jdt.core`) and `org.eclipse.jdt.core.javac` declares the `osgi.ee` capability above. `bin/jdtls.py` only rejects Java 20 and older, so it does not stop Java 22 to 24.
+- This corrects the "Java 21 (minimum)" line in spike 22. #20's runtime detection must look for Java 25 or newer for this jdtls milestone; the profile sets it with `vintelli.lsp.profiles.jdtls.java.min-version=25` (#100).
 
 ### Call hierarchy
 
@@ -120,7 +121,6 @@ The #22 default stands: **jdtls remains the default; intellij-server stays opt-i
 - jdtls on real multi-module and dependency-heavy repositories, including a profile of the import phase; the project here measures the floor, not the ceiling (#97).
 - Repeatability of every number above, the cause of the reused-slower-than-fresh cells, the OSGi cache hypothesis, and child-process memory (#101).
 - The `--multi-client` and second-connection behavior (#98), port-file removal on stop (#99), and the intellij-server writes outside its system path (#103).
-- Java 22 to 24 for jdtls 1.63.0 (#100).
 
 ## Follow-ups
 

@@ -87,8 +87,9 @@ public final class FakeLspServer {
     /**
      * Flags: {@code --ignore-exit} keeps the process alive after the exit
      * notification, {@code --spawn-child} starts a holding child during
-     * initialize, {@code --fail-initialize} refuses the initialize request and
-     * {@code --hold} turns the process into the holding child itself.
+     * initialize, {@code --fail-initialize} refuses the initialize request,
+     * {@code --trace-java-home} traces the {@code JAVA_HOME} the process got
+     * and {@code --hold} turns the process into the holding child itself.
      */
     public static void main(String[] args) throws Exception {
         if (List.of(args).contains("--hold")) {
@@ -167,6 +168,9 @@ public final class FakeLspServer {
             trace("initialize");
             if (initializationOptions != null && !initializationOptions.isBlank()) {
                 trace("initializationOptions " + initializationOptions);
+            }
+            if (arguments.contains("--trace-java-home")) {
+                trace("JAVA_HOME " + System.getenv("JAVA_HOME"));
             }
             if (arguments.contains("--spawn-child")) {
                 spawnHoldingChild();

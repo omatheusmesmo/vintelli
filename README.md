@@ -827,7 +827,22 @@ vintelli.lsp.profiles.jdtls.command=jdtls
 vintelli.lsp.profiles.jdtls.args=-data,/home/me/workspace-vintelli
 vintelli.lsp.profiles.jdtls.workspace-root=/home/me/projects/app
 vintelli.lsp.profiles.jdtls.initialization-options={"bundles":["..."]}
+vintelli.lsp.profiles.jdtls.java.min-version=25
+vintelli.lsp.profiles.jdtls.java.home=/opt/jdk-25
 ```
+
+`java.min-version` makes the client check the Java runtime of the profile
+before it starts the server: jdt.ls 1.63.0 exits with code 13 on Java 21 to 24,
+while its own launcher only rejects Java 20 and older (issue #100). The runtime
+is `java.home` when set, otherwise `JAVA_HOME`, otherwise `java` on `PATH` (the
+order the jdt.ls launcher uses), and its version is read from the `release`
+file at the root of that installation, so no process starts for the check. A
+runtime that is too old, or whose version cannot be read, makes the profile
+unavailable with the reason, for example
+`the profile 'jdtls' needs a Java 25 or newer runtime, found Java 21.0.5 at /usr/lib/jvm/java-21 (from JAVA_HOME)`.
+`java.home` is also handed to the server process as `JAVA_HOME`, so the
+launcher runs on the installation that was checked. Without
+`java.min-version` the runtime is not checked.
 
 `vintelli.lsp.profile` picks the serving profile when several are configured.
 A missing binary or a server still indexing never breaks a call: the selection
@@ -849,8 +864,8 @@ handshake, the error diagnostic with its range, a hover on a method and a
 shutdown that leaves no server process behind. The test is skipped unless
 `VINTELLI_JDTLS_HOME` points to an extracted jdt.ls archive.
 
-Run it locally with a Java 25 runtime (jdt.ls 1.63.0 does not start on Java 21,
-see issue #100):
+Run it locally with a Java 25 runtime (jdt.ls 1.63.0 does not start on Java 21
+to 24, see issue #100):
 
 ```shell
 VINTELLI_JDTLS_HOME=/opt/jdt-language-server ./mvnw -pl vintelli-lsp -am verify

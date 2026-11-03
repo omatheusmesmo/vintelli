@@ -199,6 +199,69 @@ class LspClientTest {
     }
 
     @Test
+    void javaRuntimeOlderThanTheProfileMinimumIsUnavailableWithAClearMessage() throws Exception {
+        Path serverTrace = trace("old-java");
+        Path javaHome = fakeJavaHome("jdk-21", "21.0.5");
+        LspProfileConfig.Profile profile = new StaticProfileConfig.StaticProfile(
+                fakeCommand(serverTrace, PROFILE_MARKER), Optional.of(workspace.toString()), Optional.empty(),
+                Optional.of(25), Optional.of(javaHome.toString()));
+        LspProfileConfig config = new StaticProfileConfig.StaticConfig(Optional.empty(), Map.of("unit", profile));
+        try (LspClient client = new LspClient(config)) {
+
+            ProviderHealth health = client.health();
+            assertFalse(health.isAvailable());
+            assertTrue(health.reason().contains("needs a Java 25 or newer runtime, found Java 21.0.5 at "
+                    + javaHome), health.reason());
+
+            CapabilityResult<List<DiagnosticsCapability.Diagnostic>> problems = client.diagnostics(document());
+            assertTrue(problems.isFailure(), problems.toString());
+            assertTrue(problems.failureOf().orElseThrow().detail().contains("needs a Java 25 or newer runtime"),
+                    problems.toString());
+            assertEquals("", Files.readString(serverTrace), "the server must not start on a too old Java");
+        }
+    }
+
+    @Test
+    void healthReadsTheLastRuntimeCheckAndARequestChecksAgainBeforeTheLaunch() throws Exception {
+        Path serverTrace = trace("runtime-cache");
+        Path javaHome = fakeJavaHome("jdk", "21.0.5");
+        LspProfileConfig.Profile profile = new StaticProfileConfig.StaticProfile(
+                fakeCommand(serverTrace, PROFILE_MARKER), Optional.of(workspace.toString()), Optional.empty(),
+                Optional.of(25), Optional.of(javaHome.toString()));
+        LspProfileConfig config = new StaticProfileConfig.StaticConfig(Optional.empty(), Map.of("unit", profile));
+        try (LspClient client = new LspClient(config)) {
+            String tooOld = "found Java 21.0.5 at " + javaHome;
+            assertTrue(client.health().reason().contains(tooOld), client.health().reason());
+
+            fakeJavaHome("jdk", "25.0.2");
+            ProviderHealth cached = client.health();
+            assertFalse(cached.isAvailable(), "a health read must not read the release file again");
+            assertTrue(cached.reason().contains(tooOld), cached.reason());
+
+            CapabilityResult<String> hover = client.hover(document(), 0, 0);
+            assertFalse(hover.isFailure(), hover.toString());
+            assertEquals(ProviderHealth.available(), client.health(), client.health().reason());
+        }
+    }
+
+    @Test
+    void configuredJavaHomeIsHandedToTheServerAsJavaHome() throws Exception {
+        Path serverTrace = trace("java-home");
+        Path javaHome = fakeJavaHome("jdk-25", "25.0.2");
+        LspProfileConfig.Profile profile = new StaticProfileConfig.StaticProfile(
+                fakeCommand(serverTrace, PROFILE_MARKER, "--trace-java-home"), Optional.of(workspace.toString()),
+                Optional.empty(), Optional.of(25), Optional.of(javaHome.toString()));
+        LspProfileConfig config = new StaticProfileConfig.StaticConfig(Optional.empty(), Map.of("unit", profile));
+        try (LspClient client = new LspClient(config)) {
+
+            assertEquals(ProviderHealth.available(), client.health(), client.health().reason());
+            CapabilityResult<String> hover = client.hover(document(), 0, 0);
+            assertFalse(hover.isFailure(), hover.toString());
+            assertTraceContains(serverTrace, "JAVA_HOME " + javaHome);
+        }
+    }
+
+    @Test
     void severalProfilesNeedAnExplicitSelection() throws Exception {
         Path ignoredTrace = trace("ambiguous");
         List<String> command = fakeCommand(ignoredTrace, PROFILE_MARKER);
@@ -294,6 +357,17 @@ class LspClientTest {
         } catch (URISyntaxException failure) {
             throw new IOException("cannot locate the fake server classpath", failure);
         }
+    }
+
+    /**
+     * A Java installation reduced to the {@code release} file a JDK ships at
+     * its root, which is all the runtime check reads.
+     */
+    private Path fakeJavaHome(String name, String version) throws IOException {
+        Path home = Files.createDirectories(workspace.resolve(name));
+        Files.writeString(home.resolve("release"), "IMPLEMENTOR=\"Vintelli test\"\nJAVA_VERSION=\"" + version
+                + "\"\n");
+        return home;
     }
 
     private static String javaExecutable() {
