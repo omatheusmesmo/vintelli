@@ -207,6 +207,21 @@ class VintelliCliCommandsIT {
     }
 
     @Test
+    void rootHelpOptionListsTheAvailableCommandsAndExitsZero() throws Exception {
+        CliRun run = cli("--help");
+        assertExit(run, 0);
+        assertTrue(run.stdout().contains("Available commands: "), run.describe());
+        assertTrue(run.stdout().contains("agents"), run.describe());
+    }
+
+    @Test
+    void rootVersionOptionPrintsTheApplicationVersionAndExitsZero() throws Exception {
+        CliRun run = cli("--version");
+        assertExit(run, 0);
+        assertTrue(run.stdout().contains("vintelli "), run.describe());
+    }
+
+    @Test
     void replExecutesCommandsFromStdinAndStopsOnExit() throws Exception {
         CliRun run = launch("inspect\nexit\n", "--repl");
         assertExit(run, 0);

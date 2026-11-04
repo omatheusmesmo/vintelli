@@ -16,6 +16,7 @@ import org.aesh.command.invocation.CommandInvocation;
 import org.aesh.command.parser.CommandLineParserException;
 import org.aesh.command.validator.CommandValidatorException;
 import org.aesh.command.validator.OptionValidatorException;
+import org.eclipse.microprofile.config.ConfigProvider;
 
 /**
  * The AEsh command layer of Vintelli: the CDI-built root commands of the CLI,
@@ -34,6 +35,10 @@ public final class VintelliCliCommands {
 
     private static final String HELP_COMMAND = "help";
     private static final String HELP_OPTION = "--help";
+    private static final String SHORT_HELP_OPTION = "-h";
+    private static final String VERSION_COMMAND = "version";
+    private static final String VERSION_OPTION = "--version";
+    private static final String SHORT_VERSION_OPTION = "-v";
 
     private final AeshCommandRegistryBuilder<CommandInvocation> registryBuilder;
     private final CommandRuntime<CommandInvocation> runtime;
@@ -78,6 +83,14 @@ public final class VintelliCliCommands {
         return CommandResult.SUCCESS.getExitCode();
     }
 
+    private static int printVersion() {
+        String version = ConfigProvider.getConfig()
+                .getOptionalValue("quarkus.application.version", String.class)
+                .orElse("dev");
+        System.out.println("vintelli " + version);
+        return CommandResult.SUCCESS.getExitCode();
+    }
+
     private int printUsage(String commandName) {
         String usage = runtime.commandInfo(commandName);
         if (usage == null) {
@@ -99,10 +112,16 @@ public final class VintelliCliCommands {
     public int execute(List<String> tokens) {
         String commandName = tokens.get(0);
         String[] arguments = tokens.subList(1, tokens.size()).toArray(String[]::new);
-        if (HELP_COMMAND.equals(commandName)) {
+        if (HELP_COMMAND.equals(commandName) || HELP_OPTION.equals(commandName)
+                || SHORT_HELP_OPTION.equals(commandName)) {
             return arguments.length == 0 ? listCommands() : printUsage(arguments[0]);
         }
-        if (arguments.length > 0 && HELP_OPTION.equals(arguments[0])) {
+        if (VERSION_COMMAND.equals(commandName) || VERSION_OPTION.equals(commandName)
+                || SHORT_VERSION_OPTION.equals(commandName)) {
+            return printVersion();
+        }
+        if (arguments.length > 0
+                && (HELP_OPTION.equals(arguments[0]) || SHORT_HELP_OPTION.equals(arguments[0]))) {
             return printUsage(commandName);
         }
         try {

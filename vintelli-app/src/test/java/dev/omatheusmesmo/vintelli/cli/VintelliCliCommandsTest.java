@@ -115,6 +115,25 @@ class VintelliCliCommandsTest {
     }
 
     @Test
+    @Launch(value = {"--help"}, exitCode = 0)
+    void rootHelpOptionListsTheAvailableCommands(LaunchResult result) {
+        assertTrue(result.getOutput().contains("Available commands: "), result.getOutput());
+        assertTrue(result.getOutput().contains("agents"), result.getOutput());
+    }
+
+    @Test
+    @Launch(value = {"--version"}, exitCode = 0)
+    void rootVersionOptionPrintsTheApplicationVersion(LaunchResult result) {
+        assertTrue(result.getOutput().contains("vintelli "), result.getOutput());
+    }
+
+    @Test
+    @Launch(value = {"version"}, exitCode = 0)
+    void versionCommandPrintsTheApplicationVersion(LaunchResult result) {
+        assertTrue(result.getOutput().contains("vintelli "), result.getOutput());
+    }
+
+    @Test
     @Launch(value = {"help", "definitely-not-a-command"}, exitCode = 127)
     void helpForAnUnknownCommandFailsWithThePosixCode(LaunchResult result) {
         assertTrue(result.getErrorOutput().contains("Unknown command: definitely-not-a-command"),
