@@ -380,6 +380,8 @@ the list, Enter opens the selected file at its diagnostic line, clicking a row
 navigates there, and the mouse wheel scrolls the list. The window shows the
 selected diagnostics provider and distinguishes loading, unavailable, error,
 and empty results.
+In Structure, click a symbol row to select it, press Enter to navigate to its
+file and line, and use the mouse wheel to scroll long outlines.
 Panes have no frames: each one starts with a header row, and the separators
 are the one-column line between the project pane and the editor (and before
 the right tool stripe) and the one-row line above the bottom tool windows.
