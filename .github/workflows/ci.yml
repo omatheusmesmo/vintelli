@@ -74,6 +74,24 @@ jobs:
       - name: Run unit tests and package
         run: ./mvnw -B -ntp -T 1C verify
 
+      - name: Smoke test Unix installer (install.sh)
+        if: runner.os != 'Windows'
+        run: |
+          bash ./scripts/test-install.sh
+          VINTELLI_REUSE_EXISTING_BUILD=true bash ./scripts/install.sh --source . --force
+          "$HOME/.local/bin/vintelli" --version
+          "$HOME/.local/bin/vintelli" --help
+
+      - name: Smoke test Windows installer (install.ps1)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test-install.ps1
+          $env:VINTELLI_REUSE_EXISTING_BUILD = 'true'
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install.ps1 --source . --force
+          & "$env:LOCALAPPDATA\vintelli\vintelli.exe" --version
+          & "$env:LOCALAPPDATA\vintelli\vintelli.exe" --help
+
   build-native:
     name: Native image (Mandrel container)
     needs: changes
@@ -122,6 +140,16 @@ jobs:
           fi
           kill "$PID"
           echo "native runner alive after 10s"
+
+      - name: Smoke test native install via install.sh
+        run: |
+          FAKE_NATIVE_DIR="$(mktemp -d)"
+          printf '#!/usr/bin/env bash\nexit 0\n' > "${FAKE_NATIVE_DIR}/native-image"
+          chmod 0755 "${FAKE_NATIVE_DIR}/native-image"
+          PATH="${FAKE_NATIVE_DIR}:$PATH" VINTELLI_BUILD_MODE=native VINTELLI_REUSE_EXISTING_BUILD=true bash ./scripts/install.sh --source . --force
+          rm -rf "$FAKE_NATIVE_DIR"
+          "$HOME/.local/bin/vintelli" --version
+          "$HOME/.local/bin/vintelli" --help
 
   actionlint:
     name: Lint workflows
