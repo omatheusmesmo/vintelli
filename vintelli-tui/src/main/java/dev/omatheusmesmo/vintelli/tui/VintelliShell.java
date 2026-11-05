@@ -171,6 +171,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     private enum VcsPrompt { NONE, CONFIRM, COMMIT_MESSAGE, BRANCH_NAME }
 
+    private record Breadcrumb(String label, Path path, int line) { }
+
     private final ShellThemes themes;
     private final ShellState state;
     private final List<ToolWindow> toolWindows;
@@ -224,6 +226,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private InputMode projectInputMode = InputMode.NONE;
     private final StringBuilder projectInput = new StringBuilder();
     private boolean pendingProjectFocus;
+    private boolean navigationBarFocused;
+    private int selectedNavigationSegment;
+    private List<Breadcrumb> navigationPaths = List.of();
+    private Path navigationSymbolsFile;
+    private List<NavigationCapability.DocumentSymbol> navigationSymbols = List.of();
     private volatile Path copiedPath;
     private volatile Runnable quitAction;
     private volatile KeymapParts overlays;
@@ -1172,6 +1179,13 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 return EventResult.HANDLED;
             }
         }
+        if (mouse.isClick() && editor != null) {
+            int segment = editor.navigationSegmentAt(mouse.x(), mouse.y());
+            if (segment >= 0) {
+                navigateToBreadcrumb(segment);
+                return EventResult.HANDLED;
+            }
+        }
         for (ToolWindow.Anchor anchor : List.of(ToolWindow.Anchor.BOTTOM, ToolWindow.Anchor.RIGHT)) {
             ToolWindow activeWindow = activeToolWindow(anchor);
             Rect activeArea = anchor == ToolWindow.Anchor.BOTTOM ? activeToolWindowArea : activeRightToolWindowArea;
@@ -1328,6 +1342,25 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             return EventResult.UNHANDLED;
         }
         syncFileSelection();
+        if (navigationBarFocused) {
+            if (key.isKey(KeyCode.ESCAPE)) {
+                navigationBarFocused = false;
+                editor.requestFocus();
+                return EventResult.HANDLED;
+            }
+            if (key.isKey(KeyCode.LEFT) || key.isKey(KeyCode.UP)) {
+                selectedNavigationSegment = Math.max(0, selectedNavigationSegment - 1);
+                return EventResult.HANDLED;
+            }
+            if (key.isKey(KeyCode.RIGHT) || key.isKey(KeyCode.DOWN)) {
+                selectedNavigationSegment = Math.min(navigationPaths.size() - 1, selectedNavigationSegment + 1);
+                return EventResult.HANDLED;
+            }
+            if (key.isKey(KeyCode.ENTER) && !navigationPaths.isEmpty()) {
+                navigateToBreadcrumb(selectedNavigationSegment);
+                return EventResult.HANDLED;
+            }
+        }
         if (projectInputMode != InputMode.NONE && handleProjectKey(key)) {
             return EventResult.HANDLED;
         }
@@ -1510,6 +1543,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             }
         }
         switch (actionId) {
+            case KeyActions.FOCUS_NAVIGATION_BAR -> {
+                closeOverlays(parts);
+                focusNavigationBar();
+            }
             case KeyActions.QUIT -> {
                 closeOverlays(parts);
                 Runnable quit = quitAction;
@@ -2596,6 +2633,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             return content;
         }
         if (editor != null && editor.activeDocument().isPresent()) {
+            updateNavigationBar();
             return editor.element();
         }
         List<Line> lines = new ArrayList<>();
@@ -2604,6 +2642,122 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         content.id("editor-content");
         content.addClass("editor-content");
         return content;
+    }
+
+    private void updateNavigationBar() {
+        if (editor == null || editor.activeDocument().isEmpty()) {
+            navigationPaths = List.of();
+            return;
+        }
+        Path file = Path.of(editor.activeDocument().orElseThrow().file()).toAbsolutePath().normalize();
+        BuiltinEditor.DocumentView document = editor.activeDocument().orElseThrow();
+        Path root = projectRoot.toAbsolutePath().normalize();
+        try {
+            Path relative = root.relativize(file);
+            List<Breadcrumb> paths = new ArrayList<>();
+            List<String> labels = new ArrayList<>();
+            Path current = root;
+            String rootLabel = root.getFileName() == null ? root.toString() : root.getFileName().toString();
+            labels.add(rootLabel);
+            paths.add(new Breadcrumb(rootLabel, root, -1));
+            for (Path part : relative) {
+                current = current.resolve(part);
+                labels.add(part.toString());
+                paths.add(new Breadcrumb(part.toString(), current, -1));
+            }
+            if (!file.equals(navigationSymbolsFile)) {
+                navigationSymbolsFile = file;
+                navigationSymbols = List.of();
+                NavigationCapability provider = availableNavigationProvider();
+                if (provider != null) {
+                    try {
+                        CapabilityResult<List<NavigationCapability.DocumentSymbol>> result = provider.documentSymbols(file);
+                        if (result instanceof CapabilityResult.Ok<List<NavigationCapability.DocumentSymbol>> ok) {
+                            navigationSymbols = ok.value();
+                        }
+                    } catch (RuntimeException unavailable) {
+                        navigationSymbols = List.of();
+                    }
+                }
+            }
+            List<NavigationCapability.DocumentSymbol> containing = new ArrayList<>();
+            collectContainingSymbols(navigationSymbols, document.line(), containing);
+            for (NavigationCapability.DocumentSymbol symbol : containing) {
+                if (isTypeOrCallable(symbol.kind())) {
+                    labels.add(symbol.name());
+                    paths.add(new Breadcrumb(symbol.name(), file, symbol.selectionStartLine()));
+                }
+            }
+            navigationPaths = List.copyOf(paths);
+            selectedNavigationSegment = Math.clamp(selectedNavigationSegment, 0, paths.size() - 1);
+            if (!navigationBarFocused) {
+                selectedNavigationSegment = paths.size() - 1;
+            }
+            editor.navigationBar(labels, selectedNavigationSegment);
+        } catch (IllegalArgumentException outsideProject) {
+            navigationPaths = List.of();
+            editor.navigationBar(List.of(), 0);
+        }
+    }
+
+    private void focusNavigationBar() {
+        updateNavigationBar();
+        if (navigationPaths.isEmpty()) {
+            status = "Open a project file to navigate its path";
+            return;
+        }
+        navigationBarFocused = true;
+        focusedToolWindowId = null;
+        inputCaptured = false;
+        FocusManager manager = focusManager;
+        if (manager != null) {
+            manager.setFocus("editor-navigation-bar");
+        }
+        status = "Navigation bar: arrows move, Enter opens, Escape returns to editor";
+    }
+
+    private void navigateToBreadcrumb(int segment) {
+        if (segment < 0 || segment >= navigationPaths.size()) {
+            return;
+        }
+        Breadcrumb breadcrumb = navigationPaths.get(segment);
+        Path path = breadcrumb.path();
+        navigationBarFocused = false;
+        if (breadcrumb.line() >= 0) {
+            editor.open(new OpenRequest(path, breadcrumb.line()));
+            editor.requestFocus();
+        } else if (Files.isDirectory(path)) {
+            Path relative = projectRoot.relativize(path);
+            Path accumulated = Path.of("");
+            for (Path part : relative) {
+                accumulated = accumulated.resolve(part);
+                ProjectNode node = findProjectNode(accumulated.toString().replace('\\', '/'));
+                if (node != null) {
+                    node.expanded = true;
+                }
+            }
+            refreshProjectTree();
+            selectPath(relative.toString().replace('\\', '/'));
+            pendingProjectFocus = true;
+        } else {
+            revealFile(path);
+            pendingProjectFocus = true;
+        }
+    }
+
+    private static boolean isTypeOrCallable(int kind) {
+        return kind == 5 || kind == 6 || kind == 9 || kind == 11 || kind == 12 || kind == 23;
+    }
+
+    private static void collectContainingSymbols(List<NavigationCapability.DocumentSymbol> symbols, int line,
+            List<NavigationCapability.DocumentSymbol> result) {
+        for (NavigationCapability.DocumentSymbol symbol : symbols) {
+            if (line >= symbol.startLine() && line <= symbol.endLine()) {
+                result.add(symbol);
+                collectContainingSymbols(symbol.children(), line, result);
+                return;
+            }
+        }
     }
 
     private void renderDiff(List<Line> lines, ShellUnifiedDiff pushedDiff) {

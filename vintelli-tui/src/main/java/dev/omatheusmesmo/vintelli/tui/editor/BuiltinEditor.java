@@ -97,6 +97,12 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     }
 
     public Element element() { return element; }
+    public synchronized void navigationBar(List<String> labels, int selected) {
+        element.navigationBar(labels, selected);
+    }
+    public synchronized int navigationSegmentAt(int x, int y) {
+        return element.navigationSegmentAt(x, y);
+    }
     public synchronized void menuNavigationActive(boolean active) { menuNavigationActive = active; }
     synchronized boolean menuNavigationActive() { return menuNavigationActive; }
     public synchronized Path project() { return project; }

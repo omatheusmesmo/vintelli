@@ -30,6 +30,7 @@ final class EditorElement implements Element {
     private final TextAreaElement textArea = Toolkit.textArea();
     private final MenuAwareTextArea menuAwareTextArea;
     private final TabsState tabState = new TabsState();
+    private final NavigationBarElement navigationBar = new NavigationBarElement();
     private int lastRenderedTab = -1;
     private Rect renderedArea = Rect.ZERO;
 
@@ -37,6 +38,14 @@ final class EditorElement implements Element {
         this.editor = editor;
         textArea.id(null).focusable(false);
         menuAwareTextArea = new MenuAwareTextArea();
+    }
+
+    void navigationBar(List<String> labels, int selected) {
+        navigationBar.segments(labels, selected);
+    }
+
+    int navigationSegmentAt(int x, int y) {
+        return navigationBar.segmentAt(x, y);
     }
 
     private final class MenuAwareTextArea extends StyledElement<MenuAwareTextArea> {
@@ -71,13 +80,15 @@ final class EditorElement implements Element {
             EditorDocument document = editor.document();
             Column column = Toolkit.column().id("editor-document");
             if (document == null) {
+                column.add(navigationBar);
                 column.add(Toolkit.text("Open a file from Project or Go to File").fill());
             } else {
                 ListView tabs = tabs();
                 column.add(tabs.element);
+                column.add(navigationBar);
                 Row body = Toolkit.row().fill();
                 int gutterWidth = Integer.toString(document.lineCount()).length() + 3;
-                int bodyHeight = Math.max(0, area.height() - 2);
+                int bodyHeight = Math.max(0, area.height() - 2 - (navigationBar.hasSegments() ? 1 : 0));
                 document.state().ensureCursorVisible(bodyHeight, Math.max(0, area.width() - gutterWidth));
                 body.add(Toolkit.richText(gutter(document, bodyHeight, gutterWidth))
                         .length(gutterWidth).id("editor-gutter"));

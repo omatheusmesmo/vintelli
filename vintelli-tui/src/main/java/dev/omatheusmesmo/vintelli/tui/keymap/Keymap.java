@@ -138,6 +138,7 @@ public final class Keymap {
         builder.bind(KeyTrigger.ctrl('p'), SEARCH_EVERYWHERE);
         builder.bind(KeyTrigger.key(KeyCode.F1), KEYMAP_HELP);
         builder.bind(KeyTrigger.key(KeyCode.F10), KeyActions.MENU);
+        builder.bind(KeyTrigger.key(KeyCode.HOME, false, true, false), KeyActions.FOCUS_NAVIGATION_BAR);
         builder.bind(KeyTrigger.key(KeyCode.F7), KeyActions.PROJECT_NEW_FILE);
         builder.bind(KeyTrigger.key(KeyCode.F9), KeyActions.PROJECT_NEW_DIRECTORY);
         builder.bind(KeyTrigger.key(KeyCode.F2), KeyActions.PROJECT_RENAME);

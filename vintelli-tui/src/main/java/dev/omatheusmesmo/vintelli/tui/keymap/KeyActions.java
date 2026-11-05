@@ -36,6 +36,7 @@ public final class KeyActions {
     public static final String NEXT_PROBLEM = "editor_nextProblem";
     public static final String TOGGLE_IMPORT_FOLD = "editor_toggleImportFold";
     public static final String GO_TO_FILE = "navigation_goToFile";
+    public static final String FOCUS_NAVIGATION_BAR = "navigation_focusBreadcrumbs";
     public static final String FIND_IN_FILES = "navigation_findInFiles";
     public static final String PROJECT_WIDER = "layout_project_wider";
     public static final String PROJECT_NARROWER = "layout_project_narrower";
@@ -92,6 +93,7 @@ public final class KeyActions {
                 new KeyAction(NEXT_PROBLEM, "Next Problem", ""),
                 new KeyAction(TOGGLE_IMPORT_FOLD, "Fold or Unfold Imports", ""),
                 new KeyAction(GO_TO_FILE, "Go to File", ""),
+                new KeyAction(FOCUS_NAVIGATION_BAR, "Focus Navigation Bar", "Alt+Home"),
                 new KeyAction(FIND_IN_FILES, "Find in Files", ""),
                 new KeyAction(PROJECT_WIDER, "Widen Project Panel", ""),
                 new KeyAction(PROJECT_NARROWER, "Narrow Project Panel", ""),

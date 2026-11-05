@@ -372,6 +372,10 @@ existing entry. In the editor, `Ctrl+S` saves, `Ctrl+Z`/`Ctrl+Y` undo and redo,
 `Alt+]`/`Alt+[` switch editor tabs, and `Ctrl+W` closes a tab (dirty tabs ask
 for confirmation). `F10` opens the menu bar; menu headings also respond to
 mouse clicks, and long unavailable reasons can be scrolled with Page Up/Down.
+The editor shows clickable project path breadcrumbs and, when an LSP provider
+returns document symbols, the containing type and method. `Alt+Home` focuses
+the breadcrumbs; arrows move between segments, Enter selects one, and Escape
+returns focus to the editor.
 `Ctrl+O` opens Go to File, `Alt+F` searches file contents, `F12` requests a
 definition, `Alt+U` requests references, and `F8` moves to the next diagnostic, and `Alt+I` folds or unfolds the import block.
 In Go to File, Find in Files and Search Everywhere, click a result to select it,
