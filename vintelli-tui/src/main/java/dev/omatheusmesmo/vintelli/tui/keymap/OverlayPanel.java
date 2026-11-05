@@ -28,7 +28,8 @@ final class OverlayPanel {
     static Rect centered(Rect area, int minWidth, int maxWidth, int height) {
         int width = Math.min(Math.min(maxWidth, area.width()), Math.max(minWidth, area.width() - 2));
         int clampedHeight = Math.clamp(height, 1, area.height() - 2);
-        return new Rect((area.width() - width) / 2, (area.height() - clampedHeight) / 2, width, clampedHeight);
+        return new Rect(area.x() + (area.width() - width) / 2,
+                area.y() + (area.height() - clampedHeight) / 2, width, clampedHeight);
     }
 
     /**

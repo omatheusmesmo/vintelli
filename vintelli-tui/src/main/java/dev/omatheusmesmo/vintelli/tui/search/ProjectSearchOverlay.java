@@ -3,6 +3,7 @@ package dev.omatheusmesmo.vintelli.tui.search;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 import dev.omatheusmesmo.vintelli.api.search.ProjectSearch.FileMatch;
@@ -15,6 +16,8 @@ import dev.tamboui.text.Span;
 import dev.tamboui.text.Text;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
+import dev.tamboui.tui.event.MouseEvent;
+import dev.tamboui.tui.event.MouseEventKind;
 import dev.tamboui.widgets.Clear;
 import dev.tamboui.widgets.block.Block;
 import dev.tamboui.widgets.block.BorderType;
@@ -25,6 +28,14 @@ import dev.tamboui.widgets.paragraph.Paragraph;
 public final class ProjectSearchOverlay {
     private static final Style SELECTED = Style.create().reversed().bold();
     private final ProjectSearchModel model;
+    private Rect renderedPanel = Rect.ZERO;
+    private Rect renderedInner = Rect.ZERO;
+    private ProjectSearchModel.View renderedView;
+    private int renderedFirst;
+    private int renderedRows;
+    private int scrollOffset;
+    private int lastClicked = -1;
+    private long lastClickNanos;
 
     public ProjectSearchOverlay(ProjectSearchModel model) {
         this.model = model;
@@ -62,37 +73,129 @@ public final class ProjectSearchOverlay {
 
     public void render(Frame frame, Rect area) {
         if (!model.isOpen() || area.width() < 8 || area.height() < 4) {
+            renderedPanel = Rect.ZERO;
+            renderedView = null;
+            scrollOffset = 0;
             return;
         }
+        ProjectSearchModel.View view = model.view();
+        if (renderedView == null || renderedView.mode() != view.mode()
+                || !renderedView.query().equals(view.query())) {
+            scrollOffset = 0;
+        }
         int width = Math.min(76, area.width() - 2);
-        int rows = model.size() + (model.error() != null && model.size() > 0 ? 1 : 0);
+        int size = view.mode() == ProjectSearchModel.Mode.FILES ? view.files().size() : view.text().size();
+        int rows = size + (view.error() != null && size > 0 ? 1 : 0);
         int height = Math.min(area.height() - 2, Math.max(5, Math.min(rows + 3, 20)));
         Rect panel = new Rect(area.x() + (area.width() - width) / 2,
                 area.y() + (area.height() - height) / 2, width, height);
+        renderedPanel = panel;
+        renderedView = view;
         frame.renderWidget(Clear.INSTANCE, panel);
-        String title = model.mode() == ProjectSearchModel.Mode.FILES ? "Go to File" : "Find in Files";
+        String title = view.mode() == ProjectSearchModel.Mode.FILES ? "Go to File" : "Find in Files";
         Block block = Block.builder().title(title).borders(Borders.ALL).borderType(BorderType.ROUNDED).build();
         frame.renderWidget(block, panel);
         Rect inner = block.inner(panel);
+        renderedInner = inner;
         List<Line> lines = new ArrayList<>();
-        String prompt = model.mode() == ProjectSearchModel.Mode.TEXT && model.regex() ? "> /" : "> ";
-        lines.add(Line.from(Span.styled(prompt + model.query(), Style.create().bold())));
+        String prompt = view.mode() == ProjectSearchModel.Mode.TEXT && view.regex() ? "> /" : "> ";
+        lines.add(Line.from(Span.styled(prompt + view.query(), Style.create().bold())));
         int visibleRows = Math.max(0, inner.height() - 1);
-        int first = Math.max(0, model.selected() - Math.max(0, visibleRows - 1));
-        if (model.size() == 0 && visibleRows > 0) {
-            String message = model.error() != null ? model.error()
-                    : model.searching() ? "Searching…" : "No results";
+        int first = Math.clamp(scrollOffset, 0, Math.max(0, size - visibleRows));
+        if (view.selected() < first) {
+            first = view.selected();
+        } else if (visibleRows > 0 && view.selected() >= first + visibleRows) {
+            first = view.selected() - visibleRows + 1;
+        }
+        scrollOffset = first;
+        renderedFirst = first;
+        renderedRows = 0;
+        if (size == 0 && visibleRows > 0) {
+            String message = view.error() != null ? view.error()
+                    : view.searching() ? "Searching…" : "No results";
             lines.add(Line.from(Span.styled(fit(message, inner.width()), Style.create().dim())));
-        } else if (model.mode() == ProjectSearchModel.Mode.FILES) {
-            List<FileMatch> results = model.files();
-            appendFiles(lines, results, first, visibleRows, model.selected(), inner.width());
-            appendIncomplete(lines, inner);
+        } else if (view.mode() == ProjectSearchModel.Mode.FILES) {
+            appendFiles(lines, view.files(), first, visibleRows, view.selected(), inner.width());
+            renderedRows = Math.min(visibleRows, Math.max(0, size - first));
+            appendIncomplete(lines, inner, view.error());
         } else {
-            List<TextMatch> results = model.text();
-            appendText(lines, results, first, visibleRows, model.selected(), inner.width());
-            appendIncomplete(lines, inner);
+            appendText(lines, view.text(), first, visibleRows, view.selected(), inner.width());
+            renderedRows = Math.min(visibleRows, Math.max(0, size - first));
+            appendIncomplete(lines, inner, view.error());
         }
         frame.renderWidget(Paragraph.builder().text(Text.from(lines)).build(), inner);
+    }
+
+    /** Selects a result on click and opens it on a second click. */
+    public Optional<Target> handleMouse(MouseEvent event) {
+        if (!model.isOpen()) {
+            return Optional.empty();
+        }
+        if (event.isClick() && !inside(renderedPanel, event.x(), event.y())) {
+            model.close();
+            renderedView = null;
+            return Optional.empty();
+        }
+        ProjectSearchModel.View current = model.view();
+        if (renderedView == null || !sameResults(renderedView, current)
+                || !inside(renderedPanel, event.x(), event.y())) {
+            return Optional.empty();
+        }
+        if (event.isScroll() && (event.kind() == MouseEventKind.SCROLL_UP
+                || event.kind() == MouseEventKind.SCROLL_DOWN)) {
+            lastClicked = -1;
+            if (!inside(renderedInner, event.x(), event.y()) || event.y() < renderedInner.y() + 1
+                    || renderedRows == 0) {
+                return Optional.empty();
+            }
+            int visibleRows = Math.max(1, renderedInner.height() - 1);
+            int size = current.mode() == ProjectSearchModel.Mode.FILES
+                    ? current.files().size() : current.text().size();
+            int direction = event.kind() == MouseEventKind.SCROLL_UP ? -1 : 1;
+            scrollOffset = Math.clamp(scrollOffset + direction * 3, 0, Math.max(0, size - visibleRows));
+            model.select(Math.clamp(current.selected(), scrollOffset,
+                    Math.min(size - 1, scrollOffset + visibleRows - 1)));
+            return Optional.empty();
+        }
+        if (!event.isClick() || !inside(renderedInner, event.x(), event.y())
+                || event.y() < renderedInner.y() + 1) {
+            if (event.isClick()) {
+                lastClicked = -1;
+            }
+            return Optional.empty();
+        }
+        int row = event.y() - renderedInner.y() - 1;
+        if (row < 0 || row >= renderedRows) {
+            lastClicked = -1;
+            return Optional.empty();
+        }
+        int index = renderedFirst + row;
+        model.select(index);
+        long now = System.nanoTime();
+        boolean activate = index == lastClicked && now - lastClickNanos <= 500_000_000L;
+        lastClicked = index;
+        lastClickNanos = now;
+        if (!activate) {
+            return Optional.empty();
+        }
+        Target target = current.mode() == ProjectSearchModel.Mode.FILES
+                ? new Target(current.files().get(index).file(), 0)
+                : new Target(current.text().get(index).file(), current.text().get(index).line());
+        model.close();
+        renderedView = null;
+        return Optional.of(target);
+    }
+
+    private static boolean inside(Rect rect, int x, int y) {
+        return rect.width() > 0 && rect.height() > 0 && x >= rect.x() && x < rect.x() + rect.width()
+                && y >= rect.y() && y < rect.y() + rect.height();
+    }
+
+    private static boolean sameResults(ProjectSearchModel.View rendered, ProjectSearchModel.View current) {
+        return rendered.mode() == current.mode() && rendered.query().equals(current.query())
+                && rendered.regex() == current.regex() && rendered.files().equals(current.files())
+                && rendered.text().equals(current.text()) && rendered.searching() == current.searching()
+                && Objects.equals(rendered.error(), current.error());
     }
 
     private static void appendFiles(List<Line> lines, List<FileMatch> results, int first, int count,
@@ -123,8 +226,7 @@ public final class ProjectSearchOverlay {
     }
 
     /** Results already on screen stay visible; the failure surfaces as a trailing line. */
-    private void appendIncomplete(List<Line> lines, Rect inner) {
-        String error = model.error();
+    private void appendIncomplete(List<Line> lines, Rect inner, String error) {
         if (error == null || lines.size() >= inner.height()) {
             return;
         }

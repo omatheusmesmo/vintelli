@@ -8,6 +8,8 @@ import dev.tamboui.text.Span;
 import dev.tamboui.text.Text;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
+import dev.tamboui.tui.event.MouseEvent;
+import dev.tamboui.tui.event.MouseEventKind;
 import dev.tamboui.widgets.paragraph.Paragraph;
 
 import java.util.ArrayList;
@@ -44,6 +46,14 @@ public final class CommandPalette {
     private String filter = "";
     private int selected;
     private boolean open;
+    private Rect renderedPanel = Rect.ZERO;
+    private Rect renderedInner = Rect.ZERO;
+    private int renderedFirst;
+    private int renderedRows;
+    private List<KeyAction> renderedActions = List.of();
+    private int scrollOffset;
+    private int lastClicked = -1;
+    private long lastClickNanos;
 
     public CommandPalette(List<KeyAction> actions, Keymap keymap) {
         this.actions = List.copyOf(actions);
@@ -58,11 +68,16 @@ public final class CommandPalette {
         open = true;
         filter = "";
         selected = 0;
+        scrollOffset = 0;
+        lastClicked = -1;
         refresh();
     }
 
     public void close() {
         open = false;
+        renderedPanel = Rect.ZERO;
+        renderedActions = List.of();
+        lastClicked = -1;
     }
 
     public boolean isOpen() {
@@ -87,10 +102,12 @@ public final class CommandPalette {
         }
         if (key.isKey(KeyCode.UP)) {
             selected = Math.max(0, selected - 1);
+            keepSelectionVisible();
             return Optional.empty();
         }
         if (key.isKey(KeyCode.DOWN)) {
             selected = Math.min(filtered.isEmpty() ? 0 : filtered.size() - 1, selected + 1);
+            keepSelectionVisible();
             return Optional.empty();
         }
         if (isFilterKey(key)) {
@@ -101,6 +118,7 @@ public final class CommandPalette {
             return Optional.empty();
         }
         refresh();
+        scrollOffset = 0;
         return Optional.empty();
     }
 
@@ -123,6 +141,7 @@ public final class CommandPalette {
         if (selected >= filtered.size()) {
             selected = Math.max(0, filtered.size() - 1);
         }
+        keepSelectionVisible();
     }
 
     /**
@@ -131,11 +150,14 @@ public final class CommandPalette {
      */
     public void render(Frame frame, Rect area) {
         if (!open) {
+            renderedPanel = Rect.ZERO;
             return;
         }
         int height = Math.max(MIN_HEIGHT, filtered.size() + 4);
         Rect panel = OverlayPanel.centered(area, MIN_WIDTH, MAX_WIDTH, height);
         Rect inner = OverlayPanel.renderChrome(frame, panel, "Search Everywhere");
+        renderedPanel = panel;
+        renderedInner = inner;
         frame.renderWidget(rowsParagraph(inner), inner);
     }
 
@@ -145,17 +167,105 @@ public final class CommandPalette {
         if (filtered.isEmpty()) {
             lines.add(Line.from(Span.styled("no matching action", SHORTCUT_STYLE)));
         } else {
-            int visibleRows = inner.height() - 1;
-            int firstVisible = Math.max(0, selected - (visibleRows - 1));
+            int visibleRows = Math.max(0, inner.height() - 1);
+            int firstVisible = Math.clamp(scrollOffset, 0, Math.max(0, filtered.size() - visibleRows));
+            if (selected < firstVisible) {
+                firstVisible = selected;
+            } else if (visibleRows > 0 && selected >= firstVisible + visibleRows) {
+                firstVisible = selected - visibleRows + 1;
+            }
+            scrollOffset = firstVisible;
+            renderedFirst = firstVisible;
+            renderedRows = 0;
+            List<KeyAction> visibleActions = new ArrayList<>();
             for (int visible = 0; visible < visibleRows; visible++) {
                 int index = firstVisible + visible;
                 if (index >= filtered.size()) {
                     break;
                 }
                 lines.add(actionRow(filtered.get(index), index == selected, inner.width()));
+                visibleActions.add(filtered.get(index));
+                renderedRows++;
             }
+            renderedActions = List.copyOf(visibleActions);
+        }
+        if (filtered.isEmpty()) {
+            renderedFirst = 0;
+            renderedRows = 0;
+            renderedActions = List.of();
         }
         return Paragraph.builder().text(Text.from(lines)).build();
+    }
+
+    /** Handles pointer input for the visible palette; a second click activates a row. */
+    public Optional<KeyAction> handleMouse(MouseEvent event) {
+        if (!open) {
+            return Optional.empty();
+        }
+        if (event.isClick() && !inside(renderedPanel, event.x(), event.y())) {
+            close();
+            return Optional.empty();
+        }
+        if (!inside(renderedPanel, event.x(), event.y()) || !renderedActions.equals(currentVisibleActions())) {
+            return Optional.empty();
+        }
+        if (event.isScroll() && (event.kind() == MouseEventKind.SCROLL_UP
+                || event.kind() == MouseEventKind.SCROLL_DOWN)) {
+            lastClicked = -1;
+            if (!inside(renderedInner, event.x(), event.y()) || event.y() < renderedInner.y() + 1
+                    || renderedRows == 0) {
+                return Optional.empty();
+            }
+            int direction = event.kind() == MouseEventKind.SCROLL_UP ? -1 : 1;
+            scrollOffset = Math.clamp(scrollOffset + direction * 3, 0,
+                    Math.max(0, filtered.size() - Math.max(0, renderedInner.height() - 1)));
+            selected = Math.clamp(selected, scrollOffset,
+                    Math.min(filtered.size() - 1, scrollOffset + Math.max(1, renderedInner.height() - 1) - 1));
+            return Optional.empty();
+        }
+        if (!event.isClick() || event.y() < renderedInner.y() + 1
+                || !inside(renderedInner, event.x(), event.y())) {
+            if (event.isClick()) {
+                lastClicked = -1;
+            }
+            return Optional.empty();
+        }
+        int row = event.y() - renderedInner.y() - 1;
+        if (row < 0 || row >= renderedRows || event.x() < renderedInner.x()
+                || event.x() >= renderedInner.x() + renderedInner.width()) {
+            lastClicked = -1;
+            return Optional.empty();
+        }
+        int index = renderedFirst + row;
+        selected = index;
+        long now = System.nanoTime();
+        boolean activate = index == lastClicked && now - lastClickNanos <= 500_000_000L;
+        lastClicked = index;
+        lastClickNanos = now;
+        return activate ? Optional.of(filtered.get(index)) : Optional.empty();
+    }
+
+    private List<KeyAction> currentVisibleActions() {
+        int end = Math.min(filtered.size(), renderedFirst + renderedRows);
+        return renderedFirst < 0 || renderedFirst >= end ? List.of()
+                : List.copyOf(filtered.subList(renderedFirst, end));
+    }
+
+    private void keepSelectionVisible() {
+        int visibleRows = Math.max(0, renderedInner.height() - 1);
+        if (visibleRows == 0) {
+            return;
+        }
+        if (selected < scrollOffset) {
+            scrollOffset = selected;
+        } else if (selected >= scrollOffset + visibleRows) {
+            scrollOffset = selected - visibleRows + 1;
+        }
+    }
+
+    private static boolean inside(Rect rect, int x, int y) {
+        return rect.width() > 0 && rect.height() > 0 && x >= rect.x() && x < rect.x() + rect.width()
+                && y >= rect.y() && y < rect.y() + rect.height();
     }
 
     private Line actionRow(KeyAction action, boolean selectedRow, int width) {

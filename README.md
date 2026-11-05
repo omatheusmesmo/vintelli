@@ -374,6 +374,9 @@ for confirmation). `F10` opens the menu bar; menu headings also respond to
 mouse clicks, and long unavailable reasons can be scrolled with Page Up/Down.
 `Ctrl+O` opens Go to File, `Alt+F` searches file contents, `F12` requests a
 definition, `Alt+U` requests references, and `F8` moves to the next diagnostic, and `Alt+I` folds or unfolds the import block.
+In Go to File, Find in Files and Search Everywhere, click a result to select it,
+press Enter or double-click to activate it, and use the mouse wheel to scroll.
+Clicking outside an overlay dismisses it without triggering controls underneath.
 The Problems window refreshes diagnostics for files open in the editor with
 `R`; `A`, `E`, and `W` show all, errors, or warnings. Arrow keys move through
 the list, Enter opens the selected file at its diagnostic line, clicking a row
