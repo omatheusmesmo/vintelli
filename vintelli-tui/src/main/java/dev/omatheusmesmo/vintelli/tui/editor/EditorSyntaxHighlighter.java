@@ -26,9 +26,9 @@ import dev.tamboui.widgets.syntax.TokenType;
  * <ul>
  *   <li>a per-line token cache that reuses unchanged rows and realigns the
  *   common prefix and suffix when rows are inserted or removed;</li>
- *   <li>per-line end-of-line lexical state, so block comments and text blocks
- *   survive across lines and edits re-tokenize forward from the edited line
- *   until the end state matches the cached one;</li>
+ *   <li>per-line end-of-line lexical state, so block comments, doc comments
+ *   and text blocks survive across lines and edits re-tokenize forward from
+ *   the edited line until the end state matches the cached one;</li>
  *   <li>diagnostic background tint with a severity-colored underline, and
  *   keyboard selection tint, driven from state kept outside
  *   {@code TextAreaState}.</li>
@@ -38,10 +38,17 @@ import dev.tamboui.widgets.syntax.TokenType;
  * document owns diagnostic row remapping when edits insert or remove lines.
  *
  * <p>The tokenizer is a hand-rolled scanner with no regex and no reflection.
- * It covers the Java constructs the editor needs (comments, text blocks,
- * strings, chars, numbers, keywords, constants, capitalized types, call
- * detection before a left parenthesis, annotations, operators, punctuation).
- * Generics stay un-styled like in the built-in grammar.
+ * It covers the Java constructs the editor needs (comments, doc comments with
+ * their Javadoc and HTML tags, text blocks, strings, chars, numbers, keywords,
+ * constants, capitalized types, call detection before a left parenthesis,
+ * annotations, operators, punctuation). Generics stay un-styled like in the
+ * built-in grammar.
+ *
+ * <p>A doc comment is a block comment that opens with two stars. Its prose
+ * stays a comment, while its Javadoc tags (an at sign or a brace that opens a
+ * word) and its HTML tags (an angle bracket) are highlighted. The detection is
+ * positional and keeps no state beyond the opener, so a tag is never read for
+ * its meaning.
  *
  * <p>This state is scoped to one editor document. Call {@link #reset()} when
  * the document is replaced; each tab retains its own highlighter instance.
@@ -66,6 +73,7 @@ final class EditorSyntaxHighlighter implements SyntaxHighlighter {
     private enum LexState {
         NORMAL,
         BLOCK_COMMENT,
+        DOC_COMMENT,
         TEXT_BLOCK
     }
 
@@ -147,6 +155,7 @@ final class EditorSyntaxHighlighter implements SyntaxHighlighter {
                     .token(TokenType.CONSTANT, foreground(palette.constant()))
                     .token(TokenType.FUNCTION, foreground(palette.text()))
                     .token(TokenType.ANNOTATION, foreground(palette.keyword()))
+                    .token(TokenType.TAG, foreground(palette.keyword()))
                     .token(TokenType.OPERATOR, foreground(palette.text()))
                     .token(TokenType.PUNCTUATION, foreground(palette.text()))
                     .build();
@@ -326,14 +335,17 @@ final class EditorSyntaxHighlighter implements SyntaxHighlighter {
         LexState state = startState;
         int i = 0;
         while (i < line.length()) {
-            if (state == LexState.BLOCK_COMMENT) {
+            if (state == LexState.BLOCK_COMMENT || state == LexState.DOC_COMMENT) {
+                boolean docComment = state == LexState.DOC_COMMENT;
                 int close = line.indexOf("*/", i);
-                if (close < 0) {
-                    emitToken(spans, line.substring(i), TokenType.COMMENT, base, theme);
-                    i = line.length();
+                int end = close < 0 ? line.length() : close + 2;
+                if (docComment) {
+                    emitDocComment(spans, line, i, end, base, theme);
                 } else {
-                    emitToken(spans, line.substring(i, close + 2), TokenType.COMMENT, base, theme);
-                    i = close + 2;
+                    emitToken(spans, line.substring(i, end), TokenType.COMMENT, base, theme);
+                }
+                i = end;
+                if (close >= 0) {
                     state = LexState.NORMAL;
                 }
                 continue;
@@ -357,14 +369,18 @@ final class EditorSyntaxHighlighter implements SyntaxHighlighter {
                 continue;
             }
             if (c == '/' && i + 1 < line.length() && line.charAt(i + 1) == '*') {
+                boolean docComment = isDocCommentStart(line, i);
                 int close = line.indexOf("*/", i + 2);
-                if (close < 0) {
-                    emitToken(spans, line.substring(i), TokenType.COMMENT, base, theme);
-                    i = line.length();
-                    state = LexState.BLOCK_COMMENT;
+                int end = close < 0 ? line.length() : close + 2;
+                if (docComment) {
+                    emitToken(spans, line.substring(i, i + 3), TokenType.COMMENT, base, theme);
+                    emitDocComment(spans, line, i + 3, end, base, theme);
                 } else {
-                    emitToken(spans, line.substring(i, close + 2), TokenType.COMMENT, base, theme);
-                    i = close + 2;
+                    emitToken(spans, line.substring(i, end), TokenType.COMMENT, base, theme);
+                }
+                i = end;
+                if (close < 0) {
+                    state = docComment ? LexState.DOC_COMMENT : LexState.BLOCK_COMMENT;
                 }
                 continue;
             }
@@ -481,6 +497,145 @@ final class EditorSyntaxHighlighter implements SyntaxHighlighter {
             return TokenType.TYPE;
         }
         return TokenType.PLAIN;
+    }
+
+    /**
+     * Whether the block comment opening at {@code from} is a Javadoc one. The
+     * opener is a slash followed by two stars; when the closing sequence
+     * follows the two stars at once the comment is empty and stays a regular
+     * block comment.
+     *
+     * @param line the line holding the opener
+     * @param from the index of the opening slash
+     * @return true when the comment is a Javadoc one
+     */
+    private static boolean isDocCommentStart(String line, int from) {
+        return from + 2 < line.length()
+            && line.charAt(from + 2) == '*'
+            && !(from + 3 < line.length() && line.charAt(from + 3) == '/');
+    }
+
+    /**
+     * Emits the body of a Javadoc comment from {@code from} up to the
+     * exclusive {@code to}, marking block tags, inline tags and HTML tags as
+     * annotations and their own token type and leaving everything else a
+     * comment. A block tag is an at sign that opens the region or follows
+     * whitespace and is followed by a word, so an email address or a lone at
+     * sign never starts a tag. An inline tag is a brace, an at sign and a
+     * word; it runs up to the closing brace when one follows on the same line,
+     * otherwise only the name is marked, so an unfinished inline tag never
+     * breaks the scan. An HTML tag is an angle bracket followed by an element
+     * name or its closing slash and a closing angle bracket in the same body,
+     * so a comparison sign stays flow text.
+     *
+     * @param out the span sink
+     * @param line the line holding the comment body
+     * @param from the first index of the body
+     * @param to the exclusive end of the body
+     * @param base the base style handed to the theme
+     * @param theme the active theme
+     */
+    private static void emitDocComment(List<Span> out, String line, int from, int to,
+            Style base, SyntaxTheme theme) {
+        int flowFrom = from;
+        int i = from;
+        while (i < to) {
+            char c = line.charAt(i);
+            if (c == '{' && isInlineTagStart(line, i, to)) {
+                emitToken(out, line.substring(flowFrom, i), TokenType.COMMENT, base, theme);
+                int j = i + 2;
+                while (j < to && Character.isLetterOrDigit(line.charAt(j))) {
+                    j++;
+                }
+                int close = line.indexOf('}', j);
+                int end = close >= 0 && close < to ? close + 1 : j;
+                emitToken(out, line.substring(i, end), TokenType.ANNOTATION, base, theme);
+                flowFrom = end;
+                i = end;
+                continue;
+            }
+            if (c == '<' && isHtmlTagStart(line, i, to)) {
+                emitToken(out, line.substring(flowFrom, i), TokenType.COMMENT, base, theme);
+                int end = line.indexOf('>', i + 1) + 1;
+                emitToken(out, line.substring(i, end), TokenType.TAG, base, theme);
+                flowFrom = end;
+                i = end;
+                continue;
+            }
+            if (c == '@' && isBlockTagStart(line, i, from, to)) {
+                emitToken(out, line.substring(flowFrom, i), TokenType.COMMENT, base, theme);
+                int j = i + 2;
+                while (j < to && Character.isLetterOrDigit(line.charAt(j))) {
+                    j++;
+                }
+                emitToken(out, line.substring(i, j), TokenType.ANNOTATION, base, theme);
+                flowFrom = j;
+                i = j;
+                continue;
+            }
+            i++;
+        }
+        emitToken(out, line.substring(flowFrom, to), TokenType.COMMENT, base, theme);
+    }
+
+    /**
+     * Whether the brace at {@code at} opens a Javadoc inline tag: it is
+     * followed by an at sign and a letter, so a lone brace or one followed by
+     * anything else stays flow text and a brace without a name cannot break
+     * the word scan.
+     *
+     * @param line the line holding the comment body
+     * @param at the index of the brace
+     * @param to the exclusive end of the body
+     * @return true when the brace opens an inline tag
+     */
+    private static boolean isInlineTagStart(String line, int at, int to) {
+        return at + 2 < to
+            && line.charAt(at + 1) == '@'
+            && Character.isLetter(line.charAt(at + 2));
+    }
+
+    /**
+     * Whether the angle bracket at {@code at} opens an HTML tag: a letter or a
+     * slash followed by a letter comes next and a closing angle bracket
+     * follows within the scanned body, so a comparison sign stays flow text
+     * and an unfinished tag cannot break the line scan.
+     *
+     * @param line the line holding the comment body
+     * @param at the index of the opening angle bracket
+     * @param to the exclusive end of the body
+     * @return true when the angle bracket opens an HTML tag
+     */
+    private static boolean isHtmlTagStart(String line, int at, int to) {
+        if (at + 1 >= to) {
+            return false;
+        }
+        char next = line.charAt(at + 1);
+        boolean opensElement = Character.isLetter(next)
+            || (next == '/' && at + 2 < to && Character.isLetter(line.charAt(at + 2)));
+        if (!opensElement) {
+            return false;
+        }
+        int close = line.indexOf('>', at + 1);
+        return close >= 0 && close < to;
+    }
+
+    /**
+     * Whether the at sign at {@code at} opens a Javadoc block tag: it starts
+     * the scanned body or follows a blank, and a letter follows it so that a
+     * bare at sign or an email address stays flow text.
+     *
+     * @param line the line holding the comment body
+     * @param at the index of the at sign
+     * @param from the first index of the body
+     * @param to the exclusive end of the body
+     * @return true when the at sign opens a tag
+     */
+    private static boolean isBlockTagStart(String line, int at, int from, int to) {
+        if (at + 1 >= to || !Character.isLetter(line.charAt(at + 1))) {
+            return false;
+        }
+        return at == from || line.charAt(at - 1) == ' ' || line.charAt(at - 1) == '\t';
     }
 
     private static boolean isCall(String line, int from) {
