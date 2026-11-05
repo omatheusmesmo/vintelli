@@ -31,8 +31,8 @@
             <artifactId>quarkus-arc</artifactId>
         </dependency>
         <dependency>
-            <groupId>io.quarkiverse.jgit</groupId>
-            <artifactId>quarkus-jgit</artifactId>
+            <groupId>org.eclipse.jgit</groupId>
+            <artifactId>org.eclipse.jgit</artifactId>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
