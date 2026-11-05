@@ -16,6 +16,10 @@
 
     <dependencies>
         <dependency>
+            <groupId>org.eclipse.jgit</groupId>
+            <artifactId>org.eclipse.jgit</artifactId>
+        </dependency>
+        <dependency>
             <groupId>dev.omatheusmesmo</groupId>
             <artifactId>vintelli-core</artifactId>
             <version>${project.version}</version>

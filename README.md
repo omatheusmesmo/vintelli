@@ -30,7 +30,7 @@ Vintelli is a Quarkus application that shows an IntelliJ IDEA-like TUI (built wi
 - Quarkiverse MCP Server 2.0.4 (Vintelli as an MCP server for external agents)
 - MCP Java SDK 2.1.0 (client: IntelliJ IDEA MCP server)
 - LSP4J 1.0.0 (client: generic language server client with profiles)
-- JGit 7.7.1 through the Quarkiverse `quarkus-jgit` extension (local Git provider for the VCS surfaces)
+- JGit 7.8.1 directly from Eclipse JGit (local Git provider; native registrations are maintained by the Vintelli core build step)
 - AEsh 3.18.6 (plain library; CLI/REPL capabilities) and WebSockets Next (browser surface)
 
 ## Run
