@@ -12,6 +12,7 @@ import io.quarkus.deployment.builditem.FeatureBuildItem;
 import io.quarkus.deployment.builditem.nativeimage.NativeImageResourceBuildItem;
 import io.quarkus.deployment.builditem.nativeimage.ReflectiveClassBuildItem;
 import io.quarkus.test.QuarkusUnitTest;
+import org.aesh.AeshConsoleRunner;
 import org.aesh.command.metadata.CommandMetadataProvider;
 import org.aesh.command.metadata.MetadataRegistry;
 import org.junit.jupiter.api.Test;
@@ -40,6 +41,7 @@ class AeshCommandProcessorTest {
         List<String> registered = registeredClasses();
         assertTrue(registered.contains(GeneratedRegistryProbe.class.getName()), registered.toString());
         assertTrue(registered.contains("org.aesh.command.internal.InternalCommandMetadataRegistry"), registered.toString());
+        assertTrue(registered.contains(AeshConsoleRunner.ExitCommand.class.getName()), registered.toString());
     }
 
     @Test
