@@ -69,5 +69,22 @@ public interface LspProfileConfig {
          * for example {@code {"bundles":["..."]}} for jdt.ls extensions.
          */
         Optional<String> initializationOptions();
+
+        /**
+         * Lowest Java feature release the server runs on, for example
+         * {@code 25} for jdt.ls 1.63.0 (issue #100). Without it the Java
+         * runtime is not checked.
+         */
+        @WithName("java.min-version")
+        Optional<Integer> javaMinVersion();
+
+        /**
+         * Java installation the server runs on, handed to the server process
+         * as {@code JAVA_HOME}. Without it the runtime is looked up through
+         * {@code JAVA_HOME} and then {@code java} on {@code PATH}, the order
+         * the jdt.ls launcher uses.
+         */
+        @WithName("java.home")
+        Optional<String> javaHome();
     }
 }

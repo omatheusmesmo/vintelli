@@ -119,13 +119,17 @@ final class LspServerSession implements AutoCloseable {
      * @param command full command of the server process, executable first
      * @param workspaceRoot existing directory used as server rootUri and working directory
      * @param initializationOptions raw JSON object or null
+     * @param environment variables added to the environment the server process
+     *        inherits, for example {@code JAVA_HOME} from {@code java.home}
      */
-    record Launch(String profile, List<String> command, Path workspaceRoot, String initializationOptions) {
+    record Launch(String profile, List<String> command, Path workspaceRoot, String initializationOptions,
+            Map<String, String> environment) {
 
         public Launch {
             Objects.requireNonNull(profile, "profile");
             Objects.requireNonNull(command, "command");
             Objects.requireNonNull(workspaceRoot, "workspaceRoot");
+            environment = environment == null ? Map.of() : Map.copyOf(environment);
         }
     }
 
@@ -147,6 +151,7 @@ final class LspServerSession implements AutoCloseable {
         }
         ProcessBuilder builder = new ProcessBuilder(launch.command());
         builder.directory(launch.workspaceRoot().toFile());
+        builder.environment().putAll(launch.environment());
         Process process = builder.start();
         ExecutorService executor = Executors.newCachedThreadPool(runnable -> {
             Thread thread = new Thread(runnable);
