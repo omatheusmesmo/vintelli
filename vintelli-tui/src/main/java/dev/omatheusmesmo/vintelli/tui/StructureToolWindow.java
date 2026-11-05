@@ -16,6 +16,8 @@ import dev.tamboui.style.Style;
 import dev.tamboui.text.Text;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
+import dev.tamboui.tui.event.MouseEvent;
+import dev.tamboui.tui.event.MouseEventKind;
 import dev.tamboui.widgets.paragraph.Paragraph;
 
 import jakarta.inject.Inject;
@@ -24,6 +26,8 @@ import jakarta.inject.Singleton;
 
 @Singleton
 public final class StructureToolWindow implements ToolWindow {
+
+    private record VisibleSymbol(NavigationCapability.DocumentSymbol symbol, int depth) { }
 
     private final List<NavigationCapability> providers;
     private final BuiltinEditor editor;
@@ -36,6 +40,9 @@ public final class StructureToolWindow implements ToolWindow {
     private String filter = "";
     private int lastCaretLine = -1;
     private Consumer<NavigationCapability.DocumentSymbol> navigateHandler;
+    private Rect lastArea = Rect.ZERO;
+    private int scrollOffset;
+    private int symbolRowOffset;
 
     @Inject
     public StructureToolWindow(jakarta.enterprise.inject.Instance<NavigationCapability> providers,
@@ -118,29 +125,33 @@ public final class StructureToolWindow implements ToolWindow {
         if (event.isKey(KeyCode.BACKSPACE) && !filter.isEmpty()) {
             filter = filter.substring(0, filter.offsetByCodePoints(filter.length(), -1));
             selectedIndex = 0;
+            scrollOffset = 0;
             return true;
         }
         if (event.code() == KeyCode.CHAR && !event.hasCtrl() && !event.hasAlt()
                 && !Character.isISOControl(event.codePoint())) {
             filter += event.string();
             selectedIndex = 0;
+            scrollOffset = 0;
             return true;
         }
-        List<NavigationCapability.DocumentSymbol> flattened = flattened();
+        List<VisibleSymbol> flattened = visibleSymbols();
         if (flattened.isEmpty()) {
             return false;
         }
         if (event.isKey(KeyCode.UP)) {
             selectedIndex = Math.max(0, selectedIndex - 1);
+            keepSelectionVisible(flattened.size());
             return true;
         }
         if (event.isKey(KeyCode.DOWN)) {
             selectedIndex = Math.min(flattened.size() - 1, selectedIndex + 1);
+            keepSelectionVisible(flattened.size());
             return true;
         }
         if (event.isKey(KeyCode.ENTER)) {
             if (navigateHandler != null && selectedIndex >= 0 && selectedIndex < flattened.size()) {
-                navigateHandler.accept(flattened.get(selectedIndex));
+                navigateHandler.accept(flattened.get(selectedIndex).symbol());
             }
             return true;
         }
@@ -148,31 +159,75 @@ public final class StructureToolWindow implements ToolWindow {
     }
 
     @Override
+    public boolean handleMouse(MouseEvent event) {
+        if (!inside(lastArea, event.x(), event.y())) {
+            return false;
+        }
+        List<VisibleSymbol> rows = visibleSymbols();
+        if (event.isScroll() && (event.kind() == MouseEventKind.SCROLL_UP
+                || event.kind() == MouseEventKind.SCROLL_DOWN)) {
+            if (rows.isEmpty() || event.y() < lastArea.y() + symbolRowOffset) {
+                return false;
+            }
+            int direction = event.kind() == MouseEventKind.SCROLL_UP ? -1 : 1;
+            scrollOffset = clamp(scrollOffset + direction * 3, 0, maxScroll(rows.size()));
+            int viewport = symbolViewportHeight();
+            if (viewport > 0) {
+                selectedIndex = Math.clamp(selectedIndex, scrollOffset,
+                        Math.min(rows.size() - 1, scrollOffset + viewport - 1));
+            }
+            return true;
+        }
+        if ((!event.isPress() && !event.isClick()) || !event.isLeftButton()) {
+            return false;
+        }
+        int row = event.y() - lastArea.y() - symbolRowOffset + scrollOffset;
+        if (row < scrollOffset || row >= rows.size() || row >= scrollOffset + symbolViewportHeight()) {
+            return false;
+        }
+        selectedIndex = row;
+        return true;
+    }
+
+    @Override
     public void render(Frame frame, Rect area) {
         refreshIfNeeded();
+        lastArea = area;
         ShellThemes activeThemes = themes == null ? null : themes.get();
         Style contentStyle = activeThemes == null ? Style.EMPTY
                 : activeThemes.resolver("tool-window").toStyle();
+        List<VisibleSymbol> rows = visibleSymbols();
         List<String> lines = new ArrayList<>();
         if (!filter.isEmpty()) {
             lines.add("Filter: " + filter);
+            symbolRowOffset = 1;
+        } else {
+            symbolRowOffset = 0;
         }
         if (unavailableReason != null) {
             lines.add(unavailableReason);
         } else if (roots.isEmpty()) {
             lines.add("No symbols");
+        } else if (rows.isEmpty()) {
+            lines.add("No matching symbols");
         } else {
-            int prefix = lines.size();
-            appendSymbols(lines, roots, 0, selectedIndex, prefix, filter.toLowerCase(Locale.ROOT));
-            if (lines.size() == prefix) {
-                lines.add("No matching symbols");
+            selectedIndex = Math.clamp(selectedIndex, 0, rows.size() - 1);
+            int viewport = symbolViewportHeight();
+            scrollOffset = clamp(scrollOffset, 0, maxScroll(rows.size()));
+            if (selectedIndex < scrollOffset) {
+                scrollOffset = selectedIndex;
+            } else if (selectedIndex >= scrollOffset + viewport) {
+                scrollOffset = selectedIndex - viewport + 1;
+            }
+            for (int index = scrollOffset; index < Math.min(rows.size(), scrollOffset + viewport); index++) {
+                VisibleSymbol row = rows.get(index);
+                lines.add((index == selectedIndex ? "> " : "  ") + "  ".repeat(row.depth())
+                        + row.symbol().name());
             }
         }
         Paragraph paragraph = Paragraph.builder()
                 .text(Text.from(String.join("\n", lines)))
                 .style(contentStyle)
-                .scroll(unavailableReason == null && !roots.isEmpty()
-                        ? Math.max(0, selectedIndex + (filter.isEmpty() ? 0 : 1) - Math.max(0, area.height() - 1)) : 0)
                 .build();
         frame.renderWidget(paragraph, area);
     }
@@ -189,6 +244,7 @@ public final class StructureToolWindow implements ToolWindow {
         unavailableReason = null;
         selectedIndex = 0;
         filter = "";
+        scrollOffset = 0;
     }
 
     public void setUnavailable(String reason) {
@@ -320,6 +376,52 @@ public final class StructureToolWindow implements ToolWindow {
                 : result.stream().filter(symbol -> symbol.name().toLowerCase(Locale.ROOT).contains(needle)).toList();
     }
 
+    private List<VisibleSymbol> visibleSymbols() {
+        List<VisibleSymbol> result = new ArrayList<>();
+        String needle = filter.toLowerCase(Locale.ROOT);
+        for (NavigationCapability.DocumentSymbol symbol : roots) {
+            collectVisible(symbol, 0, needle, result);
+        }
+        return result;
+    }
+
+    private static void collectVisible(NavigationCapability.DocumentSymbol symbol, int depth, String needle,
+            List<VisibleSymbol> result) {
+        if (needle.isEmpty() || symbol.name().toLowerCase(Locale.ROOT).contains(needle)) {
+            result.add(new VisibleSymbol(symbol, depth));
+        }
+        for (NavigationCapability.DocumentSymbol child : symbol.children()) {
+            collectVisible(child, depth + 1, needle, result);
+        }
+    }
+
+    private int symbolViewportHeight() {
+        return Math.max(0, lastArea.height() - symbolRowOffset);
+    }
+
+    private int maxScroll(int size) {
+        return Math.max(0, size - symbolViewportHeight());
+    }
+
+    private void keepSelectionVisible(int size) {
+        int viewport = symbolViewportHeight();
+        scrollOffset = clamp(scrollOffset, 0, maxScroll(size));
+        if (selectedIndex < scrollOffset) {
+            scrollOffset = selectedIndex;
+        } else if (selectedIndex >= scrollOffset + viewport) {
+            scrollOffset = Math.min(maxScroll(size), selectedIndex - viewport + 1);
+        }
+    }
+
+    private static int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(value, max));
+    }
+
+    private static boolean inside(Rect area, int x, int y) {
+        return x >= area.x() && x < area.x() + area.width()
+                && y >= area.y() && y < area.y() + area.height();
+    }
+
     private static void flatten(NavigationCapability.DocumentSymbol symbol,
             List<NavigationCapability.DocumentSymbol> result) {
         result.add(symbol);
@@ -328,16 +430,4 @@ public final class StructureToolWindow implements ToolWindow {
         }
     }
 
-    private static void appendSymbols(List<String> lines, List<NavigationCapability.DocumentSymbol> symbols, int depth,
-            int selectedIndex, int prefix, String needle) {
-        String indent = "  ".repeat(Math.max(0, depth));
-        for (NavigationCapability.DocumentSymbol symbol : symbols) {
-            if (needle.isEmpty() || symbol.name().toLowerCase(Locale.ROOT).contains(needle)) {
-                lines.add((lines.size() - prefix == selectedIndex ? "> " : "  ") + indent + symbol.name());
-            }
-            if (symbol.children() != null && !symbol.children().isEmpty()) {
-                appendSymbols(lines, symbol.children(), depth + 1, selectedIndex, prefix, needle);
-            }
-        }
-    }
 }
