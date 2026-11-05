@@ -1132,11 +1132,33 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     private EventResult handleMouse(MouseEvent mouse) {
+        KeymapParts parts = overlays();
+        if (parts.commandPalette().isOpen()) {
+            parts.commandPalette().handleMouse(mouse).ifPresent(action -> dispatch(parts, action.id()));
+            return EventResult.HANDLED;
+        }
+        if (parts.searchModel() != null && parts.searchModel().isOpen()) {
+            parts.searchOverlay().handleMouse(mouse).ifPresent(target -> openFile(target.file(), target.line()));
+            return EventResult.HANDLED;
+        }
+        if (parts.keymapHelp().isOpen()) {
+            if (mouse.isClick()) {
+                parts.keymapHelp().close();
+            }
+            return EventResult.HANDLED;
+        }
+        if (parts.menuPopup().isOpen()) {
+            if (mouse.isClick()) {
+                Optional<String> action = parts.menuPopup().click(mouse.x(), mouse.y());
+                syncEditorMenuNavigation(parts);
+                action.ifPresent(value -> dispatch(parts, value));
+            }
+            return EventResult.HANDLED;
+        }
         EventResult splitterResult = handleSplitterMouse(mouse);
         if (splitterResult == EventResult.HANDLED) {
             return splitterResult;
         }
-        KeymapParts parts = overlays();
         if (mouse.isClick() && mouse.y() == 0) {
             int menu = menuAt(mouse.x());
             if (menu >= 0) {
@@ -1149,14 +1171,6 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 inputCaptured = false;
                 return EventResult.HANDLED;
             }
-        }
-        if (parts.menuPopup().isOpen()) {
-            if (mouse.isClick()) {
-                Optional<String> action = parts.menuPopup().click(mouse.x(), mouse.y());
-                syncEditorMenuNavigation(parts);
-                action.ifPresent(value -> dispatch(parts, value));
-            }
-            return EventResult.HANDLED;
         }
         for (ToolWindow.Anchor anchor : List.of(ToolWindow.Anchor.BOTTOM, ToolWindow.Anchor.RIGHT)) {
             ToolWindow activeWindow = activeToolWindow(anchor);

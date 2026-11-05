@@ -12,6 +12,9 @@ import dev.omatheusmesmo.vintelli.api.search.ProjectSearch.TextMatch;
 /** Search state shared by the Go to File and Find in Files overlays. */
 public final class ProjectSearchModel {
 
+    public record View(Mode mode, String query, boolean regex, int selected, List<FileMatch> files,
+            List<TextMatch> text, boolean searching, String error) { }
+
     public enum Mode {
         FILES,
         TEXT
@@ -65,6 +68,10 @@ public final class ProjectSearchModel {
 
     public synchronized int size() {
         return mode == Mode.FILES ? files.size() : text.size();
+    }
+
+    public synchronized View view() {
+        return new View(mode, query, regex, selected, List.copyOf(files), List.copyOf(text), searching, error);
     }
 
     public synchronized void type(int codePoint) {
