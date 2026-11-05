@@ -449,6 +449,13 @@ final class LspServerSession implements AutoCloseable {
         return System.getProperty("quarkus.application.version", "dev");
     }
 
+    /**
+     * Keeps the caller's absolute path spelling on the wire. Servers may
+     * resolve symlinks in their replies, so {@link VintelliLanguageClient}
+     * matches diagnostic publications and waits by resolved file identity,
+     * using the closest existing ancestor for new or removed documents.
+     * The diagnostics port still reports the path the caller supplied.
+     */
     static String uriFor(Path file) {
         return file.toAbsolutePath().toUri().toString();
     }

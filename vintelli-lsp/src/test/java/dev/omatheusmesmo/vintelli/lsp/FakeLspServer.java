@@ -2,6 +2,7 @@ package dev.omatheusmesmo.vintelli.lsp;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -87,7 +88,9 @@ public final class FakeLspServer {
     /**
      * Flags: {@code --ignore-exit} keeps the process alive after the exit
      * notification, {@code --spawn-child} starts a holding child during
-     * initialize, {@code --fail-initialize} refuses the initialize request and
+     * initialize, {@code --fail-initialize} refuses the initialize request,
+     * {@code --canonical-diagnostic-uris} publishes diagnostics with resolved
+     * file URIs as jdtls does, and
      * {@code --hold} turns the process into the holding child itself.
      */
     public static void main(String[] args) throws Exception {
@@ -165,6 +168,9 @@ public final class FakeLspServer {
                 initializationOptions = params.getInitializationOptions().toString();
             }
             trace("initialize");
+            if (arguments.contains("--canonical-diagnostic-uris")) {
+                trace("rootUri " + params.getRootUri());
+            }
             if (initializationOptions != null && !initializationOptions.isBlank()) {
                 trace("initializationOptions " + initializationOptions);
             }
@@ -247,6 +253,13 @@ public final class FakeLspServer {
         }
 
         void publish(String uri, List<Diagnostic> diagnostics) {
+            if (arguments.contains("--canonical-diagnostic-uris")) {
+                trace("documentUri " + uri);
+                try {
+                    uri = Path.of(URI.create(uri)).toRealPath().toUri().toString();
+                } catch (IOException unresolved) {
+                }
+            }
             remoteClient.publishDiagnostics(new PublishDiagnosticsParams(uri, diagnostics));
         }
 

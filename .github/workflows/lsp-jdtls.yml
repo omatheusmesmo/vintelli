@@ -6,6 +6,14 @@ on:
       - vintelli-lsp/**
       - vintelli-core/**
   workflow_dispatch:
+    inputs:
+      os:
+        description: Runner for the optional real jdtls contract test
+        type: choice
+        default: ubuntu-latest
+        options:
+          - ubuntu-latest
+          - macos-latest
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -29,7 +37,7 @@ permissions:
 jobs:
   jdtls-integration:
     name: LSP client against real jdtls (not required)
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.os || 'ubuntu-latest' }}
     timeout-minutes: 40
     steps:
       - name: Check out repository
@@ -67,7 +75,8 @@ jobs:
             curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location --retry 3 \
               --output "$archive" "$JDTLS_URL"
           fi
-          if ! printf '%s  %s\n' "$JDTLS_SHA256" "$archive" | sha256sum --check --strict --status; then
+          archive_sha=$(shasum -a 256 "$archive" | awk '{print $1}')
+          if [ "$archive_sha" != "$JDTLS_SHA256" ]; then
             rm -f "$archive"
             echo "::error title=jdtls checksum::$JDTLS_ARCHIVE does not match the SHA-256 pinned in lsp-jdtls.yml"
             exit 1
@@ -76,15 +85,15 @@ jobs:
       - name: Extract jdtls
         run: |
           set -euo pipefail
-          home="$RUNNER_TEMP/jdtls"
-          rm -rf "$home"
-          mkdir -p "$home"
-          tar -xzf "$RUNNER_TEMP/jdtls-download/$JDTLS_ARCHIVE" -C "$home"
-          if [ ! -x "$home/bin/jdtls" ]; then
+          jdtls_home="$RUNNER_TEMP/jdtls"
+          rm -rf "$jdtls_home"
+          mkdir -p "$jdtls_home"
+          tar -xzf "$RUNNER_TEMP/jdtls-download/$JDTLS_ARCHIVE" -C "$jdtls_home"
+          if [ ! -x "$jdtls_home/bin/jdtls" ]; then
             echo "::error title=jdtls layout::bin/jdtls is missing or not executable in $JDTLS_ARCHIVE"
             exit 1
           fi
-          echo "VINTELLI_JDTLS_HOME=$home" >> "$GITHUB_ENV"
+          echo "VINTELLI_JDTLS_HOME=$jdtls_home" >> "$GITHUB_ENV"
 
       - name: Run the LSP client against real jdtls
         run: ./mvnw -B -ntp -pl vintelli-lsp -am verify

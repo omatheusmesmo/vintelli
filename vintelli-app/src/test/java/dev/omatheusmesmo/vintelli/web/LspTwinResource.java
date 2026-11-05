@@ -37,6 +37,7 @@ public final class LspTwinResource implements QuarkusTestResourceLifecycleManage
                     .append(',').append(FakeLspServer.class.getName())
                     .append(",--trace,").append(trace.toAbsolutePath())
                     .append(",--marker,").append(MARKER)
+                    .append(",--canonical-diagnostic-uris")
                     .toString();
             return Map.of(
                     "vintelli.lsp.profiles.twin.command", ProcessHandle.current().info().command().orElse("java"),

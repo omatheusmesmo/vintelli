@@ -7,9 +7,11 @@ import static org.hamcrest.Matchers.hasItem;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 
 import org.junit.jupiter.api.Test;
 
@@ -49,6 +51,29 @@ class VintelliLspSessionIT {
         assertFalse(LspTwinResource.trace().isEmpty());
         assertTrue(LspTwinResource.trace().contains("initialize\n"), LspTwinResource.trace());
         assertTrue(LspTwinResource.trace().contains("didOpen\n"), LspTwinResource.trace());
+    }
+
+    @Test
+    void aSymlinkedDocumentReceivesCanonicalDiagnosticsWithItsOriginalFilePath() throws IOException {
+        Path actual = Files.createDirectories(LspTwinResource.document().getParent().resolve("real sources Ω"));
+        Path linked = actual.resolveSibling("linked sources Ω");
+        try {
+            Files.createSymbolicLink(linked, actual);
+        } catch (IOException | UnsupportedOperationException | SecurityException unavailable) {
+            assumeTrue(false, "Symbolic links are unavailable: " + unavailable.getMessage());
+        }
+        Path requested = linked.resolve("Example.java");
+        Files.writeString(requested, "class Example {}");
+
+        given().queryParam("file", requested.toAbsolutePath().toString())
+                .get("/lsp/diagnostics")
+                .then()
+                .statusCode(200)
+                .body("state", equalTo("OK"))
+                .body("text", containsString("fake problem"))
+                .body("text", containsString(requested.toString()));
+
+        assertTrue(LspTwinResource.trace().contains("documentUri " + requested.toUri()), LspTwinResource.trace());
     }
 
     @Test

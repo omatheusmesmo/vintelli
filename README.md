@@ -843,6 +843,13 @@ vintelli.lsp.profiles.jdtls.initialization-options={"bundles":["..."]}
 `vintelli.lsp.profile` picks the serving profile when several are configured.
 A missing binary or a server still indexing never breaks a call: the selection
 and the status row carry an explicit unavailable reason instead.
+Diagnostic publications match file URIs by resolved filesystem path, so a
+symlinked workspace or document receives the same diagnostics as its real
+path, including macOS `/var` and `/private/var`. New or removed documents use
+their closest existing ancestor to retain that identity. The diagnostics
+returned to callers keep the originally requested path; outgoing LSP URIs
+retain the caller's absolute spelling. Non-file or invalid URIs keep their
+original lookup keys.
 `/lsp/diagnostics?file=...`, `/lsp/callers`, `/lsp/callees`, `/lsp/hover`,
 `/lsp/definition`, `/lsp/references`, `/lsp/completion`, `/lsp/symbols` and
 `/lsp/code-actions?file=...&line=...&column=...` (optionally `endLine` and
@@ -869,7 +876,10 @@ VINTELLI_JDTLS_HOME=/opt/jdt-language-server ./mvnw -pl vintelli-lsp -am verify
 
 The `LSP jdtls` workflow (`.github/workflows/lsp-jdtls.yml`) runs the test on
 pull requests that touch `vintelli-lsp` or `vintelli-core`, and on demand. It is
-not a required check. It fails early unless the runner has Java 25, downloads
+not a required check. Manual runs accept an `os` input (`ubuntu-latest` by
+default or `macos-latest`) so the default macOS temporary-directory symlink
+can be checked without overriding `java.io.tmpdir`. It fails early unless
+the runner has Java 25, downloads
 the pinned jdt.ls 1.63.0 milestone archive from `download.eclipse.org`, checks
 its SHA-256 against the value pinned in the workflow, caches the archive by
 version and extracts it into the runner temp directory. To bump jdt.ls, change

@@ -21,6 +21,7 @@ import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * The generic client drives a real language server process (the fake server of
@@ -110,6 +111,45 @@ class LspClientTest {
             assertTraceContains(traceFile, "initialize", "didOpen", "didChange");
         }
         assertTraceContains(traceFile, "shutdown", "exit");
+    }
+
+    @Test
+    void aSymlinkedWorkspaceReceivesCanonicalPublicationsAndKeepsTheRequestedFilePath() throws Exception {
+        Path actual = Files.createDirectories(workspace.resolve("real workspace"));
+        Path linked = workspace.resolve("linked workspace");
+        try {
+            Files.createSymbolicLink(linked, actual);
+        } catch (IOException | UnsupportedOperationException | SecurityException unavailable) {
+            assumeTrue(false, "Symbolic links are unavailable: " + unavailable.getMessage());
+        }
+        Path requested = linked.resolve("Example.java");
+        Files.writeString(requested, "class Example {}");
+        Path traceFile = trace("canonical-diagnostics");
+        LspProfileConfig.Profile profile = new StaticProfileConfig.StaticProfile(
+                fakeCommand(traceFile, PROFILE_MARKER, "--canonical-diagnostic-uris"),
+                Optional.of(linked.toString()), Optional.empty());
+        LspProfileConfig config = new StaticProfileConfig.StaticConfig(Optional.empty(), Map.of("unit", profile));
+
+        try (LspClient client = new LspClient(config)) {
+            CapabilityResult<List<DiagnosticsCapability.Diagnostic>> opened = client.diagnostics(requested);
+
+            assertFalse(opened.isFailure(), opened.toString());
+            assertEquals(1, ok(opened).size());
+            assertEquals(requested, ok(opened).getFirst().filePath());
+            assertEquals(DiagnosticsCapability.Severity.ERROR, ok(opened).getFirst().severity());
+
+            CapabilityResult<List<DiagnosticsCapability.Diagnostic>> changed =
+                    client.modifyDocument(requested, "class Changed {}");
+            assertFalse(changed.isFailure(), changed.toString());
+            assertEquals(requested, ok(changed).getFirst().filePath());
+            assertEquals(DiagnosticsCapability.Severity.WARNING, ok(changed).getFirst().severity());
+            assertEquals("fake problem changed", ok(client.diagnostics(requested)).getFirst().message());
+
+            Files.delete(requested);
+            client.closeDocument(requested);
+        }
+        assertTraceContains(traceFile, "rootUri " + linked.toAbsolutePath().toUri(),
+                "documentUri " + requested.toAbsolutePath().toUri(), "didOpen", "didChange", "didClose", "exit");
     }
 
     @Test

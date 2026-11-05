@@ -1,5 +1,8 @@
 package dev.omatheusmesmo.vintelli.lsp;
 
+import java.io.IOException;
+import java.net.URI;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -38,9 +41,10 @@ final class VintelliLanguageClient implements LanguageClient {
 
     @Override
     public void publishDiagnostics(PublishDiagnosticsParams params) {
-        diagnosticsByUri.put(params.getUri(), params.getDiagnostics() == null ? List.of() : params.getDiagnostics());
+        String key = diagnosticsKey(params.getUri());
+        diagnosticsByUri.put(key, params.getDiagnostics() == null ? List.of() : params.getDiagnostics());
         synchronized (publicationMonitor) {
-            publicationCounts.merge(params.getUri(), 1, Integer::sum);
+            publicationCounts.merge(key, 1, Integer::sum);
             publicationMonitor.notifyAll();
         }
     }
@@ -100,13 +104,14 @@ final class VintelliLanguageClient implements LanguageClient {
     }
 
     int publicationCount(String uri) {
-        return publicationCounts.getOrDefault(uri, 0);
+        return publicationCounts.getOrDefault(diagnosticsKey(uri), 0);
     }
 
     boolean awaitPublicationAfter(String uri, int previous, Duration timeout) throws InterruptedException {
         long deadline = System.nanoTime() + timeout.toNanos();
+        String key = diagnosticsKey(uri);
         synchronized (publicationMonitor) {
-            while (publicationCount(uri) <= previous) {
+            while (publicationCounts.getOrDefault(key, 0) <= previous) {
                 long remaining = deadline - System.nanoTime();
                 if (remaining <= 0) {
                     return false;
@@ -118,7 +123,36 @@ final class VintelliLanguageClient implements LanguageClient {
     }
 
     List<Diagnostic> knownDiagnostics(String uri) {
-        return diagnosticsByUri.getOrDefault(uri, List.of());
+        return diagnosticsByUri.getOrDefault(diagnosticsKey(uri), List.of());
+    }
+
+    /**
+     * Matches file publications by resolved filesystem identity rather than
+     * URI spelling. A server such as jdtls resolves workspace symlinks before
+     * publishing, including macOS {@code /var} to {@code /private/var}.
+     * For new or removed documents, resolves the closest existing ancestor
+     * and appends the missing suffix. Other schemes and invalid file URIs
+     * retain their original keys. Resolution happens outside the publication
+     * monitor so filesystem access never holds that lock.
+     */
+    private static String diagnosticsKey(String uri) {
+        try {
+            URI parsed = URI.create(uri);
+            if (!"file".equalsIgnoreCase(parsed.getScheme())) {
+                return uri;
+            }
+            Path absolute = Path.of(parsed).toAbsolutePath();
+            for (Path ancestor = absolute; ancestor != null; ancestor = ancestor.getParent()) {
+                try {
+                    return ancestor.toRealPath().resolve(ancestor.relativize(absolute))
+                            .normalize().toUri().toString();
+                } catch (IOException | SecurityException unresolved) {
+                }
+            }
+            return absolute.normalize().toUri().toString();
+        } catch (IllegalArgumentException | SecurityException invalid) {
+            return uri;
+        }
     }
 
     private static Logger.Level severity(MessageParams message) {
