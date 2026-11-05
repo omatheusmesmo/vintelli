@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -14,6 +15,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.stream.Stream;
 
 import dev.omatheusmesmo.vintelli.api.acp.AcpChatPort;
 import io.quarkus.test.common.WithTestResource;
@@ -37,6 +39,7 @@ class AcpChatServiceLifecycleTest {
                 promptStarted.countDown();
             }
         }, request -> AcpChatPort.PermissionChoice.cancel());
+        assertEquals(Stream.of(idleSession, activeSession).sorted().toList(), chat.activeSessionIds());
         try (ExecutorService promptWorker = Executors.newVirtualThreadPerTaskExecutor()) {
             Future<String> pendingPrompt = promptWorker.submit(() -> chat.prompt(activeSession, "cancel-me"));
             assertTrue(promptStarted.await(5, TimeUnit.SECONDS), "the ACP prompt did not reach the twin");
@@ -47,6 +50,7 @@ class AcpChatServiceLifecycleTest {
             assertThrows(IllegalArgumentException.class, () -> chat.prompt(idleSession, "after-shutdown"));
             assertThrows(IllegalStateException.class,
                     () -> chat.openSession(update -> { }, request -> AcpChatPort.PermissionChoice.cancel()));
+            assertEquals(List.of(), chat.activeSessionIds());
         }
 
         String events = awaitLifecycleEvents();

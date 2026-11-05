@@ -7,6 +7,7 @@ import dev.omatheusmesmo.vintelli.acp.AcpAgentClientFactory;
 import dev.omatheusmesmo.vintelli.api.acp.AcpChatPort;
 import dev.omatheusmesmo.vintelli.core.acp.AcpAgentGate;
 import dev.omatheusmesmo.vintelli.core.acp.AcpGateException;
+import dev.omatheusmesmo.vintelli.mcp.VintelliMcpTools;
 import io.smallrye.common.annotation.Blocking;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -49,11 +50,13 @@ public final class AcpProbeResource {
 
     private final AcpAgentClientFactory agents;
     private final AcpChatPort chat;
+    private final VintelliMcpTools mcpTools;
 
     @Inject
-    AcpProbeResource(AcpAgentClientFactory agents, AcpChatPort chat) {
+    AcpProbeResource(AcpAgentClientFactory agents, AcpChatPort chat, VintelliMcpTools mcpTools) {
         this.agents = agents;
         this.chat = chat;
+        this.mcpTools = mcpTools;
     }
 
     @POST
@@ -97,6 +100,9 @@ public final class AcpProbeResource {
                         .orElseGet(AcpChatPort.PermissionChoice::cancel);
             });
             phases.add("session:new:OPENED");
+            phases.add(mcpTools.vintelli_state().contains("\"" + sessionId + "\"")
+                    ? "mcp-state:session-visible"
+                    : "mcp-state:session-missing");
             chat.prompt(sessionId, "permit");
             chat.prompt(sessionId, "edit");
             phases.add("session:prompt:COMPLETE");

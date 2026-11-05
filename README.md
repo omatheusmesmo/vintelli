@@ -534,8 +534,7 @@ write ports and paints what was pushed into the editor panel on the next
 frame, so no TamboUI type leaks into the MCP tools.
 
 - `vintelli_state`: the selected tool window id, the selected file path and
-  the agent session ids as JSON; the ids are always an empty list until the
-  ACP client (issue #6) reports real sessions
+  the opaque IDs of currently connected ACP agent sessions as JSON
 - `vintelli_highlight`: pushes a `file` and a 1-based `line` to the TUI; the
   path must be relative to the project root and is rejected when absolute or
   using `..` segments

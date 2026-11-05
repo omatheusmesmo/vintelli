@@ -8,13 +8,13 @@ import dev.omatheusmesmo.vintelli.api.ShellHighlightTarget;
 import dev.omatheusmesmo.vintelli.api.ShellStateSnapshot;
 import dev.omatheusmesmo.vintelli.api.ShellStateView;
 import dev.omatheusmesmo.vintelli.api.ShellUnifiedDiff;
+import dev.omatheusmesmo.vintelli.api.acp.AcpSessionIdsView;
 import io.quarkiverse.mcp.server.Tool;
 import io.quarkiverse.mcp.server.ToolArg;
 import io.quarkiverse.mcp.server.ToolCallException;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -31,28 +31,31 @@ import java.util.Map;
 public final class VintelliMcpTools {
 
     private final ShellStateView shellStateView;
+    private final AcpSessionIdsView acpSessionIdsView;
     private final ShellHighlightPort highlightPort;
     private final ShellDiffViewPort diffViewPort;
     private final ObjectMapper jsonMapper;
 
     @Inject
     public VintelliMcpTools(ShellStateView shellStateView,
+                            AcpSessionIdsView acpSessionIdsView,
                             ShellHighlightPort highlightPort,
                             ShellDiffViewPort diffViewPort,
                             ObjectMapper jsonMapper) {
         this.shellStateView = shellStateView;
+        this.acpSessionIdsView = acpSessionIdsView;
         this.highlightPort = highlightPort;
         this.diffViewPort = diffViewPort;
         this.jsonMapper = jsonMapper;
     }
 
-    @Tool(description = "Returns the current state of the Vintelli TUI shell as JSON: the selected tool window id, the selected file path and the agent session ids (always empty until the ACP client exists).")
+    @Tool(description = "Returns the current Vintelli TUI shell selection and opaque IDs of connected ACP agent sessions as JSON.")
     public String vintelli_state() {
         ShellStateSnapshot snapshot = shellStateView.snapshot();
         return json(Map.of(
                 "selectedToolWindowId", snapshot.selectedToolWindowId(),
                 "selectedFile", snapshot.selectedFile(),
-                "agentSessionIds", List.of()));
+                "agentSessionIds", acpSessionIdsView.activeSessionIds()));
     }
 
     @Tool(description = "Pushes a file and a line to the Vintelli TUI shell so the human sees which source location the calling agent is working on. The file must be a relative path inside the project root and the line a 1-based line number.")
