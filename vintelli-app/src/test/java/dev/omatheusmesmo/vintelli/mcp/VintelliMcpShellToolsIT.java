@@ -1,5 +1,6 @@
 package dev.omatheusmesmo.vintelli.mcp;
 
+import dev.omatheusmesmo.vintelli.acp.EchoAcpAgentResource;
 import dev.omatheusmesmo.vintelli.web.InspectEnabledResource;
 import io.quarkus.test.common.TestResourceScope;
 import io.quarkus.test.common.WithTestResource;
@@ -11,5 +12,6 @@ import io.quarkus.test.junit.QuarkusIntegrationTest;
  */
 @QuarkusIntegrationTest
 @WithTestResource(value = InspectEnabledResource.class, scope = TestResourceScope.RESTRICTED_TO_CLASS)
+@WithTestResource(value = EchoAcpAgentResource.class, scope = TestResourceScope.RESTRICTED_TO_CLASS)
 public class VintelliMcpShellToolsIT extends VintelliMcpShellToolsTest {
 }

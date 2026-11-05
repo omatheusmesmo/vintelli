@@ -42,21 +42,27 @@ class ProcessRunnerTest {
     Path temp;
 
     @Test
-    void streamsEveryOutputLineWhileTheProcessRuns() {
+    void streamsEveryOutputLineWhileTheProcessRuns() throws InterruptedException {
         Path ping = TestProcesses.extractSource(temp, "Ping.java");
         List<String> observed = new CopyOnWriteArrayList<>();
+        CountDownLatch terminated = new CountDownLatch(1);
         ProcessRunner runner = new ProcessRunner();
 
-        ProcessRunner.Handle handle = runner.start(plan(command(ping, "first-arg", "second-arg")), observed::add);
-        TestProcesses.awaitUntil(STREAM_SETTLE, () -> observed.contains("done"));
-        handle.cancel();
+        ProcessRunner.Handle handle = runner.start(plan(command(ping, "first-arg", "second-arg")), observed::add,
+                ignored -> terminated.countDown());
+        try {
+            TestProcesses.awaitUntil(STREAM_SETTLE, () -> observed.contains("done"));
 
-        assertFalse(observed.isEmpty());
-        assertTrue(observed.contains("arg:first-arg"));
-        assertTrue(observed.contains("arg:second-arg"));
-        assertTrue(observed.contains("mark:unset"));
-        assertTrue(observed.contains("stderr:ping"));
-        assertTrue(observed.contains("done"));
+            assertFalse(observed.isEmpty());
+            assertTrue(observed.contains("arg:first-arg"));
+            assertTrue(observed.contains("arg:second-arg"));
+            assertTrue(observed.contains("mark:unset"));
+            assertTrue(observed.contains("stderr:ping"));
+            assertTrue(observed.contains("done"));
+        } finally {
+            handle.cancel();
+            assertTrue(terminated.await(20, TimeUnit.SECONDS), "the child process must exit before @TempDir cleanup");
+        }
     }
 
     @Test

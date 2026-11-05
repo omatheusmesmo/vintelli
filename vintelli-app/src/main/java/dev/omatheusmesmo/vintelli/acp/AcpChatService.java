@@ -20,6 +20,7 @@ import java.util.stream.Collectors;
 import com.agentclientprotocol.sdk.client.AcpSyncClient;
 import com.agentclientprotocol.sdk.spec.AcpSchema;
 import dev.omatheusmesmo.vintelli.api.acp.AcpChatPort;
+import dev.omatheusmesmo.vintelli.api.acp.AcpSessionIdsView;
 import dev.omatheusmesmo.vintelli.core.acp.AcpAgentGate;
 import jakarta.annotation.PreDestroy;
 import jakarta.inject.Inject;
@@ -28,7 +29,7 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 /** Production ACP session service used by the TUI chat tool window. */
 @Singleton
-public final class AcpChatService implements AcpChatPort {
+public final class AcpChatService implements AcpChatPort, AcpSessionIdsView {
 
     private static final System.Logger LOG = System.getLogger(AcpChatService.class.getName());
     private static final Duration SESSION_CLOSE_TIMEOUT = Duration.ofSeconds(2);
@@ -51,6 +52,13 @@ public final class AcpChatService implements AcpChatPort {
     @Override
     public boolean isConfigured() {
         return agents.isConfigured();
+    }
+
+    @Override
+    public List<String> activeSessionIds() {
+        synchronized (lifecycleLock) {
+            return sessions.keySet().stream().sorted().toList();
+        }
     }
 
     @Override

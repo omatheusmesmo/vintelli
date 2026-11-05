@@ -2,6 +2,8 @@ package dev.omatheusmesmo.vintelli.mcp;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -9,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.omatheusmesmo.vintelli.acp.EchoAcpAgentResource;
 import dev.omatheusmesmo.vintelli.web.InspectEnabledResource;
 import io.quarkiverse.mcp.server.Content;
 import io.quarkiverse.mcp.server.TextContent;
@@ -33,6 +36,7 @@ import java.util.Map;
  */
 @QuarkusTest
 @WithTestResource(value = InspectEnabledResource.class, scope = TestResourceScope.RESTRICTED_TO_CLASS)
+@WithTestResource(value = EchoAcpAgentResource.class, scope = TestResourceScope.RESTRICTED_TO_CLASS)
 public class VintelliMcpShellToolsTest {
 
     @TestHTTPResource
@@ -48,6 +52,17 @@ public class VintelliMcpShellToolsTest {
                     .withAssert(this::assertStatePayload)
                     .send()
                 .thenAssertResults();
+    }
+
+    @Test
+    public void vintelliStateIncludesAConnectedAcpSession() {
+        given()
+                .when().post("/acp/probe/chat-session")
+                .then()
+                .statusCode(200)
+                .body("state", equalTo("OK"))
+                .body("phases", hasItem("mcp-state:session-visible"))
+                .body("phases", hasItem("session:close:CLOSED"));
     }
 
     @Test
