@@ -214,6 +214,12 @@ class VintelliCliCommandsIT {
         assertTrue(run.stdout().contains("terminal: local (local shell process)"), run.describe());
     }
 
+    @Test
+    void replStopsOnQuitAlias() throws Exception {
+        CliRun run = launch("quit\n", "--repl");
+        assertExit(run, 0);
+    }
+
     private static void assertExit(CliRun run, int expected) {
         assertEquals(expected, run.exitCode(), run.describe());
     }

@@ -27,6 +27,7 @@ final class AeshCommandProcessor {
             DotName.createSimple("org.aesh.command.metadata.MetadataRegistry");
     private static final DotName TERMINAL_PROVIDER =
             DotName.createSimple("org.aesh.terminal.provider.TerminalProvider");
+    private static final String EXIT_COMMAND = "org.aesh.AeshConsoleRunner$ExitCommand";
 
     @BuildStep
     IndexDependencyBuildItem indexAesh() {
@@ -45,6 +46,11 @@ final class AeshCommandProcessor {
             ApplicationIndexBuildItem application) {
         List<ClassInfo> providers = knownImplementors(combined, application, TERMINAL_PROVIDER);
         return ReflectiveClassBuildItem.builder(namesOf(providers).toArray(String[]::new)).constructors().build();
+    }
+
+    @BuildStep
+    ReflectiveClassBuildItem builtInCommands() {
+        return ReflectiveClassBuildItem.builder(EXIT_COMMAND).constructors().build();
     }
 
     @BuildStep
