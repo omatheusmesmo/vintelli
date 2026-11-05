@@ -295,8 +295,11 @@ public final class IdeaMcpClient implements AutoCloseable, StatusBarWidgetContri
         }
         Integer statusCode = statusCode(failure);
         if (statusCode != null) {
-            return ConnectionStatus.endpointNotFound("404 at the configured IDEA endpoint: re-copy the HTTP Stream "
-                    + "Config from IDEA (" + safeFailureDetail(failure) + ")");
+            return statusCode == 404
+                    ? ConnectionStatus.endpointNotFound("404 at the configured IDEA endpoint: re-copy the HTTP Stream "
+                    + "Config from IDEA (" + safeFailureDetail(failure) + ")")
+                    : ConnectionStatus.error("IDEA answered HTTP " + statusCode
+                    + ": the server is reachable but could not handle the request");
         }
         if (chainContains(failure, JacksonException.class)) {
             return ConnectionStatus.error("IDEA answered with a malformed payload: " + safeFailureDetail(failure));
@@ -327,7 +330,7 @@ public final class IdeaMcpClient implements AutoCloseable, StatusBarWidgetContri
             if (message == null) {
                 continue;
             }
-            Matcher matcher = Pattern.compile("Status code:(\\d{3})").matcher(message);
+            Matcher matcher = Pattern.compile("status code:\\s*(\\d{3})", Pattern.CASE_INSENSITIVE).matcher(message);
             if (matcher.find()) {
                 return Integer.valueOf(matcher.group(1));
             }
