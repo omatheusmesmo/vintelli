@@ -125,6 +125,9 @@ class KeymapTest {
         assertEquals(expected, ids);
         KeyAction searchEverywhere = actionById(keymap, SEARCH_EVERYWHERE);
         assertEquals("Double Shift", searchEverywhere.intellijShortcut());
+        KeyAction keymapHelp = actionById(keymap, KEYMAP_HELP);
+        assertEquals("F1", keymapHelp.intellijShortcut(),
+                "the IntelliJ reference of the help overlay has to match the README row");
         KeyAction run = actionById(keymap, "ActivateRunToolWindow");
         assertEquals("Alt+4", run.intellijShortcut());
         for (KeyAction action : keymap.actions()) {
@@ -224,6 +227,32 @@ class KeymapTest {
     }
 
     @Test
+    void barePrintableCharacterOnQuitIsRejectedNamingTheFileAndTheLine(@TempDir Path tempDir) throws Exception {
+        Path userFile = tempDir.resolve("keymap.properties");
+        Files.writeString(userFile, "# a comment line\nmoveUp = Ctrl+k\nquit = q\n");
+
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> Keymap.load(KeymapProfile.DEFAULT, WINDOWS, userFile));
+
+        assertTrue(failure.getMessage().contains("'quit'"), failure.getMessage());
+        assertTrue(failure.getMessage().contains(userFile.toString()), failure.getMessage());
+        assertTrue(failure.getMessage().contains("(line 3)"), failure.getMessage());
+    }
+
+    @Test
+    void chordOnQuitIsStillAccepted(@TempDir Path tempDir) throws Exception {
+        Path userFile = tempDir.resolve("keymap.properties");
+        Files.writeString(userFile, "quit = Ctrl+q\n");
+
+        Keymap keymap = Keymap.load(KeymapProfile.DEFAULT, WINDOWS, userFile);
+
+        assertTrue(keymap.matches(keypress('q', KeyModifiers.CTRL), QUIT),
+                "a chord on quit stays a legal rebinding, only bare printable characters are rejected");
+        assertFalse(keymap.matches(keypress('q', KeyModifiers.NONE), QUIT),
+                "the rejected bare q must not have survived as a quit trigger");
+    }
+
+    @Test
     void invalidTriggerInUserKeymapFileFailsFastNamingTheFile(@TempDir Path tempDir) throws Exception {
         Path userFile = tempDir.resolve("keymap.properties");
         Files.writeString(userFile, "moveUp = Super+F13\n");
@@ -232,6 +261,43 @@ class KeymapTest {
                 () -> Keymap.load(KeymapProfile.DEFAULT, WINDOWS, userFile));
 
         assertTrue(failure.getMessage().contains(userFile.toString()), failure.getMessage());
+    }
+
+    @Test
+    void malformedUnicodeEscapeInUserKeymapFileFailsFastNamingTheFileAndTheLine(@TempDir Path tempDir)
+            throws Exception {
+        Path userFile = tempDir.resolve("keymap.properties");
+        Files.writeString(userFile, "# a comment line\nmoveUp = Ctrl+k\nActivateRunToolWindow = \\uZZZZ\n");
+
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> Keymap.load(KeymapProfile.DEFAULT, WINDOWS, userFile));
+
+        assertTrue(failure.getMessage().contains(userFile.toString()), failure.getMessage());
+        assertTrue(failure.getMessage().contains("(line 3)"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("Malformed"), failure.getMessage());
+    }
+
+    @Test
+    void malformedUnicodeEscapeAfterAValidOneNamesTheBadLine(@TempDir Path tempDir) throws Exception {
+        Path userFile = tempDir.resolve("keymap.properties");
+        Files.writeString(userFile, "moveUp = \\u0041\n# a comment line\nActivateRunToolWindow = \\uZZZZ\n");
+
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> Keymap.load(KeymapProfile.DEFAULT, WINDOWS, userFile));
+
+        assertTrue(failure.getMessage().contains(userFile.toString()), failure.getMessage());
+        assertTrue(failure.getMessage().contains("(line 3)"), failure.getMessage());
+    }
+
+    @Test
+    void malformedUnicodeEscapeInACommentIsIgnored(@TempDir Path tempDir) throws Exception {
+        Path userFile = tempDir.resolve("keymap.properties");
+        Files.writeString(userFile, "# a bad escape \\uZZZZ in a comment\nmoveUp = Ctrl+k\n");
+
+        Keymap keymap = Keymap.load(KeymapProfile.DEFAULT, WINDOWS, userFile);
+
+        assertTrue(keymap.matches(keypress('k', KeyModifiers.CTRL), MOVE_UP),
+                "comments are not parsed as bindings, their escapes never reach Properties.load");
     }
 
     @Test
