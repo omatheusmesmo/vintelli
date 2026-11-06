@@ -68,9 +68,18 @@ What these numbers do and do not support:
 
 - Documented by the launcher `--help`: `--socket=<value>` (default `127.0.0.1:9999`; without `--stdio` the server runs in socket mode), `--port-file=<path>` ("Removed when the server stops"), `--idle-timeout`, `--multi-client` ("If not set, server will be shut down after the first client disconnects"), `--client`, `--license-key`, `--license-key-file`, `--license-server`, `--show-eula`, `--reset-eula`, `--eula`, and a `license` subcommand (`status`, `login`, `activate`, `trial`, `reset`).
 - Observed: the server logged `Server is listening on /127.0.0.1:5999`; `--port-file` contained `5999`; a plain LSP client over TCP got the full capability response to `initialize` 8.0 s after connecting. That 8.0 s is connect to `initialize` against a server that was already starting up, so it is not comparable with the 27.8 s spawn to `initialize` of stdio run I1; spawn to `initialize` in socket mode was not measured.
-- The port file was still on disk after the server process was gone. How the process was stopped (clean shutdown or kill) was not recorded, so whether the file is removed on a clean stop is unverified (#99).
-- A second connection after the first client disconnected was accepted but never answered `initialize` within 30 s. The `--multi-client` help text (the server shuts down after the first client disconnects unless it is set) is consistent with this, but the process state was not checked and `--multi-client` was not run (#98).
+- The port file was still on disk after the server process was gone. How the process was stopped (clean shutdown or kill) was not recorded in this original run; issue #99 measured its lifecycle below.
+- A second connection after the first client disconnected was accepted but never answered `initialize` within 30 s. The `--multi-client` help text (the server shuts down after the first client disconnects unless it is set) is consistent with this, but `--multi-client` was not run (#98).
 - Consequence: intellij-server offers stdio and socket; jdtls offers stdio, sockets and named pipes (spike 22, from its README, not exercised here). The stdio-only restriction of #19 is therefore not forced by intellij-server's transport surface; it remains a product choice.
+
+### Port-file lifecycle (issue #99)
+
+- Tested on 2026-11-05 and 2026-11-06 with the official Linux x86_64 build `263.7084.0` (`ILS-263.7084.0`, JBR `25.0.4.1+1-b601.61`). The archive was 386,777,831 bytes with SHA-256 `3842f2f457e29e58cd9c37a97482b28255d598a2ff142075753d947206c0b922`. Each run used isolated `/tmp` system/config/log paths, `--socket=127.0.0.1:0`, `--data-sharing=none`, and disabled EULA persistence. The server started unlicensed; no project workspace or licensed feature was used.
+- **LSP shutdown/exit:** `initialize` returned server info and `shutdown` returned `null`; after sending `exit` and disconnecting, the process was still alive after 45 s. The port file still contained `39795`, while `/proc/net/tcp` showed no listening socket on that port. The probe sent SIGTERM afterward only to clean up.
+- **SIGTERM:** the process and listener stopped, but the port file remained with `42313`.
+- **SIGKILL:** the process and listener stopped, but the port file remained with `35149`.
+- **Restart with stale file:** the next run reused the SIGKILL run's port-file path and replaced `35149` with its newly bound port, `36083`.
+- **Consequence for Vintelli:** no current Vintelli code consumes `--port-file`. Any future launcher must treat the file as stale across process exits, use a fresh path per launch where possible, and wait for the new process to publish its bound port before connecting. The clean LSP sequence did not stop the server process in this run; process lifetime after client disconnect, including `--multi-client`, remains part of #98.
 
 ### Unlicensed behavior of intellij-server
 
@@ -82,7 +91,7 @@ What these numbers do and do not support:
 
 ### EULA flag and side effects on the research machine
 
-- All intellij-server runs passed `--eula cd82e6cdaf2790f1`, the first 16 hex characters of the SHA-256 of the bundle's own `EULA.txt` (the algorithm in JetBrains' `intellij-lsp.nvim` `eula.lua`). The researcher supplied it directly, without a consent screen. That is acceptable for this research only (spike 53 read the macOS bundle's EULA text; the Linux bundle's text was not compared, see #65); it is exactly the step that spike 53 says Vintelli must gate on explicit user consent.
+- Earlier intellij-server runs passed `--eula cd82e6cdaf2790f1`, the first 16 hex characters of the SHA-256 of the bundle's own `EULA.txt` (the algorithm in JetBrains' `intellij-lsp.nvim` `eula.lua`). For #99, the user reviewed and explicitly accepted the terms before the test; persistence was disabled. The Linux bundle's EULA was byte-verified against the macOS copy as recorded in spike 53.
 - `--eula` is documented as remembered "for the user and machine", with `-Dintellij.server.eula.persistence=false` to disable the record. Only run I1 set that property. The later runs (I2 and the socket runs) did not, so an accepted-hash record exists in the JetBrains config directory of the research machine's user; `intellij-server --reset-eula` removes it.
 - During import the server installs its bundled helper (`com.jetbrains.ls:imports-maven-plugin`) into the user's default Maven local repository (`Installing ... to ~/.m2/repository/com/jetbrains/ls/imports-maven-plugin`; the log also reports `Detected Maven repo` for that path). Starting the server therefore changes persistent state outside its `--system-path` (#103).
 
@@ -120,14 +129,13 @@ The #22 default stands: **jdtls remains the default; intellij-server stays opt-i
 - Why the server started unlicensed instead of in the trial described in spike 22 (#102).
 - jdtls on real multi-module and dependency-heavy repositories, including a profile of the import phase; the project here measures the floor, not the ceiling (#97).
 - Repeatability of every number above, the cause of the reused-slower-than-fresh cells, the OSGi cache hypothesis, and child-process memory (#101).
-- The `--multi-client` and second-connection behavior (#98), port-file removal on stop (#99), and the intellij-server writes outside its system path (#103).
+- The full `--multi-client` and second-connection behavior (#98), and the intellij-server writes outside its system path (#103). Issue #99's port-file lifecycle results are recorded above.
 
 ## Follow-ups
 
 - #73: licensed intellij-server benchmark, now including call hierarchy with the correct method names.
 - #97: jdtls on real repositories, including an import-phase profile.
-- #98: intellij-server `--multi-client` and what happens when the first client disconnects.
-- #99: port file removal on clean stop.
+- #98: intellij-server `--multi-client` and what happens when the first client disconnects; the #99 probe found the process still alive 45 s after LSP shutdown/exit, with no listening socket.
 - #100: require a Java 25 runtime for the jdtls profile in #20 and detect it at runtime.
 - #101: repeat the runs with enough samples and a corrected RSS sampler.
 - #102: why a fresh intellij-server starts unlicensed instead of in the documented trial.

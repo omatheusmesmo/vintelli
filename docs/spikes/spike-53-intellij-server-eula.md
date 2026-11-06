@@ -2,7 +2,7 @@
 
 Part of #15. Follow-up of `spike-22-jdtls-vs-intellij-lsp.md`; settles #53; feeds the profile rules in #20.
 
-**Status:** Desk research only. No server was launched and no quality or performance measurement was made. The only executed action was reading the published bundle archive over HTTP (partial range downloads, described below) to extract the bundle's `EULA.txt`. The macOS bundle `EULA.txt` was read in full on 2026-10-29; the web pages were read on 2026-10-28.
+**Status:** The EULA review was desk research, with the Linux bundle copy subsequently verified during issue #99 on 2026-11-06. No licensed quality or performance measurement was made. The macOS bundle `EULA.txt` was read in full on 2026-10-29; the web pages were read on 2026-10-28.
 
 **Disclaimer:** This document records our reading of the license text to support engineering decisions. It is not legal advice and has not been reviewed by a lawyer or by JetBrains.
 
@@ -16,11 +16,12 @@ The agentic-use licensing question is out of scope here: the same product's lice
 ## What the EULA is: sources read
 
 1. **The bundle's own `EULA.txt`.** Inside the published macOS x86_64 bundle (build `263.7084.0`, product version 2026.3, archive `intellij-server-263.7084.0.sit`, https://download.jetbrains.com/language-server/intellij-server/263.7084.0/intellij-server-263.7084.0.sit) there is a file `intellij-server-2026.3/EULA.txt` with 16,384 bytes. It was read in full: it is the **JetBrains User Agreement, version 2.0, effective as of April 16, 2025**.
-2. **The published User Agreement.** The identical text (same version, same effective date, clauses 1 through 10.9 matching) is published by JetBrains at https://www.jetbrains.com/legal/docs/toolbox/user/. Word and PDF copies are linked from that page.
-3. **The extension's LICENSE.txt.** The extension package distributed on Open VSX (`JetBrains.intellij-server` 1.0.27) ships the same JetBrains User Agreement v2.0 as its `LICENSE.txt` file. Its `package.json` declares the license URL https://www.jetbrains.com/legal/docs/toolbox/user/ in the `license` field. Sources: https://open-vsx.org/api/JetBrains/intellij-server/darwin-arm64/1.0.27/file/package.json (`license` field) and https://open-vsx.org/api/JetBrains/intellij-server/darwin-arm64/1.0.27/file/LICENSE.txt.
-4. **The Marketplace listing** for the same extension: https://marketplace.visualstudio.com/items?itemName=JetBrains.intellij-server.
-5. **The 1.0 announcement**: https://blog.jetbrains.com/idea/2026/10/intellij-idea-s-java-and-kotlin-for-cursor-and-vs-code-hits-1-0/.
-6. **JetBrains' own `intellij-lsp.nvim` client**, which downloads and enforces the bundle EULA: README (https://github.com/JetBrains/intellij-lsp.nvim/blob/main/README.md), `server_bundles.lua` (https://github.com/JetBrains/intellij-lsp.nvim/blob/main/lua/intellij-lsp/server_bundles.lua), `eula.lua` (https://github.com/JetBrains/intellij-lsp.nvim/blob/main/lua/intellij-lsp/eula.lua), `server_download.lua` (https://github.com/JetBrains/intellij-lsp.nvim/blob/main/lua/intellij-lsp/server_download.lua).
+2. **The Linux bundle's own `EULA.txt`.** During #99, the official x86_64 archive `intellij-server-263.7084.0.tar.gz` (386,777,831 bytes; SHA-256 `3842f2f457e29e58cd9c37a97482b28255d598a2ff142075753d947206c0b922`) was verified and its `intellij-server-2026.3/EULA.txt` extracted. The 16,384-byte file's SHA-256 is `cd82e6cdaf2790f1aa1a4e08479828a2cd8d790d14f702f2a6edd884410c9a25`, matching the macOS bundle's EULA hash; its first 16 characters are the required `--eula` value. This verifies the Linux x86_64 copy is byte-identical to the macOS copy for this build.
+3. **The published User Agreement.** The identical text (same version, same effective date, clauses 1 through 10.9 matching) is published by JetBrains at https://www.jetbrains.com/legal/docs/toolbox/user/. Word and PDF copies are linked from that page.
+4. **The extension's LICENSE.txt.** The extension package distributed on Open VSX (`JetBrains.intellij-server` 1.0.27) ships the same JetBrains User Agreement v2.0 as its `LICENSE.txt` file. Its `package.json` declares the license URL https://www.jetbrains.com/legal/docs/toolbox/user/ in the `license` field. Sources: https://open-vsx.org/api/JetBrains/intellij-server/darwin-arm64/1.0.27/file/package.json (`license` field) and https://open-vsx.org/api/JetBrains/intellij-server/darwin-arm64/1.0.27/file/LICENSE.txt.
+5. **The Marketplace listing** for the same extension: https://marketplace.visualstudio.com/items?itemName=JetBrains.intellij-server.
+6. **The 1.0 announcement**: https://blog.jetbrains.com/idea/2026/10/intellij-idea-s-java-and-kotlin-for-cursor-and-vs-code-hits-1-0/.
+7. **JetBrains' own `intellij-lsp.nvim` client**, which downloads and enforces the bundle EULA: README (https://github.com/JetBrains/intellij-lsp.nvim/blob/main/README.md), `server_bundles.lua` (https://github.com/JetBrains/intellij-lsp.nvim/blob/main/lua/intellij-lsp/server_bundles.lua), `eula.lua` (https://github.com/JetBrains/intellij-lsp.nvim/blob/main/lua/intellij-lsp/eula.lua), `server_download.lua` (https://github.com/JetBrains/intellij-lsp.nvim/blob/main/lua/intellij-lsp/server_download.lua).
 
 So there is one operative license: the JetBrains User Agreement v2.0 governs every copy of the bundle, whichever channel delivers it. (How the `EULA.txt` was read: the `.sit` is a zip archive; the last kilobytes of the file were fetched over HTTP and the zip central directory parsed to locate `EULA.txt`, whose compressed bytes were then fetched by range and decompressed. Anyone can repeat this on the public URL.)
 
@@ -113,7 +114,7 @@ Why we read this pattern as compatible with the license for a third-party client
 
 ## Not verified
 
-- Whether the `EULA.txt` inside Linux and Windows bundles differs from the macOS one read here (the macOS `.sit` for 263.7084.0 was read because its zip layout allows surgical range extraction; the Linux `.tar.gz` is gzip streamed and does not). The published User Agreement at the license URL is the same text and is what the extension ships on every platform, so a divergence is UNVERIFIED but unlikely; the acceptance mechanism reads the bundle's own `EULA.txt`, so if one ever differed, the gate would still be correct. Tracked in #65.
+- Whether the `EULA.txt` inside the Windows bundle differs from the macOS and Linux x86_64 copies is still unverified (#65). The published User Agreement at the license URL is the same text and is what the extension ships on every platform, but the acceptance mechanism reads each bundle's own `EULA.txt`.
 - Whether JetBrains would answer a `legal@jetbrains.com` request affirmatively (Section 3.5 written permission) and what it would cost. UNVERIFIED, tracked in #66.
 - The pending purely-agentic-use licensing update referenced by the 1.0 post. UNVERIFIED, tracked in #54.
 - Whether exposing `intellij-server` results through Vintelli's own MCP endpoint to external agents counts as providing access to the Product to a third party under Section 3.5(d). Not analyzed here, tracked in #54.
@@ -123,5 +124,5 @@ Why we read this pattern as compatible with the license for a third-party client
 
 - #20: implement the profile rules above for the `intellij-server` profile (opt-in, auto-download with EULA gate, `server_path` escape hatch, license activation surfaced to the user).
 - #54: reassess when JetBrains publishes purely-agentic-use licensing terms for this product, including the MCP exposure question above.
-- #65: verify the `EULA.txt` of the Linux and Windows bundles and define the behavior for a future bundle without `EULA.txt`.
+- #65: verify the Windows bundle's `EULA.txt` and define behavior for a future bundle without `EULA.txt`.
 - #66: ask JetBrains (legal@jetbrains.com) for written permission to redistribute or auto-download the bundle under Section 3.5, before any change of the no-bundling decision.
