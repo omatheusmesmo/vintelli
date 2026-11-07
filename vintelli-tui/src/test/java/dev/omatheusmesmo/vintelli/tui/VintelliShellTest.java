@@ -84,10 +84,10 @@ class VintelliShellTest {
         VintelliShell shell = new VintelliShell(List.of(right), new ShellState(), themes);
         offlineFrame(shell);
 
-        int bottomWithoutWindows = VintelliShell.TOOL_WINDOW_HEIGHT + 2;
+        int statusRow = 1;
         int tabAndHeaderRows = 3;
-        assertEquals(VIEWPORT.height() - 1 - bottomWithoutWindows - tabAndHeaderRows, rendered.get().height(),
-                "side windows fill the stripe above the bottom region, less the two tab rows and the pane header");
+        assertEquals(VIEWPORT.height() - 1 - statusRow - tabAndHeaderRows, rendered.get().height(),
+                "side windows fill the stripe down to the status row, less the two tab rows and the pane header");
     }
 
     @Test
@@ -109,7 +109,7 @@ class VintelliShellTest {
                 expectedLeft.append(window.title().charAt(0));
             }
         }
-        int lastMiddleRow = findBottomTabRow(buffer) - 1;
+        int lastMiddleRow = VIEWPORT.height() - 2;
         assertEquals(expectedRight.toString(), columnLetters(buffer, VIEWPORT.width() - 1, 1, lastMiddleRow),
                 "the right strip stacks one icon per right window in the registered order");
         assertEquals(expectedLeft.toString(), columnLetters(buffer, 1, 1, lastMiddleRow),
@@ -939,8 +939,9 @@ class VintelliShellTest {
                 "the tab row carries no filled block, the selection is an underline: " + tabRow);
         assertEquals("1 Run".length(), contiguousForeground(buffer, bottomTabRow + 1, underline),
                 "exactly the selected label carries the underline: " + rowText(buffer, bottomTabRow + 1));
-        assertEquals(1, firstForegroundColumn(buffer, bottomTabRow + 1, underline),
-                "the underline starts under the selected label 1 Run: " + rowText(buffer, bottomTabRow + 1));
+        assertEquals(EDITOR_HEADER_X + 1, firstForegroundColumn(buffer, bottomTabRow + 1, underline),
+                "the underline starts under the selected label 1 Run, one cell past the editor's left edge: "
+                        + rowText(buffer, bottomTabRow + 1));
         assertEquals(PROJECT_ROW_HIGHLIGHT, highlightedCount(buffer, FIRST_PROJECT_ROW, rowSelected),
                 "the selected project row carries the selection color: " + rowText(buffer, FIRST_PROJECT_ROW));
         assertEquals(0, highlightedCount(buffer, SECOND_PROJECT_ROW, rowSelected),
@@ -979,7 +980,7 @@ class VintelliShellTest {
     @Test
     void showsATabForAToolWindowRegisteredWithoutShellChanges() {
         VintelliShell shell = shellWithFakeWindow(new FakeToolWindow("fake.threads", "Threads", '7', 50, "fake thread dump", false, ToolWindow.Anchor.BOTTOM));
-        Buffer buffer = offlineFrame(shell);
+        Buffer buffer = offlineFrame(shell, WIDE);
 
         int bottomTabRow = findBottomTabRow(buffer);
         String tabRow = rowText(buffer, bottomTabRow);
@@ -2386,6 +2387,146 @@ class VintelliShellTest {
     }
 
     @Test
+    void theProjectPaneReachesTheRowAboveTheStatusBarAndItsSplitterSpansIt() throws Exception {
+        VintelliShell shell = defaultShell();
+        Buffer buffer = offlineFrame(shell, WIDE);
+        try (MouseShellRunner test = runMouseShell(shell, WIDE)) {
+            Pilot pilot = test.pilot();
+            Rect pane = pilot.findElement("project-pane");
+            Rect separator = pilot.findElement("pane-separator-vertical");
+
+            assertEquals(WIDE.height() - 1, pane.y() + pane.height(),
+                    "the project pane ends on the row above the status bar");
+            assertEquals(pane.y(), separator.y(), "the project splitter starts with the pane");
+            assertEquals(pane.height(), separator.height(), "the project splitter spans the whole pane");
+            assertEquals(separator.x(), pane.x() + pane.width(), "the splitter sits right of the project pane");
+            assertEquals(cellBg(buffer, 0, WIDE.height() - 1), cellBg(buffer, WIDE.width() - 1, WIDE.height() - 1),
+                    "the status row keeps one background across the full width");
+            assertFalse(rowText(buffer, WIDE.height() - 1).isBlank(), "the status row is drawn");
+        }
+    }
+
+    @Test
+    void theBottomToolWindowsStartRightOfTheProjectPaneAndTheirTabRowLinesUpWithTheEditor() throws Exception {
+        ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
+        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+        try (MouseShellRunner test = runMouseShell(shell, WIDE)) {
+            Pilot pilot = test.pilot();
+            Rect pane = pilot.findElement("project-pane");
+            Rect editor = pilot.findElement("editor-panel");
+            Rect bottom = pilot.findElement("bottom-stripe");
+            String[] rows = test.renderedFrame().split("\n", -1);
+
+            assertTrue(bottom.x() > pane.x() + pane.width(), "the bottom windows start right of the project pane");
+            assertEquals(editor.x(), bottom.x(), "the bottom windows start at the editor's left edge");
+            assertEquals(editor.x() + editor.width(), bottom.x() + bottom.width(), "the bottom windows end at the editor's right edge");
+            assertTrue(rows[bottom.y()].startsWith("1 Run", editor.x() + 1),
+                    "the tab row starts under the editor: " + rows[bottom.y()]);
+        }
+    }
+
+    @Test
+    void theProjectSplitterDragsBesideTheBottomPaneAndTheBottomSplitterIgnoresTheProjectColumn() throws Exception {
+        ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
+        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+        try (MouseShellRunner test = runMouseShell(shell, WIDE)) {
+            Pilot pilot = test.pilot();
+            int projectBefore = pilot.findElement("project-panel").width();
+            Rect separator = pilot.findElement("pane-separator-vertical");
+            int beside = pilot.findElement("bottom-stripe").y() + 2;
+
+            pilot.mousePress(MouseButton.LEFT, separator.x(), beside);
+            test.drag(MouseEvent.drag(MouseButton.LEFT, separator.x() + 6, beside));
+            pilot.mouseRelease(MouseButton.LEFT, separator.x() + 6, beside);
+            settle(pilot);
+            assertEquals(projectBefore + 6, pilot.findElement("project-panel").width(),
+                    "the project splitter drags from a row beside the bottom pane");
+
+            int editorHeight = pilot.findElement("editor-panel").height();
+            int bottomHeight = pilot.findElement("bottom-stripe").height();
+            int dividerY = pilot.findElement("pane-separator-horizontal").y();
+            int inProjectColumn = pilot.findElement("project-panel").x() + 2;
+            pilot.mousePress(MouseButton.LEFT, inProjectColumn, dividerY);
+            test.drag(MouseEvent.drag(MouseButton.LEFT, inProjectColumn, dividerY - 3));
+            pilot.mouseRelease(MouseButton.LEFT, inProjectColumn, dividerY - 3);
+            settle(pilot);
+            assertEquals(editorHeight, pilot.findElement("editor-panel").height(),
+                    "a press in the project column never drags the bottom splitter");
+            assertEquals(bottomHeight, pilot.findElement("bottom-stripe").height());
+        }
+    }
+
+    @Test
+    void withTheProjectPaneHiddenTheBottomWindowsStartRightAfterTheStrip() throws Exception {
+        ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
+        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+        try (MouseShellRunner test = runMouseShell(shell, WIDE)) {
+            Pilot pilot = test.pilot();
+            pilot.click(1, frameRowOf(test.renderedFrame(), 1, "P"));
+            settle(pilot);
+            assertEquals("Project panel hidden", shell.status());
+
+            Rect bottom = pilot.findElement("bottom-stripe");
+            Rect editor = pilot.findElement("editor-panel");
+            assertEquals(VintelliShell.TOOL_STRIP_WIDTH, bottom.x(), "the bottom windows start right after the strip");
+            assertEquals(editor.x(), bottom.x(), "the editor and the bottom windows share the left edge");
+            assertTrue(test.renderedFrame().split("\n", -1)[bottom.y()]
+                    .startsWith("1 Run", VintelliShell.TOOL_STRIP_WIDTH + 1), "the tab row follows the strip");
+        }
+    }
+
+    @Test
+    void hidingTheLastVisibleBottomWindowAndClickingItsCellShowsItAgain() throws Exception {
+        ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
+        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+        try (MouseShellRunner test = runMouseShell(shell, WIDE)) {
+            Pilot pilot = test.pilot();
+            String frame = test.renderedFrame();
+            int runRow = frameRowOf(frame, 1, "R");
+            int terminalRow = frameRowOf(frame, 1, "T");
+            int problemsRow = lastFrameRowOf(frame, 1, "P");
+
+            pilot.click(1, runRow);
+            settle(pilot);
+            pilot.click(1, terminalRow);
+            settle(pilot);
+            pilot.click(1, problemsRow);
+            settle(pilot);
+            assertFalse(shell.isToolWindowVisible("problems"), shell.status());
+            assertEquals(0, pilot.findElement("bottom-stripe").height(),
+                    "with every bottom window hidden the bottom pane takes no rows");
+            assertEquals(runRow, frameRowOf(test.renderedFrame(), 1, "R"), "the icons stay in place while hidden");
+            assertEquals(problemsRow, lastFrameRowOf(test.renderedFrame(), 1, "P"), "the bottom icons stay in place while hidden");
+            assertFalse(test.renderedFrame().split("\n", -1)[WIDE.height() - 1].isBlank(),
+                    "the status row stays drawn while every bottom window is hidden");
+
+            pilot.click(1, problemsRow);
+            settle(pilot);
+            assertTrue(shell.isToolWindowVisible("problems"), "the same cell shows the last bottom window again: " + shell.status());
+            assertEquals("Tool window: Problems", shell.status());
+            assertTrue(test.renderedFrame().contains("3 Problems"), "the bottom tab row is back");
+        }
+    }
+
+    @Test
+    void aLayoutFileSavedBeforeTheFullHeightSideRestoresItsBottomPaneSize() throws Exception {
+        ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
+        Files.createDirectories(store.file().getParent());
+        Files.writeString(store.file(), "project.ratio=0.2833333333333333\nbottom.ratio=0.225\n"
+                + "visible.windows=run,terminal,problems\nproject.visible=true\nsize.customized=true\n");
+        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+        try (MouseShellRunner test = runMouseShell(shell, WIDE)) {
+            Pilot pilot = test.pilot();
+            int storedRows = (int) Math.round(ShellLayout.DEFAULT_BOTTOM_RATIO * (WIDE.height() - 1));
+            assertEquals(storedRows - 1, pilot.findElement("bottom-stripe").height(),
+                    "the saved ratio keeps its pane: the status row now sits outside the bottom windows");
+            assertTrue(test.renderedFrame().contains("3 Problems"), "the restored layout shows the bottom tabs");
+            assertEquals(ShellLayout.DEFAULT_BOTTOM_RATIO, store.load().bottomRatio(), 0.0001,
+                    "restoring the layout does not rewrite the saved ratio");
+        }
+    }
+
+    @Test
     void tabCyclesTheFocusAcrossRegisteredPanels() throws Exception {
         VintelliShell shell = defaultShell();
         try (ToolkitTestRunner test = runShell(shell)) {
@@ -2761,7 +2902,7 @@ class VintelliShellTest {
 
         Buffer beforeBuffer = offlineFrame(shell);
         int bottomTabRow = findBottomTabRow(beforeBuffer);
-        assertEquals(themes.color("focus-border"), beforeBuffer.get(1, bottomTabRow + 1).style().fg().orElse(null),
+        assertEquals(themes.color("focus-border"), beforeBuffer.get(EDITOR_HEADER_X + 1, bottomTabRow + 1).style().fg().orElse(null),
                 "the active theme colors the selected tab underline before the switch");
         // Project panel background at an unselected row (2nd project row)
         assertEquals(themes.color("panel"), cellBg(beforeBuffer, 2, SECOND_PROJECT_ROW),
@@ -2776,7 +2917,7 @@ class VintelliShellTest {
 
         Buffer afterBuffer = offlineFrame(shell);
         int afterTabRow = findBottomTabRow(afterBuffer);
-        assertEquals(themes.color("focus-border"), afterBuffer.get(1, afterTabRow + 1).style().fg().orElse(null),
+        assertEquals(themes.color("focus-border"), afterBuffer.get(EDITOR_HEADER_X + 1, afterTabRow + 1).style().fg().orElse(null),
                 "the switched theme reaches the selected tab underline");
         assertEquals(themes.color("panel"), cellBg(afterBuffer, 2, SECOND_PROJECT_ROW),
                 "the switched theme reaches the project panel");
@@ -3460,16 +3601,24 @@ class VintelliShellTest {
         return offlineFocusFrame(shell, shell.themes(), null);
     }
 
+    private static Buffer offlineFrame(VintelliShell shell, Size size) {
+        return offlineFocusFrame(shell, shell.themes(), null, new Rect(0, 0, size.width(), size.height()));
+    }
+
     private static Buffer offlineFocusFrame(VintelliShell shell, ShellThemes themes, String focusedId) {
-        Buffer buffer = Buffer.empty(VIEWPORT);
+        return offlineFocusFrame(shell, themes, focusedId, VIEWPORT);
+    }
+
+    private static Buffer offlineFocusFrame(VintelliShell shell, ShellThemes themes, String focusedId, Rect viewport) {
+        Buffer buffer = Buffer.empty(viewport);
         DefaultRenderContext context = DefaultRenderContext.createEmpty();
         context.setStyleEngine(themes.engine());
         if (focusedId != null) {
             context.focusManager().setFocus(focusedId);
         }
         Element root = shell.root();
-        root.render(Frame.forTesting(buffer), VIEWPORT, context);
-        context.registerElement(root, VIEWPORT);
+        root.render(Frame.forTesting(buffer), viewport, context);
+        context.registerElement(root, viewport);
         return buffer;
     }
 
@@ -3483,6 +3632,16 @@ class VintelliShellTest {
     private static int frameRowOf(String frame, int column, String text) {
         String[] rows = frame.split("\n", -1);
         for (int row = 0; row < rows.length; row++) {
+            if (rows[row].startsWith(text, column)) {
+                return row;
+            }
+        }
+        return -1;
+    }
+
+    private static int lastFrameRowOf(String frame, int column, String text) {
+        String[] rows = frame.split("\n", -1);
+        for (int row = rows.length - 1; row >= 0; row--) {
             if (rows[row].startsWith(text, column)) {
                 return row;
             }
