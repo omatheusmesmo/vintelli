@@ -5,10 +5,10 @@ import java.nio.charset.Charset;
 import java.util.Locale;
 import java.util.Map;
 
-/** Chooses the project tree's line characters independently from its file icons. */
+/** Chooses the project tree's disclosure arrows independently from its file icons. */
 final class ProjectTreeGlyphs {
 
-    private static final String BOX_DRAWING = "│├──└──";
+    private static final String DISCLOSURE_ARROWS = "▸▾";
 
     private ProjectTreeGlyphs() {
     }
@@ -21,7 +21,7 @@ final class ProjectTreeGlyphs {
 
     static boolean supportsUnicode(Map<String, String> environment, Charset outputCharset) {
         if ("dumb".equalsIgnoreCase(environment.get("TERM")) || outputCharset == null
-                || !outputCharset.newEncoder().canEncode(BOX_DRAWING)) {
+                || !outputCharset.newEncoder().canEncode(DISCLOSURE_ARROWS)) {
             return false;
         }
         String locale = activeLocale(environment);

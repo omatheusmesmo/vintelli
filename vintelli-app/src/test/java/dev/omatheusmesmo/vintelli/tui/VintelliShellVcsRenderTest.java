@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Project pane of the offscreen frame over a real Git worktree whose tracked file is modified and whose
- * untracked file is new. The tree connectors and the VCS markers must both reach the rendered rows.
+ * untracked file is new. The VCS markers must reach the slot of their rows and no tree connector may be drawn.
  * {@link VintelliShellVcsRenderIT} replays the same assertions against the packaged artifact.
  */
 @QuarkusTest
@@ -24,11 +24,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @WithTestResource(value = TemporaryGitRepositoryResource.class, scope = TestResourceScope.RESTRICTED_TO_CLASS)
 class VintelliShellVcsRenderTest {
 
-    private static final Pattern MODIFIED_ROW = Pattern.compile("(├── |\\|-- )M .*tracked\\.txt");
-    private static final Pattern UNTRACKED_ROW = Pattern.compile("(└── |\\\\-- )\\? .*untracked\\.txt");
+    private static final Pattern MODIFIED_ROW = Pattern.compile("M .*tracked\\.txt");
+    private static final Pattern UNTRACKED_ROW = Pattern.compile("\\? .*untracked\\.txt");
 
     @Test
-    void keepsTheTreeConnectorsAndTheVcsMarkersInTheProjectPane() throws InterruptedException {
+    void drawsTheVcsMarkersInTheSlotWithoutTreeConnectors() throws InterruptedException {
         long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
         String mainArea = "";
         while (System.nanoTime() < deadline) {
@@ -46,5 +46,7 @@ class VintelliShellVcsRenderTest {
         assertTrue(UNTRACKED_ROW.matcher(mainArea).find(),
                 "the untracked file must keep its tree row and marker:\n" + mainArea);
         assertFalse(mainArea.contains("M tracked.txt"), "rows must not fall back to flat paths:\n" + mainArea);
+        assertFalse(mainArea.contains("├──") || mainArea.contains("└──") || mainArea.contains("|-- ")
+                || mainArea.contains("\\-- "), "the tree draws no connectors:\n" + mainArea);
     }
 }

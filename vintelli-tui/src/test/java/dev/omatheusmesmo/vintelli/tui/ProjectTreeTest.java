@@ -211,7 +211,7 @@ class ProjectTreeTest {
     }
 
     @Test
-    void rendersTreeConnectorsForExpandedDirectories() throws Exception {
+    void rendersDisclosureGlyphsAndIndentForExpandedDirectories() throws Exception {
         VintelliShell shell = shellWithProject(project);
         shell.refreshProjectTree();
         shell.selectPath("src");
@@ -234,14 +234,24 @@ class ProjectTreeTest {
         }
 
         FileIcons icons = FileIcons.resolve();
-        boolean nerd = icons.mode() == IconMode.NERD;
-        boolean unicodeTree = ProjectTreeGlyphs.supportsUnicode();
+        String expanded = disclosureGlyph(icons, ProjectTreeGlyphs.supportsUnicode(), true);
         String folderIcon = icons.folderIconFor("src").symbol(icons.mode());
         String fileIcon = icons.iconFor("A.java").symbol(icons.mode());
-        assertTrue(text.toString().contains((unicodeTree ? "├── " : "|-- ")
-                + (nerd ? "▾ " : "- ") + folderIcon + " src/"), text.toString());
-        assertTrue(text.toString().contains((unicodeTree ? "│       └── " : "|       \\-- ") + fileIcon + " A.java"),
-                text.toString());
+        assertTrue(text.toString().contains("  " + expanded + " " + folderIcon + " src"), text.toString());
+        assertTrue(text.toString().contains(expanded + " " + folderIcon + " main"), text.toString());
+        assertTrue(text.toString().contains("      " + fileIcon + " A.java"), text.toString());
+        assertFalse(text.toString().contains("├") || text.toString().contains("└")
+                || text.toString().contains("|--") || text.toString().contains("\\--"), text.toString());
+    }
+
+    static String disclosureGlyph(FileIcons icons, boolean unicodeTree, boolean expanded) {
+        if (icons.mode() == IconMode.NERD) {
+            return expanded ? "" : "";
+        }
+        if (unicodeTree) {
+            return expanded ? "▾" : "▸";
+        }
+        return expanded ? "-" : "+";
     }
 
     @Test

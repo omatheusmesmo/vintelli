@@ -850,17 +850,41 @@ class VintelliShellTest {
         shell.refreshVcs();
         String rendered = bufferText(offlineFrame(shell));
 
-        boolean unicodeTree = ProjectTreeGlyphs.supportsUnicode();
         FileIcons icons = FileIcons.resolve();
-        boolean nerd = icons.mode() == IconMode.NERD;
-        String srcRow = (unicodeTree ? "├── " : "|-- ") + (nerd ? "▾ " : "- ")
-                + icons.folderIconFor("src").symbol(icons.mode()) + " src/";
-        String changedRow = (unicodeTree ? "│       └── " : "|       \\-- ")
-                + "M " + icons.iconFor("A.java").symbol(icons.mode()) + " A.java";
+        String srcRow = ProjectTreeTest.disclosureGlyph(icons, ProjectTreeGlyphs.supportsUnicode(), true) + " "
+                + icons.folderIconFor("src").symbol(icons.mode()) + " src";
+        String changedRow = "    M " + icons.iconFor("A.java").symbol(icons.mode()) + " A.java";
         assertTrue(rendered.contains(srcRow), "the expanded directory keeps its tree row: " + rendered);
         assertTrue(rendered.contains(changedRow), "the changed file keeps its tree row and marker: " + rendered);
         assertFalse(rendered.contains("M src/main/A.java"), "the refresh must not flatten rows to paths: " + rendered);
         assertEquals("src/main/A.java", shell.selectedPathString(), "the refresh must keep the selection");
+    }
+
+    @Test
+    void aVcsMarkerInTheSlotDoesNotMoveTheFileNameColumn() throws Exception {
+        Files.createDirectories(project.resolve("src/lib"));
+        Files.writeString(project.resolve("src/A.java"), "class A {}");
+        Files.writeString(project.resolve("src/B.java"), "class B {}");
+        Files.writeString(project.resolve("src/lib/Inner.java"), "class Inner {}");
+        VintelliShell shell = shellWithVcsTree(modifiedVcs("src/A.java"), project);
+        shell.refreshProjectTree();
+        shell.selectPath("src");
+        shell.expandSelected();
+        shell.refreshVcs();
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            settle(pilot);
+            Rect list = pilot.findElement("project-panel");
+            String frame = test.renderedFrame();
+
+            int marked = projectNameColumn(frame, list, "A.java");
+            assertEquals(projectNameColumn(frame, list, "B.java"), marked,
+                    "the marker in the slot must not move the file name: " + frame);
+            assertEquals(projectNameColumn(frame, list, "lib"), marked,
+                    "a file name lines up with the name of a sibling folder: " + frame);
+            assertEquals('M', frameCell(frame, list.x() + 4, projectRowOf(frame, list, "A.java")),
+                    "the modified file draws its marker in the slot at column 4");
+        }
     }
 
     private static VintelliShell shellWithVcsTree(VersionControlCapability vcs, Path root) {
@@ -1727,12 +1751,133 @@ class VintelliShellTest {
             assertEquals(List.of("src", "src/Main.java", "README.md"), shell.projectFiles(),
                     "a double click expands the directory like Enter");
 
-            char marker = frameCell(test.renderedFrame(), list.x() + 6, list.y());
-            assertTrue("+-▸▾".indexOf(marker) >= 0, "the expand marker sits at column 6: " + marker);
-            pilot.click(list.x() + 6, list.y());
+            String expanded = ProjectTreeTest.disclosureGlyph(FileIcons.resolve(),
+                    ProjectTreeGlyphs.supportsUnicode(), true);
+            assertEquals(expanded.charAt(0), frameCell(test.renderedFrame(), list.x() + 2, list.y()),
+                    "the disclosure glyph of a depth 0 directory sits at column 2");
+            pilot.click(list.x() + 2, list.y());
             settle(pilot);
             assertEquals(List.of("src", "README.md"), shell.projectFiles(), "the expand marker collapses it");
         }
+    }
+
+    @Test
+    void projectPaneDrawsNoTreeConnectorsInNerdUnicodeOrAsciiForm() throws Exception {
+        assertPaneForm("nerd", true);
+        assertPaneForm("ascii", true);
+        assertPaneForm("ascii", false);
+    }
+
+    private void assertPaneForm(String iconMode, boolean unicodeTree) throws Exception {
+        String previous = System.getProperty(IconMode.CONFIG_PROPERTY);
+        System.setProperty(IconMode.CONFIG_PROPERTY, iconMode);
+        try {
+            VintelliShell shell = projectTreeShell(defaultThemes(), null, null,
+                    List.of("src/main/A.java", "src/B.java", "README.md"), List.of("src", "src/main"));
+            shell.useUnicodeProjectTree(unicodeTree);
+            awaitProjectTree(shell);
+            shell.selectPath("src");
+            shell.expandSelected();
+            FileIcons icons = FileIcons.resolve();
+            String expanded = ProjectTreeTest.disclosureGlyph(icons, unicodeTree, true);
+            String collapsed = ProjectTreeTest.disclosureGlyph(icons, unicodeTree, false);
+            try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+                Pilot pilot = test.pilot();
+                settle(pilot);
+                Rect list = pilot.findElement("project-panel");
+                String pane = paneText(test.renderedFrame(), list);
+                assertFalse(pane.contains("├") || pane.contains("└") || pane.contains("│")
+                        || pane.contains("|--") || pane.contains("\\--") || pane.contains("|   "), pane);
+                String srcIcon = icons.folderIconFor("src").symbol(icons.mode());
+                String mainIcon = icons.folderIconFor("main").symbol(icons.mode());
+                assertTrue(pane.contains(expanded + " " + srcIcon + " src"), pane);
+                assertTrue(pane.contains(collapsed + " " + mainIcon + " main"), pane);
+            }
+        } finally {
+            restoreProperty(IconMode.CONFIG_PROPERTY, previous);
+        }
+    }
+
+    @Test
+    void disclosureClicksToggleAndNameClicksSelectAtDepthZeroAndThree() throws Exception {
+        VintelliShell shell = projectTreeShell(defaultThemes(), null, null,
+                List.of("alpha/beta/gamma/delta/Leaf.txt", "Zed.txt"),
+                List.of("alpha", "alpha/beta", "alpha/beta/gamma", "alpha/beta/gamma/delta"));
+        awaitProjectTree(shell);
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            settle(pilot);
+            Rect list = pilot.findElement("project-panel");
+
+            clickDisclosure(pilot, test, list, "alpha", 2);
+            assertEquals(List.of("alpha", "alpha/beta", "Zed.txt"), shell.projectFiles(),
+                    "the disclosure of a depth 0 folder expands it");
+
+            selectByName(pilot, test, list, "Zed.txt");
+            assertEquals("Zed.txt", shell.selectedPathString());
+            selectByName(pilot, test, list, "alpha");
+            assertEquals("alpha", shell.selectedPathString(), "a name click selects the depth 0 folder");
+            assertEquals(List.of("alpha", "alpha/beta", "Zed.txt"), shell.projectFiles(),
+                    "a name click does not toggle the folder");
+
+            clickDisclosure(pilot, test, list, "beta", 4);
+            clickDisclosure(pilot, test, list, "gamma", 6);
+            clickDisclosure(pilot, test, list, "delta", 8);
+            assertTrue(shell.projectFiles().contains("alpha/beta/gamma/delta/Leaf.txt"),
+                    "the disclosure of a depth 3 folder expands it: " + shell.projectFiles());
+
+            selectByName(pilot, test, list, "Zed.txt");
+            selectByName(pilot, test, list, "delta");
+            assertEquals("alpha/beta/gamma/delta", shell.selectedPathString(),
+                    "a name click selects the depth 3 folder");
+            assertTrue(shell.projectFiles().contains("alpha/beta/gamma/delta/Leaf.txt"),
+                    "a name click keeps the depth 3 folder expanded");
+        }
+    }
+
+    @Test
+    void sixNestedFoldersIndentTheirFileByTwelveColumns() throws Exception {
+        List<String> directories = List.of("n1", "n1/n2", "n1/n2/n3", "n1/n2/n3/n4", "n1/n2/n3/n4/n5",
+                "n1/n2/n3/n4/n5/n6");
+        VintelliShell shell = projectTreeShell(defaultThemes(), null, null,
+                List.of("n1/n2/n3/n4/n5/n6/Deep.txt", "Zed.txt"), directories);
+        awaitProjectTree(shell);
+        for (String directory : directories) {
+            shell.selectPath(directory);
+            shell.expandSelected();
+        }
+        shell.selectPath("Zed.txt");
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            settle(pilot);
+            Rect list = pilot.findElement("project-panel");
+            String frame = test.renderedFrame();
+            int row = projectRowOf(frame, list, "Deep.txt");
+            assertTrue(row >= 0, frame);
+            FileIcons icons = FileIcons.resolve();
+            String icon = icons.iconFor("Deep.txt").symbol(icons.mode());
+            String drawn = frameCells(frame.split("\n", -1)[row], list.x(), list.width());
+            assertTrue(drawn.startsWith(" ".repeat(16) + icon + " Deep.txt"),
+                    "highlight 2 + six levels of 2 columns + a 2 column slot precede the icon: " + drawn);
+        }
+    }
+
+    private void clickDisclosure(Pilot pilot, MouseShellRunner test, Rect list, String name, int column) {
+        String frame = test.renderedFrame();
+        int row = projectRowOf(frame, list, name);
+        assertTrue(row >= 0, name + " is drawn: " + frame);
+        char collapsed = ProjectTreeTest.disclosureGlyph(FileIcons.resolve(),
+                ProjectTreeGlyphs.supportsUnicode(), false).charAt(0);
+        assertEquals(collapsed, frameCell(frame, list.x() + column, row), name + " is drawn collapsed");
+        pilot.click(list.x() + column, row);
+        settle(pilot);
+    }
+
+    private void selectByName(Pilot pilot, MouseShellRunner test, Rect list, String name) {
+        int row = projectRowOf(test.renderedFrame(), list, name);
+        assertTrue(row >= 0, name + " is drawn");
+        pilot.click(list.x() + projectNameColumn(test.renderedFrame(), list, name), row);
+        settle(pilot);
     }
 
     @Test
@@ -3095,6 +3240,21 @@ class VintelliShellTest {
             }
         }
         return -1;
+    }
+
+    private static int projectNameColumn(String frame, Rect list, String name) {
+        int row = projectRowOf(frame, list, name);
+        assertTrue(row >= 0, "the list draws " + name + ": " + frame);
+        return frameCells(frame.split("\n", -1)[row], list.x(), list.width()).indexOf(name);
+    }
+
+    private static String paneText(String frame, Rect list) {
+        String[] lines = frame.split("\n", -1);
+        StringBuilder text = new StringBuilder();
+        for (int y = list.y(); y < list.y() + list.height() && y < lines.length; y++) {
+            text.append(frameCells(lines[y], list.x(), list.width())).append('\n');
+        }
+        return text.toString();
     }
 
     private static char frameCell(String frame, int x, int y) {
