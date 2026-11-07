@@ -72,9 +72,10 @@ proven on the native runner, not just on the JVM.
 - Integration tests run outside the app process and cannot inject its beans.
   Make the behavior observable through the headless surface (HTTP, the MCP
   endpoint, or a CLI command) and assert there. Behavior checks never drive
-  `--tui`; the one exception is the startup smoke test `VintelliTuiStartupIT`,
+  `--tui`; the two exceptions are the startup smoke test `VintelliTuiStartupIT`,
   which drives `--tui` headlessly through TamboUI's tape playback (`tamboui.record.config`) to prove
-  the real terminal backend starts. Running the TUI by hand to look at a
+  the real terminal backend starts, and `VintelliTuiResizeIT`, which resizes
+  a real pseudo terminal because no headless surface can observe a signal. Running the TUI by hand to look at a
   change is fine, but keep it occasional: no screenshot after every edit. The
   proof of a change is its automated test.
 - External collaborators (IntelliJ MCP server, jdtls, agents) are replaced by

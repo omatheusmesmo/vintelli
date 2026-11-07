@@ -14,7 +14,9 @@ The native runner is written to `vintelli-app/target/`.
 Integration tests (`*IT`) run against the native runner in CI with
 `./mvnw verify -Dnative -Dquarkus.native.container-build`. The test launchers
 start their HTTP fixture with `serve`; the TUI startup test separately checks
-both the no-argument default and the `--tui` alias through tape playback.
+both the no-argument default and the `--tui` alias through tape playback, and
+`VintelliTuiResizeIT` resizes a real pseudo terminal to prove that `SIGWINCH`
+handling is safe in the native image.
 `GET /tui/render`
 renders one offscreen frame of the live shell through the CSS style engine
 and returns the tool window tab row, the editor area, the status row and the

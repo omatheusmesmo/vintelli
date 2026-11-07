@@ -91,7 +91,7 @@ class VintelliTuiStartupIT {
                 + "\n--- stderr ---\n" + stderr + "\n--- cast tail ---\n" + tail;
     }
 
-    private static List<String> runner(List<String> options) {
+    static List<String> runner(List<String> options) {
         String nativeRunner = System.getProperty("native.image.path");
         List<String> command = new ArrayList<>();
         if (nativeRunner != null && Files.isExecutable(Path.of(nativeRunner))) {
