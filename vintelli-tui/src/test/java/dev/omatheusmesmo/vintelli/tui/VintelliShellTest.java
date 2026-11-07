@@ -12,8 +12,10 @@ import dev.omatheusmesmo.vintelli.tui.layout.ShellLayoutStore;
 import dev.omatheusmesmo.vintelli.tui.layout.ShellLayout;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.idea.IdeaMcpConnection;
+import dev.omatheusmesmo.vintelli.api.capability.ProjectFileOperations;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
+import dev.omatheusmesmo.vintelli.api.search.ProjectSearch;
 import dev.omatheusmesmo.vintelli.api.capability.EditorBridge.OpenRequest;
 import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability.DocumentSymbol;
 import dev.tamboui.buffer.Buffer;
@@ -50,6 +52,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -1572,6 +1575,244 @@ class VintelliShellTest {
     }
 
     @Test
+    void clickingAProjectRowSelectsItAndFocusesThePanel() throws Exception {
+        VintelliShell shell = defaultShell();
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect list = pilot.findElement("project-panel");
+
+            pilot.click(list.x() + 4, list.y() + 2);
+            settle(pilot);
+
+            assertEquals(2, shell.fileIndex());
+            assertEquals("VintelliShell.java", shell.state().snapshot().selectedFile());
+            assertEquals("Selected: VintelliShell.java", shell.status());
+            assertEquals("project-panel", test.runner().focusManager().focusedId());
+        }
+    }
+
+    @Test
+    void clickingAfterScrollingSelectsTheRowDrawnUnderThePointer() throws Exception {
+        VintelliShell shell = projectTreeShell(defaultThemes(), null, null, numberedFiles(30), List.of());
+        awaitProjectTree(shell);
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            for (int step = 0; step < 17; step++) {
+                pilot.press(KeyCode.DOWN);
+                settle(pilot);
+            }
+            Rect list = pilot.findElement("project-panel");
+            int row = projectRowOf(test.renderedFrame(), list, "file15.txt");
+            assertTrue(row >= 0, "the selection scrolls the list, so file15 is drawn: " + test.renderedFrame());
+            assertEquals(17, shell.fileIndex());
+
+            pilot.click(list.x() + 4, row);
+            settle(pilot);
+
+            assertEquals(15, shell.fileIndex(), "the row drawn at the pointer, not the row at its offset");
+            assertEquals("file15.txt", shell.state().snapshot().selectedFile());
+        }
+    }
+
+    @Test
+    void clickingBelowTheLastRowChangesNothing() throws Exception {
+        VintelliShell shell = defaultShell();
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            pilot.press(KeyCode.DOWN);
+            settle(pilot);
+            Rect list = pilot.findElement("project-panel");
+            assertTrue(list.height() > 6, "the pane must show rows below the last project file");
+            String status = shell.status();
+
+            pilot.click(list.x() + 4, list.y() + 6);
+            settle(pilot);
+
+            assertEquals(1, shell.fileIndex());
+            assertEquals("VintelliMain.java", shell.state().snapshot().selectedFile());
+            assertEquals(status, shell.status());
+        }
+    }
+
+    @Test
+    void doubleClickingAProjectFileOpensItInTheEditor() throws Exception {
+        Files.writeString(project.resolve("Alpha.txt"), "alpha\n");
+        Files.writeString(project.resolve("Beta.txt"), "beta\n");
+        ShellThemes themes = defaultThemes();
+        BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
+        VintelliShell shell = projectTreeShell(themes, editor, null, List.of("Alpha.txt", "Beta.txt"), List.of());
+        awaitProjectTree(shell);
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect list = pilot.findElement("project-panel");
+
+            pilot.click(list.x() + 4, list.y());
+            settle(pilot);
+            assertTrue(editor.activeDocument().isEmpty(), "a single click only selects the row");
+
+            pilot.doubleClick(list.x() + 4, list.y() + 1);
+            settle(pilot);
+
+            assertEquals(project.resolve("Beta.txt").toRealPath().toString(),
+                    editor.activeDocument().orElseThrow().file());
+            assertEquals(1, shell.fileIndex());
+        }
+    }
+
+    @Test
+    void doubleClickingADirectoryTogglesItAndItsExpandMarkerDoesToo() throws Exception {
+        VintelliShell shell = projectTreeShell(defaultThemes(), null, null,
+                List.of("src/Main.java", "README.md"), List.of("src"));
+        awaitProjectTree(shell);
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect list = pilot.findElement("project-panel");
+            assertEquals(List.of("src", "README.md"), shell.projectFiles());
+
+            pilot.click(list.x() + 12, list.y());
+            settle(pilot);
+            assertEquals(List.of("src", "README.md"), shell.projectFiles(),
+                    "a single click on the name of a directory only selects it");
+
+            pilot.click(list.x() + 4, list.y() + 1);
+            settle(pilot);
+            pilot.doubleClick(list.x() + 12, list.y());
+            settle(pilot);
+            assertEquals(List.of("src", "src/Main.java", "README.md"), shell.projectFiles(),
+                    "a double click expands the directory like Enter");
+
+            char marker = frameCell(test.renderedFrame(), list.x() + 6, list.y());
+            assertTrue("+-▸▾".indexOf(marker) >= 0, "the expand marker sits at column 6: " + marker);
+            pilot.click(list.x() + 6, list.y());
+            settle(pilot);
+            assertEquals(List.of("src", "README.md"), shell.projectFiles(), "the expand marker collapses it");
+        }
+    }
+
+    @Test
+    void clicksAfterExpandingADirectoryLandOnTheRowsItRevealed() throws Exception {
+        VintelliShell shell = projectTreeShell(defaultThemes(), null, null,
+                List.of("src/Main.java", "src/Util.java", "README.md"), List.of("src"));
+        awaitProjectTree(shell);
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect list = pilot.findElement("project-panel");
+            pilot.doubleClick(list.x() + 12, list.y());
+            settle(pilot);
+
+            pilot.click(list.x() + 4, projectRowOf(test.renderedFrame(), list, "README.md"));
+            settle(pilot);
+            assertEquals(3, shell.fileIndex());
+            assertEquals("README.md", shell.state().snapshot().selectedFile());
+
+            pilot.click(list.x() + 4, projectRowOf(test.renderedFrame(), list, "Util.java"));
+            settle(pilot);
+            assertEquals(2, shell.fileIndex());
+            assertEquals("src/Util.java", shell.state().snapshot().selectedFile());
+        }
+    }
+
+    @Test
+    void theScrollbarColumnOfTheProjectPaneIsNotARowClick() throws Exception {
+        VintelliShell shell = projectTreeShell(defaultThemes(), null, null, numberedFiles(30), List.of());
+        awaitProjectTree(shell);
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect list = pilot.findElement("project-panel");
+            int row = projectRowOf(test.renderedFrame(), list, "file03.txt");
+            assertTrue(row >= 0, test.renderedFrame());
+            String status = shell.status();
+
+            pilot.click(list.x() + list.width() - 1, row);
+            settle(pilot);
+
+            assertEquals(0, shell.fileIndex(), "the scrollbar cell belongs to the pane, not to file03");
+            assertEquals(status, shell.status());
+        }
+    }
+
+    @Test
+    void aClickWhileANewFileNameIsBeingTypedKeepsTheInputAndTheSelection() throws Exception {
+        RecordingFileOperations operations = new RecordingFileOperations();
+        VintelliShell shell = projectTreeShell(defaultThemes(), null, operations,
+                List.of("Alpha.txt", "Beta.txt"), List.of());
+        awaitProjectTree(shell);
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect list = pilot.findElement("project-panel");
+            pilot.press(KeyCode.F7);
+            settle(pilot);
+            type(pilot, "new.txt");
+
+            pilot.click(list.x() + 4, list.y() + 1);
+            settle(pilot);
+
+            assertEquals(0, shell.fileIndex(), "the click must not retarget the pending action");
+            assertEquals("New file: new.txt (Enter to confirm, Escape to cancel)", shell.status());
+            pilot.press(KeyCode.ENTER);
+            settle(pilot);
+            assertEquals(List.of("new.txt"), operations.created);
+        }
+    }
+
+    @Test
+    void aClickWhileADeleteWaitsForConfirmationKeepsTheSelection() throws Exception {
+        VintelliShell shell = projectTreeShell(defaultThemes(), null, new RecordingFileOperations(),
+                List.of("Alpha.txt", "Beta.txt"), List.of());
+        awaitProjectTree(shell);
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect list = pilot.findElement("project-panel");
+            shell.requestDeleteSelected();
+            String prompt = shell.status();
+
+            pilot.click(list.x() + 4, list.y() + 1);
+            settle(pilot);
+
+            assertEquals(0, shell.fileIndex(), "the click must not retarget the pending delete");
+            assertEquals(prompt, shell.status(), "the confirmation prompt stays on screen");
+        }
+    }
+
+    @Test
+    void aPressInTheProjectPaneReleasesCapturedToolWindowInput() throws Exception {
+        FakeToolWindow terminalLike = new FakeToolWindow("fake.terminal", "Fake Terminal", '6', 60, "type away", true);
+        VintelliShell shell = shellWithFakeWindow(terminalLike);
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            press(pilot, '6');
+            Rect list = pilot.findElement("project-panel");
+
+            pilot.click(list.x() + 4, list.y() + 2);
+            settle(pilot);
+            press(pilot, 'j');
+
+            assertFalse(terminalLike.handledKeys().contains("j"),
+                    "the press released the capture, so the window must not receive j");
+        }
+    }
+
+    @Test
+    void aHiddenProjectPaneIgnoresClicksAtItsOldRows() throws Exception {
+        VintelliShell shell = defaultShell();
+        int projectIcon = findRow(offlineFrame(shell), 1, "P");
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect list = pilot.findElement("project-panel");
+            pilot.click(1, projectIcon);
+            settle(pilot);
+            assertFalse(pilot.hasElement("project-panel"));
+            String status = shell.status();
+
+            pilot.click(list.x() + 4, list.y() + 2);
+            settle(pilot);
+
+            assertEquals(0, shell.fileIndex());
+            assertEquals(status, shell.status());
+        }
+    }
+
+    @Test
     void pilotClickPlacesTheCaretOnTheClickedCharacterOfAScrolledDocument() throws Exception {
         EditorShell fixture = openEditorShell("Scrolled.txt", numberedLines(40), 30);
         try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
@@ -2762,6 +3003,109 @@ class VintelliShellTest {
             renderThread.join(1000);
             runner.close();
             assertHealthy();
+        }
+    }
+
+    private VintelliShell projectTreeShell(ShellThemes themes, BuiltinEditor editor, ProjectFileOperations operations,
+            List<String> files, List<String> directories) {
+        List<ToolWindow> windows = new ArrayList<>(defaultWindows());
+        if (editor != null) {
+            windows.add(editor);
+        }
+        List<ToolWindow> registered = new ToolWindowRegistry(windows).toolWindows();
+        ProjectSearch search = new FixedProjectSearch(files, directories);
+        return new VintelliShell(registered, new ShellState(), () -> Keymap.defaultKeymap(registered), themes,
+                search, operations);
+    }
+
+    private void awaitProjectTree(VintelliShell shell) {
+        long deadline = System.nanoTime() + SETTLE_TIMEOUT.toNanos();
+        while (shell.projectFiles().isEmpty() && System.nanoTime() < deadline) {
+            sleep(SETTLE_STEP);
+        }
+        assertFalse(shell.projectFiles().isEmpty(), "the project tree loads in the background");
+    }
+
+    private static List<String> numberedFiles(int count) {
+        List<String> files = new ArrayList<>();
+        for (int index = 0; index < count; index++) {
+            files.add("file" + (index < 10 ? "0" : "") + index + ".txt");
+        }
+        return files;
+    }
+
+    /** The screen row that draws {@code label} inside the list, or -1 when the list does not draw it. */
+    private static int projectRowOf(String frame, Rect list, String label) {
+        String[] lines = frame.split("\n", -1);
+        for (int y = list.y(); y < list.y() + list.height() && y < lines.length; y++) {
+            if (frameCells(lines[y], list.x(), list.width()).contains(label)) {
+                return y;
+            }
+        }
+        return -1;
+    }
+
+    private static char frameCell(String frame, int x, int y) {
+        return frameCells(frame.split("\n", -1)[y], x, 1).charAt(0);
+    }
+
+    private static String frameCells(String line, int x, int width) {
+        String padded = line.length() < x + width ? line + " ".repeat(x + width - line.length()) : line;
+        return padded.substring(x, x + width);
+    }
+
+    private static final class FixedProjectSearch implements ProjectSearch {
+        private final List<String> files;
+        private final List<String> directories;
+
+        private FixedProjectSearch(List<String> files, List<String> directories) {
+            this.files = files;
+            this.directories = directories;
+        }
+
+        @Override
+        public List<Path> listFiles() {
+            return files.stream().map(Path::of).toList();
+        }
+
+        @Override
+        public List<Path> listDirectories() {
+            return directories.stream().map(Path::of).toList();
+        }
+
+        @Override
+        public SearchTask files(String query, Consumer<List<FileMatch>> results) {
+            throw new UnsupportedOperationException("the tree tests do not search");
+        }
+
+        @Override
+        public SearchTask text(String query, boolean regex, Consumer<List<TextMatch>> results) {
+            throw new UnsupportedOperationException("the tree tests do not search");
+        }
+    }
+
+    private static final class RecordingFileOperations implements ProjectFileOperations {
+        private final List<String> created = new ArrayList<>();
+
+        @Override
+        public CapabilityResult<Path> createFile(Path directory, String name) {
+            created.add(name);
+            return CapabilityResult.ok(directory.resolve(name));
+        }
+
+        @Override
+        public CapabilityResult<Path> createDirectory(Path directory, String name) {
+            return CapabilityResult.ok(directory.resolve(name));
+        }
+
+        @Override
+        public CapabilityResult<Path> rename(Path entry, String name) {
+            return CapabilityResult.ok(entry);
+        }
+
+        @Override
+        public CapabilityResult<Path> delete(Path entry) {
+            return CapabilityResult.ok(entry);
         }
     }
 

@@ -234,6 +234,13 @@ selected diagnostics provider and distinguishes loading, unavailable, error,
 and empty results.
 In Structure, click a symbol row to select it, press Enter to navigate to its
 file and line, and use the mouse wheel to scroll long outlines.
+In the project panel, a left click selects the row under the pointer and focuses
+the panel, and a double click on a row does what Enter does: it opens a file or
+toggles a directory. A click on the expand marker of a directory (`+` and `-`, or
+the arrows with Nerd icons) toggles it. The list keeps the selected row in view
+when the keyboard or the wheel moves the selection. Clicks below the last row
+change nothing, and a click while a new name or a rename is being typed is
+ignored, so the typed input and its target stay as they are.
 Panes have no frames: each one starts with a header row, and the separators
 are the one-column line between the project pane and the editor (and before
 the right tool stripe) and the one-row line above the bottom tool windows.

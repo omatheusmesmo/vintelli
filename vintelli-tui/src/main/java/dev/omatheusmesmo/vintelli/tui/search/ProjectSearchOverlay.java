@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
+import dev.omatheusmesmo.vintelli.tui.DoubleClickTracker;
 import dev.omatheusmesmo.vintelli.api.search.ProjectSearch.FileMatch;
 import dev.omatheusmesmo.vintelli.api.search.ProjectSearch.TextMatch;
 import dev.tamboui.layout.Rect;
@@ -34,8 +35,7 @@ public final class ProjectSearchOverlay {
     private int renderedFirst;
     private int renderedRows;
     private int scrollOffset;
-    private int lastClicked = -1;
-    private long lastClickNanos;
+    private final DoubleClickTracker doubleClick = new DoubleClickTracker();
 
     public ProjectSearchOverlay(ProjectSearchModel model) {
         this.model = model;
@@ -143,7 +143,7 @@ public final class ProjectSearchOverlay {
         }
         if (event.isScroll() && (event.kind() == MouseEventKind.SCROLL_UP
                 || event.kind() == MouseEventKind.SCROLL_DOWN)) {
-            lastClicked = -1;
+            doubleClick.reset();
             if (!inside(renderedInner, event.x(), event.y()) || event.y() < renderedInner.y() + 1
                     || renderedRows == 0) {
                 return Optional.empty();
@@ -160,22 +160,18 @@ public final class ProjectSearchOverlay {
         if (!event.isClick() || !inside(renderedInner, event.x(), event.y())
                 || event.y() < renderedInner.y() + 1) {
             if (event.isClick()) {
-                lastClicked = -1;
+                doubleClick.reset();
             }
             return Optional.empty();
         }
         int row = event.y() - renderedInner.y() - 1;
         if (row < 0 || row >= renderedRows) {
-            lastClicked = -1;
+            doubleClick.reset();
             return Optional.empty();
         }
         int index = renderedFirst + row;
         model.select(index);
-        long now = System.nanoTime();
-        boolean activate = index == lastClicked && now - lastClickNanos <= 500_000_000L;
-        lastClicked = index;
-        lastClickNanos = now;
-        if (!activate) {
+        if (!doubleClick.register(index, System.nanoTime())) {
             return Optional.empty();
         }
         Target target = current.mode() == ProjectSearchModel.Mode.FILES
