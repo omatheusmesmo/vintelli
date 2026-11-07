@@ -87,6 +87,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -237,6 +238,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private volatile ToolStripElement rightStrip;
     private final ListElement<?> projectList;
     private final DoubleClickTracker projectDoubleClick = new DoubleClickTracker();
+    private LongSupplier clock = System::nanoTime;
     private int projectTop;
     private Column centerPanel;
     private Column paneSeparatorVertical;
@@ -300,6 +302,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     void useUiWorkQueue(UiWorkQueue uiWorkQueue) {
         this.uiWorkQueue = uiWorkQueue;
+    }
+
+    void useClock(LongSupplier clock) {
+        this.clock = clock;
     }
 
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state, ShellThemes themes) {
@@ -2000,7 +2006,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         }
         projectList.selected(index);
         syncFileSelection();
-        boolean doubled = projectDoubleClick.register(index, System.nanoTime());
+        boolean doubled = projectDoubleClick.register(index, clock.getAsLong());
         ProjectNode node = selectedProjectNode();
         if (doubled || (node != null && onExpandMarker(node, mouse.x(), area))) {
             openSelectedFile();

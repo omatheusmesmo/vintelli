@@ -49,10 +49,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.function.LongSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -1642,6 +1644,7 @@ class VintelliShellTest {
         BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
         VintelliShell shell = projectTreeShell(themes, editor, null, List.of("Alpha.txt", "Beta.txt"), List.of());
         awaitProjectTree(shell);
+        shell.useClock(steadyClock());
         try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
             Pilot pilot = test.pilot();
             Rect list = pilot.findElement("project-panel");
@@ -1664,6 +1667,7 @@ class VintelliShellTest {
         VintelliShell shell = projectTreeShell(defaultThemes(), null, null,
                 List.of("src/Main.java", "README.md"), List.of("src"));
         awaitProjectTree(shell);
+        shell.useClock(steadyClock());
         try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
             Pilot pilot = test.pilot();
             Rect list = pilot.findElement("project-panel");
@@ -1694,6 +1698,7 @@ class VintelliShellTest {
         VintelliShell shell = projectTreeShell(defaultThemes(), null, null,
                 List.of("src/Main.java", "src/Util.java", "README.md"), List.of("src"));
         awaitProjectTree(shell);
+        shell.useClock(steadyClock());
         try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
             Pilot pilot = test.pilot();
             Rect list = pilot.findElement("project-panel");
@@ -2862,6 +2867,11 @@ class VintelliShellTest {
         shell.bindQuit(test.runner()::quit);
         settleStrategy = pilot -> awaitHandled(test.runner());
         return test;
+    }
+
+    private static LongSupplier steadyClock() {
+        AtomicLong now = new AtomicLong();
+        return () -> now.addAndGet(TimeUnit.MILLISECONDS.toNanos(1));
     }
 
     private MouseShellRunner runMouseShell(VintelliShell shell, Size size) throws Exception {
