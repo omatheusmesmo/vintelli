@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 class ProjectTreeGlyphsTest {
 
     @Test
-    void usesBoxDrawingWithUtf8LocaleAndOutput() {
+    void usesArrowGlyphsWithUtf8LocaleAndOutput() {
         assertTrue(ProjectTreeGlyphs.supportsUnicode(
                 Map.of("TERM", "xterm-256color", "LANG", "en_US.UTF-8"), StandardCharsets.UTF_8));
     }
@@ -31,7 +31,7 @@ class ProjectTreeGlyphsTest {
     }
 
     @Test
-    void unrepresentableBoxDrawingFallsBackToAscii() {
+    void unrepresentableArrowGlyphsFallBackToAscii() {
         Charset outputCharset = StandardCharsets.US_ASCII;
         assertFalse(ProjectTreeGlyphs.supportsUnicode(
                 Map.of("TERM", "xterm-256color", "LANG", "en_US.UTF-8"), outputCharset));

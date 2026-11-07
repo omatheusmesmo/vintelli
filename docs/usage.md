@@ -197,9 +197,10 @@ Keys: `1-4` (or `Alt+1`..`Alt+4`) switch tool windows (Run, Terminal,
 Problems, ACP Agents), arrows and `PageUp`/`PageDown`/`Home`/`End` navigate
 the live project tree (hjkl in the `vim` profile), and every selection is
 mirrored into shell state and the status line. The tree shows file and folder
-icons and directory disclosure arrows, using ASCII markers when Nerd Font icons
-are disabled. Tree connectors use Unicode when the terminal's locale and output
-charset support it, independently of the Nerd Font icon mode. `vintelli.icons=auto`
+icons without connector lines, indented two columns per level in the IntelliJ New UI
+style. Directory disclosure arrows use thin chevrons in Nerd Font mode, Unicode
+arrows (`▸` and `▾`) when the terminal's locale and output charset support them,
+and `+` and `-` otherwise. `vintelli.icons=auto`
 (the default) selects Nerd glyphs when a Nerd Font is installed on the machine
 and the session is a local terminal; set `vintelli.icons=nerd` to force them, or
 `ascii` if the terminal draws boxes for them (see docs/file-icons.md).
@@ -241,8 +242,8 @@ In Structure, click a symbol row to select it, press Enter to navigate to its
 file and line, and use the mouse wheel to scroll long outlines.
 In the project panel, a left click selects the row under the pointer and focuses
 the panel, and a double click on a row does what Enter does: it opens a file or
-toggles a directory. A click on the expand marker of a directory (`+` and `-`, or
-the arrows with Nerd icons) toggles it. The list keeps the selected row in view
+toggles a directory. A click on the disclosure glyph of a directory (a chevron,
+an arrow, or `+` and `-`) toggles it. The list keeps the selected row in view
 when the keyboard or the wheel moves the selection. Clicks below the last row
 change nothing, and a click while a new name or a rename is being typed is
 ignored, so the typed input and its target stay as they are.

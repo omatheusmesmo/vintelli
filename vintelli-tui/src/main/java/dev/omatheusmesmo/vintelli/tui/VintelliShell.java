@@ -146,8 +146,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     static final int TOOL_STRIP_WIDTH = ToolStripElement.WIDTH;
     static final String PROJECT_STRIP_ID = "project";
     private static final int PROJECT_HIGHLIGHT_WIDTH = 2;
-    private static final int PROJECT_INDENT_WIDTH = 4;
-    private static final int PROJECT_BRANCH_WIDTH = 4;
+    private static final int PROJECT_INDENT_WIDTH = 2;
     private static final int PROJECT_MARKER_WIDTH = 2;
     private static final String PROJECT_GLYPH = "";
     private static final int TOOL_TAB_ROWS = ToolTabBarElement.ROWS;
@@ -249,7 +248,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private volatile boolean projectFilesLoading;
     private final Path projectRoot;
     private final FileIcons fileIcons;
-    private final boolean unicodeProjectTree;
+    private boolean unicodeProjectTree;
     private final List<ProjectNode> rootNodes = new ArrayList<>();
     private volatile List<ProjectNode> visibleNodeObjects = List.of();
     private volatile boolean showHiddenFiles;
@@ -307,6 +306,13 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     void useClock(LongSupplier clock) {
         this.clock = clock;
+    }
+
+    void useUnicodeProjectTree(boolean unicode) {
+        this.unicodeProjectTree = unicode;
+        if (!projectFiles.isEmpty()) {
+            projectList.items(projectRows());
+        }
     }
 
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state, ShellThemes themes) {
@@ -1086,33 +1092,37 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     private String projectNodeLabel(ProjectNode node) {
-        boolean nerd = fileIcons.mode() == IconMode.NERD;
-        List<ProjectNode> ancestors = new ArrayList<>();
-        for (ProjectNode parent = node.parent; parent != null; parent = parent.parent) {
-            ancestors.add(parent);
-        }
-        StringBuilder label = new StringBuilder();
-        for (int i = ancestors.size() - 1; i >= 0; i--) {
-            label.append(isLastSibling(ancestors.get(i)) ? "    " : unicodeProjectTree ? "│   " : "|   ");
-        }
-        label.append(isLastSibling(node) ? (unicodeProjectTree ? "└── " : "\\-- ")
-                : (unicodeProjectTree ? "├── " : "|-- "));
-        StringBuilder entry = new StringBuilder();
+        StringBuilder label = new StringBuilder(" ".repeat(projectDepth(node) * PROJECT_INDENT_WIDTH));
         if (node.directory) {
-            entry.append(nerd ? (node.expanded ? "▾ " : "▸ ") : (node.expanded ? "- " : "+ "));
+            label.append(disclosureGlyph(node)).append(' ');
+        } else {
+            label.append(vcsSlot(node.relative.toString()));
         }
-        entry.append((node.directory ? fileIcons.folderIconFor(node.name) : fileIcons.iconFor(node.name))
-                .symbol(fileIcons.mode())).append(' ');
-        entry.append(node.name);
-        if (node.directory) {
-            entry.append('/');
-        }
-        return label + vcsDecorated(node.relative.toString(), entry.toString());
+        return label.append((node.directory ? fileIcons.folderIconFor(node.name) : fileIcons.iconFor(node.name))
+                .symbol(fileIcons.mode())).append(' ').append(node.name).toString();
     }
 
-    private boolean isLastSibling(ProjectNode node) {
-        List<ProjectNode> siblings = node.parent == null ? rootNodes : node.parent.children;
-        return !siblings.isEmpty() && siblings.getLast() == node;
+    private String disclosureGlyph(ProjectNode node) {
+        if (fileIcons.mode() == IconMode.NERD) {
+            return node.expanded ? "" : "";
+        }
+        if (unicodeProjectTree) {
+            return node.expanded ? "▾" : "▸";
+        }
+        return node.expanded ? "-" : "+";
+    }
+
+    private String vcsSlot(String relative) {
+        VersionControlCapability.State state = vcsStates.get(relative.replace('\\', '/'));
+        return state == null ? "  " : vcsMarker(state) + " ";
+    }
+
+    private static int projectDepth(ProjectNode node) {
+        int depth = 0;
+        for (ProjectNode parent = node.parent; parent != null; parent = parent.parent) {
+            depth++;
+        }
+        return depth;
     }
 
     private void appendVisible(List<ProjectNode> nodes, List<ProjectNode> output) {
@@ -2031,20 +2041,16 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     /**
-     * The column span of the expand marker of a directory row. The row is drawn
+     * The column span of the disclosure glyph of a directory row. The row is drawn
      * by {@link #projectNodeLabel(ProjectNode)} after the highlight symbol, with
-     * one indent per ancestor and the branch glyph before the marker, so the
-     * geometry here follows that label layout.
+     * two columns per ancestor and then the glyph slot, so the geometry here
+     * follows that label layout.
      */
     private boolean onExpandMarker(ProjectNode node, int x, Rect area) {
         if (!node.directory) {
             return false;
         }
-        int depth = 0;
-        for (ProjectNode parent = node.parent; parent != null; parent = parent.parent) {
-            depth++;
-        }
-        int start = area.x() + PROJECT_HIGHLIGHT_WIDTH + depth * PROJECT_INDENT_WIDTH + PROJECT_BRANCH_WIDTH;
+        int start = area.x() + PROJECT_HIGHLIGHT_WIDTH + projectDepth(node) * PROJECT_INDENT_WIDTH;
         return x >= start && x < start + PROJECT_MARKER_WIDTH;
     }
 

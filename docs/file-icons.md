@@ -67,8 +67,9 @@ ASCII marker of Java files; keys are case-insensitive. An invalid key, a
 duplicate key, an unknown color name or an unknown `vintelli.icons` value
 fails fast and names the source.
 
-Project tree connectors are detected separately from icon fonts. Vintelli uses
-the `├──`, `└──`, and `│` line characters when the active locale is UTF-8 (or
-unset) and the output charset can encode them. `TERM=dumb`, an explicitly
-non-UTF-8 locale, or an output charset that cannot encode the connectors selects
-the ASCII fallback.
+Project tree disclosure arrows are chosen separately from icon fonts. The tree
+draws no connector lines. With `vintelli.icons=nerd` the folders use the thin
+chevrons of the Nerd Font, otherwise Vintelli uses the `▸` and `▾` arrows when the
+active locale is UTF-8 (or unset) and the output charset can encode them.
+`TERM=dumb`, an explicitly non-UTF-8 locale, or an output charset that cannot
+encode the arrows selects the `+` and `-` ASCII fallback.
