@@ -92,7 +92,7 @@ import java.util.stream.Collectors;
 
 
 /**
- * IntelliJ-like terminal shell: menu bar, tool window stripes (left, right, bottom),
+ * IntelliJ-like terminal shell: main toolbar, tool window stripes (left, right, bottom),
  * project panel, editor panel and status bar. Runs at the Toolkit level: the runner gets the
  * style engine from {@link ShellThemes} and the element tree from
  * {@link #root()}, so every color resolves from the active theme stylesheet
@@ -173,6 +173,16 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     private record Breadcrumb(String label, Path path, int line) { }
 
+    /** The branch widget state: hidden without a healthy VCS provider or a repository. */
+    private record ToolbarVcs(boolean visible, String branch) {
+
+        static final ToolbarVcs HIDDEN = new ToolbarVcs(false, null);
+
+        static ToolbarVcs of(VersionControlCapability.Status status) {
+            return new ToolbarVcs(true, status.isDetached() ? "detached HEAD" : status.branch());
+        }
+    }
+
     private final ShellThemes themes;
     private final ShellState state;
     private final List<ToolWindow> toolWindows;
@@ -182,6 +192,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private final CapabilityRegistry capabilityRegistry;
     private final AtomicLong readFileSequence = new AtomicLong();
     private volatile CapabilityStateLine.Summary readFileSummary;
+    private final AtomicLong toolbarVcsSequence = new AtomicLong();
+    private volatile ToolbarVcs toolbarVcs = ToolbarVcs.HIDDEN;
+    private final MainToolbar mainToolbar;
+    private final String toolbarProject;
+    private final RunToolWindow runWindow;
     private final IdeaMcpConnection ideaMcpConnection;
     private final List<StatusBarWidgetContributor> statusBarContributors;
     private final List<VersionControlCapability> vcsProviders;
@@ -445,6 +460,12 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         this.toolTabs = toolWindowTabs();
         this.projectList = projectPanel();
         this.lockedProjectList = new LockedElement(projectList, frameLock, this, true, false);
+        this.toolbarProject = projectRoot.getFileName() == null ? projectRoot.toString()
+                : projectRoot.getFileName().toString();
+        this.runWindow = this.toolWindows.stream().filter(RunToolWindow.class::isInstance)
+                .map(RunToolWindow.class::cast).findFirst().orElse(null);
+        this.mainToolbar = new MainToolbar(this::toolbarModel, MENUS, fileIcons.mode(), () -> themes);
+        this.toolbarVcs = vcsProviders.isEmpty() ? ToolbarVcs.HIDDEN : new ToolbarVcs(true, "VCS");
         this.rootBase = buildRootContent();
         this.lockedRoot = new LockedElement(rootBase, frameLock, this, false, true);
         // Initialize active index for each anchor to first window
@@ -461,6 +482,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             Thread.ofVirtual().start(this::discoverProjectFiles);
         }
         refreshReadFileSummary();
+        refreshToolbarVcs();
     }
 
     /**
@@ -483,7 +505,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                     ProjectSearchModel searchModel = projectSearch == null ? null : new ProjectSearchModel(projectSearch);
                     overlays = new KeymapParts(keymap, new CommandPalette(keymap.actions(), keymap),
                             new KeymapHelpOverlay(keymap), new MenuPopup(MENUS, this::menuEntries,
-                                    keymap::describeBindings), searchModel,
+                                    keymap::describeBindings, MainToolbar.MENU_ORIGIN), searchModel,
                             searchModel == null ? null : new ProjectSearchOverlay(searchModel));
                 }
                 parts = overlays;
@@ -512,7 +534,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         Constraint bottomHeight = persisted ? ratioConstraint(shellLayout.bottomRatio())
                 : Constraint.length(TOOL_WINDOW_HEIGHT + 2);
         DockElement dock = Toolkit.dock()
-                .top(menuBar())
+                .top(mainToolbar)
                 .left(leftStripe())
                 .center(centerPanel())
                 .right(rightStripe())
@@ -531,17 +553,18 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         return Constraint.ratio((int) Math.round(ratio * denominator), denominator);
     }
 
-    private Element menuBar() {
-        Row bar = Toolkit.row().id("menu-bar");
-        bar.length(1);
-        int activeMenu = overlays().menuPopup().isOpen() ? overlays().menuPopup().menuIndex() : -1;
-        for (int index = 0; index < MENUS.size(); index++) {
-            boolean selected = index == activeMenu;
-            TextElement entry = Toolkit.text(selected ? " " + MENUS.get(index) + " " : MENUS.get(index));
-            entry.addClass(selected ? "menu-entry-active" : "menu-entry");
-            bar.add(entry);
-        }
-        return bar;
+    /**
+     * The toolbar snapshot the render reads. The branch and the run label come
+     * from volatile fields the capabilities fill off the render thread, so this
+     * never calls a capability.
+     */
+    private MainToolbar.Model toolbarModel() {
+        MenuPopup popup = overlays().menuPopup();
+        boolean menuOpen = popup.isOpen();
+        ToolbarVcs vcs = toolbarVcs;
+        return new MainToolbar.Model(toolbarProject, vcs.visible() ? vcs.branch() : null,
+                runWindow == null ? null : runWindow.selectedConfigurationLabel(),
+                menuOpen, menuOpen ? popup.menuIndex() : -1);
     }
 
     private Element leftStripe() {
@@ -1160,6 +1183,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             }
             return EventResult.HANDLED;
         }
+        if (mouse.isClick() && mouse.y() == 0 && toolbarClicked(parts, mouse)) {
+            return EventResult.HANDLED;
+        }
         if (parts.menuPopup().isOpen()) {
             if (mouse.isClick()) {
                 Optional<String> action = parts.menuPopup().click(mouse.x(), mouse.y());
@@ -1171,19 +1197,6 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         EventResult splitterResult = handleSplitterMouse(mouse);
         if (splitterResult == EventResult.HANDLED) {
             return splitterResult;
-        }
-        if (mouse.isClick() && mouse.y() == 0) {
-            int menu = menuAt(mouse.x());
-            if (menu >= 0) {
-                parts.commandPalette().close();
-                parts.keymapHelp().close();
-                if (parts.searchModel() != null) {
-                    parts.searchModel().close();
-                }
-                openMenu(parts, menu);
-                inputCaptured = false;
-                return EventResult.HANDLED;
-            }
         }
         if (mouse.isClick() && editor != null) {
             int tab = editor.tabAt(mouse.x(), mouse.y());
@@ -1338,16 +1351,60 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         }
     }
 
-    private static int menuAt(int x) {
-        int offset = 0;
-        for (int index = 0; index < MENUS.size(); index++) {
-            int width = MENUS.get(index).length() + 2;
-            if (x >= offset && x < offset + width) {
-                return index;
-            }
-            offset += width;
+    /**
+     * Routes a click on the toolbar row. The menu button and the labels open or
+     * close the menu popup, the branch widget refreshes the read-only VCS status
+     * and the run widget dispatches the Run tool window actions.
+     *
+     * @return true when the click landed on a toolbar segment
+     */
+    private boolean toolbarClicked(KeymapParts parts, MouseEvent mouse) {
+        Optional<MainToolbar.Segment> hit = mainToolbar.segmentAt(mouse.x(), mouse.y());
+        if (hit.isEmpty()) {
+            return false;
         }
-        return -1;
+        MainToolbar.Kind kind = hit.get().kind();
+        if (parts.menuPopup().isOpen() && kind != MainToolbar.Kind.MENU_BUTTON && kind != MainToolbar.Kind.MENU) {
+            return false;
+        }
+        switch (kind) {
+            case MENU_BUTTON -> {
+                if (parts.menuPopup().isOpen()) {
+                    closeMenu(parts);
+                } else {
+                    showMenu(parts, 0);
+                }
+            }
+            case MENU -> showMenu(parts, hit.get().menuIndex());
+            case BRANCH -> refreshVcsAsync();
+            case RUN -> dispatchRunAction(parts, KeyActions.RUN_EXECUTE);
+            case RUN_STOP -> {
+                if (runWindow != null && runWindow.canStop()) {
+                    dispatchRunAction(parts, KeyActions.RUN_STOP);
+                }
+            }
+            case PROJECT -> {
+            }
+        }
+        return true;
+    }
+
+    private void showMenu(KeymapParts parts, int index) {
+        parts.commandPalette().close();
+        parts.keymapHelp().close();
+        if (parts.searchModel() != null) {
+            parts.searchModel().close();
+        }
+        openMenu(parts, index);
+        inputCaptured = false;
+    }
+
+    private void dispatchRunAction(KeymapParts parts, String action) {
+        if (runWindow == null) {
+            return;
+        }
+        focusToolWindow(runWindow);
+        dispatch(parts, action);
     }
 
     private EventResult accept(Event event) {
@@ -2067,6 +2124,32 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 .findFirst().orElse(null);
     }
 
+    /**
+     * Reads the branch widget state on a virtual thread at startup, because the
+     * provider health check and the Git status both may block. A VCS refresh
+     * that publishes first wins over this read through the sequence.
+     */
+    private void refreshToolbarVcs() {
+        if (vcsProviders.isEmpty()) {
+            return;
+        }
+        long sequence = toolbarVcsSequence.incrementAndGet();
+        Thread.ofVirtual().name("vintelli-toolbar-vcs").start(() -> {
+            ToolbarVcs next = ToolbarVcs.HIDDEN;
+            try {
+                VersionControlCapability provider = availableVcsProvider();
+                if (provider != null && provider.status() instanceof CapabilityResult.Ok<VersionControlCapability.Status> ok) {
+                    next = ToolbarVcs.of(ok.value());
+                }
+            } catch (RuntimeException unavailable) {
+                next = ToolbarVcs.HIDDEN;
+            }
+            if (sequence == toolbarVcsSequence.get()) {
+                toolbarVcs = next;
+            }
+        });
+    }
+
     public void refreshVcs() {
         refreshVcs(vcsRefreshSequence.incrementAndGet());
     }
@@ -2085,7 +2168,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private void refreshVcs(long request) {
         VersionControlCapability provider = availableVcsProvider();
         if (provider == null) {
-            publishVcsRefresh(request, Map.of(), Map.of(), vcsProviders.isEmpty() ? "Version control unavailable"
+            publishVcsRefresh(request, Map.of(), Map.of(), ToolbarVcs.HIDDEN, vcsProviders.isEmpty() ? "Version control unavailable"
                     : "Version control unavailable: "
                             + vcsProviders.stream().map(p -> p.health().reason()).filter(Objects::nonNull)
                                     .findFirst().orElse("no healthy provider"));
@@ -2093,7 +2176,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         }
         CapabilityResult<VersionControlCapability.Status> result = provider.status();
         if (result instanceof CapabilityResult.Failed<VersionControlCapability.Status> failed) {
-            publishVcsRefresh(request, Map.of(), Map.of(), "VCS refresh failed: " + failed.failure().reason());
+            publishVcsRefresh(request, Map.of(), Map.of(), ToolbarVcs.HIDDEN,
+                    "VCS refresh failed: " + failed.failure().reason());
             return;
         }
         VersionControlCapability.Status statusValue =
@@ -2121,17 +2205,19 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             }
         }
         String branch = statusValue.isDetached() ? "detached HEAD" : statusValue.branch();
-        publishVcsRefresh(request, states, changedLines,
+        publishVcsRefresh(request, states, changedLines, ToolbarVcs.of(statusValue),
                 "VCS: " + branch + " (+" + (statusValue.ahead() == null ? 0 : statusValue.ahead())
                         + "/-" + (statusValue.behind() == null ? 0 : statusValue.behind()) + "), "
                         + statusValue.entries().size() + (statusValue.truncated() ? "+ changed (partial)" : " changed"));
     }
 
     private void publishVcsRefresh(long request, Map<String, VersionControlCapability.State> states,
-            Map<String, Set<Integer>> changedLines, String newStatus) {
+            Map<String, Set<Integer>> changedLines, ToolbarVcs toolbar, String newStatus) {
         frameLock.lock();
         try {
             if (request != vcsRefreshSequence.get()) { return; }
+            toolbarVcsSequence.incrementAndGet();
+            toolbarVcs = toolbar;
             vcsStates = Map.copyOf(states);
             if (editor != null) { editor.vcsStatus(vcsStates, changedLines); }
             if (!projectFiles.isEmpty()) { projectList.items(projectFileRows()); }

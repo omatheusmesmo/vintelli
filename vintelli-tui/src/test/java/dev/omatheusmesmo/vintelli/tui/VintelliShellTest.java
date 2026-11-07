@@ -4,6 +4,7 @@ import dev.omatheusmesmo.vintelli.tui.keymap.KeyAction;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeymapProfile;
+import dev.omatheusmesmo.vintelli.tui.menu.MenuPopup;
 import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
 import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
@@ -53,6 +54,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -209,6 +211,7 @@ class VintelliShellTest {
     @Test
     void separatesMenuEntriesOnFirstRow() {
         VintelliShell shell = defaultShell();
+        shell.handle(KeyEvent.ofKey(KeyCode.F10));
         Buffer buffer = offlineFrame(shell);
 
         String menu = rowText(buffer, MENU_ROW);
@@ -1040,7 +1043,7 @@ class VintelliShellTest {
         String contentRow = rowText(buffer, TOOL_WINDOW_ROW + 1);
         assertTrue(headerRow.contains("Broken"), "the pane header survives the failure: " + headerRow);
         assertTrue(contentRow.contains("tool window render failed: boom"), contentRow);
-        assertTrue(rowText(buffer, MENU_ROW).contains("File"), "the rest of the shell keeps rendering");
+        assertTrue(rowText(buffer, MENU_ROW).matches("^ (≡|=) .*"), "the rest of the shell keeps rendering");
     }
 
     @Test
@@ -1107,7 +1110,9 @@ class VintelliShellTest {
             assertEquals("project-panel", test.runner().focusManager().focusedId(),
                     "an ordinary tree-panel click still reaches its element");
 
-            pilot.click(8, 0);
+            pilot.click(1, MENU_ROW);
+            settle(pilot);
+            pilot.click(MainToolbar.MENU_ORIGIN + MenuPopup.labelWidth("File") + 1, MENU_ROW);
             settle(pilot);
             assertTrue(test.renderedFrame().contains("Undo"), test.renderedFrame());
             pilot.press(KeyCode.ESCAPE);
@@ -1589,7 +1594,7 @@ class VintelliShellTest {
                 "the active theme styles the editor panel before the switch");
         assertEquals(themes.color("panel"), cellBg(beforeBuffer, 40, STATUS_ROW),
                 "the active theme styles the status bar before the switch");
-        assertTrue(rowText(beforeBuffer, MENU_ROW).contains("File"));
+        assertTrue(rowText(beforeBuffer, MENU_ROW).matches("^ (≡|=) .*"));
 
         themes.switchTheme("darcula");
 
@@ -1603,10 +1608,244 @@ class VintelliShellTest {
                 "the switched theme reaches the editor panel");
         assertEquals(themes.color("panel"), cellBg(afterBuffer, 40, STATUS_ROW),
                 "the switched theme reaches the status bar");
-        assertTrue(rowText(afterBuffer, MENU_ROW).contains("Edit  View"),
+        assertTrue(rowText(afterBuffer, MENU_ROW).matches("^ (≡|=) .*"),
                 "the theme switch keeps the whole shell rendering");
         assertFalse(themes.variablesOf("dark").get("panel").equalsIgnoreCase(themes.variablesOf("darcula").get("panel")),
                 "the two shipped themes actually differ so the assertions above mean something");
+    }
+
+    @Test
+    void toolbarRendersTheProjectAndTheVcsBranch() {
+        VintelliShell shell = shellWithVcs(new BranchVcs("main", null));
+        String row = awaitToolbarRow(shell, "main");
+        String dropdown = toolbarGlyphs().dropdown();
+        String project = Path.of("").toAbsolutePath().normalize().getFileName().toString();
+        assertTrue(row.contains(" " + project + " " + dropdown + " "), row);
+        assertTrue(row.contains(" main " + dropdown + " "), row);
+    }
+
+    @Test
+    void theBranchWidgetIsHiddenWithoutAVcsProvider() {
+        String row = rowText(offlineFrame(defaultShell()), MENU_ROW);
+        String project = Path.of("").toAbsolutePath().normalize().getFileName().toString();
+        assertTrue(row.trim().endsWith(project + " " + toolbarGlyphs().dropdown()),
+                "the project widget is the last widget of the row: " + row);
+    }
+
+    @Test
+    void theRunWidgetIsHiddenWithoutARunProvider() {
+        String row = rowText(offlineFrame(defaultShell()), MENU_ROW);
+        assertFalse(row.contains(toolbarGlyphs().play()), row);
+    }
+
+    @Test
+    void hamburgerClickOpensTheMenuPopup() throws Exception {
+        try (MouseShellRunner test = runMouseShell(defaultShell(), SIZE)) {
+            test.pilot().click(1, MENU_ROW);
+            settle(test.pilot());
+            assertTrue(firstRow(awaitRenderedFrame(test.pilot(), test, "Edit  View")).contains("Edit  View"));
+        }
+    }
+
+    @Test
+    void f10StillOpensTheMenuPopup() throws Exception {
+        try (MouseShellRunner test = runMouseShell(defaultShell(), SIZE)) {
+            test.pilot().press(KeyCode.F10);
+            settle(test.pilot());
+            assertTrue(firstRow(awaitRenderedFrame(test.pilot(), test, "Edit  View")).contains("Edit  View"));
+        }
+    }
+
+    @Test
+    void aClickOnAMenuLabelWhilePopupOpenSwitchesTheMenu() throws Exception {
+        String keyboardEdit;
+        try (MouseShellRunner reference = runMouseShell(defaultShell(), SIZE)) {
+            reference.pilot().press(KeyCode.F10);
+            settle(reference.pilot());
+            reference.pilot().press(KeyCode.RIGHT);
+            settle(reference.pilot());
+            keyboardEdit = reference.renderedFrame();
+        }
+        try (MouseShellRunner test = runMouseShell(defaultShell(), SIZE)) {
+            test.pilot().click(1, MENU_ROW);
+            settle(test.pilot());
+            String row = firstRow(awaitRenderedFrame(test.pilot(), test, "Edit  View"));
+            test.pilot().click(row.indexOf("Edit") + 1, MENU_ROW);
+            settle(test.pilot());
+            String clicked = test.renderedFrame();
+            assertEquals(keyboardEdit, clicked, "the label click opens the same menu the keyboard opens");
+        }
+    }
+
+    @Test
+    void aClickOnAnEmptyToolbarCellDoesNothing() throws Exception {
+        try (MouseShellRunner test = runMouseShell(defaultShell(), SIZE)) {
+            test.pilot().click(VIEWPORT.width() - 1, MENU_ROW);
+            settle(test.pilot());
+            assertFalse(firstRow(test.renderedFrame()).contains("Edit  View"));
+        }
+    }
+
+    @Test
+    void branchClickShowsTheVcsStatusAndDoesNotSwitchTheBranch() throws Exception {
+        BranchVcs vcs = new BranchVcs("main", null);
+        VintelliShell shell = shellWithVcs(vcs);
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            String row = firstRow(awaitRenderedFrame(test.pilot(), test, "main"));
+            test.pilot().click(row.indexOf("main") + 1, MENU_ROW);
+            settle(test.pilot());
+            long deadline = System.nanoTime() + SETTLE_TIMEOUT.toNanos();
+            while (!shell.status().startsWith("VCS: main") && System.nanoTime() < deadline) {
+                pause(test.pilot(), Duration.ofMillis(20));
+            }
+            assertTrue(shell.status().startsWith("VCS: main"), shell.status());
+            assertEquals(0, vcs.switchCalls.get(), "the branch widget must not switch branches");
+        }
+    }
+
+    private static void napMillis(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private static String firstRow(String frame) {
+        return frame.split("\n", -1)[0];
+    }
+
+    @Test
+    void aBlockingVcsStatusNeverBlocksTheToolbarRender() {
+        CountDownLatch release = new CountDownLatch(1);
+        VintelliShell shell = shellWithVcs(new BranchVcs("main", release));
+        try {
+            assertTimeoutPreemptively(Duration.ofSeconds(5), () -> offlineFrame(shell));
+        } finally {
+            release.countDown();
+        }
+    }
+
+    @Test
+    void renderAloneNeverCallsTheVcsStatus() {
+        BranchVcs vcs = new BranchVcs("main", null);
+        VintelliShell shell = shellWithVcs(vcs);
+        awaitToolbarRow(shell, "main");
+        int before = vcs.statusCalls.get();
+        for (int frame = 0; frame < 20; frame++) {
+            offlineFrame(shell);
+        }
+        assertEquals(before, vcs.statusCalls.get(), "painting the toolbar must not read the repository");
+    }
+
+    @Test
+    void aThrowingVcsStatusHidesTheBranchWidgetAndNothingEscapesTheReadThread() {
+        AtomicReference<Throwable> escaped = new AtomicReference<>();
+        Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler((thread, problem) -> escaped.set(problem));
+        try {
+            VintelliShell shell = shellWithVcs(new BranchVcs("main", null, new IllegalStateException("git is missing")));
+            long deadline = System.nanoTime() + SETTLE_TIMEOUT.toNanos();
+            String row = rowText(offlineFrame(shell), MENU_ROW);
+            while (row.contains("VCS") && System.nanoTime() < deadline) {
+                napMillis(10);
+                row = rowText(offlineFrame(shell), MENU_ROW);
+            }
+            assertFalse(row.contains("VCS"), "the placeholder must not stay on screen: " + row);
+            assertFalse(row.contains("main"), row);
+            napMillis(50);
+            assertEquals(null, escaped.get(), "the failing read must not escape its thread");
+        } finally {
+            Thread.setDefaultUncaughtExceptionHandler(previous);
+        }
+    }
+
+    @Test
+    void theBranchWidgetFollowsTheRepositoryAfterARefresh() {
+        BranchVcs vcs = new BranchVcs("main", null);
+        VintelliShell shell = shellWithVcs(vcs);
+        awaitToolbarRow(shell, "main");
+        vcs.branch.set("feature");
+        shell.refreshVcs();
+        assertTrue(rowText(offlineFrame(shell), MENU_ROW).contains("feature"));
+    }
+
+    private static MainToolbar.Glyphs toolbarGlyphs() {
+        return MainToolbar.Glyphs.of(FileIcons.resolve().mode());
+    }
+
+    private static VintelliShell shellWithVcs(VersionControlCapability vcs) {
+        ShellThemes themes = defaultThemes();
+        List<ToolWindow> windows = defaultWindows();
+        return new VintelliShell(windows, new ShellState(), () -> Keymap.defaultKeymap(windows), themes,
+                null, List.of(), List.of(vcs));
+    }
+
+    private static String awaitToolbarRow(VintelliShell shell, String text) {
+        long deadline = System.nanoTime() + SETTLE_TIMEOUT.toNanos();
+        String row = rowText(offlineFrame(shell), MENU_ROW);
+        while (!row.contains(text) && System.nanoTime() < deadline) {
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+            row = rowText(offlineFrame(shell), MENU_ROW);
+        }
+        assertTrue(row.contains(text), "the toolbar never showed " + text + ": " + row);
+        return row;
+    }
+
+    /** A repository fake that counts reads and switches and can block the status read. */
+    private static final class BranchVcs implements VersionControlCapability {
+        private final AtomicReference<String> branch;
+        private final AtomicInteger statusCalls = new AtomicInteger();
+        private final AtomicInteger switchCalls = new AtomicInteger();
+        private final CountDownLatch release;
+        private final RuntimeException failure;
+
+        private BranchVcs(String branch, CountDownLatch release) {
+            this(branch, release, null);
+        }
+
+        private BranchVcs(String branch, CountDownLatch release, RuntimeException failure) {
+            this.branch = new AtomicReference<>(branch);
+            this.release = release;
+            this.failure = failure;
+        }
+
+        @Override
+        public CapabilityResult<Status> status() {
+            statusCalls.incrementAndGet();
+            if (release != null) {
+                try {
+                    release.await(5, TimeUnit.SECONDS);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            if (failure != null) {
+                throw failure;
+            }
+            return CapabilityResult.ok(new Status(branch.get(), 0, 0, List.of()));
+        }
+
+        @Override public CapabilityResult<String> diff(Path changedFile) { return CapabilityResult.ok(""); }
+        @Override public CapabilityResult<String> diffWorkingTree() { return CapabilityResult.ok(""); }
+        @Override public CapabilityResult<Boolean> stage(Path changedFile, boolean confirmed) { return CapabilityResult.ok(confirmed); }
+        @Override public CapabilityResult<Boolean> unstage(Path changedFile, boolean confirmed) { return CapabilityResult.ok(confirmed); }
+        @Override public CapabilityResult<Boolean> commit(String message, boolean confirmed) { return CapabilityResult.ok(confirmed); }
+
+        @Override
+        public CapabilityResult<Boolean> switchBranch(String target, boolean confirmed) {
+            switchCalls.incrementAndGet();
+            return CapabilityResult.ok(confirmed);
+        }
+
+        @Override public String identifier() { return "branch-test"; }
+        @Override public ProviderHealth health() { return ProviderHealth.available(); }
+        @Override public String provenance() { return "temporary branch test provider"; }
     }
 
     private ToolkitTestRunner runShell(VintelliShell shell) throws Exception {

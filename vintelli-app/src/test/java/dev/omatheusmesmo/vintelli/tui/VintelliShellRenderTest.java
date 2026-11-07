@@ -48,6 +48,22 @@ class VintelliShellRenderTest {
                 "the READ_FILE state never settled in the main area:\n" + mainArea);
     }
 
+    /**
+     * The main toolbar row carries the menu button and the project widget in
+     * either glyph face: the Unicode glyphs or their ASCII fallback. The project
+     * name depends on the directory the test JVM or the native runner starts in,
+     * so the assertion checks the widget shape and not the name.
+     */
+    @Test
+    void showsTheMainToolbarWithTheMenuButtonAndTheProjectWidget() {
+        String toolbar = given()
+                .when().get("/tui/render")
+                .then().statusCode(200)
+                .extract().path("toolbar");
+        assertTrue(toolbar.matches("^ (≡|=) .*"), "the menu button leads the toolbar: " + toolbar);
+        assertTrue(toolbar.matches("^ (≡|=) .+ (▾|v) .*"), "the project widget carries a dropdown mark: " + toolbar);
+    }
+
     @Test
     void exposesToolWindowTabsAndStatusFromAnOffscreenFrame() {
         given()

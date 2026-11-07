@@ -298,6 +298,28 @@ public final class RunToolWindow implements ToolWindow {
         return summary.isBlank() ? "" : "  ·  " + summary;
     }
 
+    /**
+     * The label of the run widget in the main toolbar: the selected
+     * configuration, or {@code Run} when none is listed. {@code null} when no
+     * Run provider was selected, which hides the widget. Reads volatile state
+     * only, so the toolbar may call it while it paints.
+     */
+    String selectedConfigurationLabel() {
+        RunCapability current = provider;
+        if (capabilities == null || current == null) {
+            return null;
+        }
+        List<RunCapability.RunConfiguration> listed = configurations;
+        int index = selectedIndex;
+        return index < 0 || index >= listed.size() ? "Run" : listed.get(index).identifier();
+    }
+
+    /** True when a running handle supports cancellation, the same check the Stop control makes. */
+    boolean canStop() {
+        RunCapability.RunHandle active = handle;
+        return active != null && active.supportsCancellation();
+    }
+
     private boolean insideLastArea(MouseEvent event) {
         return event.x() >= lastArea.x() && event.x() < lastArea.x() + lastArea.width()
                 && event.y() >= lastArea.y() && event.y() < lastArea.y() + lastArea.height();
