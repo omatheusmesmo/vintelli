@@ -22,7 +22,7 @@ import org.junit.jupiter.params.provider.ValueSource;
  * Starts the packaged runner (the Mandrel image under {@code -Dnative}, the
  * runnable jar otherwise) with no arguments and with the {@code --tui} alias,
  * and drives it headlessly through
- * TamboUI's Recording and Playback: a VHS tape waits for the menu bar and then
+ * TamboUI's Recording and Playback: a VHS tape waits for the tool window tabs and then
  * quits, and the frames are written to an asciinema cast. TamboUI resolves its
  * terminal backend through the ServiceLoader, which the native build disables,
  * so a missing provider registration shows at startup as
@@ -34,9 +34,9 @@ class VintelliTuiStartupIT {
 
     private static final long EXIT_TIMEOUT_SECONDS = 120;
     private static final long RECORD_DURATION_MILLIS = 100_000;
-    private static final String MENU_BAR_MARKER = "Navigate";
+    private static final String TOOL_WINDOW_MARKER = "Terminal";
     private static final String TAPE = """
-            Wait@60s /Navigate/
+            Wait@60s /Terminal/
             Sleep 500ms
             Ctrl+C
             """;
@@ -48,7 +48,7 @@ class VintelliTuiStartupIT {
 
     @ParameterizedTest
     @ValueSource(booleans = { false, true })
-    void theTuiStartsAndDrawsTheMenuBarThroughTapePlayback(boolean explicitTui) throws Exception {
+    void theTuiStartsAndDrawsItsToolWindowsThroughTapePlayback(boolean explicitTui) throws Exception {
         Path tape = Files.writeString(workDir.resolve("startup.tape"), TAPE);
         Path cast = workDir.resolve("startup.cast");
         Path config = Files.createDirectories(workDir.resolve("config"));
@@ -82,7 +82,7 @@ class VintelliTuiStartupIT {
         }
         assertTrue(exited, "The TUI did not exit within " + EXIT_TIMEOUT_SECONDS + "s\n" + report);
         assertTrue(Files.exists(cast), "No cast was recorded\n" + report);
-        assertTrue(castText.contains(MENU_BAR_MARKER), "The TUI never drew its menu bar\n" + report);
+        assertTrue(castText.contains(TOOL_WINDOW_MARKER), "The TUI never drew its tool windows\n" + report);
     }
 
     private static String describe(boolean exited, Process process, String stdout, String stderr, String cast) {

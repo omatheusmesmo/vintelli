@@ -24,6 +24,7 @@ public final class MenuPopup {
     private final List<String> menus;
     private final Supplier<List<MenuEntry>> entries;
     private final Function<String, String> shortcuts;
+    private final int originX;
     private int menuIndex;
     private int selected;
     private int firstVisible;
@@ -34,12 +35,40 @@ public final class MenuPopup {
 
     public MenuPopup(List<String> menus, Supplier<List<MenuEntry>> entries,
             Function<String, String> shortcuts) {
+        this(menus, entries, shortcuts, 0);
+    }
+
+    /**
+     * @param originX the column of the first menu label on the menu row, so
+     *                the popup panels line up under the labels the toolbar draws
+     */
+    public MenuPopup(List<String> menus, Supplier<List<MenuEntry>> entries,
+            Function<String, String> shortcuts, int originX) {
         this.menus = List.copyOf(menus);
         if (menus.isEmpty()) {
             throw new IllegalArgumentException("A menu bar requires at least one menu");
         }
         this.entries = entries;
         this.shortcuts = shortcuts;
+        this.originX = originX;
+    }
+
+    /**
+     * Column where the label of {@code index} starts. Every label occupies its
+     * text plus one padding cell on each side, and the popup and the toolbar
+     * both place their labels with this function.
+     */
+    public static int labelOffset(List<String> menus, int index, int originX) {
+        int offset = originX;
+        for (int menu = 0; menu < index; menu++) {
+            offset += labelWidth(menus.get(menu));
+        }
+        return offset;
+    }
+
+    /** Width of one menu label including its padding cell on each side. */
+    public static int labelWidth(String menu) {
+        return menu.length() + 2;
     }
 
     public void open(int index) {
@@ -152,10 +181,7 @@ public final class MenuPopup {
         int desiredWidth = rows.stream().mapToInt(entry -> entry.label().length()
                 + shortcuts.apply(entry.actionId()).length() + 7).max().orElse(24);
         int width = Math.min(area.width(), Math.min(60, Math.max(24, desiredWidth)));
-        int offset = 0;
-        for (int index = 0; index < menuIndex; index++) {
-            offset += menus.get(index).length() + 2;
-        }
+        int offset = labelOffset(menus, menuIndex, originX);
         int estimatedInnerWidth = Math.max(1, width - 2);
         List<PopupLine> content = popupLines(rows, estimatedInnerWidth);
         Rect panel = new Rect(area.x() + Math.min(offset, area.width() - width), area.y() + 1,

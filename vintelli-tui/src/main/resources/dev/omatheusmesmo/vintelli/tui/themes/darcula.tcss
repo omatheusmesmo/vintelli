@@ -52,10 +52,13 @@ $editor-caret-row : #323232;       /* editor scheme CARET_ROW_COLOR */
   color: $chrome-fg;
 }
 
-#menu-bar {
+#main-toolbar {
   background: $panel;
   color: $chrome-fg;
-  spacing: 2;
+}
+
+.toolbar-widget {
+  color: $chrome-fg;
 }
 
 .menu-entry {

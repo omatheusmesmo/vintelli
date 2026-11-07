@@ -74,6 +74,7 @@ public final class ShellInspectResource {
             "panel", "chrome-fg", "tab-selected-bg", "editor-bg", "editor-keyword", "editor-comment");
 
     private static final Rect VIEWPORT = new Rect(0, 0, 80, 24);
+    private static final int TOOLBAR_ROW = 0;
     private static final int TAB_ROW = 1;
     private static final int MAIN_AREA_TOP_ROW = 2;
     private static final int FIRST_EDITOR_ROW = 2;
@@ -219,6 +220,7 @@ public final class ShellInspectResource {
         liveShell.paint(Frame.forTesting(buffer), focus);
         ShellThemes themes = liveShell.themes();
         return new ShellRenderView(
+                rowText(buffer, TOOLBAR_ROW),
                 rowText(buffer, TAB_ROW),
                 rowText(buffer, MAIN_AREA_TOP_ROW),
                 mainAreaRows(buffer),
@@ -320,7 +322,9 @@ public final class ShellInspectResource {
 
     /**
      * Payload offered only while {@code vintelli.inspect.enabled} is
-     * {@code true}: the plain text of the tool window tab row, the top border
+     * {@code true}: the plain text of the main toolbar row (the menu button,
+     * the project and branch widgets and the run widget), the plain text of the
+     * tool window tab row, the top border
      * row of the project and editor panels, the whole main area (every row from
      * that top border down to the row above the status bar, joined by newlines,
      * so the project pane footer and the bottom tool windows are visible), the content rows of the editor
@@ -336,7 +340,7 @@ public final class ShellInspectResource {
      * viewport width. Leading indentation of the editor rows is kept, because
      * diff context lines start with a space.
      */
-    record ShellRenderView(String tabRow, String mainAreaTop, String mainArea, String editorArea,
+    record ShellRenderView(String toolbar, String tabRow, String mainAreaTop, String mainArea, String editorArea,
             List<EditorRunView> editorRuns, List<CaretCellView> editorCarets,
             String status, String theme, String colorLevel, Map<String, String> colors) {
     }
