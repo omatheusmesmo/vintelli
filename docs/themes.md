@@ -72,9 +72,14 @@ Themes are configurable at three levels:
   participate). The keymap binds a key to it, see the [keymap](keymap.md). Both
   themes render the whole shell and switch without a restart.
 
-The chrome palette (menu bar, tab bar, pane headers, pane separators, status bar) and the
+The chrome palette (menu bar, tab bar, pane headers, the gaps and corners between pane islands, status bar) and the
 editor palette (`$editor-*`: text, keywords, strings and comments) live in
-separate sections of each stylesheet. Shell code exposes the editor palette
+separate sections of each stylesheet. The pane islands take `$editor-bg` and the
+frame takes `$panel`. The roles that draw the frame between islands are
+`.pane-gap` (island tone over the frame tone, for the half block cells),
+`.pane-corner` (frame tone over the island tone, for the quarter block corners) and
+`.pane-header-rule` (the frame tone that underlines a pane header row).
+`$border` and `$editor-border` stay declared for user themes and draw no pane line. Shell code exposes the editor palette
 through `ShellEditorPalette` in `vintelli-api` so an editor surface follows
 the editor color scheme of its theme instead of the UI chrome.
 

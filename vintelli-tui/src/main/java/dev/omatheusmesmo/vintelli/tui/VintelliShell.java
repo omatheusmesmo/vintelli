@@ -578,7 +578,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 .bottomHeight(Constraint.length(1));
         dock.id("shell");
         layoutDock = dock;
-        return dock;
+        return new PaneGapElement(dock, themes, () -> unicodeProjectTree);
     }
 
     /**
@@ -900,7 +900,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         Column pane = Toolkit.column().id("project-pane");
         pane.add(new PaneHeader("project-panel", () -> "Project", () -> themes, this::focusMark));
         pane.add(lockedProjectList);
-        pane.add(new PaneHeader("project-read-file", context -> false, this::readFileTitle, () -> themes, () -> " "));
+        pane.add(new PaneHeader("project-read-file", context -> false, this::readFileTitle, () -> themes, () -> " ",
+                false));
         pane.fill();
         return pane;
     }
@@ -1176,7 +1177,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 new PaneHeader("editor-panel", () -> "Editor", () -> themes, this::focusMark), editor, this::focusMark));
         editorPane.add(Toolkit.lazy(this::editorContent));
         editorPane.fill();
-        paneSeparatorHorizontal = separator("pane-separator-horizontal");
+        paneSeparatorHorizontal = separator(PaneGapElement.HORIZONTAL_SEPARATOR);
+        paneSeparatorHorizontal.length(bottomWindowsHidden() ? 0 : 1);
         centerPanel = Toolkit.column().id("editor-area");
         centerPanel.add(editorPane);
         centerPanel.add(paneSeparatorHorizontal);
@@ -1186,7 +1188,6 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     private static Column separator(String id) {
         Column separator = Toolkit.column().id(id);
-        separator.addClass("pane-separator");
         separator.add(Spacer.fill());
         return separator.length(1);
     }

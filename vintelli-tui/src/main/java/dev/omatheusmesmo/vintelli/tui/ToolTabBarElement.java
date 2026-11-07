@@ -22,7 +22,8 @@ import dev.tamboui.toolkit.element.StyledElement;
  *
  * <p>The styles come from the {@code ToolTabBarElement-*} rules of the active
  * theme: {@code shortcut} for the digit, {@code tab} and {@code tab:selected}
- * for the title and {@code underline} for the selection row.
+ * for the title and {@code underline} for the selection row. The label row is
+ * underlined in the frame tone of {@code header-rule}.
  */
 final class ToolTabBarElement extends StyledElement<ToolTabBarElement> {
 
@@ -103,6 +104,8 @@ final class ToolTabBarElement extends StyledElement<ToolTabBarElement> {
             }
             visible.add(new Slot(index, start, x));
         }
+        buffer.setStyle(new Rect(area.x(), labelRow, area.width(), 1),
+                PaneGapElement.headerUnderline(context.childStyle("header-rule").fg().orElse(null)));
         slots = List.copyOf(visible);
     }
 
