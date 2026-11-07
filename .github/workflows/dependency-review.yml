@@ -34,5 +34,6 @@ jobs:
           allow-dependencies-licenses: >-
             pkg:maven/io.quarkus.platform/quarkus-bom,
             pkg:maven/io.quarkus.platform/quarkus-maven-plugin,
-            pkg:maven/io.netty/netty-bom
+            pkg:maven/io.netty/netty-bom,
+            pkg:maven/org.jline/jline
           comment-summary-in-pr: on-failure
