@@ -34,8 +34,7 @@ java -jar vintelli-app/target/quarkus-app/quarkus-run.jar --tui   # TUI (real te
 
 The TUI writes no log lines to the terminal. Add `--debug` (or set
 `VINTELLI_DEBUG=1`) to turn on `DEBUG` logging for `dev.omatheusmesmo` and the
-log file; the path is printed on stderr and documented in the README
-("Logging").
+log file; the path is printed on stderr and documented in docs/logging.md.
 
 Run one module's tests:
 

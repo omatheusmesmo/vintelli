@@ -13,10 +13,10 @@ import dev.tamboui.style.Color.Rgb;
  * {@code Color.indexedToRgb} reports them. Distance is the sum of the squared
  * channel differences (Euclidean); the scan keeps the first strict minimum, so
  * a tie stays on the lower index. The squared distance is the metric that
- * reproduces every index the README table documents; Chebyshev and Manhattan
+ * reproduces every index the palette table in docs/themes.md documents; Chebyshev and Manhattan
  * do not.
  *
- * <p>The three README rows whose documented index is below 16 are recomputed
+ * <p>The three rows of the palette table in docs/themes.md whose documented index is below 16 are recomputed
  * here: white leaves 15 for 231, {@code #3574F0} leaves 12 for 69 and
  * {@code #7A7E85} leaves 8 for 244.
  */

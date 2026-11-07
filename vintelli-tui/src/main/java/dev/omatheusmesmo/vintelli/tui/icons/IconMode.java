@@ -14,7 +14,7 @@ import java.util.Map;
  * WezTerm); every other terminal (JetBrains IDE terminal, VS Code, iTerm2,
  * Windows Terminal, plain {@code xterm} via SSH and so on) gets the ASCII face
  * unless the user opts in with {@code vintelli.icons=nerd}. The reasons are
- * documented in the README: on a terminal without the patched font, glyphs from
+ * documented in docs/file-icons.md: on a terminal without the patched font, glyphs from
  * the private use area render as tofu boxes, empty cells or overlapping
  * characters whose advance width varies per terminal, while ASCII markers and
  * colors stay readable everywhere.

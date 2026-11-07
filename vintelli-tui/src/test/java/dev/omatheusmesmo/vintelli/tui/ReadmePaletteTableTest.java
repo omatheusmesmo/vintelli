@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Pins the index column of the palette table in the README against
+ * Pins the index column of the palette table in docs/themes.md against
  * {@link PaletteDowngrade}: every row documents the hex value of a variable
  * for both shipped themes plus the index the shell serves it as when it runs
  * without truecolor, so a reader who compares the table with a 256 color
@@ -24,16 +24,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class ReadmePaletteTableTest {
 
-    private static final Path README = Path.of("..", "README.md");
+    private static final Path README = Path.of("..", "docs", "themes.md");
     private static final int TABLE_ROWS = 13;
 
     @Test
     void everyDocumentedIndexIsTheIndexOfTheDowngrade() {
         for (Row row : readmeRows()) {
             assertEquals(indexOf(row.darculaHex()), row.darculaIndex(),
-                    "the README documents the darcula index of '" + row.variable() + "'");
+                    "docs/themes.md documents the darcula index of '" + row.variable() + "'");
             assertEquals(indexOf(row.darkHex()), row.darkIndex(),
-                    "the README documents the dark index of '" + row.variable() + "'");
+                    "docs/themes.md documents the dark index of '" + row.variable() + "'");
         }
     }
 

@@ -17,7 +17,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * Pins the IntelliJ reference column of the keymap table in the README against
+ * Pins the IntelliJ reference column of the keymap table in docs/keymap.md against
  * the action catalog of the shell: the command palette and the help overlay
  * show the catalog value, so a reader who compares the table with the running
  * application sees the same reference. Reading the file instead of a second
@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  */
 class ReadmeKeymapTableTest {
 
-    private static final Path README = Path.of("..", "README.md");
+    private static final Path README = Path.of("..", "docs", "keymap.md");
     private static final int TABLE_ROWS = 5;
     private static final int COMPARABLE_ROWS = 3;
     private static final String NO_REFERENCE = "-";
@@ -47,7 +47,7 @@ class ReadmeKeymapTableTest {
         for (Map.Entry<String, String> entry : documented.entrySet()) {
             String expected = NO_REFERENCE.equals(entry.getValue()) ? "" : entry.getValue();
             assertEquals(expected, intellijReference(keymap, entry.getKey()),
-                    "the README documents the IntelliJ reference of '" + entry.getKey() + "'");
+                    "docs/keymap.md documents the IntelliJ reference of '" + entry.getKey() + "'");
         }
     }
 
@@ -66,7 +66,7 @@ class ReadmeKeymapTableTest {
                 .map(KeyAction::intellijShortcut)
                 .findFirst()
                 .orElseThrow(() -> new AssertionError(
-                        "the README documents '" + actionId + "', which is not in the action catalog"));
+                        "docs/keymap.md documents '" + actionId + "', which is not in the action catalog"));
     }
 
     private static List<Row> readmeRows() {
@@ -98,7 +98,7 @@ class ReadmeKeymapTableTest {
                 return index;
             }
         }
-        throw new AssertionError("the README has to document the keymap table with its three columns");
+        throw new AssertionError("docs/keymap.md has to document the keymap table with its three columns");
     }
 
     private static List<String> lines() {

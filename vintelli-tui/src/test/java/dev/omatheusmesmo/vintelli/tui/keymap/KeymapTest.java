@@ -127,7 +127,7 @@ class KeymapTest {
         assertEquals("Double Shift", searchEverywhere.intellijShortcut());
         KeyAction keymapHelp = actionById(keymap, KEYMAP_HELP);
         assertEquals("F1", keymapHelp.intellijShortcut(),
-                "the IntelliJ reference of the help overlay has to match the README row");
+                "the IntelliJ reference of the help overlay has to match the row of docs/keymap.md");
         KeyAction run = actionById(keymap, "ActivateRunToolWindow");
         assertEquals("Alt+4", run.intellijShortcut());
         for (KeyAction action : keymap.actions()) {
