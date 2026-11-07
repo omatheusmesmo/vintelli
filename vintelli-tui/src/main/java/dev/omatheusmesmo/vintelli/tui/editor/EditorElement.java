@@ -31,6 +31,8 @@ import dev.tamboui.toolkit.elements.TextElement;
 import dev.tamboui.toolkit.event.EventResult;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
+import dev.tamboui.tui.event.MouseEvent;
+import dev.tamboui.tui.event.MouseEventKind;
 import dev.tamboui.widgets.input.TextAreaState;
 
 import java.util.ArrayList;
@@ -49,6 +51,7 @@ final class EditorElement implements Element {
     private static final String CURRENT_LINE_NUMBER_ROLE = "editor-line-number-current";
     private static final String CARET_ROLE = "editor-caret";
     private static final List<String> TYPING_FOCUS_IDS = List.of(BuiltinEditor.TEXT_AREA_ID, "editor-panel", "editor-content");
+    private static final int WHEEL_STEP = 3;
 
     private final BuiltinEditor editor;
     private final TextAreaElement textArea = Toolkit.textArea();
@@ -56,6 +59,9 @@ final class EditorElement implements Element {
     private final NavigationBarElement navigationBar = new NavigationBarElement();
     private final EditorTabBarElement tabBar = new EditorTabBarElement();
     private Rect renderedArea = Rect.ZERO;
+    private Rect bodyArea = Rect.ZERO;
+    private Rect textBody = Rect.ZERO;
+    private EditorDocument dragDocument;
 
     EditorElement(BuiltinEditor editor) {
         this.editor = editor;
@@ -104,7 +110,13 @@ final class EditorElement implements Element {
 
         @Override
         protected void renderContent(Frame frame, Rect area, RenderContext context) {
-            textArea.render(frame, area, context);
+            textBody = area;
+            EditorDocument document = editor.document();
+            if (document == null) {
+                textArea.render(frame, area, context);
+            } else {
+                document.paintViewport(area.height(), () -> textArea.render(frame, area, context));
+            }
             paintCaretRow(frame.buffer(), area);
             if (TYPING_FOCUS_IDS.stream().anyMatch(context::isFocused)) {
                 paintCaret(frame.buffer(), area, context);
@@ -197,8 +209,14 @@ final class EditorElement implements Element {
 
     @Override public void render(Frame frame, Rect area, RenderContext context) {
         synchronized (editor) {
-            renderedArea = area;
             EditorDocument document = editor.document();
+            if (!area.equals(renderedArea)) {
+                dragDocument = null;
+                if (document != null) { document.requestReveal(); }
+            }
+            renderedArea = area;
+            textBody = Rect.ZERO;
+            bodyArea = Rect.ZERO;
             Column column = Toolkit.column().id("editor-document");
             if (document == null) {
                 column.add(navigationBar);
@@ -208,7 +226,10 @@ final class EditorElement implements Element {
                 Row body = Toolkit.row().fill();
                 int gutterWidth = Integer.toString(document.lineCount()).length() + 3;
                 int bodyHeight = Math.max(0, area.height() - (navigationBar.hasSegments() ? 1 : 0) - 1);
-                document.state().ensureCursorVisible(bodyHeight, Math.max(0, area.width() - gutterWidth));
+                if (document.consumeReveal()) {
+                    document.state().ensureCursorVisible(bodyHeight, Math.max(0, area.width() - gutterWidth));
+                }
+                bodyArea = new Rect(area.x(), area.y() + (navigationBar.hasSegments() ? 1 : 0), area.width(), bodyHeight);
                 body.add(Toolkit.richText(gutter(document, bodyHeight, gutterWidth, context))
                         .length(gutterWidth).id("editor-gutter"));
                 document.highlighter().editorPalette(editor.palette());
@@ -280,6 +301,62 @@ final class EditorElement implements Element {
         return dot < 0 ? "text" : file.substring(dot + 1).toLowerCase(Locale.ROOT);
     }
 
+    boolean handleMouse(MouseEvent event) {
+        synchronized (editor) {
+            EditorDocument document = editor.document();
+            if (document == null || dragDocument != null && dragDocument != document) {
+                dragDocument = null;
+                return false;
+            }
+            if (dragDocument != null) {
+                if (event.isRelease()) {
+                    dragDocument = null;
+                    return true;
+                }
+                if (event.kind() == MouseEventKind.DRAG && event.isLeftButton()) {
+                    TextPosition at = textPosition(document, event.x(), event.y());
+                    document.pointerDrag(at.row(), at.column());
+                    return true;
+                }
+                dragDocument = null;
+            }
+            if (event.isPress() && event.isLeftButton() && textBody.contains(event.x(), event.y())) {
+                TextPosition at = textPosition(document, event.x(), event.y());
+                document.pointerPress(at.row(), at.column());
+                dragDocument = document;
+                editor.requestFocus();
+                return true;
+            }
+            if (event.isScroll() && bodyArea.contains(event.x(), event.y())) {
+                if (event.kind() == MouseEventKind.SCROLL_UP) {
+                    document.scrollBy(-WHEEL_STEP, textBody.height());
+                    return true;
+                }
+                if (event.kind() == MouseEventKind.SCROLL_DOWN) {
+                    document.scrollBy(WHEEL_STEP, textBody.height());
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    void cancelPointer() {
+        dragDocument = null;
+    }
+
+    /** The view row and character column under a screen cell, clamped to the visible text area. */
+    private TextPosition textPosition(EditorDocument document, int x, int y) {
+        TextAreaState state = document.state();
+        int screenRow = Math.clamp(y - textBody.y(), 0, Math.max(0, textBody.height() - 1));
+        int row = Math.clamp(state.scrollRow() + screenRow, 0, state.lineCount() - 1);
+        int cell = Math.clamp(x - textBody.x(), 0, Math.max(0, textBody.width() - 1));
+        return new TextPosition(row, TextCellMap.charColumnAt(state.getLine(row), state.scrollCol(), cell));
+    }
+
+    private record TextPosition(int row, int column) {
+    }
+
     @Override public EventResult handleKeyEvent(KeyEvent event, boolean focused) {
         synchronized (editor) {
             if (editor.closeConfirmationPending()) {
@@ -293,6 +370,9 @@ final class EditorElement implements Element {
             // Bind the current document on the input path too; events can arrive
             // before the first render or immediately after a tab switch.
             textArea.state(document.state());
+            document.requestReveal();
+            int rowBefore = document.row();
+            int columnBefore = document.column();
             EventResult[] resultHolder = { EventResult.UNHANDLED };
             document.mutate(() -> {
                 // The widget edits TextAreaState directly, so wrap the event itself
@@ -300,6 +380,9 @@ final class EditorElement implements Element {
                 resultHolder[0] = textArea.handleKeyEvent(event, focused);
             });
             boolean handled = resultHolder[0].isHandled();
+            if (rowBefore != document.row() || columnBefore != document.column()) {
+                document.dropPointerSelection();
+            }
             if (handled) { editor.changed(); }
             return handled ? EventResult.HANDLED : EventResult.UNHANDLED;
         }

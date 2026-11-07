@@ -111,6 +111,36 @@ public final class EditorInspectResource {
         return Response.ok(editor.get().activeDocument().orElseThrow()).build();
     }
 
+    @POST
+    @Path("/pointer")
+    public Response pointer(@QueryParam("gesture") String gesture, @QueryParam("x") int x, @QueryParam("y") int y,
+            @QueryParam("width") @DefaultValue("80") int width, @QueryParam("height") @DefaultValue("24") int height) {
+        requireEnabled();
+        BuiltinEditor.PointerGesture parsed;
+        try {
+            parsed = BuiltinEditor.PointerGesture.valueOf(gesture == null ? "" : gesture);
+        } catch (IllegalArgumentException unknown) {
+            return rejected("The gesture must be PRESS, DRAG, RELEASE, SCROLL_UP or SCROLL_DOWN");
+        }
+        if (width < 4 || width > 400 || height < 3 || height > 200) {
+            return rejected("The viewport must be 4 to 400 columns and 3 to 200 rows");
+        }
+        if (x < 0 || x >= width || y < 0 || y >= height) {
+            return rejected("The pointer must lie inside the viewport");
+        }
+        if (editor.get().activeDocument().isEmpty()) {
+            return rejected("No file is open");
+        }
+        return Response.ok(editor.get().routePointer(parsed, x, y, width, height).orElseThrow()).build();
+    }
+
+    @GET
+    @Path("/pointer")
+    public BuiltinEditor.PointerState pointerState() {
+        requireEnabled();
+        return editor.get().pointerState().orElseThrow(NotFoundException::new);
+    }
+
     private void requireEnabled() {
         if (!enabled) {
             throw new NotFoundException();

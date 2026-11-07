@@ -21,6 +21,7 @@ import dev.tamboui.layout.Rect;
 import dev.tamboui.layout.Size;
 import dev.tamboui.style.Color;
 import dev.tamboui.terminal.Frame;
+import dev.tamboui.text.CharWidth;
 import dev.tamboui.terminal.TestBackend;
 import dev.tamboui.toolkit.app.ToolkitPilot;
 import dev.tamboui.toolkit.app.ToolkitRunner;
@@ -1128,6 +1129,306 @@ class VintelliShellTest {
     }
 
     @Test
+    void pilotClickPlacesTheCaretOnTheClickedCharacterOfAScrolledDocument() throws Exception {
+        EditorShell fixture = openEditorShell("Scrolled.txt", numberedLines(40), 30);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect text = pilot.findElement(BuiltinEditor.TEXT_AREA_ID);
+            int scrollRow = fixture.editor().pointerState().orElseThrow().scrollRow();
+            assertTrue(scrollRow > 0, "the document scrolled to keep row 30 visible");
+
+            pilot.click(text.x() + 3, text.y() + 2);
+            settle(pilot);
+
+            BuiltinEditor.PointerState caret = fixture.editor().pointerState().orElseThrow();
+            assertEquals(scrollRow + 2, caret.line(), "the third visible row is the clicked document row");
+            assertEquals(3, caret.column(), "the fourth cell of line 'line 33' is the e after lin");
+            assertEquals("", caret.selectedText());
+            assertEquals(BuiltinEditor.TEXT_AREA_ID, test.runner().focusManager().focusedId(),
+                    "a text click focuses the editor so typing lands there");
+
+            pilot.press('X');
+            settle(pilot);
+            assertTrue(fixture.editor().activeDocument().orElseThrow().text().contains("linXe "),
+                    "typing after the click inserts at the clicked character");
+        }
+    }
+
+    @Test
+    void pilotGutterAndBarPressesAreNotTextClicks() throws Exception {
+        EditorShell fixture = openEditorShell("Gutter.txt", numberedLines(5), 0);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect text = pilot.findElement(BuiltinEditor.TEXT_AREA_ID);
+            pilot.click(text.x() + 2, text.y() + 1);
+            settle(pilot);
+            BuiltinEditor.PointerState before = fixture.editor().pointerState().orElseThrow();
+
+            pilot.click(text.x() - 1, text.y() + 3);
+            settle(pilot);
+            pilot.click(text.x() + 4, text.y() - 1);
+            settle(pilot);
+
+            assertEquals(before, fixture.editor().pointerState().orElseThrow(),
+                    "gutter and bar presses leave the caret and the selection where they were");
+        }
+    }
+
+    @Test
+    void pilotDragSelectsAcrossLinesAndReleaseEndsTheDrag() throws Exception {
+        EditorShell fixture = openEditorShell("Drag.txt", "alpha\nbravo\ncharlie\n", 0);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect text = pilot.findElement(BuiltinEditor.TEXT_AREA_ID);
+
+            pilot.mousePress(MouseButton.LEFT, text.x() + 1, text.y());
+            test.drag(MouseEvent.drag(MouseButton.LEFT, text.x() + 3, text.y() + 2));
+            pilot.mouseRelease(MouseButton.LEFT, text.x() + 3, text.y() + 2);
+            settle(pilot);
+
+            BuiltinEditor.PointerState selected = fixture.editor().pointerState().orElseThrow();
+            assertEquals("lpha\nbravo\ncha", selected.selectedText(), "the selection spans three lines");
+            assertEquals(0, selected.anchorLine());
+            assertEquals(1, selected.anchorColumn());
+            assertEquals(2, selected.line());
+            assertEquals(3, selected.column());
+            assertFalse(fixture.editor().activeDocument().orElseThrow().dirty(), "selecting does not dirty the document");
+
+            test.drag(MouseEvent.drag(MouseButton.LEFT, text.x() + 5, text.y() + 1));
+            settle(pilot);
+            assertEquals(selected, fixture.editor().pointerState().orElseThrow(),
+                    "a drag after the release does nothing");
+        }
+    }
+
+    @Test
+    void pilotDragKeepsTheAnchorAfterWheelScrollingAndClampsToTheVisibleText() throws Exception {
+        EditorShell fixture = openEditorShell("Long.txt", numberedLines(40), 0);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect text = pilot.findElement(BuiltinEditor.TEXT_AREA_ID);
+            test.drag(MouseEvent.scrollDown(text.x() + 5, text.y() + 1));
+            settle(pilot);
+            int scrolled = fixture.editor().pointerState().orElseThrow().scrollRow();
+            assertEquals(3, scrolled, "one wheel step moves the viewport by three rows");
+
+            pilot.mousePress(MouseButton.LEFT, text.x() + 1, text.y() + 1);
+            test.drag(MouseEvent.drag(MouseButton.LEFT, text.x() + 2, text.y() + text.height() + 2));
+            pilot.mouseRelease(MouseButton.LEFT, text.x() + 2, text.y() + text.height() + 2);
+            settle(pilot);
+
+            BuiltinEditor.PointerState selected = fixture.editor().pointerState().orElseThrow();
+            assertEquals(scrolled + 1, selected.anchorLine(), "the anchor is the row under the press after scrolling");
+            assertEquals(scrolled + text.height() - 1, selected.line(),
+                    "a drag below the text clamps to the last visible row");
+            assertEquals(2, selected.column(), "the column follows the pointer x inside the text area");
+            assertTrue(selected.selectedText().startsWith("ine "), selected.selectedText());
+        }
+    }
+
+    @Test
+    void pilotResizeAndTabSwitchEndAPointerDragWithoutChangingTheOtherDocument() throws Exception {
+        EditorShell fixture = openEditorShell("First.txt", "first line\nfirst two\n", 0);
+        Path second = project.resolve("Second.txt");
+        Files.writeString(second, "second line\nsecond two\n");
+        fixture.editor().open(new OpenRequest(second, 0));
+        fixture.editor().selectTab(0);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect text = pilot.findElement(BuiltinEditor.TEXT_AREA_ID);
+
+            pilot.mousePress(MouseButton.LEFT, text.x() + 1, text.y());
+            test.drag(MouseEvent.drag(MouseButton.LEFT, text.x() + 3, text.y()));
+            settle(pilot);
+            BuiltinEditor.PointerState beforeResize = fixture.editor().pointerState().orElseThrow();
+            assertEquals("ir", beforeResize.selectedText());
+
+            test.resize(VIEWPORT.width() + 6, VIEWPORT.height());
+            test.drag(MouseEvent.drag(MouseButton.LEFT, text.x() + 5, text.y() + 1));
+            settle(pilot);
+            assertEquals(beforeResize, fixture.editor().pointerState().orElseThrow(),
+                    "a resize ends the drag, so later drags do nothing");
+
+            fixture.editor().selectTab(1);
+            BuiltinEditor.PointerState secondBefore = fixture.editor().pointerState().orElseThrow();
+            test.drag(MouseEvent.drag(MouseButton.LEFT, text.x() + 4, text.y() + 1));
+            settle(pilot);
+            assertEquals(secondBefore, fixture.editor().pointerState().orElseThrow(),
+                    "a tab switch ends the drag, so the other document keeps its caret");
+        }
+    }
+
+    @Test
+    void pilotSplitterPressDoesNotStartATextSelection() throws Exception {
+        EditorShell fixture = openEditorShell("Split.txt", "alpha\nbravo\n", 0);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect text = pilot.findElement(BuiltinEditor.TEXT_AREA_ID);
+            Rect separator = pilot.findElement("pane-separator-vertical");
+            int projectWidth = pilot.findElement("project-panel").width();
+
+            pilot.mousePress(MouseButton.LEFT, separator.x(), text.y() + 1);
+            test.drag(MouseEvent.drag(MouseButton.LEFT, separator.x() + 4, text.y() + 1));
+            pilot.mouseRelease(MouseButton.LEFT, separator.x() + 4, text.y() + 1);
+            settle(pilot);
+
+            assertEquals(projectWidth + 4, pilot.findElement("project-panel").width(), "the splitter still resizes");
+            assertEquals("", fixture.editor().pointerState().orElseThrow().selectedText(),
+                    "a drag that started on the splitter selects no text");
+        }
+    }
+
+    @Test
+    void pilotWheelScrollsThePointedEditorAcrossFramesWithoutTouchingTheText() throws Exception {
+        EditorShell fixture = openEditorShell("Wheel.txt", numberedLines(40), 0);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect text = pilot.findElement(BuiltinEditor.TEXT_AREA_ID);
+            String original = fixture.editor().activeDocument().orElseThrow().text();
+            BuiltinEditor.PointerState caret = fixture.editor().pointerState().orElseThrow();
+            int lastScroll = 41 - text.height();
+
+            test.drag(MouseEvent.scrollDown(text.x() + 5, text.y() + 1));
+            settle(pilot);
+            assertEquals(3, fixture.editor().pointerState().orElseThrow().scrollRow());
+            for (int frame = 0; frame < 3; frame++) {
+                test.drag(MouseEvent.move(text.x() + 5, text.y() + 1));
+            }
+            assertEquals(3, fixture.editor().pointerState().orElseThrow().scrollRow(),
+                    "the viewport stays where the wheel left it across frames");
+
+            test.drag(MouseEvent.scrollUp(text.x() + 5, text.y() + 1));
+            test.drag(MouseEvent.scrollUp(text.x() + 5, text.y() + 1));
+            test.drag(MouseEvent.scrollUp(text.x() + 5, text.y() + 1));
+            test.drag(MouseEvent.scrollUp(text.x() + 5, text.y() + 1));
+            settle(pilot);
+            assertEquals(0, fixture.editor().pointerState().orElseThrow().scrollRow(), "scrolling up stops at the first row");
+
+            for (int step = 0; step < 30; step++) {
+                test.drag(MouseEvent.scrollDown(text.x() + 5, text.y() + 1));
+            }
+            settle(pilot);
+            assertEquals(lastScroll, fixture.editor().pointerState().orElseThrow().scrollRow(),
+                    "scrolling down stops once the last line is at the bottom");
+
+            BuiltinEditor.PointerState after = fixture.editor().pointerState().orElseThrow();
+            assertEquals(caret.line(), after.line(), "the wheel does not move the caret");
+            assertEquals(caret.column(), after.column());
+            assertEquals(original, fixture.editor().activeDocument().orElseThrow().text());
+            assertFalse(fixture.editor().activeDocument().orElseThrow().dirty(), "the wheel does not dirty the document");
+            assertFalse(fixture.editor().undo(), "the wheel adds no undo step");
+        }
+    }
+
+    @Test
+    void pilotWheelOverTheBottomToolWindowLeavesTheEditorAlone() throws Exception {
+        EditorShell fixture = openEditorShell("Tools.txt", numberedLines(40), 0);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect text = pilot.findElement(BuiltinEditor.TEXT_AREA_ID);
+            assertTrue(text.y() + text.height() <= VIEWPORT.height() - 3, "the text area sits above the tool windows");
+
+            test.drag(MouseEvent.scrollDown(text.x() + 5, VIEWPORT.height() - 3));
+            settle(pilot);
+
+            assertEquals(0, fixture.editor().pointerState().orElseThrow().scrollRow(),
+                    "a wheel over a tool window does not scroll the editor");
+        }
+    }
+
+    @Test
+    void pilotKeyAfterAWheelScrollBringsTheCaretBackIntoView() throws Exception {
+        EditorShell fixture = openEditorShell("Reveal.txt", numberedLines(40), 0);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect text = pilot.findElement(BuiltinEditor.TEXT_AREA_ID);
+            pilot.click(text.x() + 2, text.y() + 1);
+            settle(pilot);
+            for (int step = 0; step < 10; step++) {
+                test.drag(MouseEvent.scrollDown(text.x() + 5, text.y() + 1));
+            }
+            settle(pilot);
+            BuiltinEditor.PointerState scrolled = fixture.editor().pointerState().orElseThrow();
+            assertTrue(scrolled.scrollRow() > scrolled.line(), "the wheel moved the caret row out of view");
+
+            pilot.press(KeyCode.DOWN);
+            settle(pilot);
+
+            BuiltinEditor.PointerState moved = fixture.editor().pointerState().orElseThrow();
+            assertEquals(scrolled.line() + 1, moved.line(), "the arrow key moves the caret one row down");
+            assertTrue(moved.line() >= moved.scrollRow() && moved.line() < moved.scrollRow() + text.height(),
+                    "the key brings the caret back into the viewport");
+        }
+    }
+
+    @Test
+    void pilotClickMapsThroughAFoldedImportBlock() throws Exception {
+        String source = "package a;\n\nimport x.A;\nimport x.B;\n\nclass C {\n  int v;\n}\n";
+        EditorShell fixture = openEditorShell("Folded.java", source, 0);
+        assertTrue(fixture.editor().toggleImportFold(), "the import block folds");
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect text = pilot.findElement(BuiltinEditor.TEXT_AREA_ID);
+
+            pilot.click(text.x() + 1, text.y() + 2);
+            settle(pilot);
+            assertTrue(test.renderedFrame().contains("import ..."), "a click on the placeholder keeps the block folded");
+
+            pilot.click(text.x() + 1, text.y() + 4);
+            settle(pilot);
+            BuiltinEditor.PointerState caret = fixture.editor().pointerState().orElseThrow();
+            assertEquals(5, caret.line(), "the class line, below the folded rows and the blank row, is document row 5");
+            assertEquals(1, caret.column());
+        }
+    }
+
+    @Test
+    void pilotClicksOnEmptyLinesAndBelowTheLastLineClampToTheDocument() throws Exception {
+        EditorShell fixture = openEditorShell("Ends.txt", "abc\n\nxyz\n", 0);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect text = pilot.findElement(BuiltinEditor.TEXT_AREA_ID);
+
+            pilot.click(text.x() + 2, text.y() + 1);
+            settle(pilot);
+            assertEquals(new BuiltinEditor.PointerState(1, 0, 1, 0, "", 0, 0), fixture.editor().pointerState().orElseThrow(),
+                    "an empty line places the caret at its start");
+
+            pilot.click(text.x() + 9, text.y());
+            settle(pilot);
+            assertEquals(new BuiltinEditor.PointerState(0, 3, 0, 3, "", 0, 0), fixture.editor().pointerState().orElseThrow(),
+                    "a click past the end of a line places the caret at its end");
+
+            pilot.click(text.x() + 1, text.y() + text.height() - 1);
+            settle(pilot);
+            assertEquals(new BuiltinEditor.PointerState(3, 0, 3, 0, "", 0, 0), fixture.editor().pointerState().orElseThrow(),
+                    "a click below the last line lands on the final line");
+        }
+    }
+
+    @Test
+    void pilotClickOnAWideCharacterAndAfterATabUsesTheRenderedCell() throws Exception {
+        String line = "中文ab\tc";
+        EditorShell fixture = openEditorShell("Cells.txt", line + "\n", 0);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect text = pilot.findElement(BuiltinEditor.TEXT_AREA_ID);
+
+            pilot.click(text.x() + 3, text.y());
+            settle(pilot);
+            assertEquals(1, fixture.editor().pointerState().orElseThrow().column(), "the second cell of 文 selects 文");
+
+            pilot.click(text.x() + 4, text.y());
+            settle(pilot);
+            assertEquals(2, fixture.editor().pointerState().orElseThrow().column(), "the cell after 文 selects a");
+
+            pilot.click(text.x() + CharWidth.of("中文ab\t"), text.y());
+            settle(pilot);
+            assertEquals(5, fixture.editor().pointerState().orElseThrow().column(), "the cell after the tab selects c");
+        }
+    }
+
+    @Test
     void projectSplitterKeepsTheMinimumEditorWidthBesideTheRightToolStripe() throws Exception {
         ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
         VintelliShell shell = new VintelliShell(windowsWithAcp(), new ShellState(), defaultThemes(), store);
@@ -1846,6 +2147,29 @@ class VintelliShellTest {
         @Override public String identifier() { return "branch-test"; }
         @Override public ProviderHealth health() { return ProviderHealth.available(); }
         @Override public String provenance() { return "temporary branch test provider"; }
+    }
+
+    private record EditorShell(VintelliShell shell, BuiltinEditor editor) {
+    }
+
+    private EditorShell openEditorShell(String name, String text, int row) throws IOException {
+        Path file = project.resolve(name);
+        Files.writeString(file, text);
+        ShellThemes themes = defaultThemes();
+        BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
+        assertFalse(editor.open(new OpenRequest(file, row)).isFailure());
+        List<ToolWindow> windows = new ArrayList<>(defaultWindows());
+        windows.add(editor);
+        VintelliShell shell = new VintelliShell(new ToolWindowRegistry(windows).toolWindows(), new ShellState(), themes);
+        return new EditorShell(shell, editor);
+    }
+
+    private static String numberedLines(int count) {
+        StringBuilder text = new StringBuilder();
+        for (int line = 1; line <= count; line++) {
+            text.append("line ").append(line).append('\n');
+        }
+        return text.toString();
     }
 
     private ToolkitTestRunner runShell(VintelliShell shell) throws Exception {

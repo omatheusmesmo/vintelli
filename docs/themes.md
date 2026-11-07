@@ -3,7 +3,7 @@
 The shell rendering stack, the two shipped themes, user theme files and the palette table.
 
 The shell runs at the Toolkit level with a CSS style engine: the element
-tree of `VintelliShell` (`#shell`, `#menu-bar`, `#tool-tabs`,
+tree of `VintelliShell` (`#shell`, `#main-toolbar`, `#tool-tabs`,
 `#project-panel`, `#editor-panel`, `tool-<id>` per tool window and
 `#status-bar`) resolves every color from the active stylesheet, so no hex
 value is hardcoded in shell code. Two themes ship with the app, both

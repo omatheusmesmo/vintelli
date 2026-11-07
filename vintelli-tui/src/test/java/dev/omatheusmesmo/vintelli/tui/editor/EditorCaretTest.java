@@ -11,6 +11,8 @@ import dev.tamboui.terminal.Frame;
 import dev.tamboui.toolkit.element.DefaultRenderContext;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
+import dev.tamboui.tui.event.MouseButton;
+import dev.tamboui.tui.event.MouseEvent;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -227,6 +229,35 @@ class EditorCaretTest {
         assertCaretOn(render(editor, themes, TEXT_AREA_FOCUS), TEXT_LEFT, 1, "s");
     }
 
+    @Test
+    void aCaretKeyEndsAPointerSelectionAndItsHighlight() throws IOException {
+        ShellThemes themes = new ShellThemes("dark", (Path) null);
+        BuiltinEditor editor = open(themes, "Caret.java", "first line\nsecond line\nthird line\n", 0);
+        render(editor, themes, TEXT_AREA_FOCUS);
+        editor.handlePointer(MouseEvent.press(MouseButton.LEFT, TEXT_LEFT, 0));
+        editor.handlePointer(MouseEvent.drag(MouseButton.LEFT, TEXT_LEFT + 5, 0));
+        editor.handlePointer(MouseEvent.release(MouseButton.LEFT, TEXT_LEFT + 5, 0));
+        assertEquals("first", editor.pointerState().orElseThrow().selectedText());
+        assertTrue(reversedCells(render(editor, themes, TEXT_AREA_FOCUS)).size() > 1, "the selection is drawn");
+
+        editor.handleKey(KeyEvent.ofKey(KeyCode.DOWN));
+
+        assertEquals("", editor.pointerState().orElseThrow().selectedText());
+        assertCaretOn(render(editor, themes, TEXT_AREA_FOCUS), TEXT_LEFT + 5, 1, "d");
+    }
+
+    @Test
+    void aSmallerViewportBringsTheCaretBackIntoView() throws IOException {
+        ShellThemes themes = new ShellThemes("dark", (Path) null);
+        BuiltinEditor editor = open(themes, "Caret.java", "line\n".repeat(40), 30);
+        render(editor, themes, TEXT_AREA_FOCUS, new Rect(0, 0, 50, 40));
+
+        Buffer buffer = render(editor, themes, TEXT_AREA_FOCUS);
+
+        assertEquals(1, reversedCells(buffer).size(), "the caret stays on screen after the viewport shrinks");
+        assertEquals(30, editor.pointerState().orElseThrow().line());
+    }
+
     private BuiltinEditor open(ShellThemes themes, String name, String text, int row) throws IOException {
         Path file = project.resolve(name);
         Files.writeString(file, text);
@@ -247,13 +278,17 @@ class EditorCaretTest {
     }
 
     private static Buffer render(BuiltinEditor editor, ShellThemes themes, String focusedId) {
-        Buffer buffer = Buffer.empty(AREA);
+        return render(editor, themes, focusedId, AREA);
+    }
+
+    private static Buffer render(BuiltinEditor editor, ShellThemes themes, String focusedId, Rect area) {
+        Buffer buffer = Buffer.empty(area);
         DefaultRenderContext context = DefaultRenderContext.createEmpty();
         context.setStyleEngine(themes.engine());
         if (focusedId != null) {
             context.focusManager().setFocus(focusedId);
         }
-        editor.element().render(Frame.forTesting(buffer), AREA, context);
+        editor.element().render(Frame.forTesting(buffer), area, context);
         return buffer;
     }
 

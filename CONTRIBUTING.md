@@ -146,8 +146,10 @@ contract tests and are not automatically covered by it.
 The completed splitter interaction (#194) is covered by
 `VintelliShellTest.pilotDragsTheProjectSplitterAndPersistsTheRenderedRatio`
 and `VintelliShellTest.pilotDragsTheBottomSplitterAndHandlesResizeAndTinyCoordinates`.
-The current non-window follow-ups are #195 for editor pointer behavior and #196
-for overlay navigation and modal routing. Structure is a registered tool
+The completed editor pointer interaction (#195) is covered by
+`EditorPointerInspectTest` and the editor Pilot tests in `VintelliShellTest`.
+The current non-window follow-up is #196 for overlay navigation and modal
+routing. Structure is a registered tool
 window tracked by #197 and appears in the inventory as an incomplete component
 until its own behavior contract lands.
 

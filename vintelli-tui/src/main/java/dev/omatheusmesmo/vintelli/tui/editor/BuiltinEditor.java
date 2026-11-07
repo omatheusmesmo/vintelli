@@ -11,12 +11,15 @@ import dev.omatheusmesmo.vintelli.tui.ShellThemes;
 import dev.omatheusmesmo.vintelli.tui.ToolWindow;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
 import dev.omatheusmesmo.vintelli.tui.keymap.ConfigDirectory;
+import dev.tamboui.buffer.Buffer;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.terminal.Frame;
 import dev.tamboui.toolkit.element.DefaultRenderContext;
 import dev.tamboui.toolkit.element.Element;
 import dev.tamboui.toolkit.element.RenderContext;
 import dev.tamboui.tui.event.KeyEvent;
+import dev.tamboui.tui.event.MouseButton;
+import dev.tamboui.tui.event.MouseEvent;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
@@ -44,6 +47,13 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     public enum CloseResult { CLOSED, CONFIRM_REQUIRED, EMPTY }
     public record TabView(String file, boolean dirty, boolean active) {}
     public record DocumentView(String file, String text, int line, int column, boolean dirty) {}
+    public enum PointerGesture { PRESS, DRAG, RELEASE, SCROLL_UP, SCROLL_DOWN }
+    /**
+     * Caret, selection and viewport after pointer input. Line and column are document positions;
+     * the scroll values are the displayed view, which differs from the document after an import fold.
+     */
+    public record PointerState(int line, int column, int anchorLine, int anchorColumn, String selectedText,
+            int scrollRow, int scrollCol) {}
     public record StatusBarInfo(int line, int column, String encoding, String lineSeparator, String fileType) {}
     public static final int TAB_BAR_ROWS = EditorTabBarElement.ROWS;
     public static final String TEXT_AREA_ID = "editor-text-area";
@@ -124,6 +134,38 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     public synchronized int tabAt(int x, int y) {
         return element.tabAt(x, y);
     }
+    public synchronized boolean handlePointer(MouseEvent event) {
+        return element.handleMouse(event);
+    }
+    public synchronized void cancelPointer() {
+        element.cancelPointer();
+    }
+    public synchronized Optional<PointerState> pointerState() {
+        EditorDocument document = document();
+        if (document == null) {
+            return Optional.empty();
+        }
+        SelectionCursor selection = document.selection();
+        return Optional.of(new PointerState(document.row(), document.column(), selection.anchorRow(),
+                selection.anchorCol(), document.selectedText(), document.scrollRow(), document.scrollCol()));
+    }
+    /**
+     * Lays the active document out in a viewport of the given size, then routes one pointer gesture
+     * through {@link #handlePointer} exactly as the shell does. Used by the gated inspection surface.
+     */
+    public synchronized Optional<PointerState> routePointer(PointerGesture gesture, int x, int y, int width, int height) {
+        Rect area = new Rect(0, 0, width, height);
+        render(Frame.forTesting(Buffer.empty(area)), area);
+        MouseEvent event = switch (gesture) {
+            case PRESS -> MouseEvent.press(MouseButton.LEFT, x, y);
+            case DRAG -> MouseEvent.drag(MouseButton.LEFT, x, y);
+            case RELEASE -> MouseEvent.release(MouseButton.LEFT, x, y);
+            case SCROLL_UP -> MouseEvent.scrollUp(x, y);
+            case SCROLL_DOWN -> MouseEvent.scrollDown(x, y);
+        };
+        handlePointer(event);
+        return pointerState();
+    }
     public synchronized void menuNavigationActive(boolean active) { menuNavigationActive = active; }
     synchronized boolean menuNavigationActive() { return menuNavigationActive; }
     public synchronized Path project() { return project; }
@@ -163,6 +205,7 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
                 existing = documents.size() - 1;
             }
             active = existing;
+            cancelPointer();
             focusRequest = TEXT_AREA_ID;
             EditorDocument document = document();
             document.position(request.line(), 0);
@@ -269,6 +312,7 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     public synchronized void selectTab(int index) {
         if (documents.isEmpty()) { return; }
         active = Math.floorMod(index, documents.size());
+        cancelPointer();
         persist();
     }
 
@@ -306,6 +350,7 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     private void removeActive() {
         documents.remove(active);
         active = Math.min(active, documents.size() - 1);
+        cancelPointer();
         focusRequest = document() == null ? null : TEXT_AREA_ID;
         status = "Tab closed";
         persist();

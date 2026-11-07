@@ -205,14 +205,24 @@ for confirmation before removal. Project mutations use the configured local
 file provider; names must stay within the project and rename never replaces an
 existing entry. In the editor, `Ctrl+S` saves, `Ctrl+Z`/`Ctrl+Y` undo and redo,
 `Alt+]`/`Alt+[` switch editor tabs, and `Ctrl+W` closes a tab (dirty tabs ask
-for confirmation). `F10` opens the menu bar; menu headings also respond to
-mouse clicks, and long unavailable reasons can be scrolled with Page Up/Down.
+for confirmation). `F10` opens the menus, the menu icon at the left of the
+toolbar does the same with the mouse, and long unavailable reasons can be
+scrolled with Page Up/Down.
 The editor shows clickable project path breadcrumbs and, when an LSP provider
 returns document symbols, the containing type and method. `Alt+Home` focuses
 the breadcrumbs; arrows move between segments, Enter selects one, and Escape
 returns focus to the editor.
 `Ctrl+O` opens Go to File, `Alt+F` searches file contents, `F12` requests a
 definition, `Alt+U` requests references, and `F8` moves to the next diagnostic, and `Alt+I` folds or unfolds the import block.
+In the editor, a left click places the caret on the character under the pointer
+and focuses the editor. Drag with the left button to select text; releasing ends
+the drag, and moving the caret or editing clears the selection. The mouse wheel
+scrolls the document under the pointer by three rows without moving the caret,
+and the next key press brings the caret back into view. Clicks on the line
+numbers, the tab bar and the breadcrumbs do not move the caret. The editor has
+no copy action yet, so this selection stays inside Vintelli. Vintelli captures
+the mouse: to select with the terminal itself, hold its bypass modifier, usually
+Shift (Option in iTerm2).
 In Go to File, Find in Files and Search Everywhere, click a result to select it,
 press Enter or double-click to activate it, and use the mouse wheel to scroll.
 Clicking outside an overlay dismisses it without triggering controls underneath.
