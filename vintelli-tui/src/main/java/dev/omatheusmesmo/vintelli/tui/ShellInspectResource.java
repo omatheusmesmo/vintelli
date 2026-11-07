@@ -201,6 +201,7 @@ public final class ShellInspectResource {
         return new ShellRenderView(
                 rowText(buffer, TAB_ROW),
                 rowText(buffer, MAIN_AREA_TOP_ROW),
+                mainAreaRows(buffer),
                 editorRows(buffer),
                 editorRuns(buffer),
                 rowText(buffer, STATUS_ROW).strip(),
@@ -277,6 +278,17 @@ public final class ShellInspectResource {
         return new FileIconsView(icons.mode().name().toLowerCase(Locale.ROOT), resolved);
     }
 
+    private static String mainAreaRows(Buffer buffer) {
+        StringBuilder text = new StringBuilder();
+        for (int row = MAIN_AREA_TOP_ROW; row < STATUS_ROW; row++) {
+            if (row > MAIN_AREA_TOP_ROW) {
+                text.append('\n');
+            }
+            text.append(rowText(buffer, row));
+        }
+        return text.toString();
+    }
+
     private static String rowText(Buffer buffer, int row) {
         StringBuilder text = new StringBuilder();
         for (int x = 0; x < buffer.width(); x++) {
@@ -288,7 +300,9 @@ public final class ShellInspectResource {
     /**
      * Payload offered only while {@code vintelli.inspect.enabled} is
      * {@code true}: the plain text of the tool window tab row, the top border
-     * row of the project and editor panels, the content rows of the editor
+     * row of the project and editor panels, the whole main area (every row from
+     * that top border down to the row above the status bar, joined by newlines,
+     * so the project pane footer and the bottom tool windows are visible), the content rows of the editor
      * panel joined by newlines, the {@link EditorRunView} foreground color
      * runs of those rows, the status row, the active theme name, the color
      * depth the active theme renders with and the {@link #INSPECTED_VARIABLES}
@@ -300,7 +314,8 @@ public final class ShellInspectResource {
      * viewport width. Leading indentation of the editor rows is kept, because
      * diff context lines start with a space.
      */
-    record ShellRenderView(String tabRow, String mainAreaTop, String editorArea, List<EditorRunView> editorRuns,
+    record ShellRenderView(String tabRow, String mainAreaTop, String mainArea, String editorArea,
+            List<EditorRunView> editorRuns,
             String status, String theme, String colorLevel, Map<String, String> colors) {
     }
 

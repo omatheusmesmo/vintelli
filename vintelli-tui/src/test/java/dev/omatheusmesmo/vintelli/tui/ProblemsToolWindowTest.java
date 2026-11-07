@@ -223,7 +223,12 @@ class ProblemsToolWindowTest {
         @Override public CapabilitySelection<CodeActionCapability> codeActions() { return unavailable(CapabilityType.CODE_ACTION); }
         @Override public CapabilitySelection<EditorBridge> editorBridge() { return unavailable(CapabilityType.EDITOR_BRIDGE); }
         @Override public CapabilitySelection<VersionControlCapability> versionControl() { return unavailable(CapabilityType.VERSION_CONTROL); }
-        @Override public List<CapabilityStatus> snapshot() { return List.of(); }
+        @Override public List<CapabilityStatus> snapshot() {
+            return diagnostics == null
+                    ? List.of(CapabilityStatus.unavailable(CapabilityType.DIAGNOSTICS, "not available in test"))
+                    : List.of(CapabilityStatus.available(CapabilityType.DIAGNOSTICS, diagnostics.identifier(),
+                            diagnostics.provenance(), List.of()));
+        }
 
         private static <T> CapabilitySelection<T> unavailable(CapabilityType capability) {
             return CapabilitySelection.unavailable(capability, "not available in test");

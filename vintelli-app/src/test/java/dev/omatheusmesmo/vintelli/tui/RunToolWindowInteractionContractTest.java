@@ -141,7 +141,10 @@ class RunToolWindowInteractionContractTest {
         @Override public CapabilitySelection<CodeActionCapability> codeActions() { return unavailable(CapabilityType.CODE_ACTION); }
         @Override public CapabilitySelection<EditorBridge> editorBridge() { return unavailable(CapabilityType.EDITOR_BRIDGE); }
         @Override public CapabilitySelection<VersionControlCapability> versionControl() { return unavailable(CapabilityType.VERSION_CONTROL); }
-        @Override public List<CapabilityStatus> snapshot() { return List.of(); }
+        @Override public List<CapabilityStatus> snapshot() {
+            return List.of(CapabilityStatus.available(CapabilityType.RUN, provider.identifier(),
+                    provider.provenance(), List.of()));
+        }
 
         private static <T> CapabilitySelection<T> unavailable(CapabilityType type) {
             return CapabilitySelection.unavailable(type, "not configured");

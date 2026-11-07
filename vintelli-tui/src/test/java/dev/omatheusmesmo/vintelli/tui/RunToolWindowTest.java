@@ -72,8 +72,9 @@ class RunToolWindowTest {
             assertTrue(window.consoleLines().contains("Second output"));
             assertTrue(window.statusMessage().contains("Running idea:Second"));
             Rect toolArea = pilot.findElement("tool-run");
+            awaitUi(uiWork, () -> window.providerLabel().equals("Run: idea (IDEA MCP)"));
             String screen = renderedShellText(shell, test, uiWork, new Size(100, 30));
-            assertTrue(screen.contains("Provider: idea · IDEA MCP"), screen);
+            assertTrue(screen.contains("Run: idea (IDEA MCP)"), screen);
             assertTrue(screen.contains("▶ Run [Enter]"), screen);
             assertTrue(screen.contains("Configurations"), screen);
             assertTrue(screen.contains("› idea:Second"), screen);
@@ -108,7 +109,8 @@ class RunToolWindowTest {
         awaitUi(uiWork, () -> !unavailableWindow.statusMessage().contains("Loading run configurations"));
         assertEquals("IDEA MCP server is disconnected", unavailableWindow.statusMessage());
         assertTrue(unavailableWindow.configurations().isEmpty());
-        assertEquals("Run provider unavailable", unavailableWindow.providerLabel());
+        awaitUi(uiWork, () -> unavailableWindow.providerLabel().equals("Run unavailable: IDEA MCP server is disconnected"));
+        assertEquals("Run unavailable: IDEA MCP server is disconnected", unavailableWindow.providerLabel());
         assertTrue(renderedText(unavailableWindow, uiWork).contains("IDEA MCP server is disconnected"));
 
         FakeRunProvider failingProvider = new FakeRunProvider();
@@ -119,7 +121,8 @@ class RunToolWindowTest {
         assertTrue(failingProvider.listed.await(5, TimeUnit.SECONDS));
         awaitUi(uiWork, () -> failureWindow.statusMessage().startsWith("Run configuration listing failed"));
         assertTrue(failureWindow.consoleLines().getFirst().contains("Run configuration listing failed"));
-        assertEquals("idea · IDEA MCP", failureWindow.providerLabel());
+        awaitUi(uiWork, () -> failureWindow.providerLabel().equals("Run: idea (IDEA MCP)"));
+        assertEquals("Run: idea (IDEA MCP)", failureWindow.providerLabel());
         assertTrue(renderedText(failureWindow, uiWork).contains("Configuration listing failed."));
     }
 
@@ -138,10 +141,11 @@ class RunToolWindowTest {
         for (int index = 0; index < 19; index++) {
             window.performAction(KeyActions.RUN_SELECT_NEXT);
         }
+        awaitUi(uiWork, () -> window.providerLabel().equals("Run: idea (IDEA MCP)"));
         Buffer buffer = Buffer.empty(Rect.of(100, 10));
         window.render(Frame.forTesting(buffer), Rect.of(100, 10));
         String screen = bufferText(buffer);
-        assertTrue(screen.contains("Provider: idea"), screen);
+        assertTrue(screen.contains("Run: idea (IDEA MCP)"), screen);
         assertTrue(screen.contains("▶ Run [Enter]"), screen);
         assertTrue(screen.contains("Configurations"), screen);
         assertTrue(screen.contains("› idea:Config19"), screen);
@@ -266,7 +270,16 @@ class RunToolWindowTest {
         @Override public CapabilitySelection<CodeActionCapability> codeActions() { return unavailable(CapabilityType.CODE_ACTION); }
         @Override public CapabilitySelection<EditorBridge> editorBridge() { return unavailable(CapabilityType.EDITOR_BRIDGE); }
         @Override public CapabilitySelection<VersionControlCapability> versionControl() { return unavailable(CapabilityType.VERSION_CONTROL); }
-        @Override public List<CapabilityStatus> snapshot() { return List.of(); }
+        @Override public List<CapabilityStatus> snapshot() {
+            if (unavailableReason != null) {
+                return List.of(CapabilityStatus.unavailable(CapabilityType.RUN, unavailableReason));
+            }
+            RunCapability current = provider;
+            return current == null
+                    ? List.of(CapabilityStatus.unavailable(CapabilityType.RUN, "not configured"))
+                    : List.of(CapabilityStatus.available(CapabilityType.RUN, current.identifier(),
+                            current.provenance(), List.of()));
+        }
 
         private static <T> CapabilitySelection<T> unavailable(CapabilityType type) {
             return CapabilitySelection.unavailable(type, "not configured");

@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.BooleanSupplier;
+import java.util.stream.IntStream;
 
 import dev.omatheusmesmo.vintelli.api.capability.CallHierarchyCapability;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityRegistry;
@@ -26,6 +27,7 @@ import dev.omatheusmesmo.vintelli.api.capability.EditorBridge;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import dev.omatheusmesmo.vintelli.api.capability.ReadFileCapability;
 import dev.omatheusmesmo.vintelli.api.capability.RunCapability;
+import dev.omatheusmesmo.vintelli.api.capability.SkippedProvider;
 import dev.omatheusmesmo.vintelli.api.capability.TerminalCapability;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Diagnostic;
@@ -88,6 +90,52 @@ class ProblemsToolWindowInteractionContractTest {
         }
     }
 
+    @Test
+    void clickAndKeyboardSelectTheExactProblemWhenSkippedProvidersShiftTheRows() throws Exception {
+        project = project.toRealPath();
+        Path brokenFile = Files.writeString(project.resolve("Broken.java"), String.join("\n",
+                IntStream.range(0, 12).mapToObj(index -> "line " + index).toList()));
+        ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
+        BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
+        editor.open(new EditorBridge.OpenRequest(brokenFile, 0));
+        List<Diagnostic> diagnostics = IntStream.range(0, 12)
+                .mapToObj(index -> new Diagnostic(brokenFile, index, 2, index, 8, Severity.ERROR, "jdtls",
+                        "problem " + index))
+                .toList();
+        TestRegistry registry = new TestRegistry(new TestDiagnostics(diagnostics),
+                List.of(new SkippedProvider("idea", "not connected")));
+        ProblemsToolWindow window = new ProblemsToolWindow(registry, editor, () -> themes);
+        window.refresh();
+        assertTrue(await(() -> window.problems().size() == diagnostics.size()), "diagnostics did not load");
+        VintelliShell shell = new VintelliShell(List.of(window, editor), new ShellState(), themes, registry);
+
+        try (ToolWindowPilotFixture fixture = ToolWindowPilotFixture.open(shell, VIEWPORT)) {
+            fixture.press('3', KeyModifiers.ALT);
+            assertTrue(await(() -> fixture.renderedText().contains("skipped idea: not connected")),
+                    fixture.renderedText());
+
+            String beforeClick = fixture.renderedText();
+            Rect area = fixture.pilot().findElement("tool-problems");
+            int row = rowContaining(beforeClick, "problem 2");
+            assertTrue(row >= area.y() && row < area.bottom(), beforeClick);
+            fixture.pilot().click(area.x() + 2, row);
+            assertEquals(2, window.selectedIndex(), "a click on the problem 2 row selects problem 2");
+            assertEquals(2, editor.activeDocument().orElseThrow().line(),
+                    "the click navigates to the line of the clicked problem");
+
+            fixture.press('3', KeyModifiers.ALT);
+            for (int step = 1; step <= 6; step++) {
+                fixture.press(KeyCode.DOWN);
+                assertEquals(2 + step, window.selectedIndex(), "Down moves the selection by one problem");
+                String rendered = fixture.renderedText();
+                String marked = rendered.lines().filter(line -> line.contains("> ERROR")).findFirst()
+                        .orElseThrow(() -> new AssertionError("no selected row is visible after Down: " + rendered));
+                assertTrue(marked.strip().endsWith("problem " + (2 + step)),
+                        "the visible selected row must be problem " + (2 + step) + " but was: " + marked);
+            }
+        }
+    }
+
     private ToolWindowInteractionAssertions.Session newSession() throws Exception {
         return newSession(false);
     }
@@ -116,7 +164,7 @@ class ProblemsToolWindowInteractionContractTest {
             }
         }
         TestDiagnostics provider = new TestDiagnostics(diagnostics);
-        TestRegistry registry = new TestRegistry(provider);
+        TestRegistry registry = new TestRegistry(provider, List.of());
         ProblemsToolWindow window = new ProblemsToolWindow(registry, editor, () -> themes);
         window.refresh();
         assertTrue(await(() -> window.problems().size() == diagnostics.size()), "diagnostics did not load");
@@ -239,7 +287,8 @@ class ProblemsToolWindowInteractionContractTest {
         }
     }
 
-    private record TestRegistry(DiagnosticsCapability provider) implements CapabilityRegistry {
+    private record TestRegistry(DiagnosticsCapability provider, List<SkippedProvider> skipped)
+            implements CapabilityRegistry {
         @Override public CapabilitySelection<RunCapability> run() { return unavailable(CapabilityType.RUN); }
         @Override public CapabilitySelection<TerminalCapability> terminal() { return unavailable(CapabilityType.TERMINAL); }
         @Override public CapabilitySelection<ReadFileCapability> readFile() { return unavailable(CapabilityType.READ_FILE); }
@@ -250,7 +299,10 @@ class ProblemsToolWindowInteractionContractTest {
         @Override public CapabilitySelection<CodeActionCapability> codeActions() { return unavailable(CapabilityType.CODE_ACTION); }
         @Override public CapabilitySelection<EditorBridge> editorBridge() { return unavailable(CapabilityType.EDITOR_BRIDGE); }
         @Override public CapabilitySelection<VersionControlCapability> versionControl() { return unavailable(CapabilityType.VERSION_CONTROL); }
-        @Override public List<CapabilityStatus> snapshot() { return List.of(); }
+        @Override public List<CapabilityStatus> snapshot() {
+            return List.of(CapabilityStatus.available(CapabilityType.DIAGNOSTICS, provider.identifier(),
+                    provider.provenance(), skipped));
+        }
 
         private static <T> CapabilitySelection<T> unavailable(CapabilityType type) {
             return CapabilitySelection.unavailable(type, "not configured");
