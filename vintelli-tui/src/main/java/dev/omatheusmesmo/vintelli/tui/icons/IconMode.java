@@ -1,23 +1,32 @@
 package dev.omatheusmesmo.vintelli.tui.icons;
 
+import java.io.Console;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Icon face the Vintelli TUI renders: Nerd Font glyphs from a patched font, or
  * pure ASCII markers with color only.
  *
  * <p>Chosen by the {@link #CONFIG_PROPERTY} system property and, when the value
- * is {@code auto}, by the terminal capability. The font of the terminal is not
- * observable from the process, so the auto detection trusts only the terminals
- * that bundle the Nerd Font symbol glyphs by default (kitty, Ghostty and
- * WezTerm); every other terminal (JetBrains IDE terminal, VS Code, iTerm2,
- * Windows Terminal, plain {@code xterm} via SSH and so on) gets the ASCII face
- * unless the user opts in with {@code vintelli.icons=nerd}. The reasons are
- * documented in docs/file-icons.md: on a terminal without the patched font, glyphs from
- * the private use area render as tofu boxes, empty cells or overlapping
- * characters whose advance width varies per terminal, while ASCII markers and
- * colors stay readable everywhere.
+ * is {@code auto}, by the terminal and the machine. {@code auto} takes the first
+ * rule that matches:
+ * <ol>
+ * <li>the terminal is kitty, Ghostty or WezTerm (by name or by its environment
+ * marker): Nerd;</li>
+ * <li>no terminal is attached to the process: ASCII;</li>
+ * <li>the session is remote ({@code SSH_CONNECTION}, {@code SSH_CLIENT} or
+ * {@code SSH_TTY} is set): ASCII;</li>
+ * <li>{@code TERM} is {@code dumb} or {@code linux}: ASCII;</li>
+ * <li>a Nerd Font file is installed in the font directories of the machine:
+ * Nerd;</li>
+ * <li>otherwise: ASCII.</li>
+ * </ol>
+ * The font of the terminal is not observable from the process, so rule 5 shows
+ * only that the machine has a Nerd Font. A terminal that does not fall back to
+ * installed fonts may still draw boxes or blanks; {@code vintelli.icons=ascii}
+ * is the way out. The reasons are documented in docs/file-icons.md.
  */
 public enum IconMode {
 
@@ -34,7 +43,7 @@ public enum IconMode {
     ASCII("ascii"),
 
     /**
-     * Detect the face from the terminal environment.
+     * Detect the face from the terminal environment and the installed fonts.
      */
     AUTO("auto");
 
@@ -43,6 +52,8 @@ public enum IconMode {
      * or {@code ascii}.
      */
     public static final String CONFIG_PROPERTY = "vintelli.icons";
+
+    private static final Set<String> TRUSTED_TERMINALS = Set.of("kitty", "ghostty", "wezterm");
 
     private final String configValue;
 
@@ -69,36 +80,69 @@ public enum IconMode {
     }
 
     /**
-     * The face that actually renders: {@code auto} asks the terminal
-     * environment, the explicit values stay as configured.
+     * The face that actually renders, with the terminal and the machine read from
+     * this process: {@code auto} applies the rules of this class, the explicit
+     * values stay as configured.
      */
     public IconMode resolve(Map<String, String> env) {
-        return this == AUTO ? autoDetect(env) : this;
+        return resolve(IconMode.Surroundings.ofThisProcess(env, null));
     }
 
-    IconMode resolveTerminalName(String name) {
+    /**
+     * The face that actually renders for the given surroundings. This is the only
+     * place where the {@code auto} rules live.
+     */
+    IconMode resolve(Surroundings surroundings) {
         if (this != AUTO) {
             return this;
         }
-        return switch (name == null ? "" : name.toLowerCase(Locale.ROOT)) {
-            case "kitty", "ghostty", "wezterm" -> NERD;
-            default -> ASCII;
-        };
+        Map<String, String> env = surroundings.env();
+        if (trustedTerminal(surroundings.terminalName(), env)) {
+            return NERD;
+        }
+        if (!surroundings.terminalAttached() || remoteSession(env) || basicTerminal(env)) {
+            return ASCII;
+        }
+        return NerdFontProbe.installed(env, surroundings.osName(), surroundings.home()) ? NERD : ASCII;
     }
 
-    private static IconMode autoDetect(Map<String, String> env) {
-        if (present(env, "KITTY_PID")
+    private static boolean trustedTerminal(String terminalName, Map<String, String> env) {
+        String name = terminalName == null ? "" : terminalName.trim().toLowerCase(Locale.ROOT);
+        return TRUSTED_TERMINALS.contains(name)
+                || present(env, "KITTY_PID")
                 || present(env, "KITTY_WINDOW_ID")
                 || present(env, "GHOSTTY_RESOURCES_DIR")
                 || present(env, "WEZTERM_EXECUTABLE")
-                || "WezTerm".equalsIgnoreCase(env.get("TERM_PROGRAM"))) {
-            return NERD;
-        }
-        return ASCII;
+                || "WezTerm".equalsIgnoreCase(env.get("TERM_PROGRAM"));
+    }
+
+    private static boolean remoteSession(Map<String, String> env) {
+        return present(env, "SSH_CONNECTION") || present(env, "SSH_CLIENT") || present(env, "SSH_TTY");
+    }
+
+    private static boolean basicTerminal(Map<String, String> env) {
+        String term = env.get("TERM");
+        return "dumb".equalsIgnoreCase(term) || "linux".equalsIgnoreCase(term);
     }
 
     private static boolean present(Map<String, String> env, String key) {
         String value = env.get(key);
         return value != null && !value.isBlank();
+    }
+
+    /**
+     * What {@code auto} looks at: the environment, the terminal name reported by
+     * AEsh (null when not asked for), whether a terminal is attached, the
+     * operating system name and the home directory. {@link #ofThisProcess} is the
+     * only place that reads the console and the system properties.
+     */
+    record Surroundings(Map<String, String> env, String terminalName, boolean terminalAttached,
+            String osName, String home) {
+
+        static Surroundings ofThisProcess(Map<String, String> env, String terminalName) {
+            Console console = System.console();
+            return new Surroundings(env, terminalName, console != null && console.isTerminal(),
+                    System.getProperty("os.name"), System.getProperty("user.home"));
+        }
     }
 }

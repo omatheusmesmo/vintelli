@@ -196,8 +196,10 @@ the live project tree (hjkl in the `vim` profile), and every selection is
 mirrored into shell state and the status line. The tree shows file and folder
 icons and directory disclosure arrows, using ASCII markers when Nerd Font icons
 are disabled. Tree connectors use Unicode when the terminal's locale and output
-charset support it, independently of the Nerd Font icon mode. Set
-`vintelli.icons=nerd` for the richer terminal presentation.
+charset support it, independently of the Nerd Font icon mode. `vintelli.icons=auto`
+(the default) selects Nerd glyphs when a Nerd Font is installed on the machine
+and the session is a local terminal; set `vintelli.icons=nerd` to force them, or
+`ascii` if the terminal draws boxes for them (see docs/file-icons.md).
 `Enter` toggles a directory or opens the selected file in the built-in editor.
 With the project panel focused, `F5` refreshes the tree, `F7` creates a file,
 `F9` creates a directory, `F2` renames the selected entry, and `Delete` asks
