@@ -17,13 +17,39 @@ property:
 
 | Value | Face |
 |---|---|
-| `auto` (default) | AEsh detects terminal identity; kitty, Ghostty and WezTerm select Nerd Font glyphs, while other terminals use ASCII markers |
+| `auto` (default) | Nerd Font glyphs when the terminal is kitty, Ghostty or WezTerm, or when a Nerd Font file is installed on the machine (see below); ASCII markers otherwise |
 | `nerd` | Nerd Font glyphs, for a terminal with a patched font |
 | `ascii` | ASCII markers, colored, for exact terminal compatibility |
 
-AEsh's environment-only detection cannot see the font of the terminal, so the
-application only trusts the terminals listed above. On other terminals (IDE terminals, VS Code, iTerm2,
-Windows Terminal, plain `xterm` over SSH) a glyph from the private use area
+The font of the terminal is not observable from the process, so `auto` applies
+these rules in order and takes the first that matches:
+
+1. The terminal is kitty, Ghostty or WezTerm, by name or by its environment marker: Nerd.
+2. No terminal is attached to the process (no console, or stdin or stdout is redirected): ASCII.
+3. The session is remote (`SSH_CONNECTION`, `SSH_CLIENT` or `SSH_TTY` is set and not blank): ASCII.
+4. `TERM` is `dumb` or `linux`, ignoring case: ASCII.
+5. A Nerd Font file is installed on the machine: Nerd.
+6. Otherwise: ASCII.
+
+The installed-font check is a bounded walk, at most four directory levels deep,
+of the font directories of the platform: on Linux `$XDG_DATA_HOME/fonts`,
+`~/.local/share/fonts`, `~/.fonts`, each absolute `$XDG_DATA_DIRS` entry plus
+`fonts`, `/usr/share/fonts` and `/usr/local/share/fonts`; on macOS
+`~/Library/Fonts` and `/Library/Fonts`; on Windows `%LOCALAPPDATA%\Microsoft\Windows\Fonts`
+and `%WINDIR%\Fonts`. A file matches when its name, case-insensitively, contains
+`nerdfont`, `nerd font` or `nerd-font`, or when it carries a Nerd Font short
+form (`NF`, `NFM` or `NFP` right before `-` or `.`, compared case-sensitively,
+as in `JetBrainsMonoNF-Regular.ttf`), and its extension is `ttf`, `otf`, `ttc`
+or `woff2`. A missing or unreadable directory counts as empty. No process is
+started and no AWT is loaded.
+
+The installed font is a proxy and has a limit: it shows that the machine has a
+Nerd Font, not that the terminal draws with it. A terminal without font fallback
+may still show boxes or blanks for the glyphs. In that case set
+`vintelli.icons=ascii`. The explicit values `nerd` and `ascii` always win and
+skip every rule above.
+
+On a terminal that is not kitty, Ghostty or WezTerm, a glyph from the private use area
 shows as a tofu box, a blank or an overlapping character, depending on the font.
 Set `vintelli.icons=nerd` there only when the font is patched. Each entry
 defines both symbols with the same cell width, so switching the face does not

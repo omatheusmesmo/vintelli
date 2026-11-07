@@ -25,7 +25,8 @@ import dev.tamboui.style.Color;
  * answers the {@link FileIcon} of the resolved {@link IconMode}: a Nerd Font
  * glyph when the session runs with a patched font (chosen by the
  * {@code vintelli.icons} configuration and, on {@code auto}, by the terminal
- * capability), or an ASCII marker plus color otherwise.
+ * and the installed fonts, see {@link IconMode}), or an ASCII marker plus color
+ * otherwise.
  *
  * <p>The mapping lives in
  * {@code classpath:dev/omatheusmesmo/vintelli/tui/icons/file-icons.properties}
@@ -89,9 +90,22 @@ public final class FileIcons {
      * not exist fails fast.
      */
     public static FileIcons resolve() {
-        IconMode mode = IconMode.fromConfig(System.getProperty(IconMode.CONFIG_PROPERTY, "auto"))
-                .resolveTerminalName(TerminalCapabilities.getInstance().terminalName());
+        IconMode configured = IconMode.fromConfig(System.getProperty(IconMode.CONFIG_PROPERTY, "auto"));
+        IconMode mode = configured == IconMode.AUTO ? ProcessDetection.FACE : configured;
         return of(mode, userMappingFile());
+    }
+
+    /**
+     * The face {@code auto} resolves to for this process, detected on first use.
+     * The terminal, the environment and the installed fonts do not change while
+     * the process runs, so the detection (and its font walk) runs once; it is
+     * reached only from {@link #resolve()} at run time, never while the native
+     * image is built.
+     */
+    private static final class ProcessDetection {
+
+        static final IconMode FACE = IconMode.AUTO.resolve(IconMode.Surroundings.ofThisProcess(System.getenv(),
+                TerminalCapabilities.getInstance().terminalName()));
     }
 
     /**
