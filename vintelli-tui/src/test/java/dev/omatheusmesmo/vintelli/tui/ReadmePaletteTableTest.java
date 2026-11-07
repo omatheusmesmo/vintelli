@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ReadmePaletteTableTest {
 
     private static final Path README = Path.of("..", "README.md");
-    private static final int TABLE_ROWS = 12;
+    private static final int TABLE_ROWS = 13;
 
     @Test
     void everyDocumentedIndexIsTheIndexOfTheDowngrade() {
