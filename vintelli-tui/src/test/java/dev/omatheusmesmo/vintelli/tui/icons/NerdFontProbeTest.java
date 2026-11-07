@@ -1,6 +1,8 @@
 package dev.omatheusmesmo.vintelli.tui.icons;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.File;
@@ -117,6 +119,7 @@ class NerdFontProbeTest {
     }
 
     @Test
+    @DisabledOnOs(value = OS.WINDOWS, disabledReason = "XDG directories are POSIX paths separated by colons")
     void linuxDirectoriesFollowXdgAndTheSystemLocations() {
         Path xdg = root.resolve("xdg");
         Path share = root.resolve("share");
