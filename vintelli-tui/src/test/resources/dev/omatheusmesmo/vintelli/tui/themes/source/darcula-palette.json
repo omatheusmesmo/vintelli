@@ -93,6 +93,10 @@
     "editor-sel-fg": {
       "file": "darcula-scheme-source.xml",
       "path": "TEXT.FOREGROUND"
+    },
+    "editor-caret-row": {
+      "file": "darcula-scheme-source.xml",
+      "path": "CARET_ROW_COLOR"
     }
   }
 }

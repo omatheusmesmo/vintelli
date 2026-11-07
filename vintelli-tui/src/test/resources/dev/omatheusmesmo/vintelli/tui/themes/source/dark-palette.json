@@ -91,6 +91,10 @@
     "editor-sel-fg": {
       "file": "dark-scheme-source.xml",
       "path": "TEXT.FOREGROUND"
+    },
+    "editor-caret-row": {
+      "file": "dark-scheme-source.xml",
+      "path": "CARET_ROW_COLOR"
     }
   }
 }

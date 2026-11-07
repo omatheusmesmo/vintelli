@@ -106,7 +106,8 @@ public final class ShellThemes {
             "editor-number",
             "editor-constant",
             "editor-selection",
-            "editor-sel-fg");
+            "editor-sel-fg",
+            "editor-caret-row");
 
     private static final String RESOURCE_DIR = "/dev/omatheusmesmo/vintelli/tui/themes/";
     private static final List<String> SHIPPED_THEMES = List.of("darcula", "dark");
@@ -241,7 +242,8 @@ public final class ShellThemes {
                 variable("editor-number"),
                 variable("editor-constant"),
                 variable("editor-selection"),
-                variable("editor-sel-fg"));
+                variable("editor-sel-fg"),
+                variable("editor-caret-row"));
     }
 
     public Map<String, String> variablesOf(String themeName) {

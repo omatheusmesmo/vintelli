@@ -100,7 +100,8 @@ class ThemePaletteSourceTest {
             ShellEditorPalette expected = new ShellEditorPalette(
                     values.get("editor-bg"), values.get("editor-fg"), values.get("editor-keyword"),
                     values.get("editor-string"), values.get("editor-comment"), values.get("editor-number"),
-                    values.get("editor-constant"), values.get("editor-selection"), values.get("editor-sel-fg"));
+                    values.get("editor-constant"), values.get("editor-selection"), values.get("editor-sel-fg"),
+                    values.get("editor-caret-row"));
             ShellEditorPalette actual = themes.editorPalette();
             assertTrue(equalsIgnoringCase(expected, actual),
                     "the editor palette of '" + theme + "' is built from the editor scheme values only");
@@ -139,7 +140,8 @@ class ThemePaletteSourceTest {
                 && expected.number().equalsIgnoreCase(actual.number())
                 && expected.constant().equalsIgnoreCase(actual.constant())
                 && expected.selection().equalsIgnoreCase(actual.selection())
-                && expected.selectionText().equalsIgnoreCase(actual.selectionText());
+                && expected.selectionText().equalsIgnoreCase(actual.selectionText())
+                && expected.caretRow().equalsIgnoreCase(actual.caretRow());
     }
 
     private static void assertExcerptProvenance(JsonNode spec) {

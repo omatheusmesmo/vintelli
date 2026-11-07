@@ -41,7 +41,8 @@ class PaletteDowngradeTest {
             entry("editor-number", 67),
             entry("editor-constant", 103),
             entry("editor-selection", 24),
-            entry("editor-sel-fg", 146));
+            entry("editor-sel-fg", 146),
+            entry("editor-caret-row", 236));
 
     private static final Map<String, Integer> DARK_INDICES = Map.ofEntries(
             entry("panel", 236),
@@ -64,7 +65,8 @@ class PaletteDowngradeTest {
             entry("editor-number", 37),
             entry("editor-constant", 175),
             entry("editor-selection", 24),
-            entry("editor-sel-fg", 250));
+            entry("editor-sel-fg", 250),
+            entry("editor-caret-row", 235));
 
     @Test
     void shippedThemesMapEveryRequiredVariableToThePinnedIndex() {

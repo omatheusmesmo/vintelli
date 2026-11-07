@@ -49,7 +49,7 @@ class EditorSyntaxHighlighterTest {
         EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
         ShellEditorPalette palette = new ShellEditorPalette(
                 "#101010", "#aabbcc", "#dd8844", "#44aa66", "#778899", "#ccaa55", "#bb66cc",
-                "#336699", "#ffffff");
+                "#336699", "#ffffff", "#323232");
         highlighter.editorPalette(palette);
         TextArea textArea = TextArea.builder()
                 .style(Style.EMPTY)
@@ -69,7 +69,7 @@ class EditorSyntaxHighlighterTest {
         EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
         ShellEditorPalette palette = new ShellEditorPalette(
                 "indexed(234)", "indexed(250)", "indexed(173)", "indexed(71)", "indexed(244)", "indexed(37)", "indexed(175)",
-                "indexed(24)", "indexed(250)");
+                "indexed(24)", "indexed(250)", "#323232");
         highlighter.editorPalette(palette);
         TextArea textArea = TextArea.builder()
                 .style(Style.EMPTY)
@@ -196,7 +196,7 @@ class EditorSyntaxHighlighterTest {
         EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
         ShellEditorPalette palette = new ShellEditorPalette(
                 "#101010", "#aabbcc", "#dd8844", "#44aa66", "#778899", "#ccaa55", "#bb66cc",
-                "#336699", "#ffffff");
+                "#336699", "#ffffff", "#323232");
         highlighter.editorPalette(palette);
 
         List<Line> lines = highlighter.highlight("/**\nint value = 1;\n */\n",
@@ -214,7 +214,7 @@ class EditorSyntaxHighlighterTest {
         EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
         ShellEditorPalette palette = new ShellEditorPalette(
                 "#101010", "#aabbcc", "#dd8844", "#44aa66", "#778899", "#ccaa55", "#bb66cc",
-                "#336699", "#ffffff");
+                "#336699", "#ffffff", "#323232");
         highlighter.editorPalette(palette);
 
         List<Line> lines = highlighter.highlight("/**/\nint value = 1;\n",
@@ -243,7 +243,7 @@ class EditorSyntaxHighlighterTest {
         EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
         ShellEditorPalette palette = new ShellEditorPalette(
                 "#101010", "#aabbcc", "#dd8844", "#44aa66", "#778899", "#ccaa55", "#bb66cc",
-                "#336699", "#ffffff");
+                "#336699", "#ffffff", "#323232");
         highlighter.editorPalette(palette);
 
         List<Line> lines = highlighter.highlight("/**\n * @param value the value\n */\n",
@@ -267,7 +267,7 @@ class EditorSyntaxHighlighterTest {
         EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
         ShellEditorPalette palette = new ShellEditorPalette(
                 "#101010", "#aabbcc", "#dd8844", "#44aa66", "#778899", "#ccaa55", "#bb66cc",
-                "#336699", "#ffffff");
+                "#336699", "#ffffff", "#323232");
         highlighter.editorPalette(palette);
 
         List<Line> lines = highlighter.highlight("/** @deprecated use the new API */\n",
@@ -288,7 +288,7 @@ class EditorSyntaxHighlighterTest {
         EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
         ShellEditorPalette palette = new ShellEditorPalette(
                 "#101010", "#aabbcc", "#dd8844", "#44aa66", "#778899", "#ccaa55", "#bb66cc",
-                "#336699", "#ffffff");
+                "#336699", "#ffffff", "#323232");
         highlighter.editorPalette(palette);
 
         List<Line> lines = highlighter.highlight("/**\n * mail me at a@b.de\n */\n",
@@ -304,7 +304,7 @@ class EditorSyntaxHighlighterTest {
         EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
         ShellEditorPalette palette = new ShellEditorPalette(
                 "#101010", "#aabbcc", "#dd8844", "#44aa66", "#778899", "#ccaa55", "#bb66cc",
-                "#336699", "#ffffff");
+                "#336699", "#ffffff", "#323232");
         highlighter.editorPalette(palette);
 
         List<Line> lines = highlighter.highlight("/**\n * @\n */\n", "java", Style.EMPTY, SyntaxTheme.DEFAULTS);
@@ -319,7 +319,7 @@ class EditorSyntaxHighlighterTest {
         EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
         ShellEditorPalette palette = new ShellEditorPalette(
                 "#101010", "#aabbcc", "#dd8844", "#44aa66", "#778899", "#ccaa55", "#bb66cc",
-                "#336699", "#ffffff");
+                "#336699", "#ffffff", "#323232");
         highlighter.editorPalette(palette);
 
         List<Line> lines = highlighter.highlight("/* @param value */\n// @param value\n",
@@ -336,7 +336,7 @@ class EditorSyntaxHighlighterTest {
         EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
         ShellEditorPalette palette = new ShellEditorPalette(
                 "#101010", "#aabbcc", "#dd8844", "#44aa66", "#778899", "#ccaa55", "#bb66cc",
-                "#336699", "#ffffff");
+                "#336699", "#ffffff", "#323232");
         highlighter.editorPalette(palette);
         highlighter.highlight("/**\n * @param a the first\n * @param b the second\n */\n",
                 "java", Style.EMPTY, SyntaxTheme.DEFAULTS);
@@ -357,7 +357,7 @@ class EditorSyntaxHighlighterTest {
         EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
         ShellEditorPalette palette = new ShellEditorPalette(
                 "#101010", "#aabbcc", "#dd8844", "#44aa66", "#778899", "#ccaa55", "#bb66cc",
-                "#336699", "#ffffff");
+                "#336699", "#ffffff", "#323232");
         highlighter.editorPalette(palette);
 
         List<Line> lines = highlighter.highlight("/**\n * see {@link Foo} here\n */\n",
@@ -381,7 +381,7 @@ class EditorSyntaxHighlighterTest {
         EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
         ShellEditorPalette palette = new ShellEditorPalette(
                 "#101010", "#aabbcc", "#dd8844", "#44aa66", "#778899", "#ccaa55", "#bb66cc",
-                "#336699", "#ffffff");
+                "#336699", "#ffffff", "#323232");
         highlighter.editorPalette(palette);
 
         List<Line> lines = highlighter.highlight("/**\n * {@inheritDoc} and {@value}\n */\n",
@@ -404,7 +404,7 @@ class EditorSyntaxHighlighterTest {
         EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
         ShellEditorPalette palette = new ShellEditorPalette(
                 "#101010", "#aabbcc", "#dd8844", "#44aa66", "#778899", "#ccaa55", "#bb66cc",
-                "#336699", "#ffffff");
+                "#336699", "#ffffff", "#323232");
         highlighter.editorPalette(palette);
 
         List<Line> lines = highlighter.highlight("/**\n * see {@link Foo\n */\n",
@@ -429,7 +429,7 @@ class EditorSyntaxHighlighterTest {
         EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
         ShellEditorPalette palette = new ShellEditorPalette(
                 "#101010", "#aabbcc", "#dd8844", "#44aa66", "#778899", "#ccaa55", "#bb66cc",
-                "#336699", "#ffffff");
+                "#336699", "#ffffff", "#323232");
         highlighter.editorPalette(palette);
 
         List<Line> lines = highlighter.highlight("/**\n * {@link Foo\n * }\n */\n",
@@ -450,7 +450,7 @@ class EditorSyntaxHighlighterTest {
         EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
         ShellEditorPalette palette = new ShellEditorPalette(
                 "#101010", "#aabbcc", "#dd8844", "#44aa66", "#778899", "#ccaa55", "#bb66cc",
-                "#336699", "#ffffff");
+                "#336699", "#ffffff", "#323232");
         highlighter.editorPalette(palette);
 
         List<Line> lines = highlighter.highlight("/*\n * see {@link Foo}\n */\n// {@link Foo}\n",
@@ -467,7 +467,7 @@ class EditorSyntaxHighlighterTest {
         EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
         ShellEditorPalette palette = new ShellEditorPalette(
                 "#101010", "#aabbcc", "#dd8844", "#44aa66", "#778899", "#ccaa55", "#bb66cc",
-                "#336699", "#ffffff");
+                "#336699", "#ffffff", "#323232");
         highlighter.editorPalette(palette);
 
         List<Line> lines = highlighter.highlight("/**\n * @param x the {@link Foo} value\n */\n",
@@ -493,7 +493,7 @@ class EditorSyntaxHighlighterTest {
         EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
         ShellEditorPalette palette = new ShellEditorPalette(
                 "#101010", "#aabbcc", "#dd8844", "#44aa66", "#778899", "#ccaa55", "#bb66cc",
-                "#336699", "#ffffff");
+                "#336699", "#ffffff", "#323232");
         highlighter.editorPalette(palette);
 
         List<Line> lines = highlighter.highlight("/**\n * <p>text</p>\n */\n",
@@ -519,7 +519,7 @@ class EditorSyntaxHighlighterTest {
         EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
         ShellEditorPalette palette = new ShellEditorPalette(
                 "#101010", "#aabbcc", "#dd8844", "#44aa66", "#778899", "#ccaa55", "#bb66cc",
-                "#336699", "#ffffff");
+                "#336699", "#ffffff", "#323232");
         highlighter.editorPalette(palette);
 
         List<Line> lines = highlighter.highlight("/**\n * <a href=\"x\">y</a>\n */\n",
@@ -543,7 +543,7 @@ class EditorSyntaxHighlighterTest {
         EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
         ShellEditorPalette palette = new ShellEditorPalette(
                 "#101010", "#aabbcc", "#dd8844", "#44aa66", "#778899", "#ccaa55", "#bb66cc",
-                "#336699", "#ffffff");
+                "#336699", "#ffffff", "#323232");
         highlighter.editorPalette(palette);
 
         List<Line> lines = highlighter.highlight("/** <p>text</p> */\n", "java", Style.EMPTY, SyntaxTheme.DEFAULTS);
@@ -567,7 +567,7 @@ class EditorSyntaxHighlighterTest {
         EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
         ShellEditorPalette palette = new ShellEditorPalette(
                 "#101010", "#aabbcc", "#dd8844", "#44aa66", "#778899", "#ccaa55", "#bb66cc",
-                "#336699", "#ffffff");
+                "#336699", "#ffffff", "#323232");
         highlighter.editorPalette(palette);
 
         List<Line> lines = highlighter.highlight("/**\n * <p\n * text</p>\n */\n",
@@ -591,7 +591,7 @@ class EditorSyntaxHighlighterTest {
         EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
         ShellEditorPalette palette = new ShellEditorPalette(
                 "#101010", "#aabbcc", "#dd8844", "#44aa66", "#778899", "#ccaa55", "#bb66cc",
-                "#336699", "#ffffff");
+                "#336699", "#ffffff", "#323232");
         highlighter.editorPalette(palette);
 
         List<Line> lines = highlighter.highlight("/**\n * a < b > c\n * <\n */\n",
@@ -610,7 +610,7 @@ class EditorSyntaxHighlighterTest {
         EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
         ShellEditorPalette palette = new ShellEditorPalette(
                 "#101010", "#aabbcc", "#dd8844", "#44aa66", "#778899", "#ccaa55", "#bb66cc",
-                "#336699", "#ffffff");
+                "#336699", "#ffffff", "#323232");
         highlighter.editorPalette(palette);
 
         List<Line> lines = highlighter.highlight("/*\n * <p>text</p>\n */\n// <p>text</p>\n",
@@ -627,7 +627,7 @@ class EditorSyntaxHighlighterTest {
         EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
         ShellEditorPalette palette = new ShellEditorPalette(
                 "#101010", "#aabbcc", "#dd8844", "#44aa66", "#778899", "#ccaa55", "#bb66cc",
-                "#336699", "#ffffff");
+                "#336699", "#ffffff", "#323232");
         highlighter.editorPalette(palette);
 
         List<Line> lines = highlighter.highlight("/**\n * @param x the {@link Foo} <p>see</p>\n */\n",
@@ -659,7 +659,7 @@ class EditorSyntaxHighlighterTest {
         EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
         ShellEditorPalette palette = new ShellEditorPalette(
                 "#101010", "#aabbcc", "#dd8844", "#44aa66", "#778899", "#ccaa55", "#bb66cc",
-                "#336699", "#ffffff");
+                "#336699", "#ffffff", "#323232");
         highlighter.editorPalette(palette);
 
         List<Line> lines = highlighter.highlight("String s = \"/** @param x <p> {@link Foo}\";\n",
@@ -680,7 +680,7 @@ class EditorSyntaxHighlighterTest {
         EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
         ShellEditorPalette palette = new ShellEditorPalette(
                 "#101010", "#aabbcc", "#dd8844", "#44aa66", "#778899", "#ccaa55", "#bb66cc",
-                "#336699", "#ffffff");
+                "#336699", "#ffffff", "#323232");
         highlighter.editorPalette(palette);
 
         List<Line> lines = highlighter.highlight("String s = \"\"\"\n/**\n * @param x\n */\n\"\"\";\n",
@@ -703,7 +703,7 @@ class EditorSyntaxHighlighterTest {
         EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
         ShellEditorPalette palette = new ShellEditorPalette(
                 "#101010", "#aabbcc", "#dd8844", "#44aa66", "#778899", "#ccaa55", "#bb66cc",
-                "#336699", "#ffffff");
+                "#336699", "#ffffff", "#323232");
         highlighter.editorPalette(palette);
         highlighter.highlight("/**\n * @param x\n */\n", "java", Style.EMPTY, SyntaxTheme.DEFAULTS);
 
@@ -722,7 +722,7 @@ class EditorSyntaxHighlighterTest {
         EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
         ShellEditorPalette palette = new ShellEditorPalette(
                 "#101010", "#aabbcc", "#dd8844", "#44aa66", "#778899", "#ccaa55", "#bb66cc",
-                "#336699", "#ffffff");
+                "#336699", "#ffffff", "#323232");
         highlighter.editorPalette(palette);
         String original = "/**\n * @param a\n */\nclass C {\n}\n";
         highlighter.highlight(original, "java", Style.EMPTY, SyntaxTheme.DEFAULTS);
@@ -746,7 +746,7 @@ class EditorSyntaxHighlighterTest {
         EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
         ShellEditorPalette palette = new ShellEditorPalette(
                 "#101010", "#aabbcc", "#dd8844", "#44aa66", "#778899", "#ccaa55", "#bb66cc",
-                "#336699", "#ffffff");
+                "#336699", "#ffffff", "#323232");
         highlighter.editorPalette(palette);
         highlighter.highlight("// first\nint x = 1;\n// third\n", "java", Style.EMPTY, SyntaxTheme.DEFAULTS);
 

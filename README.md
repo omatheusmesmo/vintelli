@@ -362,6 +362,7 @@ neighbouring official element instead of a role-named one:
 | `$editor-keyword` | `#CC7832` | 173 | `#CF8E6D` | 173 | editor scheme `DEFAULT_KEYWORD` |
 | `$editor-string` | `#6A8759` | 65 | `#6AAB73` | 71 | editor scheme `DEFAULT_STRING` |
 | `$editor-comment` | `#808080` | 244 | `#7A7E85` | 244 | editor scheme `DEFAULT_LINE_COMMENT` |
+| `$editor-caret-row` | `#323232` | 236 | `#26282E` | 235 | editor scheme `CARET_ROW_COLOR` |
 
 The depth the shell renders with is chosen by the `vintelli.tui.color-level`
 property:

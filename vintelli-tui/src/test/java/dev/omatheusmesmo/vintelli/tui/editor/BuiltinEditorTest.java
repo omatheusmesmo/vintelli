@@ -25,6 +25,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -39,16 +40,31 @@ class BuiltinEditorTest {
         editor.open(new OpenRequest(file, 0));
 
         Buffer initial = render(editor, 50, 6);
-        assertTrue(row(initial, 1).startsWith("  1 first line"), row(initial, 1));
-        assertTrue(row(initial, 2).startsWith("  2 second line"), row(initial, 2));
+        assertTrue(row(initial, 0).startsWith("  1 first line"), row(initial, 0));
+        assertTrue(row(initial, 1).startsWith("  2 second line"), row(initial, 1));
 
         editor.document().position(5, 0);
         Buffer scrolled = render(editor, 50, 6);
-        assertTrue(row(scrolled, 1).contains("third line"), row(scrolled, 1));
-        assertTrue(row(scrolled, 1).startsWith("  3 "), row(scrolled, 1));
+        assertTrue(row(scrolled, 0).startsWith("  2 second line"), row(scrolled, 0));
+        assertTrue(row(scrolled, 4).startsWith("  6 sixth line"), row(scrolled, 4));
     }
 
-    private static final String IMPORTS = "package demo;\n\nimport java.util.List;\nimport java.util.Map;\n\nimport static java.lang.Math.max;\n\nclass A {\n    int x;\n}\n";
+    @Test
+    void constructingTheEditorDoesNotResolveTheTuiIconMapping() {
+        String previous = System.getProperty("vintelli.icons.file");
+        System.setProperty("vintelli.icons.file", project.resolve("missing-icons.properties").toString());
+        try {
+            assertDoesNotThrow(() -> editor(null));
+        } finally {
+            if (previous == null) {
+                System.clearProperty("vintelli.icons.file");
+            } else {
+                System.setProperty("vintelli.icons.file", previous);
+            }
+        }
+    }
+
+    private static final String IMPORTS ="package demo;\n\nimport java.util.List;\nimport java.util.Map;\n\nimport static java.lang.Math.max;\n\nclass A {\n    int x;\n}\n";
 
     private BuiltinEditor foldedEditor() throws IOException {
         BuiltinEditor editor = editor(null);
@@ -62,13 +78,13 @@ class BuiltinEditorTest {
         BuiltinEditor editor = foldedEditor();
 
         Buffer folded = render(editor, 60, 8);
-        assertTrue(row(folded, 1).startsWith("   1 package demo;"), row(folded, 1));
-        assertTrue(row(folded, 3).startsWith("   3 import ... (3 statements)"), row(folded, 3));
-        assertTrue(row(folded, 5).startsWith("   8 class A {"), row(folded, 5));
+        assertTrue(row(folded, 0).startsWith("   1 package demo;"), row(folded, 0));
+        assertTrue(row(folded, 2).startsWith("   3 import ... (3 statements)"), row(folded, 2));
+        assertTrue(row(folded, 4).startsWith("   8 class A {"), row(folded, 4));
         assertEquals(IMPORTS, editor.activeDocument().orElseThrow().text());
 
         assertTrue(editor.toggleImportFold());
-        assertTrue(row(render(editor, 60, 12), 3).contains("import java.util.List;"));
+        assertTrue(row(render(editor, 60, 12), 2).contains("import java.util.List;"));
     }
 
     @Test

@@ -17,5 +17,6 @@ public record ShellEditorPalette(String background,
                                  String number,
                                  String constant,
                                  String selection,
-                                 String selectionText) {
+                                 String selectionText,
+                                 String caretRow) {
 }

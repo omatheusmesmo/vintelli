@@ -46,6 +46,7 @@ $editor-number    : #2AACB8;       /* editor scheme DEFAULT_NUMBER */
 $editor-constant  : #C77DBB;       /* editor scheme DEFAULT_CONSTANT */
 $editor-selection : #214283;       /* editor scheme SELECTION_BACKGROUND, inherited from the Darcula editor parent */
 $editor-sel-fg    : #BCBEC4;       /* editor scheme TEXT foreground */
+$editor-caret-row : #26282E;       /* editor scheme CARET_ROW_COLOR */
 
 #shell {
   background: $panel;
@@ -113,6 +114,38 @@ ListElement-scrollbar-track {
 }
 
 #editor-content {
+  color: $editor-fg;
+}
+
+#editor-tabs {
+  background: $editor-bg;
+}
+
+EditorTabBarElement-tab {
+  color: $soft;
+}
+
+EditorTabBarElement-tab:selected {
+  color: $chrome-fg-strong;
+}
+
+EditorTabBarElement-underline {
+  color: $focus-border;
+}
+
+EditorTabBarElement-marker {
+  color: $focus-border;
+}
+
+EditorTabBarElement-overflow {
+  color: $soft;
+}
+
+.editor-line-number {
+  color: $muted;
+}
+
+.editor-line-number-current {
   color: $editor-fg;
 }
 
