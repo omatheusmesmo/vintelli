@@ -35,6 +35,10 @@ public final class EditorDocument {
     /** While folded, {@code view} is the widget-facing copy of {@code state} with the import block replaced by its placeholder. */
     private ImportFold fold;
     private TextAreaState view;
+    /** Pointer and keyboard selection in document rows and columns; null when nothing is selected. */
+    private SelectionCursor selection;
+    /** Set when the caret moved or the text changed, so the next frame brings the caret into view. */
+    private boolean revealPending = true;
 
     EditorDocument(Path file, String text) {
         this(file, text, text.replace("\r\n", "\n"));
@@ -76,6 +80,8 @@ public final class EditorDocument {
             while (undo.size() > HISTORY_LIMIT) { undo.removeLast(); }
             redo.clear();
             remapDiagnostics(before.text(), text());
+            clearSelection();
+            revealPending = true;
         }
     }
 
@@ -114,6 +120,112 @@ public final class EditorDocument {
         if (fold != null && fold.hides(row)) { dropFold(); }
         place(state, row, column);
         if (fold != null) { place(view, fold.toView(row), fold.viewColumn(row, column)); }
+        revealPending = true;
+    }
+
+    /** Places the caret at a row and character column of the widget-facing view, as a pointer click does. */
+    void placeView(int viewRow, int viewColumn) {
+        if (fold == null) {
+            place(state, viewRow, viewColumn);
+            return;
+        }
+        place(view, viewRow, viewColumn);
+        int viewRowPlaced = view.cursorRow();
+        place(state, fold.toDocument(viewRowPlaced), fold.documentColumn(viewRowPlaced, view.cursorCol()));
+    }
+
+    void pointerPress(int viewRow, int viewColumn) {
+        placeView(viewRow, viewColumn);
+        selection = SelectionCursor.collapsed(row(), column());
+        pushSelection();
+    }
+
+    void pointerDrag(int viewRow, int viewColumn) {
+        placeView(viewRow, viewColumn);
+        SelectionCursor anchored = selection == null ? SelectionCursor.collapsed(row(), column()) : selection;
+        selection = anchored.extendTo(row(), column());
+        pushSelection();
+    }
+
+    SelectionCursor selection() {
+        return selection == null ? SelectionCursor.collapsed(row(), column()) : selection;
+    }
+
+    String selectedText() {
+        if (selection == null || selection.isEmpty()) { return ""; }
+        StringBuilder text = new StringBuilder();
+        for (int row = selection.startRow(); row <= selection.endRow(); row++) {
+            String line = state.getLine(row);
+            int from = row == selection.startRow() ? selection.startCol() : 0;
+            int to = row == selection.endRow() ? selection.endCol() : line.length();
+            if (row > selection.startRow()) { text.append('\n'); }
+            text.append(line, Math.min(from, line.length()), Math.min(to, line.length()));
+        }
+        return text.toString();
+    }
+
+    void clearSelection() {
+        selection = null;
+        pushSelection();
+    }
+
+    /** Ends a pointer selection once the caret left it; a selection set on the highlighter alone stays. */
+    void dropPointerSelection() {
+        if (selection != null) { clearSelection(); }
+    }
+
+    private void pushSelection() {
+        SelectionCursor shown = selection == null ? SelectionCursor.collapsed(0, 0)
+                : fold == null ? selection : fold.toView(selection);
+        highlighter.setSelection(shown);
+    }
+
+    void scrollBy(int rows, int visibleRows) {
+        if (rows < 0) {
+            state().scrollUp(-rows);
+        } else {
+            state().scrollDown(rows, visibleRows);
+        }
+    }
+
+    int scrollRow() { return state().scrollRow(); }
+    int scrollCol() { return state().scrollCol(); }
+
+    void requestReveal() { revealPending = true; }
+
+    boolean consumeReveal() {
+        boolean pending = revealPending;
+        revealPending = false;
+        return pending;
+    }
+
+    /**
+     * Runs the widget paint with the caret parked inside the viewport when the caret sits outside it,
+     * so the widget's own follow-the-caret step cannot scroll a viewport that was moved away from the
+     * caret. The caret is restored afterwards; nothing else about the document changes.
+     */
+    void paintViewport(int visibleRows, Runnable paint) {
+        TextAreaState target = state();
+        int row = target.cursorRow();
+        int top = target.scrollRow();
+        if (row >= top && row < top + visibleRows) {
+            paint.run();
+            return;
+        }
+        int column = target.cursorCol();
+        int parkRow = top;
+        for (int candidate = top; candidate < Math.min(top + visibleRows, target.lineCount()); candidate++) {
+            if (target.getLine(candidate).length() >= target.scrollCol()) {
+                parkRow = candidate;
+                break;
+            }
+        }
+        place(target, parkRow, target.scrollCol());
+        try {
+            paint.run();
+        } finally {
+            place(target, row, column);
+        }
     }
 
     private static void place(TextAreaState target, int row, int column) {
@@ -135,6 +247,8 @@ public final class EditorDocument {
     private boolean foldImports() {
         fold = ImportFold.detect(text()).orElse(null);
         if (fold == null) { return false; }
+        clearSelection();
+        revealPending = true;
         String[] lines = text().split("\n", -1);
         List<String> shown = new ArrayList<>(Arrays.asList(lines).subList(0, fold.start()));
         shown.add(fold.placeholder());
@@ -148,6 +262,7 @@ public final class EditorDocument {
     private void dropFold() {
         fold = null;
         view = null;
+        clearSelection();
         paintDiagnostics();
     }
 

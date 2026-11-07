@@ -1212,6 +1212,13 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 return EventResult.HANDLED;
             }
         }
+        if (editor != null && editor.handlePointer(mouse)) {
+            if (mouse.isPress()) {
+                inputCaptured = false;
+                capturedWindow = null;
+            }
+            return EventResult.HANDLED;
+        }
         for (ToolWindow.Anchor anchor : List.of(ToolWindow.Anchor.BOTTOM, ToolWindow.Anchor.RIGHT)) {
             ToolWindow activeWindow = activeToolWindow(anchor);
             Rect activeArea = anchor == ToolWindow.Anchor.BOTTOM ? activeToolWindowArea : activeRightToolWindowArea;
