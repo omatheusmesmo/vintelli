@@ -149,6 +149,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private static final int PROJECT_INDENT_WIDTH = 4;
     private static final int PROJECT_BRANCH_WIDTH = 4;
     private static final int PROJECT_MARKER_WIDTH = 2;
+    private static final String PROJECT_GLYPH = "";
     private static final int TOOL_TAB_ROWS = ToolTabBarElement.ROWS;
     private static final int BOTTOM_HEIGHT = TOOL_WINDOW_HEIGHT + TOOL_TAB_ROWS + 1;
 
@@ -643,7 +644,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     private List<ToolStripElement.Icon> leftIcons() {
         List<ToolStripElement.Icon> icons = new ArrayList<>();
-        icons.add(new ToolStripElement.Icon(PROJECT_STRIP_ID, "P", shellLayout.isProjectVisible(), false));
+        icons.add(new ToolStripElement.Icon(PROJECT_STRIP_ID, projectStripGlyph(), shellLayout.isProjectVisible(), false));
         for (ToolWindow window : windowsByAnchor.getOrDefault(ToolWindow.Anchor.LEFT, List.of())) {
             icons.add(stripIcon(window, false));
         }
@@ -659,6 +660,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             icons.add(stripIcon(window, false));
         }
         return icons;
+    }
+
+    private String projectStripGlyph() {
+        return fileIcons.mode() == IconMode.ASCII ? "P" : PROJECT_GLYPH;
     }
 
     private ToolStripElement.Icon stripIcon(ToolWindow window, boolean bottomAnchored) {

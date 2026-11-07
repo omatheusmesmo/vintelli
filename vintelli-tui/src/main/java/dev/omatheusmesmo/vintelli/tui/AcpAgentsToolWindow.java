@@ -44,6 +44,7 @@ import jakarta.inject.Singleton;
 @Singleton
 public final class AcpAgentsToolWindow implements ToolWindow {
 
+    private static final String CHAT_GLYPH = "";
     private static final int MAX_BLOCKS = 250;
     private static final int MAX_DIFF_LINES = 80;
     private static final int MAX_PROMPT_CHARS = 32_000;
@@ -106,6 +107,7 @@ public final class AcpAgentsToolWindow implements ToolWindow {
     @Override public String title() { return "ACP Agents"; }
     @Override public char shortcut() { return '4'; }
     @Override public int ordinal() { return 3; }
+    @Override public String icon() { return CHAT_GLYPH; }
     @Override public Anchor anchor() { return Anchor.RIGHT; }
     @Override public boolean capturesInput() { return chat != null; }
 

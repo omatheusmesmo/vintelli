@@ -27,6 +27,8 @@ import jakarta.inject.Singleton;
 @Singleton
 public final class StructureToolWindow implements ToolWindow {
 
+    private static final String OUTLINE_GLYPH = "";
+
     private record VisibleSymbol(NavigationCapability.DocumentSymbol symbol, int depth) { }
 
     private final List<NavigationCapability> providers;
@@ -108,6 +110,11 @@ public final class StructureToolWindow implements ToolWindow {
     @Override
     public int ordinal() {
         return 4;
+    }
+
+    @Override
+    public String icon() {
+        return OUTLINE_GLYPH;
     }
 
     @Override
