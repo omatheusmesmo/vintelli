@@ -58,6 +58,26 @@ class VintelliShellRenderTest {
     }
 
     /**
+     * The chords the TamboUI preset itself supplies: {@code moveUp} and
+     * {@code moveDown} are the arrow keys of the shipped standard set and are
+     * not touched by the shell, so they are the pair in this payload that a
+     * preset which is not applied at all would leave empty. The chords
+     * Vintelli binds itself (quit, the palette and the tool window
+     * activations) survive such a preset, so they cannot show it. The
+     * inherited IT replays this on the native runner, where the preset has to
+     * be readable for this call to answer at all.
+     */
+    @Test
+    void exposesThePresetChordsOfTheShippedStandardSet() {
+        given()
+                .when().get("/tui/keymap")
+                .then()
+                .statusCode(200)
+                .body("shortcuts.moveDown", equalTo("Down"),
+                        "shortcuts.moveUp", equalTo("Up"));
+    }
+
+    /**
      * The runtime theme switch through the gated inspect surface: the switch
      * returns the frame it painted, and the render endpoint reports the new
      * theme afterwards, so the stylesheet swap, its validation and the next

@@ -83,7 +83,9 @@ class VintelliShellTest {
 
     private static final Duration STARTUP = Duration.ofMillis(100);
     private static final Duration EVENT_WINDOW = Duration.ofMillis(500);
-    private static final Duration TYPE_WINDOW = Duration.ofMillis(50);
+    private static final Duration SETTLE_TIMEOUT = Duration.ofSeconds(2);
+    private static final Duration SETTLE_STEP = Duration.ofMillis(2);
+    private static final Duration FRAME_GRACE = Duration.ofMillis(30);
     private static final Rect VIEWPORT = new Rect(0, 0, 80, 24);
     private static final Size SIZE = new Size(VIEWPORT.width(), VIEWPORT.height());
     private static final int MENU_ROW = 0;
@@ -118,7 +120,7 @@ class VintelliShellTest {
             // Escape returns keyboard control to the shell so bare digit
             // shortcuts can switch windows again.
             pilot.press(KeyCode.ESCAPE);
-            pilot.pause(EVENT_WINDOW);
+            settle(pilot);
             press(pilot, '3');
             assertEquals(2, shell.toolIndex()); // Problems is at bottom index 2
             assertEquals("Tool window: Problems", shell.status());
@@ -143,20 +145,20 @@ class VintelliShellTest {
             pilot.pause(STARTUP);
 
             pilot.press(KeyCode.DOWN);
-            pilot.pause(EVENT_WINDOW);
+            settle(pilot);
             pressQuietly(pilot);
             assertEquals(1, shell.fileIndex());
             assertEquals("Selected: VintelliMain.java", shell.status());
 
             pilot.press(KeyCode.DOWN);
-            pilot.pause(EVENT_WINDOW);
+            settle(pilot);
             pressQuietly(pilot);
             assertEquals(2, shell.fileIndex());
 
             pilot.press(KeyCode.UP);
-            pilot.pause(EVENT_WINDOW);
+            settle(pilot);
             pilot.press(KeyCode.UP);
-            pilot.pause(EVENT_WINDOW);
+            settle(pilot);
             pressQuietly(pilot);
             assertEquals(0, shell.fileIndex());
             assertEquals("Selected: vintelli/pom.xml", shell.status());
@@ -176,7 +178,7 @@ class VintelliShellTest {
 
             for (int step = 0; step < 4; step++) {
                 pilot.press(KeyCode.DOWN);
-                pilot.pause(EVENT_WINDOW);
+                settle(pilot);
             }
             pressQuietly(pilot);
             assertEquals(4, shell.fileIndex());
@@ -184,7 +186,7 @@ class VintelliShellTest {
 
             for (int step = 0; step < 6; step++) {
                 pilot.press(KeyCode.DOWN);
-                pilot.pause(EVENT_WINDOW);
+                settle(pilot);
             }
             pressQuietly(pilot);
             assertEquals(4, shell.fileIndex());
@@ -192,7 +194,7 @@ class VintelliShellTest {
 
             for (int step = 0; step < 10; step++) {
                 pilot.press(KeyCode.UP);
-                pilot.pause(EVENT_WINDOW);
+                settle(pilot);
             }
             pressQuietly(pilot);
             assertEquals(0, shell.fileIndex());
@@ -298,27 +300,27 @@ class VintelliShellTest {
             Pilot pilot = test.pilot();
             pilot.pause(STARTUP);
             pilot.press(KeyCode.RIGHT);
-            pause(pilot);
+            settle(pilot);
             assertEquals(1, editor.activeDocument().orElseThrow().column(), "the editor has keyboard focus initially");
 
             pilot.press(KeyCode.F10);
-            pause(pilot);
+            settle(pilot);
             for (int menu = 0; menu < 8; menu++) {
                 pilot.press(KeyCode.RIGHT);
-                pause(pilot);
+                settle(pilot);
             }
             for (int row = 0; row < 3; row++) {
                 pilot.press(KeyCode.DOWN);
-                pause(pilot);
+                settle(pilot);
             }
             pilot.press(KeyCode.ENTER);
-            pause(pilot);
+            settle(pilot);
 
             assertEquals(1, editor.activeDocument().orElseThrow().column(),
                     "menu keys must not move the text cursor or insert a newline");
             assertTrue(shell.status().startsWith("Stage sample.txt? [y/N]"), shell.status());
             pilot.press('n');
-            pause(pilot);
+            settle(pilot);
         }
     }
 
@@ -552,7 +554,7 @@ class VintelliShellTest {
             assertEquals(3, shell.toolIndex());
 
             pilot.press(KeyCode.ESCAPE);
-            pause(pilot);
+            settle(pilot);
             assertEquals("Focus: shell navigation", shell.status());
 
             pressCtrlC(pilot);
@@ -571,15 +573,15 @@ class VintelliShellTest {
             press(pilot, 'j');
             assertEquals(0, shell.fileIndex(), "captured: the window still has the key");
             pilot.press(KeyCode.ESCAPE);
-            pause(pilot);
+            settle(pilot);
             assertEquals("Focus: shell navigation", shell.status());
             assertFalse(terminalLike.handledKeys().contains("escape"), "escape stays with the shell");
             pilot.press(KeyCode.DOWN);
-            pause(pilot);
+            settle(pilot);
             pressQuietly(pilot);
             assertEquals(1, shell.fileIndex(), "after escape the shell navigates again");
             pilot.press(KeyCode.DOWN);
-            pause(pilot);
+            settle(pilot);
             pressQuietly(pilot);
             assertEquals(2, shell.fileIndex(), "the capturing window must stay out of the shell keys");
 
@@ -597,7 +599,7 @@ class VintelliShellTest {
 
             press(pilot, '6');
             pilot.press(KeyCode.ESCAPE);
-            pause(pilot);
+            settle(pilot);
             assertEquals("Focus: shell navigation", shell.status());
             press(pilot, '6');
             press(pilot, 'j');
@@ -616,13 +618,13 @@ class VintelliShellTest {
             pilot.pause(STARTUP);
 
             pilot.press(KeyCode.DOWN);
-            pause(pilot);
+            settle(pilot);
             pressQuietly(pilot);
             assertEquals("VintelliMain.java", shell.state().snapshot().selectedFile());
             assertEquals("run", shell.state().snapshot().selectedToolWindowId());
 
             pilot.press(KeyCode.UP);
-            pause(pilot);
+            settle(pilot);
             pressQuietly(pilot);
             assertEquals("vintelli/pom.xml", shell.state().snapshot().selectedFile());
 
@@ -708,33 +710,37 @@ class VintelliShellTest {
                     "the capturing window must receive the Ctrl+C key instead of the shell");
 
             pilot.press(KeyCode.ESCAPE);
-            pause(pilot);
+            settle(pilot);
             pressCtrlC(pilot);
             assertFalse(test.runner().isRunning(), "Ctrl+C quits once the shell has the focus");
         }
     }
 
+    /**
+     * Drives every catalog action through the palette on the synchronous entry
+     * point: {@link VintelliShell#handle} applies the palette filter and runs
+     * the selected action itself, so no render thread and no fixed window per
+     * key are needed to read the result back. Every action still starts from a
+     * fresh shell, and the two assertions are the ones the runner driven
+     * version made: the dispatch must not end in an unhandled status, and the
+     * palette must close unless the action is the palette itself.
+     */
     @Test
-    void everyCatalogActionDispatchesFromThePaletteWithoutAnUnhandledStatus() throws Exception {
+    void everyCatalogActionDispatchesFromThePaletteWithoutAnUnhandledStatus() {
         for (KeyAction action : Keymap.ofProfile(KeymapProfile.DEFAULT, defaultWindows()).actions()) {
             if (action.id().equals(KeyActions.QUIT)) {
                 continue;
             }
             VintelliShell shell = defaultShell();
-            try (ToolkitTestRunner test = runShell(shell)) {
-                Pilot pilot = test.pilot();
-                pilot.pause(STARTUP);
+            offlineFrame(shell);
 
-                press(pilot, 'p', KeyModifiers.CTRL);
-                type(pilot, action.id().toLowerCase());
-                pilot.press(KeyCode.ENTER);
-                pause(pilot);
+            shell.handle(KeyEvent.ofChar('p', KeyModifiers.CTRL));
+            assertTrue(shell.paletteOpen(), action.id() + ": ctrl+p must open the palette");
+            type(shell, action.id().toLowerCase());
+            shell.handle(KeyEvent.ofKey(KeyCode.ENTER));
 
-                assertFalse(shell.status().startsWith("Unhandled action"), action.id() + ": " + shell.status());
-                assertFalse(shell.paletteOpen() && !action.id().equals(KeyActions.SEARCH_EVERYWHERE), action.id());
-
-                pressCtrlC(pilot);
-            }
+            assertFalse(shell.status().startsWith("Unhandled action"), action.id() + ": " + shell.status());
+            assertFalse(shell.paletteOpen() && !action.id().equals(KeyActions.SEARCH_EVERYWHERE), action.id());
         }
     }
 
@@ -747,7 +753,7 @@ class VintelliShellTest {
 
             press(pilot, 'p', KeyModifiers.CTRL);
             type(pilot, "search ev");
-            pause(pilot);
+            settle(pilot);
             pressCtrlC(pilot);
         }
 
@@ -788,7 +794,7 @@ class VintelliShellTest {
             press(pilot, 'k');
             assertEquals(0, intellijShell.fileIndex(), "the intellij profile navigates with arrows only");
             pilot.press(KeyCode.DOWN);
-            pause(pilot);
+            settle(pilot);
             pressQuietly(pilot);
             assertEquals(1, intellijShell.fileIndex());
 
@@ -811,7 +817,7 @@ class VintelliShellTest {
             assertTrue(test.runner().isRunning(), "filter typing must never quit the shell");
             press(pilot, '1');
             pilot.press(KeyCode.ESCAPE);
-            pause(pilot);
+            settle(pilot);
             assertFalse(shell.paletteOpen(), "escape closes the palette");
 
             press(pilot, 'p', KeyModifiers.CTRL);
@@ -842,7 +848,7 @@ class VintelliShellTest {
 
             type(pilot, "acp");
             pilot.press(KeyCode.ENTER);
-            pause(pilot);
+            settle(pilot);
             assertFalse(shell.paletteOpen());
             // ACP Agents is in RIGHT anchor, bottom index stays 3, right index becomes 0
             assertEquals(3, shell.toolIndex(), "bottom anchor index unchanged");
@@ -884,7 +890,7 @@ class VintelliShellTest {
             press(pilot, 'p', KeyModifiers.CTRL);
             type(pilot, "connect to intellij idea");
             pilot.press(KeyCode.ENTER);
-            pause(pilot);
+            settle(pilot);
 
             assertTrue(connecting.await(1, TimeUnit.SECONDS), "the named palette action starts the connection");
             assertTrue(shell.status().contains("connecting"), shell.status());
@@ -896,7 +902,7 @@ class VintelliShellTest {
             press(pilot, 'p', KeyModifiers.CTRL);
             type(pilot, "connect to intellij idea");
             pilot.press(KeyCode.ENTER);
-            pause(pilot);
+            settle(pilot);
             assertEquals(1, requests.get(), "repeated activation does not start another handshake");
             assertTrue(shell.status().contains("already in progress"), shell.status());
 
@@ -939,16 +945,16 @@ class VintelliShellTest {
             Pilot pilot = test.pilot();
             pilot.pause(STARTUP);
             pilot.press(KeyCode.F10);
-            pause(pilot);
+            settle(pilot);
             for (int menu = 0; menu < 7; menu++) {
                 pilot.press(KeyCode.RIGHT);
-                pause(pilot);
+                settle(pilot);
             }
             String menuRow = test.renderedFrame().lines().skip(2).findFirst().orElse("");
             int x = menuRow.indexOf("Connect / Reconnect");
             assertTrue(x >= 0, menuRow);
             pilot.click(x + 2, 2);
-            pause(pilot);
+            settle(pilot);
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
             while (!shell.status().contains("connected") && System.nanoTime() < deadline) {
                 pause(pilot, Duration.ofMillis(30));
@@ -968,7 +974,7 @@ class VintelliShellTest {
             pilot.pause(STARTUP);
 
             pilot.press(KeyCode.F1);
-            pause(pilot);
+            settle(pilot);
             assertTrue(shell.helpOverlayOpen(), "F1 must open the keymap help overlay");
             assertEquals("Keymap: intellij", shell.status());
 
@@ -986,24 +992,24 @@ class VintelliShellTest {
             pilot.pause(STARTUP);
 
             pilot.press(KeyCode.DOWN);
-            pause(pilot);
+            settle(pilot);
             pressQuietly(pilot);
             assertEquals(1, shell.fileIndex());
             assertEquals("VintelliMain.java", shell.state().snapshot().selectedFile());
 
             pilot.press(KeyCode.DOWN);
-            pause(pilot);
+            settle(pilot);
             pressQuietly(pilot);
             assertEquals(2, shell.fileIndex(), "the next arrow continues from the arrow selection");
 
             pilot.press(KeyCode.END);
-            pause(pilot);
+            settle(pilot);
             pressQuietly(pilot);
             assertEquals(4, shell.fileIndex());
             assertEquals("VintelliShellTest.java", shell.state().snapshot().selectedFile());
 
             pilot.press(KeyCode.HOME);
-            pause(pilot);
+            settle(pilot);
             pressQuietly(pilot);
             assertEquals(0, shell.fileIndex());
             assertEquals("vintelli/pom.xml", shell.state().snapshot().selectedFile());
@@ -1049,12 +1055,12 @@ class VintelliShellTest {
             assertFalse(pilot.hasElement("panel-that-is-not-there"), "unknown ids are rejected");
 
             pilot.click("editor-panel");
-            pause(pilot, EVENT_WINDOW);
+            settle(pilot);
             assertEquals("editor-panel", test.runner().focusManager().focusedId(),
                     "clicking a panel by id moves the focus there");
 
             pilot.click("project-panel");
-            pause(pilot, EVENT_WINDOW);
+            settle(pilot);
             assertEquals("project-panel", test.runner().focusManager().focusedId());
 
             pressCtrlC(pilot);
@@ -1076,7 +1082,7 @@ class VintelliShellTest {
             pilot.mousePress(MouseButton.LEFT, separatorBefore.x(), pressY);
             test.drag(MouseEvent.drag(MouseButton.LEFT, separatorBefore.x() + 8, pressY));
             pilot.mouseRelease(MouseButton.LEFT, VIEWPORT.width() - 1, VIEWPORT.height() - 1);
-            pause(pilot, EVENT_WINDOW);
+            settle(pilot);
 
             Rect projectAfter = pilot.findElement("project-panel");
             assertEquals(projectBefore.width() + 8, projectAfter.width());
@@ -1090,25 +1096,25 @@ class VintelliShellTest {
             pilot.mousePress(MouseButton.LEFT, editorBefore.x() + 10, pressY);
             test.drag(MouseEvent.drag(MouseButton.LEFT, editorBefore.x() + 20, pressY));
             pilot.mouseRelease(MouseButton.LEFT, editorBefore.x() + 20, pressY);
-            pause(pilot, EVENT_WINDOW);
+            settle(pilot);
             assertEquals(resizedWidth, pilot.findElement("project-panel").width(),
                     "a press in the editor body must not continue resizing");
 
             pilot.click("project-panel");
-            pause(pilot, EVENT_WINDOW);
+            settle(pilot);
             assertEquals("project-panel", test.runner().focusManager().focusedId(),
                     "an ordinary tree-panel click still reaches its element");
 
             pilot.click(8, 0);
-            pause(pilot, EVENT_WINDOW);
+            settle(pilot);
             assertTrue(test.renderedFrame().contains("Undo"), test.renderedFrame());
             pilot.press(KeyCode.ESCAPE);
-            pause(pilot, EVENT_WINDOW);
+            settle(pilot);
 
             pilot.click("editor-panel", 3, 3);
             assertEquals("editor-panel", test.runner().focusManager().focusedId());
             pilot.press('=', KeyModifiers.ALT);
-            pause(pilot, EVENT_WINDOW);
+            settle(pilot);
             assertEquals(resizedWidth + 2, pilot.findElement("project-panel").width(),
                     "keyboard resizing remains available after a drag");
         }
@@ -1131,7 +1137,7 @@ class VintelliShellTest {
             pilot.mousePress(MouseButton.LEFT, pilot.findElement("pane-separator-vertical").x(), pressY);
             test.drag(MouseEvent.drag(MouseButton.LEFT, SIZE.width() - 1, pressY));
             pilot.mouseRelease(MouseButton.LEFT, SIZE.width() - 1, SIZE.height() - 1);
-            pause(pilot, EVENT_WINDOW);
+            settle(pilot);
 
             Rect editorAfter = pilot.findElement("editor-panel");
             Rect rightAfter = pilot.findElement("right-stripe");
@@ -1157,17 +1163,17 @@ class VintelliShellTest {
 
             pilot.mousePress(MouseButton.LEFT, pressX, dividerY);
             test.drag(MouseEvent.drag(MouseButton.LEFT, pressX, dividerY - 3));
-            pause(pilot, EVENT_WINDOW);
+            settle(pilot);
             assertTrue(pilot.findElement("editor-panel").height() < editorBefore.height(),
                     "dragging the bottom border upward must shrink the editor panel");
             pilot.mouseRelease(MouseButton.LEFT, SIZE.width() - 1, SIZE.height() - 1);
-            pause(pilot, EVENT_WINDOW);
+            settle(pilot);
             double ratioAfterRelease = store.load().bottomRatio();
 
             test.resize(20, 5);
-            pause(pilot, EVENT_WINDOW);
+            settle(pilot);
             pilot.mouseRelease(MouseButton.LEFT, 19, 4);
-            pause(pilot, EVENT_WINDOW);
+            settle(pilot);
             if (pilot.hasElement("editor-panel")) {
                 Rect resized = pilot.findElement("editor-panel");
                 assertTrue(resized.width() >= 0 && resized.height() >= 0, resized.toString());
@@ -1178,6 +1184,13 @@ class VintelliShellTest {
             pilot.mousePress(MouseButton.LEFT, -1, -1);
             test.drag(MouseEvent.drag(MouseButton.LEFT, -40, -20));
             pilot.mouseRelease(MouseButton.LEFT, -40, -20);
+            /*
+             * The negative coordinates make the shell fail while rendering (a
+             * measured NullPointerException about a null pane rectangle). The
+             * runner answers that with its error display and stops draining its
+             * event queue, so the settle barrier has nothing left to wait for
+             * here and a bounded window is the only wait available.
+             */
             pause(pilot, EVENT_WINDOW);
             if (pilot.hasElement("editor-panel")) {
                 Rect afterInvalidCoordinates = pilot.findElement("editor-panel");
@@ -1198,10 +1211,10 @@ class VintelliShellTest {
             assertEquals("project-panel", test.runner().focusManager().focusedId(),
                     "the first frame focuses the first registered panel");
             pilot.press("TAB");
-            pause(pilot, EVENT_WINDOW);
+            settle(pilot);
             assertEquals("editor-panel", test.runner().focusManager().focusedId());
             pilot.press("TAB");
-            pause(pilot, EVENT_WINDOW);
+            settle(pilot);
             assertEquals("project-panel", test.runner().focusManager().focusedId(),
                     "the focus cycles back through the registered panels");
 
@@ -1327,16 +1340,19 @@ class VintelliShellTest {
                 "the two shipped themes actually differ so the assertions above mean something");
     }
 
-    private static ToolkitTestRunner runShell(VintelliShell shell) throws Exception {
+    private ToolkitTestRunner runShell(VintelliShell shell) throws Exception {
         ToolkitTestRunner test = ToolkitTestRunner.runTest(shell::root, SIZE);
         test.runner().styleEngine(shell.themes().engine());
         test.runner().eventRouter().addGlobalHandler(shell);
         shell.bindQuit(test.runner()::quit);
+        settleStrategy = pilot -> awaitHandled(test.runner());
         return test;
     }
 
-    private static MouseShellRunner runMouseShell(VintelliShell shell, Size size) throws Exception {
-        return new MouseShellRunner(shell, size);
+    private MouseShellRunner runMouseShell(VintelliShell shell, Size size) throws Exception {
+        MouseShellRunner test = new MouseShellRunner(shell, size);
+        settleStrategy = pilot -> test.awaitSettled();
+        return test;
     }
 
     private static String awaitRenderedFrame(Pilot pilot, MouseShellRunner test, String text) {
@@ -1357,6 +1373,7 @@ class VintelliShellTest {
         private final Thread renderThread;
         private final AtomicReference<String> rendered = new AtomicReference<>("");
         private final AtomicReference<Throwable> failure = new AtomicReference<>();
+        private final AtomicInteger frames = new AtomicInteger();
 
         private MouseShellRunner(VintelliShell shell, Size size) throws Exception {
             backend = new TestBackend(size.width(), size.height());
@@ -1373,8 +1390,10 @@ class VintelliShellTest {
             runner = ToolkitRunner.builder()
                     .config(config)
                     .styleEngine(shell.themes().engine())
-                    .postRenderProcessor((frame, elements, styles, focus, elapsed) ->
-                            rendered.set(bufferText(frame.buffer())))
+                    .postRenderProcessor((frame, elements, styles, focus, elapsed) -> {
+                        rendered.set(bufferText(frame.buffer()));
+                        frames.incrementAndGet();
+                    })
                     .build();
             runner.eventRouter().addGlobalHandler(shell);
             shell.bindQuit(runner::quit);
@@ -1388,8 +1407,20 @@ class VintelliShellTest {
             renderThread.setDaemon(true);
             renderThread.start();
             pilot = new ToolkitPilot(runner, backend);
-            pilot.pause(STARTUP);
+            awaitFirstFrame();
             assertHealthy();
+        }
+
+        /** Waits for the first frame instead of assuming it lands within a fixed window. */
+        private void awaitFirstFrame() {
+            long deadline = System.nanoTime() + SETTLE_TIMEOUT.toNanos();
+            while (frames.get() == 0 && System.nanoTime() < deadline) {
+                pause(pilot, SETTLE_STEP);
+            }
+            if (frames.get() == 0) {
+                throw new AssertionError("the shell did not render a first frame within "
+                        + SETTLE_TIMEOUT.toMillis() + " ms");
+            }
         }
 
         private Pilot pilot() {
@@ -1405,16 +1436,42 @@ class VintelliShellTest {
             return rendered.get();
         }
 
+        /**
+         * Waits for the queued input to be handled and for the frame it
+         * produces. The frame lags the handled event by at most one render of
+         * the same loop iteration, so the grace window is a short bound on a
+         * wait that is already known to be nearly over, not a guess at how
+         * long the render thread needs.
+         */
+        private void awaitSettled() {
+            int before = frames.get();
+            try {
+                awaitHandled(runner);
+            } catch (AssertionError notHandled) {
+                assertHealthy();
+                throw notHandled;
+            }
+            awaitFrame(before);
+        }
+
         private void drag(MouseEvent event) {
+            int before = frames.get();
             runner.tuiRunner().dispatch(event);
-            pilot.pause(EVENT_WINDOW);
-            assertHealthy();
+            awaitFrame(before);
         }
 
         private void resize(int width, int height) {
+            int before = frames.get();
             backend.resize(width, height);
             pilot.resize(width, height);
-            pilot.pause(EVENT_WINDOW);
+            awaitFrame(before);
+        }
+
+        private void awaitFrame(int before) {
+            long deadline = System.nanoTime() + FRAME_GRACE.toNanos();
+            while (frames.get() == before && System.nanoTime() < deadline) {
+                pause(pilot, SETTLE_STEP);
+            }
             assertHealthy();
         }
 
@@ -1467,22 +1524,61 @@ class VintelliShellTest {
         return new VintelliShell(new ToolWindowRegistry(windows).toolWindows(), new ShellState(), themes);
     }
 
-    private static void pause(Pilot pilot) {
-        pilot.pause(EVENT_WINDOW);
+    /**
+     * Waits until the shell under test has handled every event dispatched so
+     * far. The fixed half second window this replaces was a guess at how long
+     * the render thread needs; the barrier waits for the real thing (the
+     * runner ran a marker task after the queued key), so the assertions read
+     * the state they expect as soon as it exists instead of after a window
+     * that is either too short or too long. The fixed sleeps stay where the
+     * wait is for something else: the runner startup (STARTUP) and the polls
+     * of a background thread (30 ms steps).
+     */
+    private void settle(Pilot pilot) {
+        settleStrategy.await(pilot);
+    }
+
+    /** Waits for the shell under test to have handled the input dispatched so far. */
+    private interface Settle {
+        void await(Pilot pilot);
+    }
+
+    private Settle settleStrategy = pilot -> pilot.pause(EVENT_WINDOW);
+
+    private static void awaitHandled(ToolkitRunner runner) {
+        CountDownLatch handled = new CountDownLatch(1);
+        runner.runOnRenderThread(handled::countDown);
+        long deadline = System.nanoTime() + SETTLE_TIMEOUT.toNanos();
+        while (handled.getCount() > 0 && runner.isRunning() && System.nanoTime() < deadline) {
+            sleep(SETTLE_STEP);
+        }
+        if (handled.getCount() > 0 && runner.isRunning()) {
+            throw new AssertionError("the shell did not handle the queued input within "
+                    + SETTLE_TIMEOUT.toMillis() + " ms");
+        }
+    }
+
+    private static void sleep(Duration duration) {
+        try {
+            Thread.sleep(duration.toMillis());
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("interrupted while waiting for the shell", interrupted);
+        }
     }
 
     private static void pause(Pilot pilot, Duration duration) {
         pilot.pause(duration);
     }
 
-    private static void press(Pilot pilot, char key) {
+    private void press(Pilot pilot, char key) {
         pilot.press(key);
-        pilot.pause(EVENT_WINDOW);
+        settle(pilot);
     }
 
-    private static void press(Pilot pilot, char key, KeyModifiers modifiers) {
+    private void press(Pilot pilot, char key, KeyModifiers modifiers) {
         pilot.press(key, modifiers);
-        pilot.pause(EVENT_WINDOW);
+        settle(pilot);
     }
 
     /**
@@ -1491,19 +1587,26 @@ class VintelliShellTest {
      * handler runs, so a follow-up event reads the selection back from the
      * list into the shell state and the status line deterministically.
      */
-    private static void pressQuietly(Pilot pilot) {
+    private void pressQuietly(Pilot pilot) {
         pilot.press('x');
-        pause(pilot);
+        settle(pilot);
     }
 
-    private static void pressCtrlC(Pilot pilot) {
+    private void pressCtrlC(Pilot pilot) {
         press(pilot, 'c', KeyModifiers.CTRL);
     }
 
-    private static void type(Pilot pilot, String text) {
+    private void type(Pilot pilot, String text) {
         for (int index = 0; index < text.length(); index++) {
             pilot.press(text.charAt(index));
-            pilot.pause(TYPE_WINDOW);
+            settle(pilot);
+        }
+    }
+
+    /** Types into the open palette filter on the synchronous entry point. */
+    private static void type(VintelliShell shell, String text) {
+        for (int index = 0; index < text.length(); index++) {
+            shell.handle(KeyEvent.ofChar(text.charAt(index)));
         }
     }
 

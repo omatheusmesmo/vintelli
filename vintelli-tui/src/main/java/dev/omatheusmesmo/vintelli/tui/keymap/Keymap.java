@@ -53,7 +53,9 @@ import static dev.omatheusmesmo.vintelli.tui.keymap.KeyActions.reservedActionIds
  * (the palette, the help overlay and the tool window activations) must keep
  * at least one Ctrl/Alt/F-key chord and must not be reached by bare printable
  * characters, which would eat text typed into a capturing window or the
- * palette filter.
+ * palette filter; {@code quit} must not be reached by a bare printable
+ * character either, which would quit the shell while text is typed into the
+ * palette filter or a capturing window.
  *
  * <p>Built-in TamboUI preset sets keep bare {@code q} and {@code Q} on
  * {@code quit}, which would kill a capturing text input, so every profile
@@ -176,7 +178,7 @@ public final class Keymap {
         catalog.add(new KeyAction(MOVE_UP, "Move Selection Up", ""));
         catalog.add(new KeyAction(MOVE_DOWN, "Move Selection Down", ""));
         catalog.add(new KeyAction(SEARCH_EVERYWHERE, "Search Everywhere", "Double Shift"));
-        catalog.add(new KeyAction(KEYMAP_HELP, "Keymap Help", ""));
+        catalog.add(new KeyAction(KEYMAP_HELP, "Keymap Help", "F1"));
         catalog.addAll(KeyActions.shellActions());
         catalog.addAll(KeyActions.projectActions());
         for (ToolWindow toolWindow : toolWindows) {
@@ -220,13 +222,17 @@ public final class Keymap {
             throw new IllegalStateException("cannot read user keymap file '" + userKeymapFile + "'", e);
         }
         Properties properties = new Properties();
-        Map<String, Integer> lineNumbers;
         try {
             properties.load(new ByteArrayInputStream(content));
-            lineNumbers = lineNumbersOfKeys(content);
         } catch (IOException e) {
             throw new IllegalStateException("cannot parse user keymap file '" + userKeymapFile + "'", e);
+        } catch (IllegalArgumentException e) {
+            int line = firstMalformedUnicodeEscapeLine(content);
+            String location = line > 0 ? " (line " + line + ")" : "";
+            throw new IllegalStateException("cannot parse user keymap file '" + userKeymapFile + "'"
+                    + location + ": " + e.getMessage(), e);
         }
+        Map<String, Integer> lineNumbers = lineNumbersOfKeys(content);
         for (String action : properties.stringPropertyNames()) {
             if (!knownIds.contains(action)) {
                 throw new IllegalStateException("unknown action '" + action + "' in user keymap file '"
@@ -285,10 +291,83 @@ public final class Keymap {
         return best;
     }
 
+    /**
+     * Physical line of the first malformed backslash-u escape in the given
+     * keymap content, or {@code -1} when no line can be named with confidence.
+     * Comment lines are skipped the way {@link Properties} skips them. An
+     * escape cut off by a line continuation is not reported, because the
+     * joined line may well be valid; the caller then names only the file.
+     */
+    private static int firstMalformedUnicodeEscapeLine(byte[] content) {
+        String[] lines = new String(content, java.nio.charset.StandardCharsets.UTF_8).split("\\r?\\n", -1);
+        boolean continuation = false;
+        for (int index = 0; index < lines.length; index++) {
+            String line = lines[index];
+            if (!continuation) {
+                String trimmed = line.trim();
+                if (trimmed.startsWith("#") || trimmed.startsWith("!")) {
+                    continue;
+                }
+            }
+            boolean continues = endsWithUnescapedBackslash(line);
+            String scanned = continues ? line.substring(0, line.length() - 1) : line;
+            if (malformedUnicodeEscapeIndex(scanned, continues) >= 0) {
+                return index + 1;
+            }
+            continuation = continues;
+        }
+        return -1;
+    }
+
+    /**
+     * Whether the line ends in a single backslash, the marker that joins the
+     * next physical line into the same logical line.
+     */
+    private static boolean endsWithUnescapedBackslash(String line) {
+        int backslashes = 0;
+        for (int index = line.length() - 1; index >= 0 && line.charAt(index) == '\\'; index--) {
+            backslashes++;
+        }
+        return backslashes % 2 == 1;
+    }
+
+    /**
+     * Index of the first malformed backslash-u escape in the line, or
+     * {@code -1}. A truncated escape is only reported when the line does not
+     * continue, otherwise the missing digits may sit on the next line.
+     */
+    private static int malformedUnicodeEscapeIndex(String line, boolean continues) {
+        int index = 0;
+        while (index < line.length()) {
+            if (line.charAt(index) != '\\') {
+                index++;
+                continue;
+            }
+            if (index + 1 >= line.length()) {
+                return -1;
+            }
+            if (line.charAt(index + 1) != 'u') {
+                index += 2;
+                continue;
+            }
+            if (index + 5 >= line.length()) {
+                return continues ? -1 : index;
+            }
+            for (int digit = 0; digit < 4; digit++) {
+                if (Character.digit(line.charAt(index + 2 + digit), 16) < 0) {
+                    return index;
+                }
+            }
+            index += 6;
+        }
+        return -1;
+    }
+
     private static void validateReservedChords(Path userKeymapFile, Map<String, Integer> lineNumbers,
             Bindings layered, Set<String> mentioned, Set<String> reservedIds) {
         for (String action : new TreeSet<>(mentioned)) {
-            if (!reservedIds.contains(action)) {
+            boolean quit = QUIT.equals(action);
+            if (!quit && !reservedIds.contains(action)) {
                 continue;
             }
             List<InputTrigger> triggers = layered.triggersFor(bindingName(action));
@@ -301,6 +380,12 @@ public final class Keymap {
                         + userKeymapFile + "' (line " + lineNumbers.getOrDefault(action, 0)
                         + ") keeps no chord that reaches the shell while an input has focus; bare characters belong to "
                         + "the captured input, bind a Ctrl, Alt or F-key chord additionally");
+            }
+            if (quit && !barePrintable.isEmpty()) {
+                throw new IllegalStateException("the action 'quit' in user keymap file '" + userKeymapFile
+                        + "' (line " + lineNumbers.getOrDefault(action, 0)
+                        + ") must not be reached by a bare printable character, it would quit the shell while text is "
+                        + "typed into the palette filter or a capturing window");
             }
             if (!activationAction && !barePrintable.isEmpty() && !triggers.isEmpty()) {
                 throw new IllegalStateException("the reserved action '" + action + "' in user keymap file '"
