@@ -246,10 +246,12 @@ are the one-column line between the project pane and the editor (and before
 the right tool stripe) and the one-row line above the bottom tool windows.
 A two-column icon strip sits on each side of the shell. The left strip holds
 the Project icon on top and the bottom tool windows at its bottom, and the
-right strip holds the right tool windows. Click an icon to show a hidden
-window, activate a visible one, or hide the active one; a hidden window frees
-its space and its icon stays. Tool window tabs show the shortcut digit before
-the title, underline the selected tab, and answer clicks.
+right strip holds the right tool windows. With the Nerd Font icon mode each
+icon is that window's glyph; the ASCII mode shows the first letter of its
+title. Click an icon to show a hidden window, activate a visible one, or hide
+the active one; a hidden window frees its space and its icon stays. Tool window
+tabs show the shortcut digit before the title, underline the selected tab, and
+answer clicks.
 Drag the vertical separator to resize the project pane or the horizontal one
 to resize the bottom tool window pane. `Alt+=`/`Alt+-` resize the project pane and
 `Alt+.`/`Alt+,` resize the bottom pane from the keyboard; after the first resize the

@@ -33,6 +33,7 @@ import jakarta.inject.Singleton;
 public final class TerminalToolWindow implements ToolWindow {
 
     private static final Logger LOG = Logger.getLogger(TerminalToolWindow.class);
+    private static final String TERMINAL_GLYPH = "";
     private static final int MAX_INPUT_LENGTH = 4_096;
 
     private final Provider<ShellThemes> themes;
@@ -82,6 +83,11 @@ public final class TerminalToolWindow implements ToolWindow {
     @Override
     public int ordinal() {
         return 1;
+    }
+
+    @Override
+    public String icon() {
+        return TERMINAL_GLYPH;
     }
 
     @Override

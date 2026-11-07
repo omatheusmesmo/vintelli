@@ -34,6 +34,7 @@ import jakarta.inject.Singleton;
 @Singleton
 public final class RunToolWindow implements ToolWindow {
 
+    private static final String PLAY_GLYPH = "";
     private static final int MAX_OUTPUT_LINES = 500;
     private static final String LOADING = "Loading run configurations…";
 
@@ -102,6 +103,11 @@ public final class RunToolWindow implements ToolWindow {
     @Override
     public int ordinal() {
         return 0;
+    }
+
+    @Override
+    public String icon() {
+        return PLAY_GLYPH;
     }
 
     @Override

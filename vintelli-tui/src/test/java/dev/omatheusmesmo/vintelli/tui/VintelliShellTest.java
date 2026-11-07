@@ -434,6 +434,42 @@ class VintelliShellTest {
     }
 
     @Test
+    void nerdModeDrawsEachStripeWithItsWindowGlyph() {
+        String previous = System.getProperty(IconMode.CONFIG_PROPERTY);
+        System.setProperty(IconMode.CONFIG_PROPERTY, "nerd");
+        try {
+            Buffer buffer = offlineFrame(shellWithAllBuiltInWindows());
+            for (String glyph : List.of(PROJECT_GLYPH, RUN_GLYPH, TERMINAL_GLYPH, PROBLEMS_GLYPH)) {
+                assertEquals(1, CharWidth.of(glyph), "the stripe glyph measures one column: " + glyph);
+                assertTrue(findRow(buffer, 1, glyph) >= 0, "the left stripe shows " + glyph);
+            }
+            for (String glyph : List.of(ACP_GLYPH, STRUCTURE_GLYPH)) {
+                assertEquals(1, CharWidth.of(glyph), "the stripe glyph measures one column: " + glyph);
+                assertTrue(findRow(buffer, VIEWPORT.width() - 1, glyph) >= 0, "the right stripe shows " + glyph);
+            }
+        } finally {
+            restoreProperty(IconMode.CONFIG_PROPERTY, previous);
+        }
+    }
+
+    @Test
+    void asciiModeDrawsEachStripeWithTheFirstLetterOfItsTitle() {
+        String previous = System.getProperty(IconMode.CONFIG_PROPERTY);
+        System.setProperty(IconMode.CONFIG_PROPERTY, "ascii");
+        try {
+            Buffer buffer = offlineFrame(shellWithAllBuiltInWindows());
+            assertTrue(findRow(buffer, 1, "P") >= 0, "the Project stripe shows its letter");
+            assertTrue(findRow(buffer, 1, "R") >= 0, "the Run stripe shows its letter");
+            assertTrue(findRow(buffer, 1, "T") >= 0, "the Terminal stripe shows its letter");
+            assertTrue(findRow(buffer, VIEWPORT.width() - 1, "A") >= 0, "the ACP Agents stripe shows its letter");
+            assertTrue(findRow(buffer, VIEWPORT.width() - 1, "S") >= 0, "the Structure stripe shows its letter");
+            assertEquals(-1, findRow(buffer, 1, RUN_GLYPH), "the ASCII face draws no Nerd Font glyph");
+        } finally {
+            restoreProperty(IconMode.CONFIG_PROPERTY, previous);
+        }
+    }
+
+    @Test
     void theActiveStripeIconUsesTheSelectedStyleOfEachShippedTheme() {
         for (String theme : List.of("dark", "darcula")) {
             ShellThemes themes = new ShellThemes(theme, (Path) null);
@@ -483,6 +519,12 @@ class VintelliShellTest {
     private static final Duration SETTLE_STEP = Duration.ofMillis(2);
     private static final Duration FRAME_GRACE = Duration.ofMillis(30);
     private static final Rect VIEWPORT = new Rect(0, 0, 80, 24);
+    private static final String PROJECT_GLYPH = "";
+    private static final String RUN_GLYPH = "";
+    private static final String TERMINAL_GLYPH = "";
+    private static final String PROBLEMS_GLYPH = "";
+    private static final String ACP_GLYPH = "";
+    private static final String STRUCTURE_GLYPH = "";
     private static final Size SIZE = new Size(VIEWPORT.width(), VIEWPORT.height());
     private static final Size WIDE = new Size(150, 42);
     private static final int MENU_ROW = 0;
@@ -3140,6 +3182,13 @@ class VintelliShellTest {
                 new RunToolWindow(() -> themes), new TerminalToolWindow(() -> themes),
                 new ProblemsToolWindow(() -> themes), new AcpAgentsToolWindow(() -> themes)));
         return registry.toolWindows();
+    }
+
+    private static VintelliShell shellWithAllBuiltInWindows() {
+        ShellThemes themes = defaultThemes();
+        List<ToolWindow> windows = new ArrayList<>(windowsWithAcp());
+        windows.add(new StructureToolWindow(() -> themes));
+        return new VintelliShell(new ToolWindowRegistry(windows).toolWindows(), new ShellState(), themes);
     }
 
     private static VintelliShell shellWithFakeWindow(FakeToolWindow fake) {

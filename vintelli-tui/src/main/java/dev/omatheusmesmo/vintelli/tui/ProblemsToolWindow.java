@@ -39,6 +39,8 @@ import java.util.function.Consumer;
 @Singleton
 public final class ProblemsToolWindow implements ToolWindow {
 
+    private static final String PROBLEMS_GLYPH = "";
+
     private enum Filter { ALL, ERRORS, WARNINGS }
     private enum State { IDLE, LOADING, READY, EMPTY, UNAVAILABLE, ERROR }
 
@@ -85,6 +87,7 @@ public final class ProblemsToolWindow implements ToolWindow {
     @Override public String title() { return "Problems"; }
     @Override public char shortcut() { return '3'; }
     @Override public int ordinal() { return 2; }
+    @Override public String icon() { return PROBLEMS_GLYPH; }
 
     @Override
     public boolean handleKey(KeyEvent event) {
