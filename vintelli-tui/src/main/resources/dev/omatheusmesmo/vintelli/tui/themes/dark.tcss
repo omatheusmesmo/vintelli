@@ -18,10 +18,10 @@
  * into the UI chrome.
  *
  * Color depth: the hex values below are the authored palette of the theme and
- * the source of the index table in the README. A session that does not run
- * with truecolor (property `vintelli.tui.color-level`, see the README) gets
+ * the source of the index table in docs/themes.md. A session that does not run
+ * with truecolor (property `vintelli.tui.color-level`, see docs/themes.md) gets
  * every hex value of this sheet replaced by the nearest fixed 256 color index
- * before the stylesheet is parsed, so the README indices are what such a
+ * before the stylesheet is parsed, so the indices of docs/themes.md are what such a
  * terminal renders (issue #139).
  */
 $panel            : #2B2D30;       /* ui["*"].background = colors.Gray2 */

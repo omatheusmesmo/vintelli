@@ -9,7 +9,7 @@ import dev.tamboui.tui.bindings.Bindings;
  * profile is active, so switching profiles is data only.
  *
  * <p>{@code intellij} is the default and mirrors the reachable subset of the
- * IntelliJ shortcuts (see the keymap section of the README for the chords the
+ * IntelliJ shortcuts (see docs/keymap.md for the chords the
  * terminal cannot deliver, for example Double Shift and Ctrl+Shift+letter).
  * {@code vim} swaps the shell navigation to hjkl through the TamboUI vim
  * binding set.

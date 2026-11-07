@@ -14,9 +14,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Pins the downgrade of every required variable of both shipped themes against
- * the index the README palette table documents, and the search itself against
+ * the index the palette table of docs/themes.md documents, and the search itself against
  * the range of the fixed palette. The pinned indices are what a reader of the
- * README sees, so a changed theme value or a changed distance fails here.
+ * docs/themes.md sees, so a changed theme value or a changed distance fails here.
  */
 class PaletteDowngradeTest {
 
@@ -92,7 +92,7 @@ class PaletteDowngradeTest {
     @Test
     void documentedKeywordIndexSurvivesTheDistance() {
         assertEquals(173, indexOf("#CC7832"),
-                "the README documents 173 for the Darcula keyword and the squared distance reproduces it");
+                "docs/themes.md documents 173 for the Darcula keyword and the squared distance reproduces it");
     }
 
     @Test
