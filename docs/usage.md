@@ -118,6 +118,9 @@ Decisions of the local provider:
   shell can change directory and access the filesystem with the current user's
   permissions. It is not a filesystem sandbox. Starting a session requires
   confirmation, and potentially dangerous or compound commands prompt again.
+  Ctrl+L clears the visible output and keeps the typed input. A line that is
+  only `clear` does the same without being sent to the shell; a compound line
+  such as `clear && ls` is sent as usual and does not clear the output.
 - `vintelli.local.terminal.shell` selects the shell for both one shot commands
   and persistent terminal sessions. `auto` is the default: Unix honors the
   current `$SHELL` executable, including an absolute path outside `PATH`, then
