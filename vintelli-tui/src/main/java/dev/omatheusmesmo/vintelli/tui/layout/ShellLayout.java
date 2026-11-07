@@ -13,6 +13,7 @@ public final class ShellLayout {
     public static final int MIN_EDITOR_HEIGHT = 5;
     private double projectRatio;
     private double bottomRatio;
+    private boolean projectVisible = true;
     private final Set<String> allWindows;
     private final Set<String> visibleWindows;
 
@@ -64,6 +65,14 @@ public final class ShellLayout {
         } else {
             visibleWindows.remove(windowId);
         }
+    }
+
+    public boolean isProjectVisible() {
+        return projectVisible;
+    }
+
+    public void setProjectVisible(boolean visible) {
+        projectVisible = visible;
     }
 
     public void toggle(String windowId) {

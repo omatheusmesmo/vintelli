@@ -70,8 +70,38 @@ $editor-caret-row : #323232;       /* editor scheme CARET_ROW_COLOR */
   background: $selection-bg;
 }
 
-#tool-tabs {
+ToolTabBarElement {
   background: $panel;
+}
+
+ToolTabBarElement-tab {
+  color: $soft;
+}
+
+ToolTabBarElement-tab:selected {
+  color: $chrome-fg-strong;
+  text-style: bold;
+}
+
+ToolTabBarElement-shortcut {
+  color: $muted;
+}
+
+ToolTabBarElement-underline {
+  color: $focus-border;
+}
+
+ToolStripElement {
+  background: $panel;
+}
+
+ToolStripElement-icon {
+  color: $soft;
+}
+
+ToolStripElement-icon:selected {
+  color: $tab-selected-fg;
+  background: $tab-selected-bg;
 }
 
 TabsElement-tab {

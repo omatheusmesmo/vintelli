@@ -53,9 +53,11 @@ public final class ShellLayoutStore {
                     }
                 }
             }
-            return new ShellLayout(Double.parseDouble(values.getProperty("project.ratio")),
+            ShellLayout layout = new ShellLayout(Double.parseDouble(values.getProperty("project.ratio")),
                     Double.parseDouble(values.getProperty("bottom.ratio")),
                     visible, allWindowIds);
+            layout.setProjectVisible(!"false".equals(values.getProperty("project.visible")));
+            return layout;
         } catch (IOException | IllegalArgumentException | NullPointerException invalid) {
             return new ShellLayout(ShellLayout.DEFAULT_PROJECT_RATIO, ShellLayout.DEFAULT_BOTTOM_RATIO,
                     allWindowIds == null ? null : new LinkedHashSet<>(allWindowIds), allWindowIds);
@@ -72,6 +74,7 @@ public final class ShellLayoutStore {
         values.setProperty("project.ratio", Double.toString(layout.projectRatio()));
         values.setProperty("bottom.ratio", Double.toString(layout.bottomRatio()));
         values.setProperty("visible.windows", String.join(",", layout.visibleWindows()));
+        values.setProperty("project.visible", Boolean.toString(layout.isProjectVisible()));
         Path temporary = Files.createTempFile(file.getParent(), "layout-", ".tmp");
         try {
             try (OutputStream output = Files.newOutputStream(temporary)) {
