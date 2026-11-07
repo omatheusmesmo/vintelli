@@ -17,6 +17,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ForkJoinPool;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class IdeaMcpClientTest {
@@ -104,6 +105,30 @@ class IdeaMcpClientTest {
             server.rejectWith(404);
 
             assertEquals(ConnectionState.ENDPOINT_NOT_FOUND, client.reconnect().state(), client.status().detail());
+        }
+    }
+
+    @Test
+    void reportsErrorWithTheActualStatusOn500() throws Exception {
+        try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
+             IdeaMcpClient client = new IdeaMcpClient(server.streamUrl(), null, null, "test", MAPPER, VALIDATOR)) {
+            server.rejectWith(500);
+
+            assertEquals(ConnectionState.ERROR, client.reconnect().state(), client.status().detail());
+            assertTrue(client.status().detail().contains("500"), client.status().detail());
+            assertFalse(client.status().detail().contains("404"), client.status().detail());
+        }
+    }
+
+    @Test
+    void reportsErrorWithTheActualStatusOn503() throws Exception {
+        try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
+             IdeaMcpClient client = new IdeaMcpClient(server.streamUrl(), null, null, "test", MAPPER, VALIDATOR)) {
+            server.rejectWith(503);
+
+            assertEquals(ConnectionState.ERROR, client.reconnect().state(), client.status().detail());
+            assertTrue(client.status().detail().contains("503"), client.status().detail());
+            assertFalse(client.status().detail().contains("404"), client.status().detail());
         }
     }
 
