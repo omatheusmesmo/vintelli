@@ -239,7 +239,7 @@ class EditorCaretTest {
         String css;
         try (InputStream input = EditorCaretTest.class.getResourceAsStream(
                 "/dev/omatheusmesmo/vintelli/tui/themes/darcula.tcss")) {
-            css = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+            css = new String(input.readAllBytes(), StandardCharsets.UTF_8).replace("\r\n", "\n");
         }
         String role = ".editor-caret {\n  text-style: reversed;\n}\n";
         assertTrue(css.contains(role), "the shipped darcula theme declares the caret role");
