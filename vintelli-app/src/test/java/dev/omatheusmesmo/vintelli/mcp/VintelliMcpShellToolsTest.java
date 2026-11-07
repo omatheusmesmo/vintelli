@@ -69,7 +69,7 @@ public class VintelliMcpShellToolsTest {
     public void vintelliHighlightPushesFileAndLineToTheShell() {
         mcpClient()
                     .toolsCall("vintelli_highlight")
-                    .withArguments(Map.of("file", "src/Main.java", "line", 7))
+                    .withArguments(Map.of("file", "src/M.java", "line", 7))
                     .withAssert(VintelliMcpShellToolsTest::assertSuccessfulCall)
                     .send()
                 .thenAssertResults();
@@ -78,7 +78,7 @@ public class VintelliMcpShellToolsTest {
                 .when().get(tuiRender)
                 .then()
                 .statusCode(200)
-                .body("editorArea", containsString("> highlight: src/Main.java:7"));
+                .body("editorArea", containsString("> highlight: src/M.java:7"));
     }
 
     @Test

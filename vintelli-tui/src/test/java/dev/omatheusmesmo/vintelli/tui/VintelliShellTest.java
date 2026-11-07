@@ -79,8 +79,225 @@ class VintelliShellTest {
         VintelliShell shell = new VintelliShell(List.of(right), new ShellState(), themes);
         offlineFrame(shell);
 
-        assertTrue(rendered.get().height() > VintelliShell.TOOL_WINDOW_HEIGHT,
-                "side windows should fill the stripe instead of stopping at the bottom window height");
+        int bottomWithoutWindows = VintelliShell.TOOL_WINDOW_HEIGHT + 2;
+        int tabAndHeaderRows = 3;
+        assertEquals(VIEWPORT.height() - 1 - bottomWithoutWindows - tabAndHeaderRows, rendered.get().height(),
+                "side windows fill the stripe above the bottom region, less the two tab rows and the pane header");
+    }
+
+    @Test
+    void stripsRenderOneIconPerWindowOnTheRightSideInTheRegisteredOrder() {
+        ShellThemes themes = defaultThemes();
+        List<ToolWindow> windows = new ArrayList<>(windowsWithAcp());
+        windows.add(new FakeToolWindow("side.a", "Side", '7', 100, "", false, ToolWindow.Anchor.RIGHT));
+        windows.add(new FakeToolWindow("side.b", "Other", '8', 200, "", false, ToolWindow.Anchor.RIGHT));
+        List<ToolWindow> registered = new ToolWindowRegistry(windows).toolWindows();
+        VintelliShell shell = new VintelliShell(registered, new ShellState(), themes);
+        Buffer buffer = offlineFrame(shell);
+
+        StringBuilder expectedRight = new StringBuilder();
+        StringBuilder expectedLeft = new StringBuilder("P");
+        for (ToolWindow window : registered) {
+            if (window.anchor() == ToolWindow.Anchor.RIGHT) {
+                expectedRight.append(window.title().charAt(0));
+            } else if (window.anchor() == ToolWindow.Anchor.BOTTOM) {
+                expectedLeft.append(window.title().charAt(0));
+            }
+        }
+        int lastMiddleRow = findBottomTabRow(buffer) - 1;
+        assertEquals(expectedRight.toString(), columnLetters(buffer, VIEWPORT.width() - 1, 1, lastMiddleRow),
+                "the right strip stacks one icon per right window in the registered order");
+        assertEquals(expectedLeft.toString(), columnLetters(buffer, 1, 1, lastMiddleRow),
+                "the left strip holds the project icon on top and the bottom windows at its bottom");
+    }
+
+    @Test
+    void clickingAStripIconTogglesItsWindowAndTheSecondClickShowsItAgain() throws Exception {
+        VintelliShell shell = defaultShell();
+        Buffer buffer = offlineFrame(shell);
+        int runIcon = findRow(buffer, 1, "R");
+        try (ToolkitTestRunner test = runShell(shell)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+            pilot.click(1, runIcon);
+            settle(pilot);
+            assertFalse(shell.isToolWindowVisible("run"), "the first click hides Run: " + shell.status());
+
+            pilot.click(1, runIcon);
+            settle(pilot);
+            assertTrue(shell.isToolWindowVisible("run"), "the second click shows Run again: " + shell.status());
+            assertEquals("Tool window: Run", shell.status());
+            pressCtrlC(pilot);
+        }
+    }
+
+    @Test
+    void aHiddenSideWindowFreesItsSpaceAndItsStripeIconStaysInPlace() throws Exception {
+        VintelliShell shell = new VintelliShell(windowsWithAcp(), new ShellState(), defaultThemes());
+        int iconRow = findRow(offlineFrame(shell), VIEWPORT.width() - 1, "A");
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+            int rightBefore = pilot.findElement("right-stripe").width();
+            int editorBefore = pilot.findElement("editor-panel").width();
+
+            pilot.click(VIEWPORT.width() - 1, iconRow);
+            settle(pilot);
+
+            assertFalse(shell.isToolWindowVisible("acp.agents"), shell.status());
+            assertEquals(VintelliShell.TOOL_STRIP_WIDTH, pilot.findElement("right-stripe").width(),
+                    "a hidden side window leaves only the strip");
+            assertEquals(editorBefore + rightBefore - VintelliShell.TOOL_STRIP_WIDTH,
+                    pilot.findElement("editor-panel").width(), "the editor takes the freed columns");
+            String frame = test.renderedFrame();
+            assertTrue(frame.split("\n", -1)[iconRow].endsWith("A"),
+                    "the strip keeps the icon of the hidden window: " + frame);
+        }
+    }
+
+    @Test
+    void escapeKeepsAHiddenProjectPanelHiddenAndFocusesTheEditor() throws Exception {
+        FakeToolWindow terminalLike = new FakeToolWindow("fake.terminal", "Fake Terminal", '6', 60, "type away", true);
+        VintelliShell shell = shellWithFakeWindow(terminalLike);
+        int projectIcon = findRow(offlineFrame(shell), 1, "P");
+        try (ToolkitTestRunner test = runShell(shell)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+            pilot.click(1, projectIcon);
+            settle(pilot);
+            assertEquals("Project panel hidden", shell.status());
+
+            press(pilot, '6');
+            assertNotEquals("editor-panel", test.runner().focusManager().focusedId(), "the window took the focus");
+            pilot.press(KeyCode.ESCAPE);
+            settle(pilot);
+
+            assertFalse(pilot.hasElement("project-panel"), "escape must not bring the hidden panel back");
+            assertEquals("editor-panel", test.runner().focusManager().focusedId());
+            pressCtrlC(pilot);
+        }
+    }
+
+    @Test
+    void theSeparatorOfAHiddenProjectPanelDoesNotResizeIt() throws Exception {
+        ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
+        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+        int projectIcon = findRow(offlineFrame(shell), 1, "P");
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            pilot.click(1, projectIcon);
+            settle(pilot);
+            double ratio = store.load().projectRatio();
+            Rect separator = pilot.findElement("pane-separator-vertical");
+
+            pilot.mousePress(MouseButton.LEFT, separator.x(), separator.y());
+            test.drag(MouseEvent.drag(MouseButton.LEFT, separator.x() + 8, separator.y()));
+            pilot.mouseRelease(MouseButton.LEFT, separator.x() + 8, separator.y());
+            settle(pilot);
+
+            assertEquals(ratio, store.load().projectRatio(), "the hidden panel keeps its saved width");
+        }
+    }
+
+    @Test
+    void theBottomPaneDoesNotResizeWhileEveryBottomWindowIsHidden() throws Exception {
+        ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
+        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+        defaultWindows().stream().filter(window -> window.anchor() == ToolWindow.Anchor.BOTTOM)
+                .filter(window -> shell.isToolWindowVisible(window.id()))
+                .forEach(window -> shell.toggleToolWindow(window.id()));
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            double ratio = store.load().bottomRatio();
+
+            pilot.press('.', KeyModifiers.ALT);
+            settle(pilot);
+
+            assertEquals("Bottom tool windows are hidden", shell.status());
+            assertEquals(ratio, store.load().bottomRatio(), "the hidden pane keeps its saved height");
+        }
+    }
+
+    @Test
+    void clickingAToolTabActivatesTheWindowAtItsRenderedPosition() throws Exception {
+        VintelliShell shell = defaultShell();
+        Buffer buffer = offlineFrame(shell);
+        int tabRow = findBottomTabRow(buffer);
+        int problemsX = rowText(buffer, tabRow).indexOf("3 Problems") + 1;
+        try (ToolkitTestRunner test = runShell(shell)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+            pilot.click(problemsX, tabRow + 1);
+            settle(pilot);
+            assertEquals(2, shell.toolIndex(), shell.status());
+            assertEquals("Tool window: Problems", shell.status());
+            pressCtrlC(pilot);
+        }
+    }
+
+    @Test
+    void asciiModeDrawsTheStripsAndTheBottomTabsWithoutNonAsciiGlyphs() {
+        String previous = System.getProperty(IconMode.CONFIG_PROPERTY);
+        System.setProperty(IconMode.CONFIG_PROPERTY, "ascii");
+        try {
+            VintelliShell shell = new VintelliShell(windowsWithAcp(), new ShellState(), defaultThemes());
+            Buffer buffer = offlineFrame(shell);
+            int tabRow = findBottomTabRow(buffer);
+            for (int row = 1; row < tabRow; row++) {
+                for (int x : new int[] {0, 1, VIEWPORT.width() - 2, VIEWPORT.width() - 1}) {
+                    assertTrue(buffer.get(x, row).symbol().chars().allMatch(character -> character < 128),
+                            "the ASCII face draws no non-ASCII glyph in the strips at " + x + "," + row);
+                }
+            }
+            assertTrue(rowText(buffer, tabRow).chars().allMatch(character -> character < 128),
+                    "the ASCII face draws no non-ASCII glyph in the tab row: " + rowText(buffer, tabRow));
+            assertTrue(rowText(buffer, tabRow + 1).chars().allMatch(character -> character < 128),
+                    "the ASCII face underlines with an ASCII glyph: " + rowText(buffer, tabRow + 1));
+            assertEquals("P", columnLetters(buffer, 1, 1, 1), "the project icon is its letter");
+        } finally {
+            restoreProperty(IconMode.CONFIG_PROPERTY, previous);
+        }
+    }
+
+    @Test
+    void theActiveStripeIconUsesTheSelectedStyleOfEachShippedTheme() {
+        for (String theme : List.of("dark", "darcula")) {
+            ShellThemes themes = new ShellThemes(theme, (Path) null);
+            VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), themes);
+            Buffer buffer = offlineFrame(shell);
+            int runIcon = findRow(buffer, 1, "R");
+            int terminalIcon = findRow(buffer, 1, "T");
+            assertEquals(themes.color("tab-selected-bg"), buffer.get(1, runIcon).style().bg().orElse(null),
+                    "the active icon sits on the selected background in " + theme);
+            assertEquals(themes.color("tab-selected-bg"), buffer.get(0, runIcon).style().bg().orElse(null),
+                    "the active icon fills both strip columns in " + theme);
+            assertEquals(themes.color("tab-selected-fg"), buffer.get(1, runIcon).style().fg().orElse(null),
+                    "the active icon uses the selected foreground in " + theme);
+            assertEquals(themes.color("soft"), buffer.get(1, terminalIcon).style().fg().orElse(null),
+                    "an inactive icon uses the soft color in " + theme);
+            assertFalse(themes.color("tab-selected-bg").equals(buffer.get(1, terminalIcon).style().bg().orElse(null)),
+                    "an inactive icon carries no selected background in " + theme);
+        }
+    }
+
+    private static int findRow(Buffer buffer, int x, String symbol) {
+        for (int row = 0; row < buffer.height(); row++) {
+            if (symbol.equals(buffer.get(x, row).symbol())) {
+                return row;
+            }
+        }
+        return -1;
+    }
+
+    private static String columnLetters(Buffer buffer, int x, int fromRow, int toRow) {
+        StringBuilder letters = new StringBuilder();
+        for (int row = fromRow; row <= toRow; row++) {
+            String symbol = buffer.get(x, row).symbol();
+            if (!symbol.isBlank()) {
+                letters.append(symbol);
+            }
+        }
+        return letters.toString();
     }
 
     @TempDir
@@ -99,8 +316,9 @@ class VintelliShellTest {
     private static final int SECOND_PROJECT_ROW = 3;
     private static final int PROJECT_ROW_HIGHLIGHT = VintelliShell.PROJECT_PANEL_WIDTH;
     private static final int HEADER_ROW = 1;
-    private static final int EDITOR_HEADER_X = VintelliShell.PROJECT_PANEL_WIDTH + 1;
-    private static final int SEPARATOR_X = VintelliShell.PROJECT_PANEL_WIDTH;
+    private static final int PROJECT_X = VintelliShell.TOOL_STRIP_WIDTH;
+    private static final int EDITOR_HEADER_X = VintelliShell.TOOL_STRIP_WIDTH + VintelliShell.PROJECT_PANEL_WIDTH + 1;
+    private static final int SEPARATOR_X = VintelliShell.TOOL_STRIP_WIDTH + VintelliShell.PROJECT_PANEL_WIDTH;
     private static final List<String> FRAME_CORNERS = List.of("┌", "┐", "└", "┘", "╭", "╮", "╰", "╯");
     // Bottom stripe tab bar row (after menu + left content + editor)
     private static final int BOTTOM_TAB_ROW = 13; // approximate, will be computed dynamically
@@ -419,13 +637,14 @@ class VintelliShellTest {
         Buffer buffer = offlineFrame(shell);
         int bottomTabRow = findBottomTabRow(buffer);
         String tabRow = rowText(buffer, bottomTabRow);
-        // First tab is " 1. Run " - its width is 8
-        int tab1Width = " 1. Run ".length();
+        Color underline = themes.color("focus-border");
 
-        assertEquals(tab1Width, contiguousHighlight(buffer, bottomTabRow, tabSelected),
-                "exactly the selected tab carries its highlight: " + tabRow);
-        assertEquals(0, firstHighlightedColumn(buffer, bottomTabRow, tabSelected),
-                "the selected tab highlight starts at tab 1: " + tabRow);
+        assertEquals(0, highlightedCount(buffer, bottomTabRow, tabSelected),
+                "the tab row carries no filled block, the selection is an underline: " + tabRow);
+        assertEquals("1 Run".length(), contiguousForeground(buffer, bottomTabRow + 1, underline),
+                "exactly the selected label carries the underline: " + rowText(buffer, bottomTabRow + 1));
+        assertEquals(1, firstForegroundColumn(buffer, bottomTabRow + 1, underline),
+                "the underline starts under the selected label 1 Run: " + rowText(buffer, bottomTabRow + 1));
         assertEquals(PROJECT_ROW_HIGHLIGHT, highlightedCount(buffer, FIRST_PROJECT_ROW, rowSelected),
                 "the selected project row carries the selection color: " + rowText(buffer, FIRST_PROJECT_ROW));
         assertEquals(0, highlightedCount(buffer, SECOND_PROJECT_ROW, rowSelected),
@@ -450,17 +669,15 @@ class VintelliShellTest {
         Buffer buffer = offlineFrame(shell);
         int bottomTabRow = findBottomTabRow(buffer);
         String tabRow = rowText(buffer, bottomTabRow);
-        // Tab 3 (" 3. Problems ") starts after " 1. Run   2. Terminal   "
-        int tab3Start = tabRow.indexOf(" 3. Problems ");
+        int tab3Start = tabRow.indexOf("3 Problems");
         assertTrue(tab3Start >= 0, "tab 3 should be present: " + tabRow);
-        assertEquals(tab3Start, firstHighlightedColumn(buffer, bottomTabRow, tabSelected),
-                "the selected tab highlight starts at tab 3: " + tabRow);
-        assertEquals(" 3. Problems ".length(), contiguousHighlight(buffer, bottomTabRow, tabSelected), tabRow);
-        // Tabs 1 and 2 should not have the highlight
-        for (int column = 0; column < tab3Start; column++) {
-            assertFalse(tabSelected.equals(buffer.get(column, bottomTabRow).style().bg().orElse(null)),
-                    "tabs 1 and 2 must lose the highlight after switching to tab 3: " + tabRow);
-        }
+        Color underline = themes.color("focus-border");
+        assertEquals(0, highlightedCount(buffer, bottomTabRow, tabSelected),
+                "the tab row carries no filled block after switching to tab 3: " + tabRow);
+        assertEquals(tab3Start, firstForegroundColumn(buffer, bottomTabRow + 1, underline),
+                "the underline starts under the selected label 3 Problems: " + tabRow);
+        assertEquals("3 Problems".length(), contiguousForeground(buffer, bottomTabRow + 1, underline),
+                "the underline covers only the selected label: " + tabRow);
     }
 
     @Test
@@ -470,8 +687,8 @@ class VintelliShellTest {
 
         int bottomTabRow = findBottomTabRow(buffer);
         String tabRow = rowText(buffer, bottomTabRow);
-        assertTrue(tabRow.contains("1. Run"), tabRow);
-        assertTrue(tabRow.contains("7. Threads"), tabRow);
+        assertTrue(tabRow.contains("1 Run"), tabRow);
+        assertTrue(tabRow.contains("7 Threads"), tabRow);
     }
 
     @Test
@@ -1094,7 +1311,7 @@ class VintelliShellTest {
             assertEquals(projectBefore.width() + 8, projectAfter.width());
             assertNotEquals(frameBefore, test.renderedFrame(), "the runner's rendered frame should reflect the drag");
             assertTrue(test.renderedFrame().contains("Editor"), test.renderedFrame());
-            int projectAreaWidth = VIEWPORT.width()
+            int projectAreaWidth = VIEWPORT.width() - VintelliShell.TOOL_STRIP_WIDTH
                     - (pilot.hasElement("right-stripe") ? pilot.findElement("right-stripe").width() : 0);
             assertEquals((double) projectAfter.width() / projectAreaWidth, store.load().projectRatio(), 0.0001);
 
@@ -1453,7 +1670,7 @@ class VintelliShellTest {
             assertTrue(editorAfter.width() + 1 >= ShellLayout.MIN_EDITOR_WIDTH,
                     "the editor and its separator column keep the minimum width when clamping the project splitter: "
                             + editorAfter);
-            int projectAreaWidth = SIZE.width() - rightAfter.width();
+            int projectAreaWidth = SIZE.width() - VintelliShell.TOOL_STRIP_WIDTH - rightAfter.width();
             assertEquals((double) pilot.findElement("project-panel").width() / projectAreaWidth,
                     store.load().projectRatio(), 0.0001);
         }
@@ -1538,20 +1755,20 @@ class VintelliShellTest {
         Color focusedMarker = themes.color("focus-border");
 
         Buffer projectFocused = offlineFocusFrame(shell, themes, "project-panel");
-        assertEquals(mark, projectFocused.get(0, HEADER_ROW).symbol(), "the project header carries the focus mark");
+        assertEquals(mark, projectFocused.get(PROJECT_X, HEADER_ROW).symbol(), "the project header carries the focus mark");
         assertEquals(" ", projectFocused.get(EDITOR_HEADER_X, HEADER_ROW).symbol(),
                 "the editor header carries no mark while the project is focused");
-        assertEquals(focusedMarker, projectFocused.get(0, HEADER_ROW).style().fg().orElse(null),
+        assertEquals(focusedMarker, projectFocused.get(PROJECT_X, HEADER_ROW).style().fg().orElse(null),
                 "the focus mark is painted in the focus border color");
 
         Buffer editorFocused = offlineFocusFrame(shell, themes, "editor-panel");
-        assertEquals(" ", editorFocused.get(0, HEADER_ROW).symbol(),
+        assertEquals(" ", editorFocused.get(PROJECT_X, HEADER_ROW).symbol(),
                 "the project header drops its mark when the editor takes focus");
         assertEquals(mark, editorFocused.get(EDITOR_HEADER_X, HEADER_ROW).symbol(),
                 "the editor header carries the focus mark after the focus moved");
 
         Buffer unfocused = offlineFocusFrame(shell, themes, null);
-        assertEquals(" ", unfocused.get(0, HEADER_ROW).symbol());
+        assertEquals(" ", unfocused.get(PROJECT_X, HEADER_ROW).symbol());
         assertEquals(" ", unfocused.get(EDITOR_HEADER_X, HEADER_ROW).symbol());
     }
 
@@ -1885,9 +2102,8 @@ class VintelliShellTest {
 
         Buffer beforeBuffer = offlineFrame(shell);
         int bottomTabRow = findBottomTabRow(beforeBuffer);
-        // First tab starts at column 0
-        assertEquals(themes.color("tab-selected-bg"), cellBg(beforeBuffer, 4, bottomTabRow),
-                "the active theme styles the selected tab before the switch");
+        assertEquals(themes.color("focus-border"), beforeBuffer.get(1, bottomTabRow + 1).style().fg().orElse(null),
+                "the active theme colors the selected tab underline before the switch");
         // Project panel background at an unselected row (2nd project row)
         assertEquals(themes.color("panel"), cellBg(beforeBuffer, 2, SECOND_PROJECT_ROW),
                 "the active theme styles the project panel before the switch");
@@ -1901,8 +2117,8 @@ class VintelliShellTest {
 
         Buffer afterBuffer = offlineFrame(shell);
         int afterTabRow = findBottomTabRow(afterBuffer);
-        assertEquals(themes.color("tab-selected-bg"), cellBg(afterBuffer, 4, afterTabRow),
-                "the switched theme reaches the selected tab");
+        assertEquals(themes.color("focus-border"), afterBuffer.get(1, afterTabRow + 1).style().fg().orElse(null),
+                "the switched theme reaches the selected tab underline");
         assertEquals(themes.color("panel"), cellBg(afterBuffer, 2, SECOND_PROJECT_ROW),
                 "the switched theme reaches the project panel");
         assertEquals(themes.color("editor-bg"), cellBg(afterBuffer, EDITOR_PROBE_X, EDITOR_PROBE_Y),
@@ -2527,13 +2743,36 @@ class VintelliShellTest {
     }
 
     private static int findBottomTabRow(Buffer buffer) {
-        // Find the row that contains the bottom tool window tabs (looks for " 1. Run ")
         for (int row = 0; row < buffer.height(); row++) {
             String text = rowText(buffer, row);
-            if (text.contains(" 1. Run ") && text.contains(" 2. Terminal ")) {
+            if (text.contains("1 Run") && text.contains("2 Terminal")) {
                 return row;
             }
         }
-        return 13; // fallback
+        return 13;
+    }
+
+    private static int firstForegroundColumn(Buffer buffer, int row, Color foreground) {
+        for (int x = 0; x < buffer.width(); x++) {
+            if (foreground.equals(buffer.get(x, row).style().fg().orElse(null))) {
+                return x;
+            }
+        }
+        return -1;
+    }
+
+    private static int contiguousForeground(Buffer buffer, int row, Color foreground) {
+        int first = firstForegroundColumn(buffer, row, foreground);
+        if (first < 0) {
+            return 0;
+        }
+        int run = 0;
+        for (int x = first; x < buffer.width(); x++) {
+            if (!foreground.equals(buffer.get(x, row).style().fg().orElse(null))) {
+                break;
+            }
+            run++;
+        }
+        return run;
     }
 }

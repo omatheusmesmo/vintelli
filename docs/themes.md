@@ -3,9 +3,10 @@
 The shell rendering stack, the two shipped themes, user theme files and the palette table.
 
 The shell runs at the Toolkit level with a CSS style engine: the element
-tree of `VintelliShell` (`#shell`, `#main-toolbar`, `#tool-tabs`,
-`#project-panel`, `#editor-panel`, `tool-<id>` per tool window and
-`#status-bar`) resolves every color from the active stylesheet, so no hex
+tree of `VintelliShell` (`#shell`, `#main-toolbar`, `ToolTabBarElement` per
+tool window stripe, `ToolStripElement` per icon strip, `#project-panel`,
+`#editor-panel`, `tool-<id>` per tool window and `#status-bar`) resolves
+every color from the active stylesheet, so no hex
 value is hardcoded in shell code. Two themes ship with the app, both
 derived mechanically from the official IntelliJ platform files of IDEA
 Ultimate 2026.2.3 (build IU-262.10968.63), with the source key cited per

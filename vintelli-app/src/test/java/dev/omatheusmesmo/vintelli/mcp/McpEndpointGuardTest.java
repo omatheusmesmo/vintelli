@@ -161,7 +161,7 @@ public class McpEndpointGuardTest {
                 .connect()
                 .when()
                     .toolsCall("vintelli_highlight")
-                    .withArguments(Map.of("file", "src/Main.java", "line", 7))
+                    .withArguments(Map.of("file", "src/M.java", "line", 7))
                     .withAssert(McpEndpointGuardTest::assertSuccessfulCall)
                     .send()
                 .thenAssertResults();
@@ -170,7 +170,7 @@ public class McpEndpointGuardTest {
                 .get(tuiRender)
                 .then()
                 .statusCode(200)
-                .body("editorArea", containsString("> highlight: src/Main.java:7"));
+                .body("editorArea", containsString("> highlight: src/M.java:7"));
     }
 
     @Test

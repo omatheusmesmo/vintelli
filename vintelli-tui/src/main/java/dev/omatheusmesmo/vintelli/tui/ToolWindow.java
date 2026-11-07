@@ -90,6 +90,15 @@ public interface ToolWindow extends StatusBarWidgetContributor {
     int ordinal();
 
     /**
+     * Single-column glyph of the stripe icon in the Nerd Font icon mode. An
+     * empty value, a glyph wider than one column, or the ASCII icon mode uses
+     * the first letter of {@link #title()} instead.
+     */
+    default String icon() {
+        return "";
+    }
+
+    /**
      * Dock anchor where this tool window's content panel is rendered.
      * Defaults to {@link Anchor#BOTTOM} for backward compatibility.
      */

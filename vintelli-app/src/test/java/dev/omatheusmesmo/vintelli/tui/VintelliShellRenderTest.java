@@ -11,6 +11,7 @@ import java.time.Duration;
 import static io.restassured.RestAssured.given;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.endsWith;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.isEmptyOrNullString;
@@ -71,7 +72,8 @@ class VintelliShellRenderTest {
                 .then()
                 .statusCode(200)
                 .body("tabRow", containsString("Project"),
-                        "tabRow", containsString("4. ACP"),
+                        "tabRow", containsString("4 ACP"),
+                        "tabRow", endsWith(" A"),
                         "mainAreaTop", not(isEmptyOrNullString()),
                         "mainAreaTop", not(containsString("╭")),
                         "status", not(isEmptyOrNullString()),

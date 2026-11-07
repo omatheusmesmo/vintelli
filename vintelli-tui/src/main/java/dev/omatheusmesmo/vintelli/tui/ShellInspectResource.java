@@ -205,7 +205,7 @@ public final class ShellInspectResource {
     static List<CaretCellView> editorCarets(Buffer buffer) {
         List<CaretCellView> carets = new ArrayList<>();
         for (int row = FIRST_EDITOR_ROW; row <= LAST_EDITOR_ROW; row++) {
-            for (int x = VintelliShell.PROJECT_PANEL_WIDTH + 1; x < buffer.width(); x++) {
+            for (int x = VintelliShell.TOOL_STRIP_WIDTH + VintelliShell.PROJECT_PANEL_WIDTH + 1; x < buffer.width(); x++) {
                 Cell cell = buffer.get(x, row);
                 if (cell.style().addModifiers().contains(Modifier.REVERSED)) {
                     carets.add(new CaretCellView(x, row, cell.symbol()));
