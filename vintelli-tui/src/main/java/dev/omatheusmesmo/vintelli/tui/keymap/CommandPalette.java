@@ -1,5 +1,6 @@
 package dev.omatheusmesmo.vintelli.tui.keymap;
 
+import dev.omatheusmesmo.vintelli.tui.DoubleClickTracker;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.terminal.Frame;
 import dev.tamboui.style.Style;
@@ -52,8 +53,7 @@ public final class CommandPalette {
     private int renderedRows;
     private List<KeyAction> renderedActions = List.of();
     private int scrollOffset;
-    private int lastClicked = -1;
-    private long lastClickNanos;
+    private final DoubleClickTracker doubleClick = new DoubleClickTracker();
 
     public CommandPalette(List<KeyAction> actions, Keymap keymap) {
         this.actions = List.copyOf(actions);
@@ -69,7 +69,7 @@ public final class CommandPalette {
         filter = "";
         selected = 0;
         scrollOffset = 0;
-        lastClicked = -1;
+        doubleClick.reset();
         refresh();
     }
 
@@ -77,7 +77,7 @@ public final class CommandPalette {
         open = false;
         renderedPanel = Rect.ZERO;
         renderedActions = List.of();
-        lastClicked = -1;
+        doubleClick.reset();
     }
 
     public boolean isOpen() {
@@ -211,7 +211,7 @@ public final class CommandPalette {
         }
         if (event.isScroll() && (event.kind() == MouseEventKind.SCROLL_UP
                 || event.kind() == MouseEventKind.SCROLL_DOWN)) {
-            lastClicked = -1;
+            doubleClick.reset();
             if (!inside(renderedInner, event.x(), event.y()) || event.y() < renderedInner.y() + 1
                     || renderedRows == 0) {
                 return Optional.empty();
@@ -226,23 +226,19 @@ public final class CommandPalette {
         if (!event.isClick() || event.y() < renderedInner.y() + 1
                 || !inside(renderedInner, event.x(), event.y())) {
             if (event.isClick()) {
-                lastClicked = -1;
+                doubleClick.reset();
             }
             return Optional.empty();
         }
         int row = event.y() - renderedInner.y() - 1;
         if (row < 0 || row >= renderedRows || event.x() < renderedInner.x()
                 || event.x() >= renderedInner.x() + renderedInner.width()) {
-            lastClicked = -1;
+            doubleClick.reset();
             return Optional.empty();
         }
         int index = renderedFirst + row;
         selected = index;
-        long now = System.nanoTime();
-        boolean activate = index == lastClicked && now - lastClickNanos <= 500_000_000L;
-        lastClicked = index;
-        lastClickNanos = now;
-        return activate ? Optional.of(filtered.get(index)) : Optional.empty();
+        return doubleClick.register(index, System.nanoTime()) ? Optional.of(filtered.get(index)) : Optional.empty();
     }
 
     private List<KeyAction> currentVisibleActions() {

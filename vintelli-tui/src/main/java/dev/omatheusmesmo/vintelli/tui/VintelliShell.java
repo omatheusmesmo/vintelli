@@ -87,6 +87,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -121,10 +122,10 @@ import java.util.stream.Collectors;
  * changes this class: the window declares itself, gets discovered as a CDI
  * bean and shows up in its anchor's stripe with a {@code tool-<id>} element id.
  * The project list is the single source of truth for the file selection: arrows,
- * page keys, Home/End and mouse clicks are consumed by the focused list
- * itself, so {@link #fileIndex()}, the {@code ShellStateSnapshot} read model
- * and the status line are read back from the list on every handled key and
- * every frame.
+ * page keys, Home/End and the wheel are consumed by the focused list itself
+ * and row clicks are routed by the shell, so {@link #fileIndex()}, the
+ * {@code ShellStateSnapshot} read model and the status line are read back from
+ * the list on every handled key and every frame.
  *
  * <p>{@link #handle(Event)}, {@link #paint(Frame)} and the root element
  * handed to the runner share one lock: TamboUI widget and layout state is
@@ -144,6 +145,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     static final int ACP_SIDE_PANEL_WIDTH = 32;
     static final int TOOL_STRIP_WIDTH = ToolStripElement.WIDTH;
     static final String PROJECT_STRIP_ID = "project";
+    private static final int PROJECT_HIGHLIGHT_WIDTH = 2;
+    private static final int PROJECT_INDENT_WIDTH = 4;
+    private static final int PROJECT_BRANCH_WIDTH = 4;
+    private static final int PROJECT_MARKER_WIDTH = 2;
     private static final int TOOL_TAB_ROWS = ToolTabBarElement.ROWS;
     private static final int BOTTOM_HEIGHT = TOOL_WINDOW_HEIGHT + TOOL_TAB_ROWS + 1;
 
@@ -232,6 +237,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private volatile ToolStripElement leftStrip;
     private volatile ToolStripElement rightStrip;
     private final ListElement<?> projectList;
+    private final DoubleClickTracker projectDoubleClick = new DoubleClickTracker();
+    private LongSupplier clock = System::nanoTime;
+    private int projectTop;
     private Column centerPanel;
     private Column paneSeparatorVertical;
     private Column paneSeparatorHorizontal;
@@ -294,6 +302,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     void useUiWorkQueue(UiWorkQueue uiWorkQueue) {
         this.uiWorkQueue = uiWorkQueue;
+    }
+
+    void useClock(LongSupplier clock) {
+        this.clock = clock;
     }
 
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state, ShellThemes themes) {
@@ -891,6 +903,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         panel.focusable();
         panel.fill();
         panel.scrollbar(ScrollBarPolicy.AS_NEEDED);
+        panel.autoScroll();
         panel.selected(0);
         return panel;
     }
@@ -1327,6 +1340,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         EventResult splitterResult = handleSplitterMouse(mouse);
         if (splitterResult == EventResult.HANDLED) {
             return splitterResult;
+        }
+        if (mouse.isClick() && projectClicked(mouse)) {
+            return EventResult.HANDLED;
         }
         if (mouse.isClick() && editor != null) {
             int tab = editor.tabAt(mouse.x(), mouse.y());
@@ -1956,6 +1972,96 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             return;
         }
         openFile(Path.of(projectFiles.get(projectList.selected())), 0);
+    }
+
+    /**
+     * Routes a left press on the project list. A press on a row selects it and
+     * focuses the panel; a second press on the same row within the double click
+     * window, or a press on the expand marker of a directory, does what Enter
+     * does. A press below the last row or on the scrollbar column only focuses
+     * the panel. While a new name or a rename is being typed, or a delete waits
+     * for confirmation, the press changes nothing, so the pending target and the
+     * typed input stay as they are.
+     *
+     * @return true when the press landed on the project list and was consumed
+     */
+    private boolean projectClicked(MouseEvent mouse) {
+        Rect area = projectList.renderedArea();
+        if (!shellLayout.isProjectVisible() || !contains(area, mouse)) {
+            return false;
+        }
+        if (projectInputMode != InputMode.NONE) {
+            updateProjectPrompt();
+            return true;
+        }
+        if (pendingDeletePath != null) {
+            return true;
+        }
+        focusProjectPanel();
+        int index = projectTop + mouse.y() - area.y();
+        boolean scrollbarColumn = projectFiles.size() > area.height() && mouse.x() >= area.right() - 1;
+        if (index < 0 || index >= projectFiles.size() || scrollbarColumn) {
+            projectDoubleClick.reset();
+            return true;
+        }
+        projectList.selected(index);
+        syncFileSelection();
+        boolean doubled = projectDoubleClick.register(index, clock.getAsLong());
+        ProjectNode node = selectedProjectNode();
+        if (doubled || (node != null && onExpandMarker(node, mouse.x(), area))) {
+            openSelectedFile();
+        }
+        return true;
+    }
+
+    private void focusProjectPanel() {
+        inputCaptured = false;
+        capturedWindow = null;
+        focusedToolWindowId = null;
+        navigationBarFocused = false;
+        FocusManager manager = focusManager;
+        if (manager != null) {
+            manager.setFocus("project-panel");
+        }
+    }
+
+    /**
+     * The column span of the expand marker of a directory row. The row is drawn
+     * by {@link #projectNodeLabel(ProjectNode)} after the highlight symbol, with
+     * one indent per ancestor and the branch glyph before the marker, so the
+     * geometry here follows that label layout.
+     */
+    private boolean onExpandMarker(ProjectNode node, int x, Rect area) {
+        if (!node.directory) {
+            return false;
+        }
+        int depth = 0;
+        for (ProjectNode parent = node.parent; parent != null; parent = parent.parent) {
+            depth++;
+        }
+        int start = area.x() + PROJECT_HIGHLIGHT_WIDTH + depth * PROJECT_INDENT_WIDTH + PROJECT_BRANCH_WIDTH;
+        return x >= start && x < start + PROJECT_MARKER_WIDTH;
+    }
+
+    /**
+     * Keeps the index of the first drawn row in step with the list. TamboUI keeps
+     * the list offset private; with auto scroll it changes only to bring the
+     * selected row into view, so this applies the same rule on every render
+     * and a click maps to the row that is drawn under the pointer.
+     */
+    private void trackProjectScroll(int visibleRows) {
+        if (visibleRows <= 0) {
+            return;
+        }
+        int total = Math.max(1, projectFiles.size());
+        int selected = Math.clamp(projectList.selected(), 0, total - 1);
+        int top = projectTop;
+        if (selected < top) {
+            top = selected;
+        } else if (selected >= top + visibleRows) {
+            top = selected - visibleRows + 1;
+        }
+        projectTop = Math.clamp(top, 0, Math.max(0, total - visibleRows));
     }
 
     private void openFile(Path file, int line) {
@@ -2854,7 +2960,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
      * Reads the selection back from the project list, the single source of
      * truth, and mirrors it into the {@code ShellStateSnapshot} read model
      * and the status line whenever it moved outside of this handler, which is
-     * where the focused list consumes arrows, page keys, Home/End and clicks.
+     * where the focused list consumes arrows, page keys, Home/End and the wheel.
      */
     private void syncFileSelection() {
         if (projectFiles.isEmpty()) {
@@ -3600,6 +3706,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                         && context instanceof DefaultRenderContext drc) {
                     drc.focusManager().setFocus("project-panel");
                     projectOwner.pendingProjectFocus = false;
+                }
+                if (projectFocusOwner && projectOwner != null) {
+                    projectOwner.trackProjectScroll(area.height());
                 }
                 delegate.render(frame, area, context);
             } finally {
