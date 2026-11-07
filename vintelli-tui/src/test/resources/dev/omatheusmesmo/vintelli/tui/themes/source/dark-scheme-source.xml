@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <scheme name="Dark" version="142" parent_scheme="Darcula">
-  <!-- excerpt of the `attributes` option blocks for TEXT, the keyword, string, comment, number and constant attributes; taken verbatim from themes/expUI/expUI_darkScheme.xml of IntelliJ IDEA Ultimate 2026.2.3 (build IU-262.10968.63), Apache License, Version 2.0 by JetBrains -->
+  <!-- excerpt of the `colors` option block with the caret row color and of the `attributes` option blocks for TEXT, the keyword, string, comment, number and constant attributes; taken verbatim from themes/expUI/expUI_darkScheme.xml of IntelliJ IDEA Ultimate 2026.2.3 (build IU-262.10968.63), Apache License, Version 2.0 by JetBrains -->
+  <colors>
+    <option name="CARET_ROW_COLOR" value="26282e" />
+  </colors>
   <attributes>
 <option name="TEXT">
       <value>

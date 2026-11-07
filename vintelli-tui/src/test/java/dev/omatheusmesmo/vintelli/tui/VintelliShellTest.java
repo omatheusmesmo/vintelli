@@ -5,6 +5,8 @@ import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeymapProfile;
 import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
+import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
+import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
 import dev.omatheusmesmo.vintelli.tui.layout.ShellLayoutStore;
 import dev.omatheusmesmo.vintelli.tui.layout.ShellLayout;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
@@ -1279,13 +1281,280 @@ class VintelliShellTest {
         String header = rowText(offlineFrame(shell), HEADER_ROW);
         assertTrue(header.contains("pom.xml"), "the editor header names the file: " + header);
         assertFalse(header.contains("vintelli/pom.xml"), "the editor header shows the file name only: " + header);
-        assertFalse(header.contains("●"), "a clean buffer has no dirty dot: " + header);
+        assertFalse(header.contains(dirtyMark()), "a clean buffer has no dirty dot: " + header);
 
         editor.insert("x");
         String edited = rowText(offlineFrame(shell), HEADER_ROW);
-        assertTrue(edited.contains("pom.xml ●"), "an edited buffer shows the dirty dot after the name: " + edited);
+        assertTrue(edited.contains("pom.xml " + dirtyMark()), "an edited buffer shows the dirty dot after the name: " + edited);
     }
 
+
+    @Test
+    void editorTabBarShowsEveryOpenFileWithTheDirtyMarkAndTheUnderlineUnderTheSelectedTab() throws IOException {
+        Path pom = projectFile("vintelli/pom.xml", "<project/>\n");
+        Path notes = projectFile("vintelli/notes.txt", "notes\n");
+        ShellThemes themes = defaultThemes();
+        BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
+        editor.open(new OpenRequest(pom, 0));
+        editor.open(new OpenRequest(notes, 0));
+        editor.selectTab(0);
+        editor.insert("x");
+        VintelliShell shell = editorShell(themes, editor);
+
+        Buffer buffer = offlineFrame(shell);
+        String labels = rowText(buffer, HEADER_ROW);
+        assertTrue(labels.contains("pom.xml " + dirtyMark()), "the modified tab carries the dirty dot: " + labels);
+        assertTrue(labels.contains("notes.txt") && !labels.contains("notes.txt " + dirtyMark()),
+                "the clean tab shows its name only: " + labels);
+        assertEquals(themes.color("chrome-fg-strong"), buffer.get(labels.indexOf("pom.xml"), HEADER_ROW).style().fg().orElse(null),
+                "the selected label uses the strong chrome text");
+        assertEquals(themes.color("soft"), buffer.get(labels.indexOf("notes.txt"), HEADER_ROW).style().fg().orElse(null),
+                "the other label uses the soft chrome text");
+
+        String underlined = underlinedText(buffer, labels, themes.color("focus-border"));
+        assertTrue(underlined.contains("pom.xml"), "the underline sits under the selected tab: " + underlined);
+        assertFalse(underlined.contains("notes"), "the underline does not reach the other tab: " + underlined);
+    }
+
+    @Test
+    void pilotClickOnATabActivatesItWhileTheUnderlineAndThePastTheTabsSelectNothing() throws Exception {
+        Path pom = projectFile("vintelli/pom.xml", "<project/>\n");
+        Path notes = projectFile("vintelli/notes.txt", "notes\n");
+        ShellThemes themes = defaultThemes();
+        BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
+        editor.open(new OpenRequest(pom, 0));
+        editor.open(new OpenRequest(notes, 0));
+        editor.selectTab(0);
+        VintelliShell shell = editorShell(themes, editor);
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            String labels = awaitRenderedFrame(pilot, test, "notes.txt").split("\n", -1)[HEADER_ROW];
+
+            pilot.click(labels.indexOf("notes.txt") + 2, HEADER_ROW);
+            settle(pilot);
+            assertEquals(notes.toRealPath().toString(), editor.activeDocument().orElseThrow().file(),
+                    "a click on the second tab activates its file");
+
+            pilot.click(labels.indexOf("pom.xml") + 1, HEADER_ROW + 1);
+            settle(pilot);
+            assertEquals(notes.toRealPath().toString(), editor.activeDocument().orElseThrow().file(),
+                    "a click on the underline row selects nothing");
+
+            pilot.click(SIZE.width() - 1, HEADER_ROW);
+            settle(pilot);
+            assertEquals(notes.toRealPath().toString(), editor.activeDocument().orElseThrow().file(),
+                    "a click past the last tab selects nothing");
+
+            pilot.click(labels.indexOf("pom.xml") + 2, HEADER_ROW);
+            settle(pilot);
+            assertEquals(pom.toRealPath().toString(), editor.activeDocument().orElseThrow().file(),
+                    "a later click on the first tab activates it again");
+        }
+    }
+
+    @Test
+    void theFocusMarkSitsInTheLabelRowOfTheTabBarAndTheLabelsStartAfterIt() throws IOException {
+        Path pom = projectFile("vintelli/pom.xml", "<project/>\n");
+        ShellThemes themes = defaultThemes();
+        BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
+        editor.open(new OpenRequest(pom, 0));
+        VintelliShell shell = editorShell(themes, editor);
+
+        Buffer focused = offlineFocusFrame(shell, themes, "editor-panel");
+        assertEquals(shell.focusMark(), focused.get(EDITOR_HEADER_X, HEADER_ROW).symbol(),
+                "the focused editor pane marks its tab bar label row");
+        assertEquals(" ", focused.get(EDITOR_HEADER_X + 1, HEADER_ROW).symbol());
+        assertTrue(rowText(focused, HEADER_ROW).indexOf("pom.xml") > EDITOR_HEADER_X + 1,
+                "the first label starts after the focus column and its separator: " + rowText(focused, HEADER_ROW));
+        assertEquals(" ", offlineFrame(shell).get(EDITOR_HEADER_X, HEADER_ROW).symbol(),
+                "an unfocused editor pane shows no mark");
+    }
+
+    @Test
+    void overflowingTabsScrollToKeepTheSelectedFileVisibleAndMarkTheRest() throws IOException {
+        ShellThemes themes = defaultThemes();
+        BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
+        for (int index = 1; index <= 6; index++) {
+            editor.open(new OpenRequest(projectFile("vintelli/module-" + index + "-long-name.txt", "x\n"), 0));
+        }
+        editor.selectTab(2);
+        VintelliShell shell = editorShell(themes, editor);
+
+        Buffer buffer = offlineFrame(shell);
+        String labels = rowText(buffer, HEADER_ROW);
+        assertTrue(labels.contains("module-3-long-name.txt"), "the active tab stays visible: " + labels);
+        assertFalse(labels.contains("module-1-long-name.txt"), "the window scrolled past the first tab: " + labels);
+        assertEquals(overflowGlyph(), buffer.get(SIZE.width() - 1, HEADER_ROW).symbol(),
+                "the overflow marker sits at the right edge: " + labels);
+    }
+
+    @Test
+    void asciiIconModeKeepsTheTabBarFreeOfNonAsciiGlyphsOnACleanBuffer() throws IOException {
+        String previous = System.getProperty(IconMode.CONFIG_PROPERTY);
+        System.setProperty(IconMode.CONFIG_PROPERTY, "ascii");
+        try {
+            for (int index = 1; index <= 6; index++) {
+                projectFile("vintelli/module-" + index + "-long-name.txt", "x\n");
+            }
+            ShellThemes themes = defaultThemes();
+            BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
+            for (int index = 1; index <= 6; index++) {
+                editor.open(new OpenRequest(project.resolve("vintelli/module-" + index + "-long-name.txt"), 0));
+            }
+            editor.selectTab(2);
+            editor.insert("x");
+            VintelliShell shell = editorShell(themes, editor);
+
+            Buffer buffer = offlineFocusFrame(shell, themes, "editor-panel");
+            for (int row = HEADER_ROW; row <= HEADER_ROW + 1; row++) {
+                String text = rowText(buffer, row).substring(EDITOR_HEADER_X);
+                assertTrue(text.chars().allMatch(character -> character < 128),
+                        "the ASCII face renders no non-ASCII glyph in the tab bar: " + text);
+            }
+            assertTrue(rowText(buffer, HEADER_ROW).contains("module-3-long-name.txt *"),
+                    "the ASCII face marks a dirty tab with an asterisk: " + rowText(buffer, HEADER_ROW));
+        } finally {
+            restoreProperty(IconMode.CONFIG_PROPERTY, previous);
+        }
+    }
+
+    @Test
+    void gutterMutesTheLineNumbersAndTheCaretRowFollowsTheCaretAcrossTheWholeWidth() throws IOException {
+        Path file = projectFile("vintelli/pom.xml", "a\nb\nc\n");
+        ShellThemes themes = defaultThemes();
+        BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
+        editor.open(new OpenRequest(file, 1));
+        VintelliShell shell = editorShell(themes, editor);
+        Color caret = themes.color("editor-caret-row");
+
+        Buffer buffer = offlineFrame(shell);
+        int caretRow = gutterRow(buffer, "2");
+        int plainRow = gutterRow(buffer, "1");
+        assertEquals(themes.color("editor-fg"), buffer.get(EDITOR_HEADER_X + 2, caretRow).style().fg().orElse(null),
+                "the caret line number uses the editor foreground");
+        assertEquals(themes.color("muted"), buffer.get(EDITOR_HEADER_X + 2, plainRow).style().fg().orElse(null),
+                "the other line numbers are muted");
+        assertEquals(caret, buffer.get(SIZE.width() - 1, caretRow).style().bg().orElse(null),
+                "the caret row is painted up to the right edge");
+        assertEquals(caret, buffer.get(EDITOR_HEADER_X + 10, caretRow).style().bg().orElse(null));
+        assertFalse(caret.equals(buffer.get(EDITOR_HEADER_X + 10, plainRow).style().bg().orElse(null)),
+                "other rows keep the editor background");
+
+        editor.open(new OpenRequest(file, 2));
+        Buffer moved = offlineFrame(shell);
+        int movedRow = gutterRow(moved, "3");
+        assertEquals(caret, moved.get(EDITOR_HEADER_X + 10, movedRow).style().bg().orElse(null),
+                "the caret row moves with the caret");
+        assertFalse(caret.equals(moved.get(EDITOR_HEADER_X + 10, caretRow).style().bg().orElse(null)),
+                "the row the caret left loses the caret background");
+    }
+
+    @Test
+    void theLastLineAndTheCaretStayVisibleInTheShortenedBody() throws IOException {
+        StringBuilder text = new StringBuilder();
+        for (int line = 1; line <= 40; line++) {
+            text.append(String.format("line %02d%n", line));
+        }
+        Path file = projectFile("vintelli/long.txt", text.toString());
+        ShellThemes themes = defaultThemes();
+        BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
+        editor.open(new OpenRequest(file, 39));
+        VintelliShell shell = editorShell(themes, editor);
+
+        Buffer buffer = offlineFrame(shell);
+        int last = -1;
+        for (int row = 0; row < buffer.height(); row++) {
+            if (rowText(buffer, row).contains("line 40")) {
+                last = row;
+            }
+        }
+        assertTrue(last >= 0, "the last document line is rendered:\n" + bufferText(buffer));
+        assertEquals(themes.color("editor-caret-row"), buffer.get(EDITOR_HEADER_X + 10, last).style().bg().orElse(null),
+                "the caret sits on the last line and its row is painted");
+    }
+
+    private Path projectFile(String relative, String content) throws IOException {
+        Path file = project.resolve(relative);
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, content);
+        return file;
+    }
+
+    private static VintelliShell editorShell(ShellThemes themes, BuiltinEditor editor) {
+        List<ToolWindow> windows = new ArrayList<>(defaultWindows());
+        windows.add(editor);
+        return new VintelliShell(new ToolWindowRegistry(windows).toolWindows(), new ShellState(), themes);
+    }
+
+    private static String overflowGlyph() {
+        return FileIcons.resolve().mode() == IconMode.ASCII ? ">" : "»";
+    }
+
+    private static String dirtyMark() {
+        return FileIcons.resolve().mode() == IconMode.ASCII ? "*" : "●";
+    }
+
+    /**
+     * Gives the text area focus the way opening a file and the editor
+     * shortcut do, then waits for the frame that applies it: the focus mark of
+     * the tab bar must stay on while the text area is the focused element.
+     */
+    @Test
+    void theFocusMarkStaysOnTheTabBarWhileTheEditorTextAreaHasFocus() throws Exception {
+        Path pom = projectFile("vintelli/pom.xml", "<project/>\n");
+        ShellThemes themes = defaultThemes();
+        BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
+        editor.open(new OpenRequest(pom, 0));
+        VintelliShell shell = editorShell(themes, editor);
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            awaitRenderedFrame(pilot, test, "pom.xml");
+
+            editor.requestFocus();
+            String mark = shell.focusMark();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+            String header;
+            do {
+                test.resize(SIZE.width(), SIZE.height());
+                header = test.renderedFrame().split("\n", -1)[HEADER_ROW];
+            } while (header.charAt(EDITOR_HEADER_X) != mark.charAt(0) && System.nanoTime() < deadline);
+            assertEquals(BuiltinEditor.TEXT_AREA_ID, test.runner().focusManager().focusedId(),
+                    "the editor requests the text area focus");
+            assertEquals(mark, String.valueOf(header.charAt(EDITOR_HEADER_X)),
+                    "the focus mark stays on the tab bar while typing: " + header);
+        }
+    }
+
+    private static String underlinedText(Buffer buffer, String labels, Color focusBorder) {
+        int first = -1;
+        int last = -1;
+        for (int x = EDITOR_HEADER_X; x < buffer.width(); x++) {
+            if (focusBorder.equals(buffer.get(x, HEADER_ROW + 1).style().fg().orElse(null))) {
+                if (first < 0) {
+                    first = x;
+                }
+                last = x;
+            }
+        }
+        return first < 0 ? "" : labels.substring(first, last + 1);
+    }
+
+    private static int gutterRow(Buffer buffer, String number) {
+        for (int row = 0; row < buffer.height(); row++) {
+            if (rowText(buffer, row).substring(EDITOR_HEADER_X).startsWith("  " + number + " ")) {
+                return row;
+            }
+        }
+        throw new AssertionError("no gutter row for line " + number + ":\n" + bufferText(buffer));
+    }
+
+    private static void restoreProperty(String name, String previous) {
+        if (previous == null) {
+            System.clearProperty(name);
+        } else {
+            System.setProperty(name, previous);
+        }
+    }
 
     @Test
     void theSeparatorStaysVisibleAgainstThePaneBackgroundsInBothThemes() {

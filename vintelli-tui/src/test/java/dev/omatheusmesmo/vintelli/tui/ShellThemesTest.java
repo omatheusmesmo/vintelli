@@ -115,6 +115,24 @@ class ShellThemesTest {
     }
 
     @Test
+    void userThemeWithoutTheCaretRowVariableFailsFastNamingIt() throws IOException {
+        ShellThemes shipped = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
+        StringBuilder theme = new StringBuilder("@theme night\n");
+        for (String name : ShellThemes.REQUIRED_VARIABLES) {
+            if (!name.equals("editor-caret-row")) {
+                theme.append('$').append(name).append(": ").append(shipped.variablesOf("dark").get(name)).append(";\n");
+            }
+        }
+        Path userFile = writeUserFile("night.tcss", theme.toString());
+
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> new ShellThemes("night", userFile));
+
+        assertTrue(failure.getMessage().contains("user theme file '" + userFile + "'"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("does not declare variables: editor-caret-row"), failure.getMessage());
+    }
+
+    @Test
     void extendsWithAnUnknownBaseFailsFast() throws IOException {
         Path userFile = writeUserFile("night.tcss", "@theme night extends gruvbox\n$panel: #101010;\n");
 

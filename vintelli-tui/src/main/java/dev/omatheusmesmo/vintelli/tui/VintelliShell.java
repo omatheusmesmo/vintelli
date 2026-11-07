@@ -140,7 +140,6 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     static final int TOOL_WINDOW_HEIGHT = 9;
     static final int PROJECT_PANEL_WIDTH = 30;
     static final int SIDE_PANEL_WIDTH = 20;
-    static final String DIRTY_MARK = "●";
     static final int ACP_SIDE_PANEL_WIDTH = 32;
 
     private static final int MAX_EDITOR_DIFF_LINES = 6;
@@ -942,7 +941,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         Column editorPane = Toolkit.column().id("editor-panel");
         editorPane.addClass("tool-panel");
         editorPane.focusable();
-        editorPane.add(new PaneHeader("editor-panel", this::editorTitle, () -> themes, this::focusMark));
+        editorPane.add(new EditorHeader("editor-panel",
+                new PaneHeader("editor-panel", () -> "Editor", () -> themes, this::focusMark), editor, this::focusMark));
         editorPane.add(Toolkit.lazy(this::editorContent));
         editorPane.fill();
         paneSeparatorVertical = separator("pane-separator-vertical");
@@ -963,22 +963,6 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         separator.addClass("pane-separator");
         separator.add(Spacer.fill());
         return separator.length(1);
-    }
-
-    private String editorTitle() {
-        if (editor == null) {
-            return "Editor";
-        }
-        return editor.tabs().stream()
-                .filter(BuiltinEditor.TabView::active)
-                .findFirst()
-                .map(tab -> fileName(tab.file()) + (tab.dirty() ? " " + DIRTY_MARK : ""))
-                .orElse("Editor");
-    }
-
-    private static String fileName(String file) {
-        String normalized = file.replace('\\', '/');
-        return normalized.substring(normalized.lastIndexOf('/') + 1);
     }
 
     String focusMark() {
@@ -1180,6 +1164,13 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             }
         }
         if (mouse.isClick() && editor != null) {
+            int tab = editor.tabAt(mouse.x(), mouse.y());
+            if (tab >= 0) {
+                editor.selectTab(tab);
+                editor.requestFocus();
+                status = "Editor tab: " + editor.activeDocument().orElseThrow().file();
+                return EventResult.HANDLED;
+            }
             int segment = editor.navigationSegmentAt(mouse.x(), mouse.y());
             if (segment >= 0) {
                 navigateToBreadcrumb(segment);

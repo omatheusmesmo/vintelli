@@ -9,11 +9,13 @@ import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
 import dev.omatheusmesmo.vintelli.tui.ShellThemes;
 import dev.omatheusmesmo.vintelli.tui.ToolWindow;
+import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
 import dev.omatheusmesmo.vintelli.tui.keymap.ConfigDirectory;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.terminal.Frame;
 import dev.tamboui.toolkit.element.DefaultRenderContext;
 import dev.tamboui.toolkit.element.Element;
+import dev.tamboui.toolkit.element.RenderContext;
 import dev.tamboui.tui.event.KeyEvent;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.inject.Instance;
@@ -43,6 +45,8 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     public record TabView(String file, boolean dirty, boolean active) {}
     public record DocumentView(String file, String text, int line, int column, boolean dirty) {}
     public record StatusBarInfo(int line, int column, String encoding, String lineSeparator, String fileType) {}
+    public static final int TAB_BAR_ROWS = EditorTabBarElement.ROWS;
+    public static final String TEXT_AREA_ID = "editor-text-area";
     private static final long MAX_FILE_BYTES = 4L * 1024 * 1024;
     private final List<EditorDocument> documents = new ArrayList<>();
     private final Supplier<ShellEditorPalette> palette;
@@ -57,6 +61,7 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     private String focusRequest;
     private Map<String, VersionControlCapability.State> vcsStates = Map.of();
     private Map<String, Set<Integer>> vcsChangedLines = Map.of();
+    private FileIcons icons;
 
     @Inject
     public BuiltinEditor(@ConfigProperty(name = "vintelli.local.project-root") Optional<String> configuredRoot,
@@ -103,6 +108,22 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     public synchronized int navigationSegmentAt(int x, int y) {
         return element.navigationSegmentAt(x, y);
     }
+    public synchronized boolean hasDocument() {
+        ensureSession();
+        return document() != null;
+    }
+    synchronized FileIcons icons() {
+        if (icons == null) {
+            icons = FileIcons.resolve();
+        }
+        return icons;
+    }
+    public synchronized void renderTabBar(Frame frame, Rect area, RenderContext context, boolean focused, String focusMark) {
+        element.renderTabBar(frame, area, context, focused, focusMark);
+    }
+    public synchronized int tabAt(int x, int y) {
+        return element.tabAt(x, y);
+    }
     public synchronized void menuNavigationActive(boolean active) { menuNavigationActive = active; }
     synchronized boolean menuNavigationActive() { return menuNavigationActive; }
     public synchronized Path project() { return project; }
@@ -113,7 +134,7 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
         focusRequest = null;
         return requested;
     }
-    public synchronized void requestFocus() { focusRequest = "editor-text-area"; }
+    public synchronized void requestFocus() { focusRequest = TEXT_AREA_ID; }
     synchronized EditorDocument document() { return active < 0 ? null : documents.get(active); }
 
     @Override
@@ -142,7 +163,7 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
                 existing = documents.size() - 1;
             }
             active = existing;
-            focusRequest = "editor-text-area";
+            focusRequest = TEXT_AREA_ID;
             EditorDocument document = document();
             document.position(request.line(), 0);
             status = "Opened " + project.relativize(file);
@@ -269,7 +290,7 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
         pendingClose = null;
         if (!discard || closing == null) {
             status = "Close cancelled";
-            focusRequest = document() == null ? null : "editor-text-area";
+            focusRequest = document() == null ? null : TEXT_AREA_ID;
             return;
         }
         boolean found = false;
@@ -278,14 +299,14 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
         }
         if (!found) {
             status = "Tab already closed";
-            focusRequest = document() == null ? null : "editor-text-area";
+            focusRequest = document() == null ? null : TEXT_AREA_ID;
         }
     }
 
     private void removeActive() {
         documents.remove(active);
         active = Math.min(active, documents.size() - 1);
-        focusRequest = document() == null ? null : "editor-text-area";
+        focusRequest = document() == null ? null : TEXT_AREA_ID;
         status = "Tab closed";
         persist();
     }
