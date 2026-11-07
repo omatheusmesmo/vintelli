@@ -886,7 +886,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private ListElement<?> projectPanel() {
         ListElement<?> panel = Toolkit.list(projectFiles.isEmpty()
                 ? List.of(projectFilesLoading ? "Loading project files..." : "No project files found")
-                : projectFileRows());
+                : projectRows());
         panel.id("project-panel");
         panel.addClass("tool-panel");
         panel.focusable();
@@ -1080,16 +1080,17 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         }
         label.append(isLastSibling(node) ? (unicodeProjectTree ? "└── " : "\\-- ")
                 : (unicodeProjectTree ? "├── " : "|-- "));
+        StringBuilder entry = new StringBuilder();
         if (node.directory) {
-            label.append(nerd ? (node.expanded ? "▾ " : "▸ ") : (node.expanded ? "- " : "+ "));
+            entry.append(nerd ? (node.expanded ? "▾ " : "▸ ") : (node.expanded ? "- " : "+ "));
         }
-        label.append((node.directory ? fileIcons.folderIconFor(node.name) : fileIcons.iconFor(node.name))
+        entry.append((node.directory ? fileIcons.folderIconFor(node.name) : fileIcons.iconFor(node.name))
                 .symbol(fileIcons.mode())).append(' ');
-        label.append(node.name);
+        entry.append(node.name);
         if (node.directory) {
-            label.append('/');
+            entry.append('/');
         }
-        return label.toString();
+        return label + vcsDecorated(node.relative.toString(), entry.toString());
     }
 
     private boolean isLastSibling(ProjectNode node) {
@@ -2369,18 +2370,23 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             toolbarVcs = toolbar;
             vcsStates = Map.copyOf(states);
             if (editor != null) { editor.vcsStatus(vcsStates, changedLines); }
-            if (!projectFiles.isEmpty()) { projectList.items(projectFileRows()); }
+            if (!projectFiles.isEmpty()) { projectList.items(projectRows()); }
             status = newStatus;
         } finally {
             frameLock.unlock();
         }
     }
 
-    private List<String> projectFileRows() {
-        return projectFiles.stream().map(file -> {
-            VersionControlCapability.State state = vcsStates.get(file.replace('\\', '/'));
-            return state == null ? file : vcsMarker(state) + " " + file;
-        }).toList();
+    private List<String> projectRows() {
+        if (visibleNodeObjects.isEmpty()) {
+            return projectFiles.stream().map(file -> vcsDecorated(file, file)).toList();
+        }
+        return visibleNodeObjects.stream().map(this::projectNodeLabel).toList();
+    }
+
+    private String vcsDecorated(String relative, String label) {
+        VersionControlCapability.State state = vcsStates.get(relative.replace('\\', '/'));
+        return state == null ? label : vcsMarker(state) + " " + label;
     }
 
     private static String vcsMarker(VersionControlCapability.State state) {

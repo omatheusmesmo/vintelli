@@ -297,7 +297,7 @@ class ProjectTreeTest {
         assertTrue(shell.status().toLowerCase().contains("cop") || shell.status().toLowerCase().contains("path"),
                 "copy should update status: " + shell.status());
     }
-    private static ProjectSearch fakeSearch(Path root) {
+    static ProjectSearch fakeSearch(Path root) {
         return new ProjectSearch() {
             @Override
             public SearchTask files(String query, Consumer<List<FileMatch>> results) {
