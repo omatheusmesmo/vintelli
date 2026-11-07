@@ -212,7 +212,6 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private volatile Rect activeToolWindowArea = Rect.ZERO;
     private volatile Rect activeRightToolWindowArea = Rect.ZERO;
     private Rect shellArea = Rect.ZERO;
-    private boolean userResizedLayout;
     private SplitterDrag splitterDrag;
     private boolean splitterChanged;
     private int nextDiagnosticIndex;
@@ -533,12 +532,12 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         if (uiWorkQueue != null) {
             uiWorkQueue.drain();
         }
-        boolean persisted = userResizedLayout || layoutStore.file() != null && Files.isRegularFile(layoutStore.file());
-        Constraint projectWidth = Constraint.length(leftRegionWidth(persisted
-                ? shellLayout.projectWidth(availableWidth()) : PROJECT_PANEL_WIDTH));
+        boolean customized = shellLayout.isSizeCustomized();
+        Constraint projectWidth = Constraint.length(leftRegionWidth(customized
+                ? sizedProjectWidth() : PROJECT_PANEL_WIDTH));
         Constraint bottomHeight = bottomWindowsHidden() ? Constraint.length(1)
-                : persisted ? ratioConstraint(shellLayout.bottomRatio())
-                : Constraint.length(hasBottomWindows() ? BOTTOM_HEIGHT : TOOL_WINDOW_HEIGHT + 2);
+                : customized ? ratioConstraint(shellLayout.bottomRatio())
+                : Constraint.length(defaultBottomHeight());
         DockElement dock = Toolkit.dock()
                 .top(mainToolbar)
                 .left(leftStripe())
@@ -1446,13 +1445,12 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             return;
         }
         if (splitterDrag == SplitterDrag.PROJECT) {
-            int available = availableWidth();
-            if (available < ShellLayout.MIN_PROJECT_WIDTH + ShellLayout.MIN_EDITOR_WIDTH) {
+            if (projectBase() < ShellLayout.MIN_PROJECT_WIDTH + ShellLayout.MIN_EDITOR_WIDTH) {
                 return;
             }
-            userResizedLayout = true;
-            shellLayout.projectWidth(mouse.x() - shellArea.x() - TOOL_STRIP_WIDTH, available);
-            int width = shellLayout.projectWidth(available);
+            adoptDefaultSizes();
+            setProjectWidth(mouse.x() - shellArea.x() - TOOL_STRIP_WIDTH);
+            int width = sizedProjectWidth();
             layoutDock.leftWidth(Constraint.length(leftRegionWidth(width)));
             splitterChanged = true;
             status = "Project panel: " + width + " columns";
@@ -1461,7 +1459,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             if (available < ShellLayout.MIN_BOTTOM_HEIGHT + ShellLayout.MIN_EDITOR_HEIGHT) {
                 return;
             }
-            userResizedLayout = true;
+            adoptDefaultSizes();
             int mainTop = shellArea.y() + 1;
             int editorHeight = mouse.y() - mainTop + 1;
             shellLayout.bottomHeight(available - editorHeight, available);
@@ -2070,8 +2068,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     private void resizeProject(int delta) {
-        int available = availableWidth();
-        if (available <= 0 || layoutDock == null) {
+        if (projectBase() <= 0 || layoutDock == null) {
             status = "Project layout is not ready";
             return;
         }
@@ -2079,12 +2076,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             status = "Project panel is hidden";
             return;
         }
-        shellLayout.projectWidth(projectList.renderedArea().width(), available);
-        shellLayout.resizeProject(delta, available);
-        userResizedLayout = true;
-        layoutDock.leftWidth(Constraint.length(leftRegionWidth(shellLayout.projectWidth(available))));
+        adoptDefaultSizes();
+        setProjectWidth(projectList.renderedArea().width() + delta);
+        layoutDock.leftWidth(Constraint.length(leftRegionWidth(sizedProjectWidth())));
         persistLayout();
-        status = "Project panel: " + shellLayout.projectWidth(available) + " columns";
+        status = "Project panel: " + sizedProjectWidth() + " columns";
     }
 
     private void resizeBottom(int delta) {
@@ -2097,21 +2093,56 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             status = "Bottom tool windows are hidden";
             return;
         }
+        adoptDefaultSizes();
         shellLayout.bottomHeight(Math.max(0, available - centerPanel.renderedArea().height()), available);
         shellLayout.resizeBottom(delta, available);
-        userResizedLayout = true;
         layoutDock.bottomHeight(Constraint.length(shellLayout.bottomHeight(available)));
         persistLayout();
         status = "Tool window height: " + shellLayout.bottomHeight(available) + " rows";
     }
 
-    private int availableWidth() {
+    /**
+     * Turns the fixed default sizes into ratios just before the first resize, so
+     * resizing one pane leaves the other at the size it has on screen.
+     */
+    private void adoptDefaultSizes() {
+        if (!shellLayout.isSizeCustomized()) {
+            shellLayout.projectWidth(PROJECT_PANEL_WIDTH, projectBase());
+            shellLayout.bottomHeight(defaultBottomHeight(), availableHeight());
+        }
+    }
+
+    private int defaultBottomHeight() {
+        return hasBottomWindows() ? BOTTOM_HEIGHT : TOOL_WINDOW_HEIGHT + 2;
+    }
+
+    /**
+     * The width the project ratio is measured against. It leaves out the left
+     * strip only, so opening or closing a right window never moves the project
+     * pane; the right region is taken off by {@link #projectCap(int)} instead.
+     */
+    private int projectBase() {
         if (shellArea.width() > 0) {
-            return shellArea.width() - rightStripeWidth() - TOOL_STRIP_WIDTH;
+            return shellArea.width() - TOOL_STRIP_WIDTH;
         }
         Rect project = projectList.renderedArea();
         Rect center = centerPanel == null ? Rect.ZERO : centerPanel.renderedArea();
         return project.width() + center.width();
+    }
+
+    /** The widest project pane that still leaves the editor its minimum beside the open right region. */
+    private int projectCap(int base) {
+        return base - rightStripeWidth() - ShellLayout.MIN_EDITOR_WIDTH;
+    }
+
+    private int sizedProjectWidth() {
+        int base = projectBase();
+        return Math.min(shellLayout.projectWidth(base), Math.max(0, projectCap(base)));
+    }
+
+    private void setProjectWidth(int requestedCells) {
+        int base = projectBase();
+        shellLayout.projectWidth(Math.min(requestedCells, projectCap(base)), base);
     }
 
     private int rightStripeWidth() {

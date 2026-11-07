@@ -245,8 +245,9 @@ its space and its icon stays. Tool window tabs show the shortcut digit before
 the title, underline the selected tab, and answer clicks.
 Drag the vertical separator to resize the project pane or the horizontal one
 to resize the bottom tool window pane. `Alt+=`/`Alt+-` resize the project pane and
-`Alt+.`/`Alt+,` resize the bottom pane from the keyboard; the ratios are saved
-per project under the user config directory and scale with the terminal size.
+`Alt+.`/`Alt+,` resize the bottom pane from the keyboard; after the first resize the
+ratios are saved per project under the user config directory and scale with the
+terminal size, and until then the panes keep fixed default sizes.
 `Tab`/`Shift+Tab` move focus through the focusable panels
 (`#project-panel`, `#editor-panel`), clicking a panel focuses it, escape leaves
 captured input (a tool window that claims the keyboard) and returns to shell

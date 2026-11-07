@@ -8,7 +8,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ShellLayoutStoreTest {
     @TempDir
@@ -41,6 +43,33 @@ class ShellLayoutStoreTest {
         assertEquals(ShellLayout.DEFAULT_PROJECT_RATIO, store.load().projectRatio());
         Files.writeString(store.file(), "project.ratio=NaN\nbottom.ratio=Infinity\n");
         assertEquals(ShellLayout.DEFAULT_BOTTOM_RATIO, store.load().bottomRatio());
+    }
+
+    @Test
+    void visibilityOnlyLayoutStaysUncustomizedAndAResizeIsPersisted() throws IOException {
+        ShellLayoutStore store = new ShellLayoutStore(temporary, temporary.resolve("project"));
+        ShellLayout visibilityOnly = new ShellLayout();
+        visibilityOnly.toggle("run");
+        store.save(visibilityOnly);
+        assertFalse(store.load().isSizeCustomized(), "a toggle alone must not switch the sizes to ratios");
+
+        ShellLayout resized = new ShellLayout();
+        resized.projectWidth(40, 120);
+        store.save(resized);
+        assertTrue(store.load().isSizeCustomized(), "a resize must be saved as customized");
+    }
+
+    @Test
+    void aLayoutFileWrittenBeforeTheSizeFlagKeepsItsRatios() throws IOException {
+        ShellLayoutStore store = new ShellLayoutStore(temporary, temporary.resolve("project"));
+        store.save(new ShellLayout(0.4, 0.3));
+        Files.writeString(store.file(),
+                "project.ratio=0.4\nbottom.ratio=0.3\nvisible.windows=run\nproject.visible=true\n");
+        ShellLayout loaded = store.load();
+        assertEquals(0.4, loaded.projectRatio());
+        assertEquals(0.3, loaded.bottomRatio());
+        assertTrue(loaded.isSizeCustomized(),
+                "a file without the flag was written by the ratio based shell, so its ratios stay in use");
     }
 
     @Test

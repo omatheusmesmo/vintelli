@@ -14,6 +14,7 @@ public final class ShellLayout {
     private double projectRatio;
     private double bottomRatio;
     private boolean projectVisible = true;
+    private boolean sizeCustomized;
     private final Set<String> allWindows;
     private final Set<String> visibleWindows;
 
@@ -75,6 +76,15 @@ public final class ShellLayout {
         projectVisible = visible;
     }
 
+    /** False until a splitter drag or a keyboard resize chooses a size; until then the shell keeps its fixed default sizes. */
+    public boolean isSizeCustomized() {
+        return sizeCustomized;
+    }
+
+    public void setSizeCustomized(boolean customized) {
+        sizeCustomized = customized;
+    }
+
     public void toggle(String windowId) {
         if (visibleWindows.contains(windowId)) {
             visibleWindows.remove(windowId);
@@ -104,6 +114,7 @@ public final class ShellLayout {
         if (availableWidth > 0) {
             projectRatio = (double) clampCells(requestedCells, availableWidth, MIN_PROJECT_WIDTH, MIN_EDITOR_WIDTH)
                     / availableWidth;
+            sizeCustomized = true;
         }
     }
 
@@ -112,6 +123,7 @@ public final class ShellLayout {
         if (availableHeight > 0) {
             bottomRatio = (double) clampCells(requestedCells, availableHeight, MIN_BOTTOM_HEIGHT, MIN_EDITOR_HEIGHT)
                     / availableHeight;
+            sizeCustomized = true;
         }
     }
 

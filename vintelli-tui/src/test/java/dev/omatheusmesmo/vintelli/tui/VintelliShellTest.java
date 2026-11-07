@@ -219,6 +219,175 @@ class VintelliShellTest {
     }
 
     @Test
+    void theFirstToggleKeepsTheProjectWidthAndTheBottomHeight() throws Exception {
+        ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
+        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+        try (MouseShellRunner test = runMouseShell(shell, WIDE)) {
+            Pilot pilot = test.pilot();
+            int projectBefore = pilot.findElement("project-panel").width();
+            int bottomBefore = pilot.findElement("bottom-stripe").height();
+
+            pilot.click(1, frameRowOf(test.renderedFrame(), 1, "R"));
+            settle(pilot);
+
+            assertFalse(shell.isToolWindowVisible("run"), shell.status());
+            assertEquals(projectBefore, pilot.findElement("project-panel").width(),
+                    "hiding Run keeps the project width");
+            assertEquals(bottomBefore, pilot.findElement("bottom-stripe").height(),
+                    "hiding Run keeps the bottom height");
+        }
+    }
+
+    @Test
+    void theFirstBottomDragKeepsTheProjectWidth() throws Exception {
+        ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
+        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+        try (MouseShellRunner test = runMouseShell(shell, WIDE)) {
+            Pilot pilot = test.pilot();
+            int projectBefore = pilot.findElement("project-panel").width();
+            Rect editor = pilot.findElement("editor-panel");
+            int pressX = editor.x() + editor.width() / 2;
+            int dividerY = pilot.findElement("pane-separator-horizontal").y();
+
+            pilot.mousePress(MouseButton.LEFT, pressX, dividerY);
+            test.drag(MouseEvent.drag(MouseButton.LEFT, pressX, dividerY - 3));
+            pilot.mouseRelease(MouseButton.LEFT, pressX, dividerY - 3);
+            settle(pilot);
+
+            assertTrue(pilot.findElement("editor-panel").height() < editor.height(), "the drag must take effect");
+            assertEquals(projectBefore, pilot.findElement("project-panel").width(),
+                    "resizing the bottom pane keeps the project width");
+        }
+    }
+
+    @Test
+    void theFirstProjectDragKeepsTheBottomHeight() throws Exception {
+        ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
+        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+        try (MouseShellRunner test = runMouseShell(shell, WIDE)) {
+            Pilot pilot = test.pilot();
+            int projectBefore = pilot.findElement("project-panel").width();
+            int bottomBefore = pilot.findElement("bottom-stripe").height();
+            Rect separator = pilot.findElement("pane-separator-vertical");
+
+            pilot.mousePress(MouseButton.LEFT, separator.x(), separator.y() + 2);
+            test.drag(MouseEvent.drag(MouseButton.LEFT, separator.x() + 6, separator.y() + 2));
+            pilot.mouseRelease(MouseButton.LEFT, separator.x() + 6, separator.y() + 2);
+            settle(pilot);
+
+            assertTrue(pilot.findElement("project-panel").width() > projectBefore, "the drag must take effect");
+            assertEquals(bottomBefore, pilot.findElement("bottom-stripe").height(),
+                    "resizing the project pane keeps the bottom height");
+        }
+    }
+
+    @Test
+    void hidingARightWindowGivesItsColumnsOnlyToTheEditor() throws Exception {
+        ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
+        store.save(customizedLayout(0.3, ShellLayout.DEFAULT_BOTTOM_RATIO, windowsWithAcp()));
+        VintelliShell shell = new VintelliShell(windowsWithAcp(), new ShellState(), defaultThemes(), store);
+        try (MouseShellRunner test = runMouseShell(shell, WIDE)) {
+            Pilot pilot = test.pilot();
+            int projectBefore = pilot.findElement("project-panel").width();
+            int editorBefore = pilot.findElement("editor-panel").width();
+            int rightBefore = pilot.findElement("right-stripe").width();
+            int acpIcon = frameRowOf(test.renderedFrame(), WIDE.width() - 1, "A");
+
+            pilot.click(WIDE.width() - 1, acpIcon);
+            settle(pilot);
+
+            assertFalse(shell.isToolWindowVisible("acp.agents"), shell.status());
+            assertEquals(projectBefore, pilot.findElement("project-panel").width(),
+                    "hiding ACP keeps the project width");
+            assertEquals(editorBefore + rightBefore - VintelliShell.TOOL_STRIP_WIDTH,
+                    pilot.findElement("editor-panel").width(), "the editor takes the columns of the hidden window");
+
+            pilot.click(WIDE.width() - 1, acpIcon);
+            settle(pilot);
+
+            assertTrue(shell.isToolWindowVisible("acp.agents"), shell.status());
+            assertEquals(projectBefore, pilot.findElement("project-panel").width(),
+                    "showing ACP keeps the project width");
+            assertEquals(editorBefore, pilot.findElement("editor-panel").width(),
+                    "showing ACP gives the editor its columns back");
+        }
+    }
+
+    @Test
+    void aCustomizedProjectYieldsToTheMinimumEditorWidthWhileARightWindowIsOpen() throws Exception {
+        ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
+        store.save(customizedLayout(0.6, ShellLayout.DEFAULT_BOTTOM_RATIO, windowsWithAcp()));
+        VintelliShell shell = new VintelliShell(windowsWithAcp(), new ShellState(), defaultThemes(), store);
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            int uncapped = (int) Math.round(0.6 * (SIZE.width() - VintelliShell.TOOL_STRIP_WIDTH));
+            assertTrue(pilot.findElement("project-panel").width() < uncapped,
+                    "the project yields to the right window so the editor keeps its minimum width");
+            assertTrue(pilot.findElement("editor-panel").width() + 1 >= ShellLayout.MIN_EDITOR_WIDTH);
+
+            int acpIcon = frameRowOf(test.renderedFrame(), SIZE.width() - 1, "A");
+            pilot.click(SIZE.width() - 1, acpIcon);
+            settle(pilot);
+
+            assertEquals(uncapped, pilot.findElement("project-panel").width(),
+                    "the project returns to its saved share once the right window is hidden");
+        }
+    }
+
+    @Test
+    void aBottomWindowIconStaysOnItsRowWhileItsPaneIsHiddenAndShown() throws Exception {
+        ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
+        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+        try (MouseShellRunner test = runMouseShell(shell, WIDE)) {
+            Pilot pilot = test.pilot();
+            int runRow = frameRowOf(test.renderedFrame(), 1, "R");
+
+            pilot.click(1, runRow);
+            settle(pilot);
+            assertFalse(shell.isToolWindowVisible("run"), shell.status());
+            assertEquals(runRow, frameRowOf(test.renderedFrame(), 1, "R"), "hiding Run keeps its icon in place");
+
+            pilot.click(1, runRow);
+            settle(pilot);
+            assertTrue(shell.isToolWindowVisible("run"), shell.status());
+            assertEquals(runRow, frameRowOf(test.renderedFrame(), 1, "R"), "showing Run keeps its icon in place");
+        }
+    }
+
+    @Test
+    void aCustomizedLayoutRestoresItsSizesAndHiddenWindowsAfterARestart() throws Exception {
+        ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
+        int projectWidth;
+        int bottomHeight;
+        VintelliShell first = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+        try (MouseShellRunner test = runMouseShell(first, WIDE)) {
+            Pilot pilot = test.pilot();
+            Rect separator = pilot.findElement("pane-separator-vertical");
+            int defaultWidth = pilot.findElement("project-panel").width();
+            int pressY = pilot.findElement("editor-panel").y() + 2;
+            pilot.mousePress(MouseButton.LEFT, separator.x(), pressY);
+            test.drag(MouseEvent.drag(MouseButton.LEFT, separator.x() + 8, pressY));
+            pilot.mouseRelease(MouseButton.LEFT, separator.x() + 8, pressY);
+            settle(pilot);
+            assertNotEquals(defaultWidth, pilot.findElement("project-panel").width(), "the drag must take effect");
+            pilot.click(1, frameRowOf(test.renderedFrame(), 1, "R"));
+            settle(pilot);
+            projectWidth = pilot.findElement("project-panel").width();
+            bottomHeight = pilot.findElement("bottom-stripe").height();
+        }
+
+        VintelliShell restarted = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+        try (MouseShellRunner test = runMouseShell(restarted, WIDE)) {
+            Pilot pilot = test.pilot();
+            assertFalse(restarted.isToolWindowVisible("run"), "the hidden window stays hidden after a restart");
+            assertEquals(projectWidth, pilot.findElement("project-panel").width(),
+                    "the dragged project width is restored");
+            assertEquals(bottomHeight, pilot.findElement("bottom-stripe").height(),
+                    "the bottom height is restored");
+        }
+    }
+
+    @Test
     void clickingAToolTabActivatesTheWindowAtItsRenderedPosition() throws Exception {
         VintelliShell shell = defaultShell();
         Buffer buffer = offlineFrame(shell);
@@ -310,6 +479,7 @@ class VintelliShellTest {
     private static final Duration FRAME_GRACE = Duration.ofMillis(30);
     private static final Rect VIEWPORT = new Rect(0, 0, 80, 24);
     private static final Size SIZE = new Size(VIEWPORT.width(), VIEWPORT.height());
+    private static final Size WIDE = new Size(150, 42);
     private static final int MENU_ROW = 0;
     private static final int LEFT_TAB_ROW = 1; // Left stripe tab bar (empty in default)
     private static final int FIRST_PROJECT_ROW = 2; // Project panel now starts at row 2
@@ -1369,6 +1539,7 @@ class VintelliShellTest {
             int projectAreaWidth = VIEWPORT.width() - VintelliShell.TOOL_STRIP_WIDTH
                     - (pilot.hasElement("right-stripe") ? pilot.findElement("right-stripe").width() : 0);
             assertEquals((double) projectAfter.width() / projectAreaWidth, store.load().projectRatio(), 0.0001);
+            assertTrue(store.load().isSizeCustomized(), "a splitter drag switches the saved sizes to ratios");
 
             int resizedWidth = projectAfter.width();
             pilot.mousePress(MouseButton.LEFT, editorBefore.x() + 10, pressY);
@@ -1725,9 +1896,9 @@ class VintelliShellTest {
             assertTrue(editorAfter.width() + 1 >= ShellLayout.MIN_EDITOR_WIDTH,
                     "the editor and its separator column keep the minimum width when clamping the project splitter: "
                             + editorAfter);
-            int projectAreaWidth = SIZE.width() - VintelliShell.TOOL_STRIP_WIDTH - rightAfter.width();
+            int projectAreaWidth = SIZE.width() - VintelliShell.TOOL_STRIP_WIDTH;
             assertEquals((double) pilot.findElement("project-panel").width() / projectAreaWidth,
-                    store.load().projectRatio(), 0.0001);
+                    store.load().projectRatio(), 0.0001, "the ratio is measured against the width without the left strip");
         }
     }
 
@@ -2737,6 +2908,23 @@ class VintelliShellTest {
         root.render(Frame.forTesting(buffer), VIEWPORT, context);
         context.registerElement(root, VIEWPORT);
         return buffer;
+    }
+
+    private static ShellLayout customizedLayout(double projectRatio, double bottomRatio, List<ToolWindow> windows) {
+        Set<String> ids = Set.copyOf(windows.stream().map(ToolWindow::id).toList());
+        ShellLayout layout = new ShellLayout(projectRatio, bottomRatio, ids, ids);
+        layout.setSizeCustomized(true);
+        return layout;
+    }
+
+    private static int frameRowOf(String frame, int column, String text) {
+        String[] rows = frame.split("\n", -1);
+        for (int row = 0; row < rows.length; row++) {
+            if (rows[row].startsWith(text, column)) {
+                return row;
+            }
+        }
+        return -1;
     }
 
     private static ShellThemes defaultThemes() {
