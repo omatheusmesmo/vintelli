@@ -18,6 +18,13 @@ public interface TerminalSession extends AutoCloseable {
      */
     List<String> output();
 
+    /**
+     * Drops every buffered output line, including a partial line still being
+     * assembled, so that the next output starts from an empty presentation.
+     * The child process keeps running and its prompt is not sent again.
+     */
+    void clearOutput();
+
     /** Updates the terminal dimensions when the backend supports resizing. */
     void resize(int columns, int rows);
 

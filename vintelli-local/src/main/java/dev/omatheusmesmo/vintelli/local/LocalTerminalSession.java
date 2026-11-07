@@ -143,6 +143,12 @@ final class LocalTerminalSession implements TerminalSession {
     }
 
     @Override
+    public synchronized void clearOutput() {
+        lines.clear();
+        currentLine.setLength(0);
+    }
+
+    @Override
     public void resize(int columns, int rows) {
         if (ptyProcess == null) {
             return;

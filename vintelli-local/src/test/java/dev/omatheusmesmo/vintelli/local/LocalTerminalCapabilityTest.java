@@ -150,6 +150,35 @@ class LocalTerminalCapabilityTest {
         }
     }
 
+    @Test
+    void clearOutputDropsTheBufferedLinesAndLaterOutputStillArrives() throws Exception {
+        Path project = Files.createDirectories(temp.resolve("clear-project"));
+        String shellId = TestProcesses.isWindows() ? "cmd" : "sh";
+        TerminalShellResolver shells = new TerminalShellResolver(shellId, System.getProperty("os.name", ""),
+                System.getenv());
+        LocalTerminalCapability provider = LocalTerminalCapability.of(new LocalProjectRoot(project),
+                Duration.ofMinutes(5), shells);
+        var started = provider.startSession(new TerminalCapability.TerminalSessionRequest(Path.of("."), true));
+        assertFalse(started.isFailure(), started.failureOf().map(Object::toString).orElse(""));
+        TerminalSession session = ((CapabilityResult.Ok<TerminalSession>) started).value();
+        try {
+            session.write("echo 42\r".getBytes(StandardCharsets.UTF_8));
+            awaitLine(session, "42");
+
+            session.clearOutput();
+            assertFalse(session.output().contains("42"), () -> "cleared output still holds 42: " + session.output());
+
+            session.write("echo 49\r".getBytes(StandardCharsets.UTF_8));
+            awaitLine(session, "49");
+        } finally {
+            session.close();
+        }
+    }
+
+    private static void awaitLine(TerminalSession session, String expected) {
+        TestProcesses.awaitUntil(Duration.ofSeconds(10), () -> session.output().contains(expected));
+    }
+
     private static String workingDirectoryCommand(String marker) {
         return TestProcesses.isWindows()
                 ? "echo %CD% & echo " + marker

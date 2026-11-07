@@ -34,6 +34,7 @@ public final class TerminalToolWindow implements ToolWindow {
 
     private static final Logger LOG = Logger.getLogger(TerminalToolWindow.class);
     private static final int MAX_INPUT_LENGTH = 4_096;
+    private static final String CLEAR_COMMAND = "clear";
 
     private final Provider<ShellThemes> themes;
     private final CapabilityRegistry capabilities;
@@ -154,6 +155,8 @@ public final class TerminalToolWindow implements ToolWindow {
             cursor = 0;
             status = "Interrupt sent";
             session.write(new byte[] {0x03});
+        } else if (key.hasCtrl() && key.isCharIgnoreCase('l')) {
+            session.clearOutput();
         } else if (key.code() == KeyCode.CHAR && !key.hasCtrl() && !key.hasAlt()
                 && key.codePoint() >= 32 && input.length() < MAX_INPUT_LENGTH) {
             String value = new String(Character.toChars(key.codePoint()));
@@ -247,6 +250,14 @@ public final class TerminalToolWindow implements ToolWindow {
             cursor = 0;
             return;
         }
+        if (CLEAR_COMMAND.equals(command.strip())) {
+            remember(command);
+            session.clearOutput();
+            input.setLength(0);
+            cursor = 0;
+            status = "";
+            return;
+        }
         sendLine(command);
     }
 
@@ -272,14 +283,18 @@ public final class TerminalToolWindow implements ToolWindow {
     }
 
     private void sendLine(String command) {
-        if (!command.isBlank()) {
-            history.add(command);
-            historyIndex = history.size();
-        }
+        remember(command);
         session.write((command + "\r").getBytes(StandardCharsets.UTF_8));
         input.setLength(0);
         cursor = 0;
         status = "";
+    }
+
+    private void remember(String command) {
+        if (!command.isBlank()) {
+            history.add(command);
+            historyIndex = history.size();
+        }
     }
 
     private void recallHistory(int delta) {
