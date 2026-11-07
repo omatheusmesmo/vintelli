@@ -4,10 +4,12 @@ import dev.omatheusmesmo.vintelli.tui.keymap.KeyAction;
 import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeymapProfile;
 import dev.tamboui.buffer.Buffer;
+import dev.tamboui.buffer.Cell;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.style.Color;
 import dev.tamboui.style.Color.Indexed;
 import dev.tamboui.style.Color.Rgb;
+import dev.tamboui.style.Modifier;
 import dev.tamboui.terminal.Frame;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
@@ -93,11 +95,11 @@ public final class ShellInspectResource {
     @GET
     @Path("/render")
     @Produces(MediaType.APPLICATION_JSON)
-    public ShellRenderView render() {
+    public ShellRenderView render(@QueryParam("focus") String focus) {
         if (!enabled) {
             throw new NotFoundException();
         }
-        return renderView(shell.get());
+        return renderView(shell.get(), focus);
     }
 
     /**
@@ -118,7 +120,7 @@ public final class ShellInspectResource {
         VintelliShell liveShell = shell.get();
         try {
             liveShell.switchTheme(name);
-            return Response.ok(renderView(liveShell)).build();
+            return Response.ok(renderView(liveShell, null)).build();
         } catch (RuntimeException failure) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(new ThemeRejected(failure.getMessage()))
@@ -194,9 +196,27 @@ public final class ShellInspectResource {
         return color == null ? null : color.toString();
     }
 
-    private static ShellRenderView renderView(VintelliShell liveShell) {
+    /**
+     * The reversed cells of the editor rows, right of the project panel: the
+     * caret cell while an editor focus is painted, plus any selected cells.
+     * Package visible so the payload can be exercised without a live shell.
+     */
+    static List<CaretCellView> editorCarets(Buffer buffer) {
+        List<CaretCellView> carets = new ArrayList<>();
+        for (int row = FIRST_EDITOR_ROW; row <= LAST_EDITOR_ROW; row++) {
+            for (int x = VintelliShell.PROJECT_PANEL_WIDTH + 1; x < buffer.width(); x++) {
+                Cell cell = buffer.get(x, row);
+                if (cell.style().addModifiers().contains(Modifier.REVERSED)) {
+                    carets.add(new CaretCellView(x, row, cell.symbol()));
+                }
+            }
+        }
+        return carets;
+    }
+
+    private static ShellRenderView renderView(VintelliShell liveShell, String focus) {
         Buffer buffer = Buffer.empty(VIEWPORT);
-        liveShell.paint(Frame.forTesting(buffer));
+        liveShell.paint(Frame.forTesting(buffer), focus);
         ShellThemes themes = liveShell.themes();
         return new ShellRenderView(
                 rowText(buffer, TAB_ROW),
@@ -204,6 +224,7 @@ public final class ShellInspectResource {
                 mainAreaRows(buffer),
                 editorRows(buffer),
                 editorRuns(buffer),
+                editorCarets(buffer),
                 rowText(buffer, STATUS_ROW).strip(),
                 liveShell.activeTheme(),
                 themes.colorLevel().name().toLowerCase(Locale.ROOT),
@@ -304,7 +325,8 @@ public final class ShellInspectResource {
      * that top border down to the row above the status bar, joined by newlines,
      * so the project pane footer and the bottom tool windows are visible), the content rows of the editor
      * panel joined by newlines, the {@link EditorRunView} foreground color
-     * runs of those rows, the status row, the active theme name, the color
+     * runs of those rows, the {@link CaretCellView} reversed cells of the editor
+     * rows, the status row, the active theme name, the color
      * depth the active theme renders with and the {@link #INSPECTED_VARIABLES}
      * of that theme as the depth serves them. {@code POST /tui/theme} answers
      * with the same shape after the switch, so one payload carries both the
@@ -315,8 +337,16 @@ public final class ShellInspectResource {
      * diff context lines start with a space.
      */
     record ShellRenderView(String tabRow, String mainAreaTop, String mainArea, String editorArea,
-            List<EditorRunView> editorRuns,
+            List<EditorRunView> editorRuns, List<CaretCellView> editorCarets,
             String status, String theme, String colorLevel, Map<String, String> colors) {
+    }
+
+    /**
+     * One reversed cell of the editor rows: its column and row in the frame and
+     * the symbol drawn in it. The caret of the focused editor is the reversed
+     * cell at the cursor, so a caller asserts its position and character.
+     */
+    record CaretCellView(int x, int y, String symbol) {
     }
 
     /**

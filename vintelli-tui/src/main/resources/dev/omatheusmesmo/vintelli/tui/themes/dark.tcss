@@ -149,6 +149,10 @@ EditorTabBarElement-overflow {
   color: $editor-fg;
 }
 
+.editor-caret {
+  text-style: reversed;
+}
+
 .editor-push-highlight {
   color: $editor-keyword;
   text-style: bold;

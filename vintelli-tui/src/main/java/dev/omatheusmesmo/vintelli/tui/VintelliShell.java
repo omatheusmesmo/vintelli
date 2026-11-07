@@ -2820,10 +2820,22 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
      * pushed state.
      */
     public void paint(Frame frame) {
+        paint(frame, null);
+    }
+
+    /**
+     * Draws one frame as {@link #paint(Frame)} does, with {@code focusedId} focused
+     * when it is not null: the offscreen frame has no key routing, so this is how
+     * a caller sees the focus-dependent parts of the frame, such as the editor caret.
+     */
+    public void paint(Frame frame, String focusedId) {
         frameLock.lock();
         try {
             DefaultRenderContext context = DefaultRenderContext.createEmpty();
             context.setStyleEngine(themes.engine());
+            if (focusedId != null) {
+                context.focusManager().setFocus(focusedId);
+            }
             lockedRoot.render(frame, frame.area(), context);
             context.registerElement(lockedRoot, frame.area());
         } finally {

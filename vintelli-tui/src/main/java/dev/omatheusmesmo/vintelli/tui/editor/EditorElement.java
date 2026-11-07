@@ -14,6 +14,7 @@ import dev.tamboui.style.ColorConverter;
 import dev.tamboui.style.Modifier;
 import dev.tamboui.style.Style;
 import dev.tamboui.terminal.Frame;
+import dev.tamboui.text.CharWidth;
 import dev.tamboui.text.Line;
 import dev.tamboui.text.Span;
 import dev.tamboui.text.Text;
@@ -46,6 +47,8 @@ final class EditorElement implements Element {
     private static final String DIRTY_MARK_ASCII = "*";
     private static final String LINE_NUMBER_ROLE = "editor-line-number";
     private static final String CURRENT_LINE_NUMBER_ROLE = "editor-line-number-current";
+    private static final String CARET_ROLE = "editor-caret";
+    private static final List<String> TYPING_FOCUS_IDS = List.of(BuiltinEditor.TEXT_AREA_ID, "editor-panel", "editor-content");
 
     private final BuiltinEditor editor;
     private final TextAreaElement textArea = Toolkit.textArea();
@@ -103,6 +106,9 @@ final class EditorElement implements Element {
         protected void renderContent(Frame frame, Rect area, RenderContext context) {
             textArea.render(frame, area, context);
             paintCaretRow(frame.buffer(), area);
+            if (TYPING_FOCUS_IDS.stream().anyMatch(context::isFocused)) {
+                paintCaret(frame.buffer(), area, context);
+            }
         }
 
         @Override
@@ -147,6 +153,41 @@ final class EditorElement implements Element {
                 buffer.set(x, y, cell.patchStyle(Style.EMPTY.bg(caretRow)));
             }
         }
+    }
+
+    /**
+     * Paints the caret cell with the {@code editor-caret} role, using the same column
+     * arithmetic as TamboUI's cursor path in clip mode. It runs after the caret row pass,
+     * which would otherwise overwrite the caret cell. Cells outside the viewport get nothing.
+     */
+    private void paintCaret(Buffer buffer, Rect area, RenderContext context) {
+        if (area.isEmpty()) {
+            return;
+        }
+        TextAreaState state = textArea.getState();
+        int row = state.cursorRow() - state.scrollRow();
+        int column = caretColumn(state);
+        if (row < 0 || row >= area.height() || column < 0 || column >= area.width()) {
+            return;
+        }
+        int x = area.x() + column;
+        int y = area.y() + row;
+        buffer.set(x, y, buffer.get(x, y).patchStyle(caretStyle(context)));
+    }
+
+    private static int caretColumn(TextAreaState state) {
+        int cursorCol = state.cursorCol();
+        if (cursorCol < state.scrollCol()) {
+            return -1;
+        }
+        String line = state.getLine(state.cursorRow());
+        int from = Math.min(state.scrollCol(), line.length());
+        int to = Math.min(cursorCol, line.length());
+        return CharWidth.of(line.substring(from, to));
+    }
+
+    private static Style caretStyle(RenderContext context) {
+        return Style.EMPTY.reversed().patch(roleStyle(context, CARET_ROLE));
     }
 
     @Override public String id() { return "editor-content"; }
