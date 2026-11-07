@@ -5,6 +5,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -13,6 +14,7 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityRegistry;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilitySelection;
+import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
 import dev.omatheusmesmo.vintelli.api.capability.RunCapability;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import dev.tamboui.layout.Rect;
@@ -42,10 +44,12 @@ public final class RunToolWindow implements ToolWindow {
     private final ArrayDeque<String> output = new ArrayDeque<>();
     private final AtomicLong listingSequence = new AtomicLong();
     private final AtomicLong runSequence = new AtomicLong();
+    private final AtomicLong capabilitySequence = new AtomicLong();
+    private final AtomicBoolean capabilityRequested = new AtomicBoolean();
 
     private volatile List<RunCapability.RunConfiguration> configurations = List.of();
     private volatile RunCapability provider;
-    private volatile String providerLabel = "Run provider unavailable";
+    private volatile CapabilityStateLine.Summary capabilitySummary = CapabilityStateLine.checking(CapabilityType.RUN);
     private volatile String status = LOADING;
     private volatile RunCapability.RunHandle handle;
     private volatile boolean starting;
@@ -63,6 +67,7 @@ public final class RunToolWindow implements ToolWindow {
         this.uiWork = new UiWorkQueue();
         this.workingDirectory = Path.of(".").toAbsolutePath().normalize();
         this.status = "Run provider unavailable";
+        this.capabilitySummary = CapabilityStateLine.notConfigured(CapabilityType.RUN);
     }
 
     @Inject
@@ -198,15 +203,19 @@ public final class RunToolWindow implements ToolWindow {
 
     @Override
     public void render(Frame frame, Rect area) {
+        if (capabilities != null && capabilityRequested.compareAndSet(false, true)) {
+            refreshCapabilityLine();
+        }
         lastArea = area;
         configurationRowsStart = -1;
         visibleConfigurationCount = 0;
         List<String> lines = new ArrayList<>();
-        lines.add("Provider: " + providerLabel);
+        lines.add(capabilitySummary.headline());
         lines.add("▶ Run [Enter]     ↻ Refresh [r]     "
                 + (handle == null || !handle.supportsCancellation()
                         ? "Stop unavailable" : "■ Stop"));
         lines.add(status);
+        lines.addAll(capabilitySummary.skipped());
 
         int innerRows = Math.max(0, area.height());
         int bodyRows = Math.max(0, innerRows - lines.size());
@@ -300,6 +309,7 @@ public final class RunToolWindow implements ToolWindow {
         }
         long sequence = listingSequence.incrementAndGet();
         status = LOADING;
+        refreshCapabilityLine();
         Thread.ofVirtual().name("vintelli-run-list").start(() -> {
             CapabilitySelection<RunCapability> selection;
             try {
@@ -309,7 +319,6 @@ public final class RunToolWindow implements ToolWindow {
                     if (sequence == listingSequence.get()) {
                         provider = null;
                         configurations = List.of();
-                        providerLabel = "Run provider unavailable";
                         status = "Run provider selection failed: " + message(failure);
                         append(status);
                     }
@@ -321,7 +330,6 @@ public final class RunToolWindow implements ToolWindow {
                     if (sequence == listingSequence.get()) {
                         provider = null;
                         configurations = List.of();
-                        providerLabel = "Run provider unavailable";
                         status = unavailable.reason();
                     }
                 });
@@ -341,7 +349,6 @@ public final class RunToolWindow implements ToolWindow {
                     return;
                 }
                 provider = selected;
-                providerLabel = selected.identifier() + " · " + selected.provenance();
                 if (result instanceof CapabilityResult.Failed<List<RunCapability.RunConfiguration>> failed) {
                     configurations = List.of();
                     status = "Run configuration listing failed: " + failed.failure().reason();
@@ -355,13 +362,25 @@ public final class RunToolWindow implements ToolWindow {
         });
     }
 
+    private void refreshCapabilityLine() {
+        capabilityRequested.set(true);
+        long sequence = capabilitySequence.incrementAndGet();
+        Thread.ofVirtual().name("vintelli-run-capability").start(() -> {
+            CapabilityStateLine.Summary summary = CapabilityStateLine.read(capabilities, CapabilityType.RUN);
+            uiWork.execute(() -> {
+                if (sequence == capabilitySequence.get()) {
+                    capabilitySummary = summary;
+                }
+            });
+        });
+    }
+
     private void showListingFailure(long sequence, RunCapability selected, String failure) {
         if (sequence != listingSequence.get()) {
             return;
         }
         provider = selected;
         configurations = List.of();
-        providerLabel = selected.identifier() + " · " + selected.provenance();
         status = failure;
         append(failure);
     }
@@ -409,7 +428,7 @@ public final class RunToolWindow implements ToolWindow {
                     if (sequence == runSequence.get()) {
                         provider = null;
                         configurations = List.of();
-                        providerLabel = "Run provider unavailable";
+                        refreshCapabilityLine();
                         failRun(unavailable.reason());
                     }
                 });
@@ -422,7 +441,7 @@ public final class RunToolWindow implements ToolWindow {
                         provider = current;
                         configurations = List.of();
                         selectedIndex = 0;
-                        providerLabel = current.identifier() + " · " + current.provenance();
+                        refreshCapabilityLine();
                         failRun("Run provider changed; refresh configurations");
                     }
                 });
@@ -538,7 +557,11 @@ public final class RunToolWindow implements ToolWindow {
     }
 
     String providerLabel() {
-        return providerLabel;
+        return capabilitySummary.headline();
+    }
+
+    List<String> skippedProviderLines() {
+        return capabilitySummary.skipped();
     }
 
     List<RunCapability.RunConfiguration> configurations() {

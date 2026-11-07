@@ -203,6 +203,8 @@ capability registry ranks them like every other provider.
 
 The Run tool window lists configurations from the selected `RunCapability`
 provider, shows the provider and its provenance, and sends output to the console.
+Its headline reads `Run: <provider> (<provenance>)`; when no provider is
+available it reads `Run unavailable: <reason>` (see "Capability states" below).
 Use Up/Down or `j`/`k` to select a configuration, Enter or the Run toolbar
 action to start it, and Stop or the `Stop Current Run` palette action to request cancellation. Maven and
 Gradle goals/tasks remain available without IDEA; an IDEA provider is optional.
@@ -395,6 +397,21 @@ branch label asynchronously. On narrow terminals the bar uses compact labels
 and truncates to the available width; unavailable providers are marked with
 `!`, with their reason shown when space allows. Provider selections are read
 from the live capability registry.
+
+Capability states: the Run, Terminal and Problems tool windows use the same
+wording as the status bar, and the project pane footer shows the Read File
+state. The text is read from the registry snapshot off the render thread. The
+active provider reads `Problems: jdtls (jdtls over stdio)`, and an unavailable
+capability reads `Problems unavailable: <reason>` with the registry reason as
+is. Each higher ranked provider that was passed over reads `skipped idea: not
+connected`: in Problems and Run it is its own line, in Terminal it is its own
+line while no session runs, and in the project pane footer the skipped entries
+share one line. The first state appears asynchronously after start. Problems
+and Run re-read the registry on `r`, Terminal re-reads when a session starts,
+and the project tree re-reads on its refresh action, so a provider that became
+healthy is picked up by the next refresh. These windows and the project tree
+never call the registry while they render. Long lines are clipped to the pane
+width, so the project pane footer, which is 30 columns wide, cuts long reasons.
 
 Keys: `1-4` (or `Alt+1`..`Alt+4`) switch tool windows (Run, Terminal,
 Problems, ACP Agents), arrows and `PageUp`/`PageDown`/`Home`/`End` navigate

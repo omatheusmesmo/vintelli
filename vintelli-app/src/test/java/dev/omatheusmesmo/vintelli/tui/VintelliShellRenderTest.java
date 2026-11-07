@@ -6,7 +6,10 @@ import io.quarkus.test.common.WithTestResource;
 import io.quarkus.test.junit.QuarkusTest;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
+
 import static io.restassured.RestAssured.given;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
@@ -21,6 +24,29 @@ import static org.hamcrest.Matchers.not;
 @QuarkusTest
 @WithTestResource(value = InspectEnabledResource.class, scope = TestResourceScope.RESTRICTED_TO_CLASS)
 class VintelliShellRenderTest {
+
+    /**
+     * The project pane footer carries the READ_FILE state, which the shell reads on a virtual thread after
+     * construction. The poll waits until the placeholder {@code checking} text is replaced by the settled state,
+     * so the assertion observes the asynchronous read and not the first frame.
+     */
+    @Test
+    void showsTheSettledReadFileStateInTheProjectPaneOfTheRenderedFrame() throws InterruptedException {
+        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        String mainArea = "";
+        while (System.nanoTime() < deadline) {
+            mainArea = given()
+                    .when().get("/tui/render")
+                    .then().statusCode(200)
+                    .extract().path("mainArea");
+            if (mainArea.contains("Read File") && !mainArea.contains("checking")) {
+                break;
+            }
+            Thread.sleep(50);
+        }
+        assertTrue(mainArea.contains("Read File") && !mainArea.contains("checking"),
+                "the READ_FILE state never settled in the main area:\n" + mainArea);
+    }
 
     @Test
     void exposesToolWindowTabsAndStatusFromAnOffscreenFrame() {

@@ -3,6 +3,7 @@ package dev.omatheusmesmo.vintelli.tui;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityRegistry;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilitySelection;
+import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Diagnostic;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Severity;
@@ -56,7 +57,7 @@ public final class ProblemsToolWindow implements ToolWindow {
     private State state = State.IDLE;
     private Filter filter = Filter.ALL;
     private String message = "Open one or more files in the editor, then refresh";
-    private String provenance = "";
+    private CapabilityStateLine.Summary capabilitySummary;
     private int selectedIndex;
     private int scrollOffset;
     private int viewportRows = 1;
@@ -67,6 +68,9 @@ public final class ProblemsToolWindow implements ToolWindow {
         this.registry = registry;
         this.editor = editor;
         this.themes = themes;
+        this.capabilitySummary = registry == null
+                ? CapabilityStateLine.notConfigured(CapabilityType.DIAGNOSTICS)
+                : CapabilityStateLine.checking(CapabilityType.DIAGNOSTICS);
     }
 
     public ProblemsToolWindow(Provider<ShellThemes> themes) {
@@ -157,8 +161,7 @@ public final class ProblemsToolWindow implements ToolWindow {
             lines = displayRows.stream().skip(scrollOffset).limit(viewportRows)
                     .map(row -> singleLine(row.text())).toList();
             if (lines.isEmpty()) lines = List.of(message);
-            title = "Problems  " + stateLabel() + "  " + filterLabel()
-                    + "  R:Refresh" + (provenance.isBlank() ? "" : "  " + provenance);
+            title = capabilitySummary.headline() + "  " + stateLabel() + "  " + filterLabel() + "  R:Refresh";
             ShellThemes activeThemes = themes == null ? null : themes.get();
             style = activeThemes == null ? Style.EMPTY : activeThemes.resolver("tool-window").toStyle();
             List<String> body = new ArrayList<>();
@@ -184,7 +187,6 @@ public final class ProblemsToolWindow implements ToolWindow {
         state = State.LOADING;
         message = "Refreshing diagnostics…";
         problems.clear();
-        provenance = "";
         selectedIndex = 0;
         scrollOffset = 0;
         worker.execute(() -> load(request));
@@ -202,6 +204,12 @@ public final class ProblemsToolWindow implements ToolWindow {
     }
 
     private void load(long request) {
+        CapabilityStateLine.Summary summary = CapabilityStateLine.read(registry, CapabilityType.DIAGNOSTICS);
+        synchronized (this) {
+            if (request == refreshSequence.get()) {
+                capabilitySummary = summary;
+            }
+        }
         try {
             loadDiagnostics(request);
         } catch (RuntimeException failure) {
@@ -223,7 +231,6 @@ public final class ProblemsToolWindow implements ToolWindow {
                 if (request != refreshSequence.get()) return;
                 state = State.EMPTY;
                 message = "Open files in the editor to inspect their diagnostics";
-                provenance = provider.provenance();
             }
             return;
         }
@@ -252,7 +259,6 @@ public final class ProblemsToolWindow implements ToolWindow {
             if (request != refreshSequence.get()) return;
             problems.clear();
             problems.addAll(collected);
-            provenance = provider.provenance();
             selectedIndex = 0;
             scrollOffset = 0;
             if (!collected.isEmpty()) {
@@ -283,6 +289,9 @@ public final class ProblemsToolWindow implements ToolWindow {
     private void rebuildRows() {
         displayRows.clear();
         visibleProblems.clear();
+        for (String skipped : capabilitySummary.skipped()) {
+            displayRows.add(new DisplayRow(skipped, -1));
+        }
         if (state == State.LOADING || state == State.UNAVAILABLE || state == State.ERROR || state == State.IDLE) {
             displayRows.add(new DisplayRow(message, -1));
             return;

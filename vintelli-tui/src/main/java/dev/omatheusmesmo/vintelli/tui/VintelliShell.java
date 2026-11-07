@@ -29,6 +29,7 @@ import dev.omatheusmesmo.vintelli.api.capability.ProjectFileOperations;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityStatus;
+import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityFailure;
 import dev.omatheusmesmo.vintelli.api.capability.EditorBridge.OpenRequest;
 import dev.omatheusmesmo.vintelli.api.statusbar.StatusBarWidget;
@@ -179,6 +180,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private final ProjectSearch projectSearch;
     private final List<NavigationCapability> navigationProviders;
     private final CapabilityRegistry capabilityRegistry;
+    private final AtomicLong readFileSequence = new AtomicLong();
+    private volatile CapabilityStateLine.Summary readFileSummary;
     private final IdeaMcpConnection ideaMcpConnection;
     private final List<StatusBarWidgetContributor> statusBarContributors;
     private final List<VersionControlCapability> vcsProviders;
@@ -370,6 +373,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         this.fileOperations = fileOperations;
         this.navigationProviders = List.copyOf(navigationProviders);
         this.capabilityRegistry = capabilityRegistry;
+        this.readFileSummary = capabilityRegistry == null
+                ? CapabilityStateLine.notConfigured(CapabilityType.READ_FILE)
+                : CapabilityStateLine.checking(CapabilityType.READ_FILE);
         this.ideaMcpConnection = ideaMcpConnection;
         this.statusBarContributors = List.copyOf(statusBarContributors);
         this.vcsProviders = List.copyOf(vcsProviders);
@@ -454,6 +460,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         if (projectSearch != null) {
             Thread.ofVirtual().start(this::discoverProjectFiles);
         }
+        refreshReadFileSummary();
     }
 
     /**
@@ -699,8 +706,31 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         Column pane = Toolkit.column().id("project-pane");
         pane.add(new PaneHeader("project-panel", () -> "Project", () -> themes, this::focusMark));
         pane.add(lockedProjectList);
+        pane.add(new PaneHeader("project-read-file", context -> false, this::readFileTitle, () -> themes, () -> " "));
         pane.fill();
         return pane;
+    }
+
+    private String readFileTitle() {
+        CapabilityStateLine.Summary summary = readFileSummary;
+        if (summary == null) {
+            return "";
+        }
+        String skipped = summary.skipped().isEmpty() ? "" : "  " + String.join("  ·  ", summary.skipped());
+        return summary.headline() + skipped;
+    }
+
+    private void refreshReadFileSummary() {
+        if (capabilityRegistry == null) {
+            return;
+        }
+        long sequence = readFileSequence.incrementAndGet();
+        Thread.ofVirtual().name("vintelli-read-file-state").start(() -> {
+            CapabilityStateLine.Summary summary = CapabilityStateLine.read(capabilityRegistry, CapabilityType.READ_FILE);
+            if (sequence == readFileSequence.get()) {
+                readFileSummary = summary;
+            }
+        });
     }
 
     private ListElement<?> projectPanel() {
@@ -736,6 +766,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     public void refreshProjectTree() {
+        refreshReadFileSummary();
         refreshProjectTree(true);
     }
 
@@ -1013,16 +1044,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     private StatusBarWidget capabilityWidget(CapabilityStatus status, int order) {
-        String label = switch (status.capability()) {
-            case RUN -> "Run";
-            case TERMINAL -> "Terminal";
-            case READ_FILE -> "Read File";
-            case DIAGNOSTICS -> "Problems";
-            case CALL_HIERARCHY -> "Call Hierarchy";
-            case CODE_ACTION -> "Code Actions";
-            case EDITOR_BRIDGE -> "Editor";
-            case VERSION_CONTROL -> "VCS";
-        };
+        String label = CapabilityStateLine.label(status.capability());
         String shortLabel = switch (status.capability()) {
             case RUN -> "R";
             case TERMINAL -> "T";

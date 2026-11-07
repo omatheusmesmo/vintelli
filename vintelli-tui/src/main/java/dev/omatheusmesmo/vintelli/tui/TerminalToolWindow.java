@@ -4,12 +4,15 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.jboss.logging.Logger;
 
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityRegistry;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilitySelection;
+import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
 import dev.omatheusmesmo.vintelli.api.capability.TerminalCapability;
 import dev.omatheusmesmo.vintelli.api.capability.TerminalSession;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
@@ -42,12 +45,18 @@ public final class TerminalToolWindow implements ToolWindow {
     private TerminalSession session;
     private String status = "Press Enter to start an interactive shell. It starts in the project root and can leave it.";
     private String confirmationLine;
+    private final AtomicLong capabilitySequence = new AtomicLong();
+    private final AtomicBoolean capabilityRequested = new AtomicBoolean();
+    private volatile CapabilityStateLine.Summary capabilitySummary;
 
     /** CDI construction with the selected terminal capability. */
     @Inject
     public TerminalToolWindow(Provider<ShellThemes> themes, CapabilityRegistry capabilities) {
         this.themes = themes;
         this.capabilities = capabilities;
+        this.capabilitySummary = capabilities == null
+                ? CapabilityStateLine.notConfigured(CapabilityType.TERMINAL)
+                : CapabilityStateLine.checking(CapabilityType.TERMINAL);
     }
 
     /** Small construction surface for renderer tests that do not run commands. */
@@ -109,6 +118,7 @@ public final class TerminalToolWindow implements ToolWindow {
                     session.close();
                     session = null;
                 }
+                refreshCapabilitySummary();
                 startSession();
             }
             return true;
@@ -155,10 +165,17 @@ public final class TerminalToolWindow implements ToolWindow {
 
     @Override
     public void render(Frame frame, Rect area) {
+        if (capabilities != null && capabilityRequested.compareAndSet(false, true)) {
+            refreshCapabilitySummary();
+        }
         if (session != null && session.isAlive()) {
             session.resize(area.width(), Math.max(5, area.height()));
         }
         List<String> rows = new ArrayList<>();
+        if (session == null || !session.isAlive()) {
+            rows.add(capabilitySummary.headline());
+            rows.addAll(capabilitySummary.skipped());
+        }
         if (session != null) {
             rows.addAll(session.output());
             if (!session.isAlive()) {
@@ -183,6 +200,17 @@ public final class TerminalToolWindow implements ToolWindow {
                 .text(Text.from(String.join("\n", visible)))
                 .style(contentStyle)
                 .build(), area);
+    }
+
+    private void refreshCapabilitySummary() {
+        capabilityRequested.set(true);
+        long sequence = capabilitySequence.incrementAndGet();
+        Thread.ofVirtual().name("vintelli-terminal-capability").start(() -> {
+            CapabilityStateLine.Summary summary = CapabilityStateLine.read(capabilities, CapabilityType.TERMINAL);
+            if (sequence == capabilitySequence.get()) {
+                capabilitySummary = summary;
+            }
+        });
     }
 
     private void startSession() {
