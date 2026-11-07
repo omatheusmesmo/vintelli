@@ -617,6 +617,61 @@ class VintelliShellTest {
     }
 
     @Test
+    void vcsRefreshKeepsTheProjectTreeForm() throws IOException {
+        Path changed = project.resolve("src/main/A.java");
+        Files.createDirectories(changed.getParent());
+        Files.writeString(changed, "class A {}");
+        Files.writeString(project.resolve("README.md"), "# readme");
+        VintelliShell shell = shellWithVcsTree(modifiedVcs("src/main/A.java"), project);
+        shell.refreshProjectTree();
+        shell.selectPath("src");
+        shell.expandSelected();
+        shell.selectPath("src/main");
+        shell.expandSelected();
+        shell.selectPath("src/main/A.java");
+
+        shell.refreshVcs();
+        String rendered = bufferText(offlineFrame(shell));
+
+        boolean unicodeTree = ProjectTreeGlyphs.supportsUnicode();
+        FileIcons icons = FileIcons.resolve();
+        boolean nerd = icons.mode() == IconMode.NERD;
+        String srcRow = (unicodeTree ? "├── " : "|-- ") + (nerd ? "▾ " : "- ")
+                + icons.folderIconFor("src").symbol(icons.mode()) + " src/";
+        String changedRow = (unicodeTree ? "│       └── " : "|       \\-- ")
+                + "M " + icons.iconFor("A.java").symbol(icons.mode()) + " A.java";
+        assertTrue(rendered.contains(srcRow), "the expanded directory keeps its tree row: " + rendered);
+        assertTrue(rendered.contains(changedRow), "the changed file keeps its tree row and marker: " + rendered);
+        assertFalse(rendered.contains("M src/main/A.java"), "the refresh must not flatten rows to paths: " + rendered);
+        assertEquals("src/main/A.java", shell.selectedPathString(), "the refresh must keep the selection");
+    }
+
+    private static VintelliShell shellWithVcsTree(VersionControlCapability vcs, Path root) {
+        ShellThemes themes = defaultThemes();
+        List<ToolWindow> windows = defaultWindows();
+        return new VintelliShell(windows, new ShellState(), () -> Keymap.defaultKeymap(windows), themes,
+                ProjectTreeTest.fakeSearch(root), List.of(), List.of(vcs));
+    }
+
+    private static VersionControlCapability modifiedVcs(String changedPath) {
+        return new VersionControlCapability() {
+            @Override public CapabilityResult<Status> status() {
+                return CapabilityResult.ok(new Status("main", 0, 0,
+                        List.of(new Entry(State.MODIFIED, changedPath))));
+            }
+            @Override public CapabilityResult<String> diff(Path changedFile) { return CapabilityResult.ok(""); }
+            @Override public CapabilityResult<String> diffWorkingTree() { return CapabilityResult.ok(""); }
+            @Override public CapabilityResult<Boolean> stage(Path changedFile, boolean confirmed) { return CapabilityResult.ok(confirmed); }
+            @Override public CapabilityResult<Boolean> unstage(Path changedFile, boolean confirmed) { return CapabilityResult.ok(confirmed); }
+            @Override public CapabilityResult<Boolean> commit(String message, boolean confirmed) { return CapabilityResult.ok(confirmed); }
+            @Override public CapabilityResult<Boolean> switchBranch(String target, boolean confirmed) { return CapabilityResult.ok(confirmed); }
+            @Override public String identifier() { return "modified-test"; }
+            @Override public ProviderHealth health() { return ProviderHealth.available(); }
+            @Override public String provenance() { return "temporary modified-file test provider"; }
+        };
+    }
+
+    @Test
     void parsesChangedLinesOnlyInsideHunksAndCountsLiteralPlusAndMinusPrefixes() {
         String diff = "diff --git a/sample.txt b/sample.txt\n"
                 + "--- a/sample.txt\n+++ b/sample.txt\n"
