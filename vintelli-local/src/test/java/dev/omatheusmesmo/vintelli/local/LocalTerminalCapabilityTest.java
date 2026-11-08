@@ -166,7 +166,7 @@ class LocalTerminalCapabilityTest {
             awaitLine(session, "42");
 
             session.clearOutput();
-            assertFalse(outputContainsLine(session, "42"), () -> "cleared output still holds 42: " + session.output());
+            assertFalse(outputContainsResultLine(session, "42"), () -> "cleared output still holds 42: " + session.output());
 
             session.write("echo 49\r".getBytes(StandardCharsets.UTF_8));
             awaitLine(session, "49");
@@ -177,7 +177,7 @@ class LocalTerminalCapabilityTest {
 
     private static void awaitLine(TerminalSession session, String expected) {
         try {
-            TestProcesses.awaitUntil(Duration.ofSeconds(10), () -> outputContainsLine(session, expected));
+            TestProcesses.awaitUntil(Duration.ofSeconds(10), () -> outputContainsResultLine(session, expected));
         } catch (AssertionError timeout) {
             throw new AssertionError("Timed out waiting for line " + expected + "; terminal output was: "
                     + session.output(), timeout);
@@ -210,6 +210,12 @@ class LocalTerminalCapabilityTest {
 
     private static boolean outputContainsLine(TerminalSession session, String expected) {
         return session.output().stream().map(String::strip)
+                .anyMatch(line -> line.equals(expected));
+    }
+
+    private static boolean outputContainsResultLine(TerminalSession session, String expected) {
+        return session.output().stream().map(String::strip)
+                .map(line -> line.replaceFirst("^\\S*[$#>%]\\s+", ""))
                 .anyMatch(line -> line.equals(expected));
     }
 
