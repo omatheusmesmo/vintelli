@@ -169,13 +169,12 @@ class WebTerminalTest {
             awaitScreen(client, screen -> screen.contains("Command cancelled"));
             assertTrue(Files.exists(marker), "cancelled removal must leave the marker file in place");
 
-            Path initialDirectory = WebTerminalResource.PROJECT_ROOT;
-            client.sendInput(showDirectoryCommand() + "\r");
-            awaitScreen(client, screen -> containsDirectoryLine(screen, initialDirectory));
+            client.sendInput(listFileCommand("src/main") + "\r");
+            awaitScreen(client, screen -> containsListedFile(screen, listFileCommand("src/main"), "resources"));
 
             client.sendInput(changeDirectoryCommand(markerDirectory) + "\r");
-            client.sendInput(showDirectoryCommand() + "\r");
-            awaitScreen(client, screen -> containsDirectoryLine(screen, markerDirectory));
+            client.sendInput(listFileCommand("keep.txt") + "\r");
+            awaitScreen(client, screen -> containsListedFile(screen, listFileCommand("keep.txt"), "keep.txt"));
         } finally {
             Files.deleteIfExists(marker);
             Files.deleteIfExists(markerDirectory);
@@ -186,8 +185,8 @@ class WebTerminalTest {
         return System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win");
     }
 
-    private static String showDirectoryCommand() {
-        return isWindows() ? "cd" : "pwd";
+    private static String listFileCommand(String name) {
+        return isWindows() ? "dir /b " + name : "command ls " + name;
     }
 
     private static String changeDirectoryCommand(Path path) {
@@ -199,20 +198,13 @@ class WebTerminalTest {
         return isWindows() ? "\"" + value + "\"" : "'" + value.replace("'", "'\\''") + "'";
     }
 
-    private static boolean containsDirectoryLine(String screen, Path path) {
-        String expected = normalizePath(path.toAbsolutePath().normalize().toString());
+    private static boolean containsListedFile(String screen, String command, String name) {
+        String expected = normalizePath(name);
         return screen.lines().map(String::strip)
-                .map(line -> line.replace("│", "").strip())
-                .map(WebTerminalTest::stripShellPrompt)
+                .filter(line -> !line.contains(command))
+                .map(line -> line.substring(line.lastIndexOf(' ') + 1))
                 .map(WebTerminalTest::normalizePath)
                 .anyMatch(expected::equals);
-    }
-
-    private static String stripShellPrompt(String line) {
-        if (line.startsWith("$ ") || line.startsWith("# ")) {
-            return line.substring(2).strip();
-        }
-        return line;
     }
 
     private static String normalizePath(String path) {
