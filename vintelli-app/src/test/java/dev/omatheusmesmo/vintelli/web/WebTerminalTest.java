@@ -186,7 +186,7 @@ class WebTerminalTest {
     }
 
     private static String listFileCommand(String name) {
-        return isWindows() ? "dir /b " + name : "command ls " + name;
+        return isWindows() ? "dir /b " + name : "command ls -1 " + name;
     }
 
     private static String changeDirectoryCommand(Path path) {
