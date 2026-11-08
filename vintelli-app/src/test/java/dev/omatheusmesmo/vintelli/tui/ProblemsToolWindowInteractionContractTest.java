@@ -77,7 +77,7 @@ class ProblemsToolWindowInteractionContractTest {
             assertNotEquals(beforeScroll, afterScroll,
                     "scrolling on the final rendered row should move the visible diagnostics");
 
-            String edgeRow = renderedRow(afterScroll, bottomRow);
+            String edgeRow = renderedRow(afterScroll, bottomRow).replaceAll("[▘▝▖▗]", " ");
             ProblemsContext context = session.context(ProblemsContext.class);
             Diagnostic target = context.window().problems().stream()
                     .filter(problem -> edgeRow.strip().endsWith(problem.message()))
@@ -129,7 +129,8 @@ class ProblemsToolWindowInteractionContractTest {
                 assertEquals(2 + step, window.selectedIndex(), "Down moves the selection by one problem");
                 String rendered = fixture.renderedText();
                 String marked = rendered.lines().filter(line -> line.contains("> ERROR")).findFirst()
-                        .orElseThrow(() -> new AssertionError("no selected row is visible after Down: " + rendered));
+                        .orElseThrow(() -> new AssertionError("no selected row is visible after Down: " + rendered))
+                        .replaceAll("[▘▝▖▗]", " ");
                 assertTrue(marked.strip().endsWith("problem " + (2 + step)),
                         "the visible selected row must be problem " + (2 + step) + " but was: " + marked);
             }

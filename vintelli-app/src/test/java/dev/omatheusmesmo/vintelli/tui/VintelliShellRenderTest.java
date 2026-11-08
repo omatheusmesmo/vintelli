@@ -10,6 +10,7 @@ import java.time.Duration;
 import java.util.Arrays;
 
 import static io.restassured.RestAssured.given;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.endsWith;
@@ -54,6 +55,19 @@ class VintelliShellRenderTest {
         String footerLeftOfTabs = footer.length() > editorTabColumn ? footer.substring(0, editorTabColumn) : footer;
         assertTrue(editorTabColumn > 0 && footerLeftOfTabs.contains("Read File"),
                 "the project pane footer runs left of the bottom tab row:\n" + mainArea);
+    }
+
+    /**
+     * The panes are islands on the frame, so the rendered main area has no box
+     * drawing line between the panes. The gap cells are half blocks on the Unicode
+     * icon face and plain frame cells on the ASCII face, which is the face this
+     * endpoint renders with, so the check covers the line glyphs only.
+     */
+    @Test
+    void showsNoSeparatorLineBetweenThePanes() throws InterruptedException {
+        String mainArea = awaitSettledMainArea();
+        assertFalse(mainArea.contains("│"), "no vertical separator line between the panes:\n" + mainArea);
+        assertFalse(mainArea.contains("─"), "no horizontal separator line above the bottom windows:\n" + mainArea);
     }
 
     private static String awaitSettledMainArea() throws InterruptedException {

@@ -124,6 +124,8 @@ final class EditorTabBarElement extends StyledElement<EditorTabBarElement> {
             }
             visible.add(new Slot(index, start, x));
         }
+        buffer.setStyle(new Rect(area.x(), labelRow, area.width(), 1),
+                Style.EMPTY.underlined().underlineColor(context.childStyle("header-rule").fg().orElse(null)));
         if (window.overflowRight()) {
             draw(buffer, area.right() - 1, area.right(), labelRow, glyphs.overflow(), context.childStyle("overflow"));
         }

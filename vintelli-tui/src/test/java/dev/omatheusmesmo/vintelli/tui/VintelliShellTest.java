@@ -19,6 +19,7 @@ import dev.omatheusmesmo.vintelli.api.search.ProjectSearch;
 import dev.omatheusmesmo.vintelli.api.capability.EditorBridge.OpenRequest;
 import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability.DocumentSymbol;
 import dev.tamboui.buffer.Buffer;
+import dev.tamboui.buffer.Cell;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.layout.Size;
 import dev.tamboui.style.Color;
@@ -46,6 +47,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -446,11 +448,21 @@ class VintelliShellTest {
     }
 
     @Test
-    void asciiModeDrawsTheStripsAndTheBottomTabsWithoutNonAsciiGlyphs() {
+    void asciiModeDrawsTheStripsAndTheBottomTabsWithoutNonAsciiGlyphs() throws Exception {
         String previous = System.getProperty(IconMode.CONFIG_PROPERTY);
         System.setProperty(IconMode.CONFIG_PROPERTY, "ascii");
         try {
             VintelliShell shell = new VintelliShell(windowsWithAcp(), new ShellState(), defaultThemes());
+            Set<Integer> gapColumns = new HashSet<>();
+            try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+                Pilot pilot = test.pilot();
+                settle(pilot);
+                for (String gapId : List.of("pane-separator-vertical", "pane-separator-right")) {
+                    if (pilot.hasElement(gapId) && pilot.findElement(gapId).width() > 0) {
+                        gapColumns.add(pilot.findElement(gapId).x());
+                    }
+                }
+            }
             Buffer buffer = offlineFrame(shell);
             int tabRow = findBottomTabRow(buffer);
             for (int row = 1; row < tabRow; row++) {
@@ -459,9 +471,9 @@ class VintelliShellTest {
                             "the ASCII face draws no non-ASCII glyph in the strips at " + x + "," + row);
                 }
             }
-            assertTrue(rowText(buffer, tabRow).chars().allMatch(character -> character < 128),
+            assertTrue(nonGapCellsAreAscii(buffer, tabRow, gapColumns),
                     "the ASCII face draws no non-ASCII glyph in the tab row: " + rowText(buffer, tabRow));
-            assertTrue(rowText(buffer, tabRow + 1).chars().allMatch(character -> character < 128),
+            assertTrue(nonGapCellsAreAscii(buffer, tabRow + 1, gapColumns),
                     "the ASCII face underlines with an ASCII glyph: " + rowText(buffer, tabRow + 1));
             assertEquals("P", columnLetters(buffer, 1, 1, 1), "the project icon is its letter");
         } finally {
@@ -2592,20 +2604,20 @@ class VintelliShellTest {
 
         Buffer projectFocused = offlineFocusFrame(shell, themes, "project-panel");
         assertEquals(mark, projectFocused.get(PROJECT_X, HEADER_ROW).symbol(), "the project header carries the focus mark");
-        assertEquals(" ", projectFocused.get(EDITOR_HEADER_X, HEADER_ROW).symbol(),
-                "the editor header carries no mark while the project is focused");
+        assertEquals("▘", projectFocused.get(EDITOR_HEADER_X, HEADER_ROW).symbol(),
+                "the editor header carries no mark while the project is focused: its blank padding is the rounded corner");
         assertEquals(focusedMarker, projectFocused.get(PROJECT_X, HEADER_ROW).style().fg().orElse(null),
                 "the focus mark is painted in the focus border color");
 
         Buffer editorFocused = offlineFocusFrame(shell, themes, "editor-panel");
-        assertEquals(" ", editorFocused.get(PROJECT_X, HEADER_ROW).symbol(),
-                "the project header drops its mark when the editor takes focus");
+        assertEquals("▘", editorFocused.get(PROJECT_X, HEADER_ROW).symbol(),
+                "the project header drops its mark when the editor takes focus, and its blank padding rounds");
         assertEquals(mark, editorFocused.get(EDITOR_HEADER_X, HEADER_ROW).symbol(),
                 "the editor header carries the focus mark after the focus moved");
 
         Buffer unfocused = offlineFocusFrame(shell, themes, null);
-        assertEquals(" ", unfocused.get(PROJECT_X, HEADER_ROW).symbol());
-        assertEquals(" ", unfocused.get(EDITOR_HEADER_X, HEADER_ROW).symbol());
+        assertEquals("▘", unfocused.get(PROJECT_X, HEADER_ROW).symbol());
+        assertEquals("▘", unfocused.get(EDITOR_HEADER_X, HEADER_ROW).symbol());
     }
 
     @Test
@@ -2725,8 +2737,8 @@ class VintelliShellTest {
         assertEquals(" ", focused.get(EDITOR_HEADER_X + 1, HEADER_ROW).symbol());
         assertTrue(rowText(focused, HEADER_ROW).indexOf("pom.xml") > EDITOR_HEADER_X + 1,
                 "the first label starts after the focus column and its separator: " + rowText(focused, HEADER_ROW));
-        assertEquals(" ", offlineFrame(shell).get(EDITOR_HEADER_X, HEADER_ROW).symbol(),
-                "an unfocused editor pane shows no mark");
+        assertEquals("▘", offlineFrame(shell).get(EDITOR_HEADER_X, HEADER_ROW).symbol(),
+                "an unfocused editor pane shows no mark, and its blank padding is the rounded corner");
     }
 
     @Test
@@ -2916,19 +2928,362 @@ class VintelliShellTest {
     }
 
     @Test
-    void theSeparatorStaysVisibleAgainstThePaneBackgroundsInBothThemes() {
+    void theGapStaysAHalfBlockOfTheFrameToneInBothThemes() {
+        String previous = useNerdIconFace();
+        try {
+            ShellThemes themes = defaultThemes();
+            VintelliShell shell = defaultShell(themes);
+            for (int round = 0; round < 2; round++) {
+                Buffer buffer = offlineFrame(shell);
+                Cell gap = buffer.get(SEPARATOR_X, FIRST_PROJECT_ROW);
+                assertEquals("▐", gap.symbol(), "the gap is a right half block in '" + themes.activeTheme() + "'");
+                assertEquals(themes.color("editor-bg"), gap.style().fg().orElse(null),
+                        "the island tone fills the half block in '" + themes.activeTheme() + "'");
+                assertEquals(themes.color("panel"), gap.style().bg().orElse(null),
+                        "the frame tone shows behind the half block in '" + themes.activeTheme() + "'");
+                themes.switchTheme("dark".equals(themes.activeTheme()) ? "darcula" : "dark");
+            }
+        } finally {
+            restoreProperty(IconMode.CONFIG_PROPERTY, previous);
+        }
+    }
+
+    @Test
+    void theGapCellsAreHalfBlocksAtTheSplitterPositionsAt80x24AndAt150x42() throws Exception {
+        String previous = useNerdIconFace();
+        try {
+            for (Size size : List.of(SIZE, WIDE)) {
+                VintelliShell shell = defaultShell();
+                Rect vertical;
+                Rect horizontal;
+                Rect editor;
+                try (MouseShellRunner test = runMouseShell(shell, size)) {
+                    Pilot pilot = test.pilot();
+                    settle(pilot);
+                    vertical = pilot.findElement("pane-separator-vertical");
+                    horizontal = pilot.findElement("pane-separator-horizontal");
+                    editor = pilot.findElement("editor-panel");
+                }
+                Buffer buffer = offlineFrame(shell, size);
+                for (int y = vertical.y(); y < vertical.bottom(); y++) {
+                    String expected = y == horizontal.y() ? " " : "▐";
+                    assertEquals(expected, buffer.get(vertical.x(), y).symbol(), size + ": gap cell of row " + y);
+                }
+                for (int x = horizontal.x(); x < horizontal.right(); x++) {
+                    assertEquals("▄", buffer.get(x, horizontal.y()).symbol(), size + ": gap cell of column " + x);
+                }
+                assertEquals("▖", buffer.get(editor.x(), horizontal.y() - 1).symbol(),
+                        size + ": the editor corner turns at the bottom left of the editor");
+                assertEquals("▘", buffer.get(editor.x(), horizontal.y() + 1).symbol(),
+                        size + ": the bottom windows corner turns at their top left");
+            }
+        } finally {
+            restoreProperty(IconMode.CONFIG_PROPERTY, previous);
+        }
+    }
+
+    @Test
+    void noBoxSeparatorIsDrawnBetweenThePanesInEitherTheme() throws Exception {
+        String previous = useNerdIconFace();
+        try {
+            ShellThemes themes = defaultThemes();
+            VintelliShell shell = defaultShell(themes);
+            Rect vertical;
+            Rect horizontal;
+            try (MouseShellRunner test = runMouseShell(shell, WIDE)) {
+                Pilot pilot = test.pilot();
+                settle(pilot);
+                vertical = pilot.findElement("pane-separator-vertical");
+                horizontal = pilot.findElement("pane-separator-horizontal");
+            }
+            for (int round = 0; round < 2; round++) {
+                Buffer buffer = offlineFrame(shell, WIDE);
+                assertEquals("▐", buffer.get(vertical.x(), vertical.y()).symbol(),
+                        "the gap is drawn in '" + themes.activeTheme() + "'");
+                for (int y = vertical.y(); y < vertical.bottom(); y++) {
+                    assertNoBoxLine(buffer.get(vertical.x(), y), "the vertical gap row " + y, themes);
+                }
+                for (int x = horizontal.x(); x < horizontal.right(); x++) {
+                    assertNoBoxLine(buffer.get(x, horizontal.y()), "the horizontal gap column " + x, themes);
+                }
+                themes.switchTheme("dark".equals(themes.activeTheme()) ? "darcula" : "dark");
+            }
+        } finally {
+            restoreProperty(IconMode.CONFIG_PROPERTY, previous);
+        }
+    }
+
+    @Test
+    void theRightToolWindowBodyIsAnIslandOfTheEditorTone() throws Exception {
+        ShellThemes themes = defaultThemes();
+        VintelliShell shell = new VintelliShell(windowsWithAcp(), new ShellState(), themes);
+        if (!shell.isToolWindowVisible("acp.agents")) {
+            shell.toggleToolWindow("acp.agents");
+        }
+        Rect right;
+        try (MouseShellRunner test = runMouseShell(shell, WIDE)) {
+            Pilot pilot = test.pilot();
+            settle(pilot);
+            assertTrue(pilot.hasElement("right-tool-stripe"), test.renderedFrame());
+            right = pilot.findElement("right-tool-stripe");
+        }
+        Buffer buffer = offlineFrame(shell, WIDE);
+        for (int y = right.y() + 3; y < right.bottom() - 1; y++) {
+            for (int x = right.x(); x < right.right(); x++) {
+                assertEquals(themes.color("editor-bg"), cellBg(buffer, x, y),
+                        "the right tool window body is an island of the editor tone at " + x + "," + y);
+            }
+        }
+    }
+
+    @Test
+    void anOuterCornerRoundsItsBlankPaddingAndStaysSquareWhereTextSits() throws Exception {
+        VintelliShell shell = defaultShell();
+        Rect editor;
+        Rect project;
+        try (MouseShellRunner test = runMouseShell(shell, WIDE)) {
+            Pilot pilot = test.pilot();
+            settle(pilot);
+            editor = pilot.findElement("editor-panel");
+            project = pilot.findElement("project-pane");
+        }
+        Buffer buffer = offlineFrame(shell, WIDE);
+        assertEquals("▝", buffer.get(editor.right() - 1, editor.y()).symbol(),
+                "the editor's top right corner meets the screen edge over blank header padding, so it rounds");
+        String footerCorner = buffer.get(project.right() - 1, project.bottom() - 1).symbol();
+        assertTrue(Character.isLetter(footerCorner.charAt(0)),
+                "the project footer's bottom right corner holds text, so it stays square: " + footerCorner);
+    }
+
+    @Test
+    void thePaneHeaderRowsAreUnderlinedInTheFrameTone() {
         ShellThemes themes = defaultThemes();
         VintelliShell shell = defaultShell(themes);
-        for (int round = 0; round < 2; round++) {
-            String separatorRole = "dark".equals(themes.activeTheme()) ? "editor-border" : "border";
-            Buffer buffer = offlineFrame(shell);
-            Color separator = buffer.get(SEPARATOR_X, FIRST_PROJECT_ROW).style().bg().orElse(null);
-            assertEquals(themes.color(separatorRole), separator,
-                    "the separator paints the themed color in '" + themes.activeTheme() + "'");
-            assertFalse(themes.color("editor-bg").equals(separator),
-                    "the separator must differ from the editor background in '" + themes.activeTheme() + "'");
-            themes.switchTheme("dark".equals(themes.activeTheme()) ? "darcula" : "dark");
+        Buffer buffer = offlineFrame(shell, WIDE);
+        for (int x = PROJECT_X; x < SEPARATOR_X; x++) {
+            assertEquals(themes.color("panel"), buffer.get(x, HEADER_ROW).style().underlineColor().orElse(null),
+                    "the project header underline in the frame tone at column " + x);
         }
+        for (int x = EDITOR_HEADER_X; x < WIDE.width() - 1; x++) {
+            assertEquals(themes.color("panel"), buffer.get(x, HEADER_ROW).style().underlineColor().orElse(null),
+                    "the editor header underline in the frame tone at column " + x);
+        }
+        int bottomTabRow = findBottomTabRow(buffer);
+        assertEquals(themes.color("panel"), buffer.get(EDITOR_HEADER_X + 2, bottomTabRow).style().underlineColor().orElse(null),
+                "the bottom tab row is underlined in the frame tone");
+        for (int x = EDITOR_HEADER_X + 10; x < WIDE.width() - 3; x++) {
+            assertEquals(themes.color("editor-bg"), cellBg(buffer, x, bottomTabRow + 3),
+                    "the bottom tool window body is an island of the editor tone at column " + x);
+        }
+    }
+
+    @Test
+    void theGapCellsDragBothSplittersAtBothSizesAndAfterAResize() throws Exception {
+        for (Size size : List.of(SIZE, WIDE)) {
+            ShellLayoutStore store = new ShellLayoutStore(project.resolve("gap-" + size.width()), project);
+            VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+            try (MouseShellRunner test = runMouseShell(shell, size)) {
+                Pilot pilot = test.pilot();
+                settle(pilot);
+                int projectBefore = pilot.findElement("project-panel").width();
+                Rect vertical = pilot.findElement("pane-separator-vertical");
+                int onEditor = pilot.findElement("editor-panel").y() + 2;
+                pilot.mousePress(MouseButton.LEFT, vertical.x(), onEditor);
+                test.drag(MouseEvent.drag(MouseButton.LEFT, vertical.x() + 4, onEditor));
+                pilot.mouseRelease(MouseButton.LEFT, vertical.x() + 4, onEditor);
+                settle(pilot);
+                assertEquals(projectBefore + 4, pilot.findElement("project-panel").width(),
+                        size + ": the vertical gap cell drags the project splitter");
+
+                test.resize(size.width() - 10, size.height() - 4);
+                settle(pilot);
+                Rect resizedVertical = pilot.findElement("pane-separator-vertical");
+                int resizedWidth = pilot.findElement("project-panel").width();
+                pilot.mousePress(MouseButton.LEFT, resizedVertical.x(), resizedVertical.y() + 1);
+                test.drag(MouseEvent.drag(MouseButton.LEFT, resizedVertical.x() - 3, resizedVertical.y() + 1));
+                pilot.mouseRelease(MouseButton.LEFT, resizedVertical.x() - 3, resizedVertical.y() + 1);
+                settle(pilot);
+                assertEquals(resizedWidth - 3, pilot.findElement("project-panel").width(),
+                        size + ": the vertical gap cell still drags after a resize");
+
+                Rect horizontal = pilot.findElement("pane-separator-horizontal");
+                int editorHeight = pilot.findElement("editor-panel").height();
+                int column = pilot.findElement("editor-panel").x() + 2;
+                pilot.mousePress(MouseButton.LEFT, column, horizontal.y());
+                test.drag(MouseEvent.drag(MouseButton.LEFT, column, horizontal.y() - 2));
+                pilot.mouseRelease(MouseButton.LEFT, column, horizontal.y() - 2);
+                settle(pilot);
+                assertTrue(pilot.findElement("editor-panel").height() < editorHeight,
+                        size + ": the horizontal gap cell drags the bottom splitter after a resize");
+            }
+        }
+    }
+
+    @Test
+    void hidingTheProjectPaneLeavesNoGapOrCornerBehind() throws Exception {
+        String previous = useNerdIconFace();
+        try {
+            ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
+            VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+            int projectIcon = findRow(offlineFrame(shell), 1, PROJECT_GLYPH);
+            try (MouseShellRunner test = runMouseShell(shell, WIDE)) {
+                Pilot pilot = test.pilot();
+                pilot.click(1, projectIcon);
+                settle(pilot);
+                assertEquals(VintelliShell.TOOL_STRIP_WIDTH, pilot.findElement("editor-panel").x(),
+                        "the editor starts right after the strip when the project pane is hidden");
+                assertFalse(pilot.hasElement("pane-separator-vertical")
+                        && pilot.findElement("pane-separator-vertical").width() > 0,
+                        "the vertical gap is gone with the project pane");
+                Rect horizontal = pilot.findElement("pane-separator-horizontal");
+                String frame = test.renderedFrame();
+                assertNoGapGlyph(frame, "the project pane is hidden", List.of("▐"));
+                String gapRow = frame.split("\n", -1)[horizontal.y()];
+                assertFalse(gapRow.substring(0, VintelliShell.TOOL_STRIP_WIDTH).contains("▄"),
+                        "the bottom gap row starts at the editor, not at the strip: " + gapRow);
+            }
+        } finally {
+            restoreProperty(IconMode.CONFIG_PROPERTY, previous);
+        }
+    }
+
+    @Test
+    void hidingEveryBottomWindowLeavesNoGapRowAndNoCorner() throws Exception {
+        String previous = useNerdIconFace();
+        try {
+            ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
+            VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+            defaultWindows().forEach(window -> shell.hideToolWindow(window.id()));
+            Rect editor;
+            String frame;
+            try (MouseShellRunner test = runMouseShell(shell, WIDE)) {
+                Pilot pilot = test.pilot();
+                settle(pilot);
+                assertFalse(pilot.hasElement("pane-separator-horizontal")
+                        && pilot.findElement("pane-separator-horizontal").height() > 0,
+                        "the horizontal gap row is gone with every bottom window");
+                editor = pilot.findElement("editor-panel");
+                frame = test.renderedFrame();
+            }
+            Buffer buffer = offlineFrame(shell, WIDE);
+            int lastRow = editor.bottom() - 1;
+            for (int x = editor.x(); x < editor.right(); x++) {
+                String symbol = buffer.get(x, lastRow).symbol();
+                assertFalse("▄".equals(symbol),
+                        "no gap on the editor's last row at column " + x + ": " + symbol);
+            }
+            assertNoGapGlyph(frame, "every bottom window is hidden", List.of("▄"));
+        } finally {
+            restoreProperty(IconMode.CONFIG_PROPERTY, previous);
+        }
+    }
+
+    @Test
+    void theAsciiFormDrawsPlainFrameCellsInTheGapsAndSquareCorners() throws Exception {
+        String previous = System.getProperty(IconMode.CONFIG_PROPERTY);
+        System.setProperty(IconMode.CONFIG_PROPERTY, "ascii");
+        try {
+            ShellThemes themes = defaultThemes();
+            VintelliShell plain = defaultShell(themes);
+            plain.useUnicodeProjectTree(false);
+            Rect vertical;
+            Rect horizontal;
+            Rect editor;
+            String frame;
+            try (MouseShellRunner test = runMouseShell(plain, WIDE)) {
+                Pilot pilot = test.pilot();
+                settle(pilot);
+                vertical = pilot.findElement("pane-separator-vertical");
+                horizontal = pilot.findElement("pane-separator-horizontal");
+                editor = pilot.findElement("editor-panel");
+                frame = test.renderedFrame();
+            }
+            Buffer buffer = offlineFrame(plain, WIDE);
+            for (int y = vertical.y(); y < vertical.bottom(); y++) {
+                assertPlainFrameCell(buffer.get(vertical.x(), y), "the plain vertical gap row " + y, themes);
+            }
+            for (int x = horizontal.x(); x < horizontal.right(); x++) {
+                assertPlainFrameCell(buffer.get(x, horizontal.y()), "the plain horizontal gap column " + x, themes);
+            }
+            assertEquals(" ", buffer.get(editor.x(), horizontal.y() - 1).symbol(), "the plain corner stays square");
+            assertNoGapGlyph(frame, "the Unicode probe is off", List.of("▐", "▌", "▄", "▘", "▝", "▖", "▗"));
+
+            VintelliShell unicode = defaultShell(themes);
+            unicode.useUnicodeProjectTree(true);
+            Rect unicodeVertical;
+            try (MouseShellRunner test = runMouseShell(unicode, WIDE)) {
+                Pilot pilot = test.pilot();
+                settle(pilot);
+                unicodeVertical = pilot.findElement("pane-separator-vertical");
+            }
+            assertEquals("▐", offlineFrame(unicode, WIDE).get(unicodeVertical.x(), unicodeVertical.y()).symbol(),
+                    "the ASCII icon face still draws the half block gap while the Unicode probe is on");
+        } finally {
+            restoreProperty(IconMode.CONFIG_PROPERTY, previous);
+        }
+    }
+
+    @Test
+    void theGapsAndCornersDowngradeToTheIndexedPaletteAt256Colors() throws Exception {
+        String previous = useNerdIconFace();
+        try {
+            ShellThemes indexed = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null, ColorLevel.INDEXED_256);
+            VintelliShell shell = defaultShell(indexed);
+            Rect horizontal;
+            Rect editor;
+            try (MouseShellRunner test = runMouseShell(shell, WIDE)) {
+                Pilot pilot = test.pilot();
+                settle(pilot);
+                horizontal = pilot.findElement("pane-separator-horizontal");
+                editor = pilot.findElement("editor-panel");
+            }
+            Buffer buffer = offlineFrame(shell, WIDE);
+            Cell gap = buffer.get(SEPARATOR_X, FIRST_PROJECT_ROW);
+            assertEquals("▐", gap.symbol(), "the 256 color gap keeps its half block");
+            assertEquals(indexed.color("editor-bg"), gap.style().fg().orElse(null));
+            assertEquals(indexed.color("panel"), gap.style().bg().orElse(null));
+            Cell corner = buffer.get(editor.x(), horizontal.y() - 1);
+            assertEquals("▖", corner.symbol(), "the 256 color corner keeps its quarter block");
+            assertEquals(indexed.color("panel"), corner.style().fg().orElse(null));
+            assertEquals(indexed.color("editor-bg"), corner.style().bg().orElse(null));
+            assertNotEquals(defaultThemes().color("panel"), gap.style().bg().orElse(null),
+                    "the 256 color gap differs from the truecolor one");
+        } finally {
+            restoreProperty(IconMode.CONFIG_PROPERTY, previous);
+        }
+    }
+
+    private static boolean nonGapCellsAreAscii(Buffer buffer, int row, Set<Integer> gapColumns) {
+        for (int x = 0; x < buffer.width(); x++) {
+            String symbol = buffer.get(x, row).symbol();
+            if (!gapColumns.contains(x) && !List.of("▘", "▝", "▖", "▗").contains(symbol)
+                    && !symbol.chars().allMatch(character -> character < 128)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static String useNerdIconFace() {
+        String previous = System.getProperty(IconMode.CONFIG_PROPERTY);
+        System.setProperty(IconMode.CONFIG_PROPERTY, "nerd");
+        return previous;
+    }
+
+    private static void assertNoGapGlyph(String frame, String when, List<String> glyphs) {
+        for (String glyph : glyphs) {
+            assertFalse(frame.contains(glyph), "no gap or corner glyph " + glyph + " is left once " + when + ":\n" + frame);
+        }
+    }
+
+    private static void assertNoBoxLine(Cell cell, String where, ShellThemes themes) {
+        assertFalse(List.of("│", "─", "━", "┃", "═", "║").contains(cell.symbol()),
+                where + " draws a box line in '" + themes.activeTheme() + "': " + cell.symbol());
+    }
+
+    private static void assertPlainFrameCell(Cell cell, String where, ShellThemes themes) {
+        assertEquals(" ", cell.symbol(), where + " is a plain cell");
+        assertEquals(themes.color("panel"), cell.style().bg().orElse(null), where + " has the frame tone");
     }
 
     @Test
@@ -2940,8 +3295,8 @@ class VintelliShellTest {
         int bottomTabRow = findBottomTabRow(beforeBuffer);
         assertEquals(themes.color("focus-border"), beforeBuffer.get(EDITOR_HEADER_X + 1, bottomTabRow + 1).style().fg().orElse(null),
                 "the active theme colors the selected tab underline before the switch");
-        // Project panel background at an unselected row (2nd project row)
-        assertEquals(themes.color("panel"), cellBg(beforeBuffer, 2, SECOND_PROJECT_ROW),
+        // Project panel island background at an unselected row (2nd project row)
+        assertEquals(themes.color("editor-bg"), cellBg(beforeBuffer, 2, SECOND_PROJECT_ROW),
                 "the active theme styles the project panel before the switch");
         assertEquals(themes.color("editor-bg"), cellBg(beforeBuffer, EDITOR_PROBE_X, EDITOR_PROBE_Y),
                 "the active theme styles the editor panel before the switch");
@@ -2955,7 +3310,7 @@ class VintelliShellTest {
         int afterTabRow = findBottomTabRow(afterBuffer);
         assertEquals(themes.color("focus-border"), afterBuffer.get(EDITOR_HEADER_X + 1, afterTabRow + 1).style().fg().orElse(null),
                 "the switched theme reaches the selected tab underline");
-        assertEquals(themes.color("panel"), cellBg(afterBuffer, 2, SECOND_PROJECT_ROW),
+        assertEquals(themes.color("editor-bg"), cellBg(afterBuffer, 2, SECOND_PROJECT_ROW),
                 "the switched theme reaches the project panel");
         assertEquals(themes.color("editor-bg"), cellBg(afterBuffer, EDITOR_PROBE_X, EDITOR_PROBE_Y),
                 "the switched theme reaches the editor panel");

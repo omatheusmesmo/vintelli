@@ -247,15 +247,20 @@ an arrow, or `+` and `-`) toggles it. The list keeps the selected row in view
 when the keyboard or the wheel moves the selection. Clicks below the last row
 change nothing, and a click while a new name or a rename is being typed is
 ignored, so the typed input and its target stay as they are.
-Panes have no frames: each one starts with a header row. The left strip, the
-project pane and the right stripe run from the toolbar down to the status bar,
-which spans the full width. The bottom tool windows sit under the editor only,
-to the right of the project pane, and their tab row starts at the editor's left
+Panes have no frames and no separator lines: each one is an island of the editor
+tone on the frame tone, and starts with a header row that is underlined in the
+frame tone. The left strip, the toolbar, the right stripe and the status bar sit
+on the frame. The project pane and the right tool stripe run from the toolbar
+down to the status bar. The bottom tool windows sit under the editor only, to
+the right of the project pane, and their tab row starts at the editor's left
 edge. With the project pane hidden, they start right after the left strip.
-The separators are the one-column line between the project pane and the editor,
-which spans the full height of the project pane, the one-column line before the
-right tool stripe, and the one-row line above the bottom tool windows, which
-spans the editor column only.
+The gaps between islands are one cell each, drawn with a half block so they read
+as half a cell: a column between the project pane and the editor, a column
+before the right tool stripe, and a row above the bottom tool windows, which
+spans the editor column only. Each gap cell is also the splitter, so the mouse
+drags it. Where a row gap meets a column gap, the island corners are drawn as
+quarter blocks. Without Unicode support, or in the ASCII icon face, the gaps are
+plain frame cells and the corners stay square.
 A two-column icon strip sits on each side of the shell. The left strip holds
 the Project icon on top and the bottom tool windows at its bottom, and the
 right strip holds the right tool windows. The bottom icons stay in the same

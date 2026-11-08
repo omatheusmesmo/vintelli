@@ -75,8 +75,8 @@ class ShellThemesTest {
         }
         assertEquals(List.of("darcula", "dark"), themes.availableThemeNames(),
                 "a patch file adds no theme name");
-        assertTrue(themes.resolver("pane-separator").toStyle().bg().isPresent(),
-                "the shipped pane separator rule survives the patch");
+        assertTrue(themes.resolver("pane-gap").toStyle().bg().isPresent(),
+                "the shipped pane gap rule survives the patch");
     }
     @Test
     void userFileWithDirectiveExtendsAShippedTheme() throws IOException {
@@ -220,8 +220,8 @@ class ShellThemesTest {
                 "a patch variable restyles the shipped rule that reads it");
         assertEquals(Color.hex("#123456"), derived.resolver("menu-entry").toStyle().fg().orElse(null),
                 "a derived theme variable restyles the inherited rule that reads it");
-        assertEquals(Color.hex(derived.variablesOf("dark").get("editor-border")),
-                derived.resolver("pane-separator").toStyle().bg().orElse(null),
+        assertEquals(Color.hex(derived.variablesOf("dark").get("panel")),
+                derived.resolver("pane-gap").toStyle().bg().orElse(null),
                 "the derived theme keeps the rules of its base theme");
     }
 
@@ -273,7 +273,7 @@ class ShellThemesTest {
         assertEquals(Color.indexed(254), themes.color("chrome-fg"));
         assertEquals(Color.indexed(254), themes.resolver("menu-entry").toStyle().fg().orElse(null),
                 "a rule that reads a variable resolves to the same index as the variable");
-        assertEquals(themes.color("editor-border"), themes.resolver("pane-separator").toStyle().bg().orElse(null));
+        assertEquals(themes.color("panel"), themes.resolver("pane-gap").toStyle().bg().orElse(null));
         assertEquals(themes.variablesOf("dark").get("editor-keyword"), themes.editorPalette().keyword(),
                 "the editor palette carries the depth of the active theme");
         assertEquals("indexed(250)", themes.editorPalette().text());
@@ -289,7 +289,7 @@ class ShellThemesTest {
         assertEquals("indexed(237)", themes.variablesOf("darcula").get("panel"));
         assertEquals(Color.indexed(250), themes.color("chrome-fg"));
         assertEquals(Color.indexed(250), themes.resolver("menu-entry").toStyle().fg().orElse(null));
-        assertEquals(themes.color("border"), themes.resolver("pane-separator").toStyle().bg().orElse(null));
+        assertEquals(themes.color("panel"), themes.resolver("pane-gap").toStyle().bg().orElse(null));
         assertEquals("indexed(146)", themes.editorPalette().text());
     }
 
@@ -308,7 +308,7 @@ class ShellThemesTest {
                 "a hex written straight into a rule is downgraded as well");
         assertEquals("indexed(23)", derived.variablesOf("midnight").get("chrome-fg"),
                 "a user theme of its own is downgraded");
-        assertEquals(derived.color("editor-border"), derived.resolver("pane-separator").toStyle().bg().orElse(null),
+        assertEquals(derived.color("panel"), derived.resolver("pane-gap").toStyle().bg().orElse(null),
                 "the rules a derived theme inherits from its base carry indices too");
     }
 

@@ -72,7 +72,7 @@ $editor-caret-row : #26282E;       /* editor scheme CARET_ROW_COLOR */
 }
 
 ToolTabBarElement {
-  background: $panel;
+  background: $editor-bg;
 }
 
 ToolTabBarElement-tab {
@@ -120,7 +120,7 @@ TabsElement-divider {
 }
 
 #project-panel {
-  background: $panel;
+  background: $editor-bg;
   color: $chrome-fg;
 }
 
@@ -138,7 +138,7 @@ ListElement-scrollbar-thumb {
 }
 
 ListElement-scrollbar-track {
-  color: $panel;
+  color: $editor-bg;
 }
 
 #editor-panel {
@@ -239,8 +239,39 @@ EditorTabBarElement-overflow {
   color: $chrome-fg-strong;
 }
 
-/* $border equals the editor background in this theme (IntelliJ New UI separates
-   panes by tone), so the separators use $editor-border to stay visible. */
-.pane-separator {
-  background: $editor-border;
+/* Islands: the frame is $panel and every pane island is $editor-bg. A gap cell
+   is a half block in the island tone over the frame tone (.pane-gap), a corner
+   is a quarter block in the frame tone over the island tone (.pane-corner). */
+#project-pane {
+  background: $editor-bg;
+}
+
+#bottom-stripe {
+  background: $editor-bg;
+}
+
+#right-tool-stripe {
+  background: $editor-bg;
+}
+
+.pane-gap {
+  color: $editor-bg;
+  background: $panel;
+}
+
+.pane-corner {
+  color: $panel;
+  background: $editor-bg;
+}
+
+.pane-header-rule {
+  color: $panel;
+}
+
+ToolTabBarElement-header-rule {
+  color: $panel;
+}
+
+EditorTabBarElement-header-rule {
+  color: $panel;
 }

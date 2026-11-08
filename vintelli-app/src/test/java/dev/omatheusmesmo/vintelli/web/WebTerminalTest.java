@@ -200,7 +200,7 @@ class WebTerminalTest {
 
     private static boolean containsListedFile(String screen, String command, String name) {
         String expected = normalizePath(name);
-        return screen.lines().map(String::strip)
+        return screen.lines().map(line -> line.replaceAll("[▐▌▄▘▝▖▗]", " ").strip())
                 .filter(line -> !line.contains(command))
                 .map(line -> line.substring(line.lastIndexOf(' ') + 1))
                 .map(WebTerminalTest::normalizePath)
