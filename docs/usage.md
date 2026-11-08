@@ -204,6 +204,15 @@ and `+` and `-` otherwise. `vintelli.icons=auto`
 (the default) selects Nerd glyphs when a Nerd Font is installed on the machine
 and the session is a local terminal; set `vintelli.icons=nerd` to force them, or
 `ascii` if the terminal draws boxes for them (see docs/file-icons.md).
+A folder whose only child is a folder shares its row with that child, as IntelliJ's
+Compact Middle Packages does: `src/main/java/dev/...` is one row. The chevron and
+the name act on the last folder of the chain, and a chain stops at a folder with
+several children or with a file. Selecting a compacted row selects its last folder,
+so create, rename and delete act there. When the selected row is wider than the pane,
+every row scrolls left by the same amount just enough to show the end of the selected
+name, and returns to the start when a row that fits is selected. Rows that are not
+selected may be cut at the pane edge. Opening a file from the editor, search, Problems
+or a definition expands its folders and selects its row.
 `Enter` toggles a directory or opens the selected file in the built-in editor.
 With the project panel focused, `F5` refreshes the tree, `F7` creates a file,
 `F9` creates a directory, `F2` renames the selected entry, and `Delete` asks

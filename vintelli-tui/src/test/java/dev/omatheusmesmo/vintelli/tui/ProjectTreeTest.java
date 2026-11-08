@@ -100,7 +100,7 @@ class ProjectTreeTest {
         VintelliShell shell = shellWithProject(project);
         shell.refreshProjectTree();
         assertFalse(shell.projectFiles().isEmpty(), "tree should list discovered files");
-        assertTrue(shell.projectFiles().stream().anyMatch(p -> p.equals("src")), "src dir should be present");
+        assertTrue(shell.projectFiles().stream().anyMatch(p -> p.equals("src/main")), "src/main chain should be present");
         assertTrue(shell.projectFiles().stream().anyMatch(p -> p.equals("README.md")), "README should be present");
     }
 
@@ -123,7 +123,7 @@ class ProjectTreeTest {
         shell.refreshProjectTree();
         int before = shell.projectFiles().size();
         assertTrue(shell.createFile("NewFile.java"), "create should succeed");
-        assertTrue(Files.exists(project.resolve("src/NewFile.java")), "file should exist on disk");
+        assertTrue(Files.exists(project.resolve("src/main/NewFile.java")), "file should exist on disk");
     }
 
     @Test
@@ -133,8 +133,8 @@ class ProjectTreeTest {
         shell.selectPath("src");
         boolean r = shell.createDirectory("newdir");
         assertTrue(r, "create dir should succeed: " + shell.status());
-        assertTrue(Files.isDirectory(project.resolve("src/newdir")), "dir should exist on disk");
-        assertTrue(shell.projectFiles().contains("src/newdir"), "empty directory should be visible");
+        assertTrue(Files.isDirectory(project.resolve("src/main/newdir")), "dir should exist on disk");
+        assertTrue(shell.projectFiles().contains("src/main/newdir"), "empty directory should be visible");
     }
 
     @Test
@@ -194,19 +194,19 @@ class ProjectTreeTest {
             for (char ch : "New.java".toCharArray()) { pilot.press(ch); }
             pilot.press(KeyCode.ENTER);
             pilot.pause(Duration.ofMillis(100));
-            assertTrue(Files.exists(project.resolve("src/New.java")), shell.status());
+            assertTrue(Files.exists(project.resolve("src/main/New.java")), shell.status());
 
             pilot.press(KeyCode.F2);
             for (char ch : "Renamed.java".toCharArray()) { pilot.press(ch); }
             pilot.press(KeyCode.ENTER);
             pilot.pause(Duration.ofMillis(100));
-            assertTrue(Files.exists(project.resolve("src/Renamed.java")), shell.status());
+            assertTrue(Files.exists(project.resolve("src/main/Renamed.java")), shell.status());
 
             pilot.click("editor-panel");
             pilot.press(KeyCode.DELETE);
             pilot.pause(Duration.ofMillis(100));
             assertFalse(shell.isDeletePending());
-            assertTrue(Files.exists(project.resolve("src/Renamed.java")));
+            assertTrue(Files.exists(project.resolve("src/main/Renamed.java")));
         }
     }
 
@@ -237,9 +237,9 @@ class ProjectTreeTest {
         String expanded = disclosureGlyph(icons, ProjectTreeGlyphs.supportsUnicode(), true);
         String folderIcon = icons.folderIconFor("src").symbol(icons.mode());
         String fileIcon = icons.iconFor("A.java").symbol(icons.mode());
-        assertTrue(text.toString().contains("  " + expanded + " " + folderIcon + " src"), text.toString());
-        assertTrue(text.toString().contains(expanded + " " + folderIcon + " main"), text.toString());
-        assertTrue(text.toString().contains("      " + fileIcon + " A.java"), text.toString());
+        String mainIcon = icons.folderIconFor("main").symbol(icons.mode());
+        assertTrue(text.toString().contains(expanded + " " + mainIcon + " src/main"), text.toString());
+        assertTrue(text.toString().contains("    " + fileIcon + " A.java"), text.toString());
         assertFalse(text.toString().contains("├") || text.toString().contains("└")
                 || text.toString().contains("|--") || text.toString().contains("\\--"), text.toString());
     }

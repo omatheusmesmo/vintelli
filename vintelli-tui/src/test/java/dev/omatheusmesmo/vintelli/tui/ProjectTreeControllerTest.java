@@ -31,9 +31,15 @@ class ProjectTreeControllerTest {
     private final List<String> statuses = new ArrayList<>();
 
     private ProjectTreeController controllerWithProject() throws IOException {
-        Files.createDirectories(root.resolve("src/main"));
-        Files.writeString(root.resolve("src/main/A.java"), "class A {}");
-        Files.writeString(root.resolve("README.md"), "# readme");
+        return controllerWithFiles("src/main/A.java", "README.md");
+    }
+
+    private ProjectTreeController controllerWithFiles(String... relatives) throws IOException {
+        for (String relative : relatives) {
+            Path file = root.resolve(relative);
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, "content");
+        }
         ProjectTreeController[] created = new ProjectTreeController[1];
         created[0] = new ProjectTreeController(root, new ShellState(), search(root), fileOperations(root),
                 statuses::add, () -> created[0].refresh(true), () -> { });
@@ -109,11 +115,87 @@ class ProjectTreeControllerTest {
         ProjectTreeController controller = controllerWithProject();
         controller.selectPath("src");
         controller.expandSelected();
-        assertTrue(controller.files().contains("src/main"), "expanding src should list its directory");
-        assertEquals("Expanded src", statuses.getLast());
+        assertTrue(controller.files().contains("src/main/A.java"), "expanding src should list the file under its chain");
+        assertEquals("Expanded src/main", statuses.getLast());
         controller.collapseSelected();
-        assertFalse(controller.files().contains("src/main"), "collapsing src should hide its directory");
-        assertEquals("Collapsed src", statuses.getLast());
+        assertFalse(controller.files().contains("src/main/A.java"), "collapsing src should hide the file under its chain");
+        assertEquals("Collapsed src/main", statuses.getLast());
+    }
+
+    @Test
+    void aFolderWithOnlyFolderChildrenSharesOneRowNamedAfterItsLastFolder() throws IOException {
+        String tui = "src/main/java/dev/omatheusmesmo/vintelli/tui";
+        ProjectTreeController controller = controllerWithFiles(tui + "/ProjectPanel.java", "README.md");
+        assertEquals(List.of(tui, "README.md"), controller.files());
+        assertEquals(tui, controller.visibleNodes().getFirst().compactName());
+        assertEquals(0, controller.visibleNodes().getFirst().depth());
+        controller.selectPath("src");
+        assertEquals(Optional.of(tui), controller.selectedRelative());
+    }
+
+    @Test
+    void expandingACompactedRowOpensItsLastFolderAndCollapsingClosesIt() throws IOException {
+        String tui = "src/main/java/dev/omatheusmesmo/vintelli/tui";
+        ProjectTreeController controller = controllerWithFiles(tui + "/ProjectPanel.java", "README.md");
+        controller.selectPath("src");
+        controller.expandSelected();
+        assertEquals(List.of(tui, tui + "/ProjectPanel.java", "README.md"), controller.files());
+        assertEquals("Expanded " + tui, statuses.getLast());
+        controller.collapseSelected();
+        assertEquals(List.of(tui, "README.md"), controller.files());
+        assertEquals("Collapsed " + tui, statuses.getLast());
+        assertTrue(controller.activateSelected().isEmpty());
+        assertEquals(List.of(tui, tui + "/ProjectPanel.java", "README.md"), controller.files(),
+                "Enter on the compacted row toggles it like its chevron");
+    }
+
+    @Test
+    void aChainStopsAtAFolderWithSeveralChildrenAndAtAFile() throws IOException {
+        ProjectTreeController controller = controllerWithFiles(
+                "src/main/java/dev/api/Api.java", "src/main/java/dev/tui/Tui.java", "lib/Main.java", "lib/Tool.java");
+        assertEquals(List.of("lib", "src/main/java/dev"), controller.files());
+        controller.selectPath("src");
+        controller.expandSelected();
+        assertEquals(List.of("lib", "src/main/java/dev", "src/main/java/dev/api", "src/main/java/dev/tui"),
+                controller.files(), "a folder with two folder children starts its own rows");
+        controller.selectPath("src/main/java/dev/api");
+        controller.expandSelected();
+        assertTrue(controller.files().contains("src/main/java/dev/api/Api.java"));
+        assertEquals("src/main/java/dev/api", controller.selectedRelative().orElseThrow());
+    }
+
+    @Test
+    void aChainEndsAtAFolderWhoseOnlyChildIsAFile() throws IOException {
+        ProjectTreeController controller = controllerWithFiles("src/main/Main.java");
+        assertEquals(List.of("src/main"), controller.files());
+        controller.selectPath("src/main");
+        controller.expandSelected();
+        assertEquals(List.of("src/main", "src/main/Main.java"), controller.files());
+    }
+
+    @Test
+    void anExpandedChainStaysOpenWhenANewSiblingBreaksIt() throws IOException {
+        ProjectTreeController controller = controllerWithFiles("src/main/java/Main.java");
+        controller.selectPath("src");
+        controller.expandSelected();
+        assertEquals(List.of("src/main/java", "src/main/java/Main.java"), controller.files());
+        Path sibling = root.resolve("src/main/resources/data.txt");
+        Files.createDirectories(sibling.getParent());
+        Files.writeString(sibling, "content");
+        controller.refresh(true);
+        assertEquals(List.of("src/main", "src/main/java", "src/main/java/Main.java", "src/main/resources"),
+                controller.files(), "the folders that were open stay open once the chain is broken");
+    }
+
+    @Test
+    void theHorizontalOffsetShowsTheEndOfALongRowAndReturnsWhenItFits() throws IOException {
+        ProjectTreeController controller = controllerWithProject();
+        controller.trackColumn(50, 20);
+        assertEquals(30, controller.leftColumn());
+        controller.trackColumn(20, 20);
+        assertEquals(0, controller.leftColumn());
+        controller.trackColumn(10, 20);
+        assertEquals(0, controller.leftColumn());
     }
 
     @Test

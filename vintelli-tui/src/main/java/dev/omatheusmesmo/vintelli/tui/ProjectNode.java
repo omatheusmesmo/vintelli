@@ -20,10 +20,33 @@ final class ProjectNode {
         this.directory = directory;
     }
 
+    boolean compactsChild() {
+        return directory && children.size() == 1 && children.getFirst().directory;
+    }
+
+    ProjectNode compactEnd() {
+        ProjectNode end = this;
+        while (end.compactsChild()) {
+            end = end.children.getFirst();
+        }
+        return end;
+    }
+
+    String compactName() {
+        StringBuilder name = new StringBuilder(this.name);
+        for (ProjectNode ancestor = parent; ancestor != null && ancestor.compactsChild(); ancestor = ancestor.parent) {
+            name.insert(0, ancestor.name + "/");
+        }
+        return name.toString();
+    }
+
+    /** The number of rows above this node: the ancestors that are not folded into a compacted chain. */
     int depth() {
         int depth = 0;
         for (ProjectNode ancestor = parent; ancestor != null; ancestor = ancestor.parent) {
-            depth++;
+            if (!ancestor.compactsChild()) {
+                depth++;
+            }
         }
         return depth;
     }

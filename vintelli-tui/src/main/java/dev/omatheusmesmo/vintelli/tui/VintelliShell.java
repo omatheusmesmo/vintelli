@@ -409,7 +409,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                             status = "Diagnostic file is outside the project";
                             return;
                         }
-                        selectPath(root.relativize(file).toString().replace('\\', '/'));
+                        revealFile(file);
                         releaseCapture();
                         openFile(file, problem.startLine());
                     } catch (IOException unavailable) {
@@ -1114,7 +1114,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             return EventResult.HANDLED;
         }
         if (parts.searchModel() != null && parts.searchModel().isOpen()) {
-            parts.searchOverlay().handleMouse(mouse).ifPresent(target -> openFile(target.file(), target.line()));
+            parts.searchOverlay().handleMouse(mouse).ifPresent(target -> openRevealed(target.file(), target.line()));
             return EventResult.HANDLED;
         }
         if (parts.keymapHelp().isOpen()) {
@@ -1410,7 +1410,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             return EventResult.HANDLED;
         }
         if (parts.searchModel() != null && parts.searchModel().isOpen()) {
-            parts.searchOverlay().handleKey(key).ifPresent(target -> openFile(target.file(), target.line()));
+            parts.searchOverlay().handleKey(key).ifPresent(target -> openRevealed(target.file(), target.line()));
             return EventResult.HANDLED;
         }
         if (parts.keymap().matchesReserved(key, KeyActions.MENU)) {
@@ -1742,6 +1742,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         }
     }
 
+    private void openRevealed(Path file, int line) {
+        revealFile(file);
+        openFile(file, line);
+    }
+
     private void openFile(Path file, int line) {
         if (editor == null) {
             status = "Built-in editor unavailable";
@@ -1834,7 +1839,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 ? provider.references(position, true) : provider.definition(position);
         if (result instanceof CapabilityResult.Ok<List<NavigationCapability.Location>> ok && !ok.value().isEmpty()) {
             NavigationCapability.Location location = ok.value().getFirst();
-            openFile(location.filePath(), location.line());
+            openRevealed(location.filePath(), location.line());
         } else {
             status = result.failureOf().map(failure -> failure.reason() + ": " + failure.detail())
                     .orElse(references ? "No usages found" : "No definition found");
