@@ -472,8 +472,12 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 System.getenv("XDG_CONFIG_HOME"), System.getenv("APPDATA"), System.getProperty("user.home")) : null;
         this.layoutStore = layoutStoreOverride == null ? new ShellLayoutStore(configRoot, projectRoot)
                 : layoutStoreOverride;
-        java.util.Set<String> allWindowIds = this.toolWindows.stream().map(ToolWindow::id).collect(java.util.stream.Collectors.toSet());
-        this.shellLayout = layoutStore.load(allWindowIds);
+        Set<String> allWindowIds = this.toolWindows.stream().map(ToolWindow::id).collect(Collectors.toSet());
+        Set<String> defaultVisibleWindowIds = this.toolWindows.stream()
+                .filter(window -> window.anchor() != ToolWindow.Anchor.RIGHT)
+                .map(ToolWindow::id)
+                .collect(Collectors.toSet());
+        this.shellLayout = layoutStore.load(allWindowIds, defaultVisibleWindowIds);
         this.windowsByAnchor = this.toolWindows.stream()
                 .collect(Collectors.groupingBy(ToolWindow::anchor, Collectors.toList()));
         this.keymapSupplier = keymapSupplier;

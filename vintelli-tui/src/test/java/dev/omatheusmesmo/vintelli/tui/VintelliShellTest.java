@@ -72,7 +72,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class VintelliShellTest {
 
     @Test
-    void rightToolWindowFillsItsAvailableStripe() {
+    void rightToolWindowFillsItsAvailableStripe() throws Exception {
         AtomicReference<Rect> rendered = new AtomicReference<>();
         ToolWindow right = new FakeToolWindow("side", "Side", '7', 100, "", false, ToolWindow.Anchor.RIGHT) {
             @Override
@@ -82,7 +82,12 @@ class VintelliShellTest {
         };
         ShellThemes themes = defaultThemes();
         VintelliShell shell = new VintelliShell(List.of(right), new ShellState(), themes);
-        offlineFrame(shell);
+        try (ToolkitTestRunner test = runShell(shell)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+            press(pilot, '7');
+            settle(pilot);
+        }
 
         int statusRow = 1;
         int tabAndHeaderRows = 3;
@@ -137,12 +142,43 @@ class VintelliShellTest {
     }
 
     @Test
+    void aFreshLayoutHidesTheRightWindowsAndKeepsTheirStripeIcons() {
+        VintelliShell shell = new VintelliShell(windowsWithAcp(), new ShellState(), defaultThemes());
+        Buffer buffer = offlineFrame(shell);
+        assertFalse(shell.isToolWindowVisible("acp.agents"), "a fresh layout starts with the right windows hidden");
+        assertTrue(shell.isToolWindowVisible("run"), "the bottom windows start visible");
+        assertNotEquals(-1, findRow(buffer, VIEWPORT.width() - 1, "A"), "the hidden window keeps its stripe icon");
+    }
+
+    @Test
+    void clickingTheIconOfAHiddenRightWindowShowsItsPane() throws Exception {
+        VintelliShell shell = new VintelliShell(windowsWithAcp(), new ShellState(), defaultThemes());
+        int iconRow = findRow(offlineFrame(shell), VIEWPORT.width() - 1, "A");
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+            int rightBefore = pilot.findElement("right-stripe").width();
+
+            pilot.click(VIEWPORT.width() - 1, iconRow);
+            settle(pilot);
+
+            assertTrue(shell.isToolWindowVisible("acp.agents"), shell.status());
+            assertEquals("Tool window: ACP Agents", shell.status());
+            assertTrue(pilot.hasElement("tool-pane-acp.agents"), "the pane of the clicked icon is drawn");
+            assertTrue(pilot.findElement("right-stripe").width() > rightBefore,
+                    "showing the pane takes columns from the editor");
+        }
+    }
+
+    @Test
     void aHiddenSideWindowFreesItsSpaceAndItsStripeIconStaysInPlace() throws Exception {
         VintelliShell shell = new VintelliShell(windowsWithAcp(), new ShellState(), defaultThemes());
         int iconRow = findRow(offlineFrame(shell), VIEWPORT.width() - 1, "A");
         try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
             Pilot pilot = test.pilot();
             pilot.pause(STARTUP);
+            pilot.click(VIEWPORT.width() - 1, iconRow);
+            settle(pilot);
             int rightBefore = pilot.findElement("right-stripe").width();
             int editorBefore = pilot.findElement("editor-panel").width();
 

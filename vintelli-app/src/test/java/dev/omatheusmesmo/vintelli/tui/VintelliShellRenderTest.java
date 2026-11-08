@@ -95,7 +95,7 @@ class VintelliShellRenderTest {
                 .then()
                 .statusCode(200)
                 .body("tabRow", containsString("Project"),
-                        "tabRow", containsString("4 ACP"),
+                        "tabRow", not(containsString("4 ACP")),
                         "tabRow", endsWith(" A"),
                         "mainAreaTop", not(isEmptyOrNullString()),
                         "mainAreaTop", not(containsString("╭")),
