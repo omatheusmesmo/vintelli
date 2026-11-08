@@ -7,6 +7,7 @@ import io.quarkus.test.junit.QuarkusTest;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.util.Arrays;
 
 import static io.restassured.RestAssured.given;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -33,6 +34,29 @@ class VintelliShellRenderTest {
      */
     @Test
     void showsTheSettledReadFileStateInTheProjectPaneOfTheRenderedFrame() throws InterruptedException {
+        String mainArea = awaitSettledMainArea();
+        assertTrue(mainArea.contains("Read File") && !mainArea.contains("checking"),
+                "the READ_FILE state never settled in the main area:\n" + mainArea);
+    }
+
+    /**
+     * The project pane runs down to the row above the status bar, so its footer
+     * sits on the last main area row, left of the editor, while the bottom tool
+     * windows start at the editor's left edge on the tab row of the same frame.
+     */
+    @Test
+    void showsTheBottomToolWindowsBesideTheProjectPaneFooter() throws InterruptedException {
+        String mainArea = awaitSettledMainArea();
+        String[] rows = mainArea.split("\n", -1);
+        String footer = rows[rows.length - 1];
+        String tabRow = Arrays.stream(rows).filter(row -> row.contains("1 Run")).findFirst().orElse("");
+        int editorTabColumn = tabRow.indexOf("1 Run");
+        String footerLeftOfTabs = footer.length() > editorTabColumn ? footer.substring(0, editorTabColumn) : footer;
+        assertTrue(editorTabColumn > 0 && footerLeftOfTabs.contains("Read File"),
+                "the project pane footer runs left of the bottom tab row:\n" + mainArea);
+    }
+
+    private static String awaitSettledMainArea() throws InterruptedException {
         long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
         String mainArea = "";
         while (System.nanoTime() < deadline) {
@@ -45,8 +69,7 @@ class VintelliShellRenderTest {
             }
             Thread.sleep(50);
         }
-        assertTrue(mainArea.contains("Read File") && !mainArea.contains("checking"),
-                "the READ_FILE state never settled in the main area:\n" + mainArea);
+        return mainArea;
     }
 
     /**
@@ -72,7 +95,7 @@ class VintelliShellRenderTest {
                 .then()
                 .statusCode(200)
                 .body("tabRow", containsString("Project"),
-                        "tabRow", containsString("4 ACP"),
+                        "tabRow", not(containsString("4 ACP")),
                         "tabRow", endsWith(" A"),
                         "mainAreaTop", not(isEmptyOrNullString()),
                         "mainAreaTop", not(containsString("╭")),

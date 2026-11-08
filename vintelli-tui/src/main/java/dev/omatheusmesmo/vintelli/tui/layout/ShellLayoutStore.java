@@ -31,18 +31,21 @@ public final class ShellLayoutStore {
     }
 
     public ShellLayout load() {
-        return load(null);
+        return load(null, null);
     }
 
-    public ShellLayout load(Set<String> allWindowIds) {
+    /**
+     * A missing file, or one without {@code visible.windows}, starts with {@code defaultVisibleWindowIds} shown.
+     * A file that lists {@code visible.windows} restores exactly the windows it names.
+     */
+    public ShellLayout load(Set<String> allWindowIds, Set<String> defaultVisibleWindowIds) {
         if (file == null || !Files.isRegularFile(file)) {
-            return new ShellLayout(ShellLayout.DEFAULT_PROJECT_RATIO, ShellLayout.DEFAULT_BOTTOM_RATIO,
-                    allWindowIds == null ? null : new LinkedHashSet<>(allWindowIds), allWindowIds);
+            return freshLayout(allWindowIds, defaultVisibleWindowIds);
         }
         Properties values = new Properties();
         try (InputStream input = Files.newInputStream(file)) {
             values.load(input);
-            Set<String> visible = null;
+            Set<String> visible = defaultVisibleWindowIds;
             String visibleProperty = values.getProperty("visible.windows");
             if (visibleProperty != null) {
                 visible = new LinkedHashSet<>();
@@ -60,9 +63,13 @@ public final class ShellLayoutStore {
             layout.setSizeCustomized(!"false".equals(values.getProperty("size.customized")));
             return layout;
         } catch (IOException | IllegalArgumentException | NullPointerException invalid) {
-            return new ShellLayout(ShellLayout.DEFAULT_PROJECT_RATIO, ShellLayout.DEFAULT_BOTTOM_RATIO,
-                    allWindowIds == null ? null : new LinkedHashSet<>(allWindowIds), allWindowIds);
+            return freshLayout(allWindowIds, defaultVisibleWindowIds);
         }
+    }
+
+    private static ShellLayout freshLayout(Set<String> allWindowIds, Set<String> defaultVisibleWindowIds) {
+        return new ShellLayout(ShellLayout.DEFAULT_PROJECT_RATIO, ShellLayout.DEFAULT_BOTTOM_RATIO,
+                defaultVisibleWindowIds, allWindowIds);
     }
 
     /** A disabled store (null config directory) never writes to the process working directory. */

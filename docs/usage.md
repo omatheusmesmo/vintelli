@@ -247,15 +247,23 @@ an arrow, or `+` and `-`) toggles it. The list keeps the selected row in view
 when the keyboard or the wheel moves the selection. Clicks below the last row
 change nothing, and a click while a new name or a rename is being typed is
 ignored, so the typed input and its target stay as they are.
-Panes have no frames: each one starts with a header row, and the separators
-are the one-column line between the project pane and the editor (and before
-the right tool stripe) and the one-row line above the bottom tool windows.
+Panes have no frames: each one starts with a header row. The left strip, the
+project pane and the right stripe run from the toolbar down to the status bar,
+which spans the full width. The bottom tool windows sit under the editor only,
+to the right of the project pane, and their tab row starts at the editor's left
+edge. With the project pane hidden, they start right after the left strip.
+The separators are the one-column line between the project pane and the editor,
+which spans the full height of the project pane, the one-column line before the
+right tool stripe, and the one-row line above the bottom tool windows, which
+spans the editor column only.
 A two-column icon strip sits on each side of the shell. The left strip holds
 the Project icon on top and the bottom tool windows at its bottom, and the
-right strip holds the right tool windows. With the Nerd Font icon mode each
+right strip holds the right tool windows. The bottom icons stay in the same
+cells while the bottom tool windows are hidden, so the last visible window can
+be shown again by clicking its icon. With the Nerd Font icon mode each
 icon is that window's glyph; the ASCII mode shows the first letter of its
 title. Click an icon to show a hidden window, activate a visible one, or hide
-the active one; a hidden window frees its space and its icon stays. Tool window
+the active one; a hidden window frees its space and its icon stays. On a fresh layout the right tool windows start hidden with their icons on the stripe, while a saved layout restores exactly the windows it lists. Tool window
 tabs show the shortcut digit before the title, underline the selected tab, and
 answer clicks.
 Drag the vertical separator to resize the project pane or the horizontal one

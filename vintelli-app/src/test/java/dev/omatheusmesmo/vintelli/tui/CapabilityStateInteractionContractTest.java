@@ -191,7 +191,7 @@ class CapabilityStateInteractionContractTest {
         try (ToolWindowPilotFixture fixture = open(List.of(new ProblemsToolWindow(registry, editor, () -> themes)),
                 themes, registry, uiWork)) {
             fixture.press('3', KeyModifiers.ALT);
-            fixture.resize(50, 16);
+            fixture.resize(80, 16);
             assertTrue(fixture.await(() -> fixture.renderedText().contains("skipped idea: not connected"),
                     Duration.ofSeconds(3)), fixture.renderedText());
             String screen = fixture.renderedText();

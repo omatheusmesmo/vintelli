@@ -144,6 +144,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     static final int SIDE_PANEL_WIDTH = 20;
     static final int ACP_SIDE_PANEL_WIDTH = 32;
     static final int TOOL_STRIP_WIDTH = ToolStripElement.WIDTH;
+    private static final int PANE_SEPARATOR_WIDTH = 1;
     static final String PROJECT_STRIP_ID = "project";
     private static final int PROJECT_HIGHLIGHT_WIDTH = 2;
     private static final int PROJECT_INDENT_WIDTH = 2;
@@ -213,6 +214,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private final ShellLayout shellLayout;
     private final ShellLayoutStore layoutStore;
     private volatile DockElement layoutDock;
+    private volatile DockElement bottomDock;
     private volatile FocusManager focusManager;
     private volatile Rect activeToolWindowArea = Rect.ZERO;
     private volatile Rect activeRightToolWindowArea = Rect.ZERO;
@@ -470,8 +472,12 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 System.getenv("XDG_CONFIG_HOME"), System.getenv("APPDATA"), System.getProperty("user.home")) : null;
         this.layoutStore = layoutStoreOverride == null ? new ShellLayoutStore(configRoot, projectRoot)
                 : layoutStoreOverride;
-        java.util.Set<String> allWindowIds = this.toolWindows.stream().map(ToolWindow::id).collect(java.util.stream.Collectors.toSet());
-        this.shellLayout = layoutStore.load(allWindowIds);
+        Set<String> allWindowIds = this.toolWindows.stream().map(ToolWindow::id).collect(Collectors.toSet());
+        Set<String> defaultVisibleWindowIds = this.toolWindows.stream()
+                .filter(window -> window.anchor() != ToolWindow.Anchor.RIGHT)
+                .map(ToolWindow::id)
+                .collect(Collectors.toSet());
+        this.shellLayout = layoutStore.load(allWindowIds, defaultVisibleWindowIds);
         this.windowsByAnchor = this.toolWindows.stream()
                 .collect(Collectors.groupingBy(ToolWindow::anchor, Collectors.toList()));
         this.keymapSupplier = keymapSupplier;
@@ -554,27 +560,42 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         boolean customized = shellLayout.isSizeCustomized();
         Constraint projectWidth = Constraint.length(leftRegionWidth(customized
                 ? sizedProjectWidth() : PROJECT_PANEL_WIDTH));
-        Constraint bottomHeight = bottomWindowsHidden() ? Constraint.length(1)
-                : customized ? ratioConstraint(shellLayout.bottomRatio())
-                : Constraint.length(defaultBottomHeight());
+        DockElement editorDock = Toolkit.dock()
+                .center(centerPanel())
+                .bottom(bottomStripe())
+                .bottomHeight(bottomPaneConstraint(customized));
+        editorDock.id("editor-dock");
+        bottomDock = editorDock;
         DockElement dock = Toolkit.dock()
                 .top(mainToolbar)
                 .left(leftStripe())
-                .center(centerPanel())
+                .center(editorDock)
                 .right(rightStripe())
-                .bottom(bottomStripe())
+                .bottom(Toolkit.lazy(this::statusBarEntry))
                 .topHeight(Constraint.length(1))
                 .leftWidth(projectWidth)
                 .rightWidth(Constraint.length(rightStripeWidth()))
-                .bottomHeight(bottomHeight);
+                .bottomHeight(Constraint.length(1));
         dock.id("shell");
         layoutDock = dock;
         return dock;
     }
 
-    private static Constraint ratioConstraint(double ratio) {
-        int denominator = 10_000;
-        return Constraint.ratio((int) Math.round(ratio * denominator), denominator);
+    /**
+     * The height of the bottom tool windows inside the editor dock. The stored
+     * bottom height counts the status row, which now runs under the whole
+     * shell, so the pane takes one row less than the stored value.
+     */
+    private Constraint bottomPaneConstraint(boolean customized) {
+        if (bottomWindowsHidden()) {
+            return Constraint.length(0);
+        }
+        int stored = customized ? shellLayout.bottomHeight(availableHeight()) : defaultBottomHeight();
+        return Constraint.length(bottomPaneRows(stored));
+    }
+
+    private static int bottomPaneRows(int storedHeight) {
+        return Math.max(0, storedHeight - 1);
     }
 
     /**
@@ -598,6 +619,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         if (shellLayout.isProjectVisible()) {
             left.add(leftPanel());
         }
+        paneSeparatorVertical = separator("pane-separator-vertical");
+        paneSeparatorVertical.length(shellLayout.isProjectVisible() ? PANE_SEPARATOR_WIDTH : 0);
+        left.add(paneSeparatorVertical);
         left.fill();
         return left;
     }
@@ -641,10 +665,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             return empty;
         }
         Column column = Toolkit.column().id("bottom-stripe");
-        if (!visibleWindows(ToolWindow.Anchor.BOTTOM).isEmpty()) {
-            column.add(toolWindowStripe(ToolWindow.Anchor.BOTTOM));
-        }
-        column.add(Toolkit.lazy(this::statusBarEntry));
+        column.add(toolWindowStripe(ToolWindow.Anchor.BOTTOM));
+        column.fill();
         return column;
     }
 
@@ -695,7 +717,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     private int leftRegionWidth(int projectWidth) {
-        return TOOL_STRIP_WIDTH + (shellLayout.isProjectVisible() ? projectWidth : 0);
+        return TOOL_STRIP_WIDTH + (shellLayout.isProjectVisible() ? projectWidth + PANE_SEPARATOR_WIDTH : 0);
     }
 
     private String tabUnderline() {
@@ -1154,14 +1176,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 new PaneHeader("editor-panel", () -> "Editor", () -> themes, this::focusMark), editor, this::focusMark));
         editorPane.add(Toolkit.lazy(this::editorContent));
         editorPane.fill();
-        paneSeparatorVertical = separator("pane-separator-vertical");
-        Row editorRow = Toolkit.row();
-        editorRow.add(paneSeparatorVertical);
-        editorRow.add(editorPane);
-        editorRow.fill();
         paneSeparatorHorizontal = separator("pane-separator-horizontal");
         centerPanel = Toolkit.column().id("editor-area");
-        centerPanel.add(editorRow);
+        centerPanel.add(editorPane);
         centerPanel.add(paneSeparatorHorizontal);
         centerPanel.fill();
         return new LockedElement(centerPanel, frameLock, this, false, false);
@@ -1440,8 +1457,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         if (!mouse.isPress() || !mouse.isLeftButton() || splitterOverlayOpen()) {
             return EventResult.UNHANDLED;
         }
-        Rect vertical = paneSeparatorVertical == null ? Rect.ZERO : paneSeparatorVertical.renderedArea();
-        Rect horizontal = paneSeparatorHorizontal == null ? Rect.ZERO : paneSeparatorHorizontal.renderedArea();
+        Rect vertical = renderedAreaOrEmpty(paneSeparatorVertical);
+        Rect horizontal = renderedAreaOrEmpty(paneSeparatorHorizontal);
         if (vertical.width() <= 0 || vertical.height() <= 0 || horizontal.width() <= 0 || horizontal.height() <= 0
                 || shellArea.width() <= 0 || shellArea.height() <= 1) {
             return EventResult.UNHANDLED;
@@ -1458,6 +1475,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         }
         splitterChanged = false;
         return EventResult.HANDLED;
+    }
+
+    private static Rect renderedAreaOrEmpty(Element element) {
+        Rect area = element == null ? null : element.renderedArea();
+        return area == null ? Rect.ZERO : area;
     }
 
     private boolean splitterOverlayOpen() {
@@ -1494,8 +1516,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             int mainTop = shellArea.y() + 1;
             int editorHeight = mouse.y() - mainTop + 1;
             shellLayout.bottomHeight(available - editorHeight, available);
-            int height = shellLayout.bottomHeight(available);
-            layoutDock.bottomHeight(Constraint.length(height));
+            int height = bottomPaneRows(shellLayout.bottomHeight(available));
+            bottomDock.bottomHeight(Constraint.length(height));
             splitterChanged = true;
             status = "Tool window height: " + height + " rows";
         }
@@ -2213,9 +2235,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         adoptDefaultSizes();
         shellLayout.bottomHeight(Math.max(0, available - centerPanel.renderedArea().height()), available);
         shellLayout.resizeBottom(delta, available);
-        layoutDock.bottomHeight(Constraint.length(shellLayout.bottomHeight(available)));
+        int height = bottomPaneRows(shellLayout.bottomHeight(available));
+        bottomDock.bottomHeight(Constraint.length(height));
         persistLayout();
-        status = "Tool window height: " + shellLayout.bottomHeight(available) + " rows";
+        status = "Tool window height: " + height + " rows";
     }
 
     /**
@@ -2249,7 +2272,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     /** The widest project pane that still leaves the editor its minimum beside the open right region. */
     private int projectCap(int base) {
-        return base - rightStripeWidth() - ShellLayout.MIN_EDITOR_WIDTH;
+        return base - rightStripeWidth() - ShellLayout.MIN_EDITOR_WIDTH - PANE_SEPARATOR_WIDTH;
     }
 
     private int sizedProjectWidth() {

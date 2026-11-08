@@ -6,6 +6,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -70,6 +71,35 @@ class ShellLayoutStoreTest {
         assertEquals(0.3, loaded.bottomRatio());
         assertTrue(loaded.isSizeCustomized(),
                 "a file without the flag was written by the ratio based shell, so its ratios stay in use");
+    }
+
+    @Test
+    void aFreshLayoutShowsOnlyTheDefaultVisibleWindows() {
+        ShellLayoutStore store = new ShellLayoutStore(temporary, temporary.resolve("project"));
+        ShellLayout layout = store.load(Set.of("run", "acp.agents"), Set.of("run"));
+        assertTrue(layout.isVisible("run"));
+        assertFalse(layout.isVisible("acp.agents"), "a window outside the default set starts hidden");
+    }
+
+    @Test
+    void aLayoutFileWithoutVisibleWindowsGetsTheDefaultVisibleWindows() throws IOException {
+        ShellLayoutStore store = new ShellLayoutStore(temporary, temporary.resolve("project"));
+        store.save(new ShellLayout(0.4, 0.3));
+        Files.writeString(store.file(), "project.ratio=0.4\nbottom.ratio=0.3\nproject.visible=true\n");
+        ShellLayout loaded = store.load(Set.of("run", "acp.agents"), Set.of("run"));
+        assertEquals(Set.of("run"), loaded.visibleWindows());
+    }
+
+    @Test
+    void aSavedVisibleWindowsListRestoresExactlyWhatItNamesIncludingARightWindow() throws IOException {
+        ShellLayoutStore store = new ShellLayoutStore(temporary, temporary.resolve("project"));
+        store.save(new ShellLayout(0.4, 0.3));
+        Files.writeString(store.file(),
+                "project.ratio=0.4\nbottom.ratio=0.3\nvisible.windows=acp.agents,terminal\n");
+        ShellLayout loaded = store.load(Set.of("run", "terminal", "acp.agents"), Set.of("run"));
+        assertEquals(Set.of("acp.agents", "terminal"), loaded.visibleWindows());
+        assertTrue(loaded.isVisible("acp.agents"));
+        assertFalse(loaded.isVisible("run"));
     }
 
     @Test
