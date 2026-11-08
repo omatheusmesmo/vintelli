@@ -1752,6 +1752,66 @@ class VintelliShellTest {
     }
 
     @Test
+    void wheelDownOverTheProjectListMovesTheSelectionThreeRowsAndTheShellFollows() throws Exception {
+        VintelliShell shell = projectTreeShell(defaultThemes(), null, null, numberedFiles(30), List.of());
+        awaitProjectTree(shell);
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect list = pilot.findElement("project-panel");
+
+            test.drag(MouseEvent.scrollDown(list.x() + 4, list.y() + 2));
+
+            assertEquals(3, shell.fileIndex(), "one wheel step moves the selection three rows");
+            assertEquals("file03.txt", shell.state().snapshot().selectedFile());
+            String frame = test.renderedFrame();
+            assertEquals(projectRowOf(frame, list, "file03.txt"), highlightedProjectRow(frame, list),
+                    "the highlight sits on the row of the selected file: " + frame);
+        }
+    }
+
+    @Test
+    void clickingAfterWheelStepsSelectsTheRowDrawnUnderThePointer() throws Exception {
+        VintelliShell shell = projectTreeShell(defaultThemes(), null, null, numberedFiles(30), List.of());
+        awaitProjectTree(shell);
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect list = pilot.findElement("project-panel");
+            for (int step = 0; step < 8; step++) {
+                test.drag(MouseEvent.scrollDown(list.x() + 4, list.y() + 2));
+            }
+            assertEquals(24, shell.fileIndex());
+            String frame = test.renderedFrame();
+            assertEquals(-1, projectRowOf(frame, list, "file00.txt"), "the wheel scrolled the first rows out of view");
+            int row = projectRowOf(frame, list, "file20.txt");
+            assertTrue(row >= 0, "file20 is drawn after the wheel steps: " + frame);
+
+            pilot.click(list.x() + 4, row);
+            settle(pilot);
+
+            assertEquals(20, shell.fileIndex(), "the row drawn at the pointer, not the row at its offset");
+            assertEquals("file20.txt", shell.state().snapshot().selectedFile());
+        }
+    }
+
+    @Test
+    void wheelUpAtTheTopOfTheProjectListChangesNothing() throws Exception {
+        VintelliShell shell = projectTreeShell(defaultThemes(), null, null, numberedFiles(30), List.of());
+        awaitProjectTree(shell);
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect list = pilot.findElement("project-panel");
+            settle(pilot);
+            String status = shell.status();
+
+            test.drag(MouseEvent.scrollUp(list.x() + 4, list.y() + 2));
+
+            assertEquals(0, shell.fileIndex());
+            assertEquals("file00.txt", shell.state().snapshot().selectedFile());
+            assertEquals(status, shell.status());
+        }
+    }
+
+    @Test
     void doubleClickingAProjectFileOpensItInTheEditor() throws Exception {
         Files.writeString(project.resolve("Alpha.txt"), "alpha\n");
         Files.writeString(project.resolve("Beta.txt"), "beta\n");
@@ -3768,6 +3828,16 @@ class VintelliShellTest {
         String[] lines = frame.split("\n", -1);
         for (int y = list.y(); y < list.y() + list.height() && y < lines.length; y++) {
             if (frameCells(lines[y], list.x(), list.width()).contains(label)) {
+                return y;
+            }
+        }
+        return -1;
+    }
+
+    /** The list row that shows the selection marker in its first column, or -1 when none does. */
+    private static int highlightedProjectRow(String frame, Rect list) {
+        for (int y = list.y(); y < list.y() + list.height() && y < frame.split("\n", -1).length; y++) {
+            if (frameCell(frame, list.x(), y) == '>') {
                 return y;
             }
         }
