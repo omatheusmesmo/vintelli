@@ -5,6 +5,7 @@ import dev.omatheusmesmo.vintelli.api.ShellHighlightPort;
 import dev.omatheusmesmo.vintelli.api.ShellHighlightTarget;
 import dev.omatheusmesmo.vintelli.api.ShellStateView;
 import dev.omatheusmesmo.vintelli.api.ShellUnifiedDiff;
+import dev.omatheusmesmo.vintelli.tui.ProjectTreeController.InputMode;
 import dev.omatheusmesmo.vintelli.tui.keymap.CommandPalette;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyAction;
@@ -47,7 +48,6 @@ import dev.tamboui.toolkit.element.Element;
 import dev.tamboui.toolkit.element.RenderContext;
 import dev.tamboui.toolkit.element.Size;
 import dev.tamboui.toolkit.elements.DockElement;
-import dev.tamboui.toolkit.elements.ListElement;
 import dev.tamboui.toolkit.elements.RichTextElement;
 import dev.tamboui.toolkit.elements.Row;
 import dev.tamboui.toolkit.elements.Spacer;
@@ -63,7 +63,6 @@ import dev.tamboui.tui.event.KeyEvent;
 import dev.tamboui.tui.event.MouseEvent;
 import dev.tamboui.tui.event.MouseEventKind;
 import dev.tamboui.style.Style;
-import dev.tamboui.widgets.common.ScrollBarPolicy;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -73,7 +72,6 @@ import java.nio.file.Path;
 import java.nio.file.Files;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -146,9 +144,6 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     static final int TOOL_STRIP_WIDTH = ToolStripElement.WIDTH;
     private static final int PANE_SEPARATOR_WIDTH = 1;
     static final String PROJECT_STRIP_ID = "project";
-    private static final int PROJECT_HIGHLIGHT_WIDTH = 2;
-    private static final int PROJECT_INDENT_WIDTH = 2;
-    private static final int PROJECT_MARKER_WIDTH = 2;
     private static final String PROJECT_GLYPH = "";
     private static final int TOOL_TAB_ROWS = ToolTabBarElement.ROWS;
     private static final int BOTTOM_HEIGHT = TOOL_WINDOW_HEIGHT + TOOL_TAB_ROWS + 1;
@@ -157,13 +152,6 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private static final int MAX_EDITOR_LINE_LENGTH = 40;
 
     private static final List<String> MENUS = List.of("File", "Edit", "View", "Navigate", "Code", "Refactor", "Run", "Tools", "VCS", "Help");
-    private static final List<String> PROJECT_FILES = List.of(
-            "vintelli/pom.xml",
-            "VintelliMain.java",
-            "VintelliShell.java",
-            "VintelliMcpTools.java",
-            "VintelliShellTest.java"
-    );
     private static final String EMPTY_TOOL_WINDOWS_TEXT = "no tool window beans registered; implement ToolWindow and expose the bean";
     private static final String EDITOR_TEXT = "editor tool window lands with issue #31; vintelli needs no external editor";
 
@@ -234,36 +222,22 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private final Supplier<Keymap> keymapSupplier;
     private final StackElement rootBase;
     private final Element lockedRoot;
-    private final Element lockedProjectList;
     private final Map<ToolWindow.Anchor, ToolTabBarElement> tabBars = new ConcurrentHashMap<>();
     private volatile ToolStripElement leftStrip;
     private volatile ToolStripElement rightStrip;
-    private final ListElement<?> projectList;
-    private final DoubleClickTracker projectDoubleClick = new DoubleClickTracker();
-    private LongSupplier clock = System::nanoTime;
-    private int projectTop;
+    private final ProjectTreeController projects;
+    private final ProjectPanel projectPanel;
     private Column centerPanel;
     private Column paneSeparatorVertical;
     private Column paneSeparatorHorizontal;
-    private volatile List<String> projectFiles;
-    private volatile Map<String, VersionControlCapability.State> vcsStates = Map.of();
-    private volatile boolean projectFilesLoading;
     private final Path projectRoot;
     private final FileIcons fileIcons;
-    private boolean unicodeProjectTree;
-    private final List<ProjectNode> rootNodes = new ArrayList<>();
-    private volatile List<ProjectNode> visibleNodeObjects = List.of();
-    private volatile boolean showHiddenFiles;
-    private volatile String pendingDeletePath;
-    private InputMode projectInputMode = InputMode.NONE;
-    private final StringBuilder projectInput = new StringBuilder();
     private boolean pendingProjectFocus;
     private boolean navigationBarFocused;
     private int selectedNavigationSegment;
     private List<Breadcrumb> navigationPaths = List.of();
     private Path navigationSymbolsFile;
     private List<NavigationCapability.DocumentSymbol> navigationSymbols = List.of();
-    private volatile Path copiedPath;
     private volatile Runnable quitAction;
     private volatile KeymapParts overlays;
     private final ThreadLocal<ActionSurface> actionSurface = ThreadLocal.withInitial(() -> ActionSurface.TUI);
@@ -283,7 +257,6 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private volatile ToolWindow capturedWindow;
     private volatile String focusedToolWindowId;
     private volatile int toolIndex;
-    private volatile int syncedFileIndex = -1;
 
     // Active tool window index per anchor (for stripe tab selection)
     private final Map<ToolWindow.Anchor, Integer> activeToolIndexByAnchor = new ConcurrentHashMap<>();
@@ -307,14 +280,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     void useClock(LongSupplier clock) {
-        this.clock = clock;
+        projects.useClock(clock);
     }
 
     void useUnicodeProjectTree(boolean unicode) {
-        this.unicodeProjectTree = unicode;
-        if (!projectFiles.isEmpty()) {
-            projectList.items(projectRows());
-        }
+        projectPanel.useUnicodeTree(unicode);
     }
 
     public VintelliShell(List<ToolWindow> toolWindows, ShellState state, ShellThemes themes) {
@@ -455,8 +425,6 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                         status = "Diagnostic file is unavailable";
                     }
                 }));
-        this.projectFiles = projectSearch == null ? PROJECT_FILES : List.of();
-        this.projectFilesLoading = projectSearch != null;
         Path resolvedRoot = editor == null ? Path.of("").toAbsolutePath().normalize() : editor.project();
         try {
             if (Files.exists(resolvedRoot)) {
@@ -465,8 +433,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         } catch (IOException ignored) {
         }
         this.projectRoot = resolvedRoot.normalize();
+        this.projects = new ProjectTreeController(this.projectRoot, state, projectSearch, fileOperations,
+                message -> status = message, this::refreshProjectTree, this::refreshVcs);
         this.fileIcons = FileIcons.resolve();
-        this.unicodeProjectTree = ProjectTreeGlyphs.supportsUnicode();
         Path projectRoot = editor == null ? Path.of("").toAbsolutePath().normalize() : editor.project();
         Path configRoot = persistLayout ? ConfigDirectory.configRoot(ConfigDirectory.sharedConfigDir(),
                 System.getenv("XDG_CONFIG_HOME"), System.getenv("APPDATA"), System.getProperty("user.home")) : null;
@@ -485,10 +454,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             state.selectToolWindow(this.toolWindows.get(0).id());
             inputCaptured = this.toolWindows.get(0).capturesInput();
         }
-        state.selectFile(this.projectFiles.isEmpty() ? "" : this.projectFiles.getFirst());
-        syncedFileIndex = 0;
-        this.projectList = projectPanel();
-        this.lockedProjectList = new LockedElement(projectList, frameLock, this, true, false);
+        projects.start();
+        this.projectPanel = new ProjectPanel(projects, fileIcons, ProjectTreeGlyphs.supportsUnicode(), frameLock,
+                projectHost());
         this.toolbarProject = projectRoot.getFileName() == null ? projectRoot.toString()
                 : projectRoot.getFileName().toString();
         this.runWindow = this.toolWindows.stream().filter(RunToolWindow.class::isInstance)
@@ -496,7 +464,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         this.mainToolbar = new MainToolbar(this::toolbarModel, MENUS, fileIcons.mode(), () -> themes);
         this.toolbarVcs = vcsProviders.isEmpty() ? ToolbarVcs.HIDDEN : new ToolbarVcs(true, "VCS");
         this.rootBase = buildRootContent();
-        this.lockedRoot = new LockedElement(rootBase, frameLock, this, false, true);
+        this.lockedRoot = new LockedElement(rootBase, frameLock, this, true);
         // Initialize active index for each anchor to first window
         for (ToolWindow.Anchor anchor : ToolWindow.Anchor.values()) {
             List<ToolWindow> windows = visibleWindows(anchor);
@@ -578,7 +546,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 .bottomHeight(Constraint.length(1));
         dock.id("shell");
         layoutDock = dock;
-        return new PaneGapElement(dock, themes, () -> unicodeProjectTree);
+        return new PaneGapElement(dock, themes, projectPanel::unicodeTree);
     }
 
     /**
@@ -899,7 +867,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private Element projectPane() {
         Column pane = Toolkit.column().id("project-pane");
         pane.add(new PaneHeader("project-panel", () -> "Project", () -> themes, this::focusMark));
-        pane.add(lockedProjectList);
+        pane.add(projectPanel);
         pane.add(new PaneHeader("project-read-file", context -> false, this::readFileTitle, () -> themes, () -> " ",
                 false));
         pane.fill();
@@ -928,34 +896,80 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         });
     }
 
-    private ListElement<?> projectPanel() {
-        ListElement<?> panel = Toolkit.list(projectFiles.isEmpty()
-                ? List.of(projectFilesLoading ? "Loading project files..." : "No project files found")
-                : projectRows());
-        panel.id("project-panel");
-        panel.addClass("tool-panel");
-        panel.focusable();
-        panel.fill();
-        panel.scrollbar(ScrollBarPolicy.AS_NEEDED);
-        panel.autoScroll();
-        panel.selected(0);
-        return panel;
+    private ProjectPanel.Host projectHost() {
+        return new ProjectPanel.Host() {
+            @Override
+            public Keymap keymap() {
+                return overlays().keymap();
+            }
+
+            @Override
+            public boolean shortcutsBlocked() {
+                return inputCaptured || splitterOverlayOpen();
+            }
+
+            @Override
+            public boolean layoutVisible() {
+                return shellLayout.isProjectVisible();
+            }
+
+            @Override
+            public void focusPanel() {
+                focusProjectPanel();
+            }
+
+            @Override
+            public void requestFocus() {
+                requestProjectFocus();
+            }
+
+            @Override
+            public void beginInput(InputMode mode) {
+                beginProjectInput(mode);
+            }
+
+            @Override
+            public void refreshTree() {
+                refreshProjectTree();
+            }
+
+            @Override
+            public void openFile(Path file) {
+                VintelliShell.this.openFile(file, 0);
+            }
+
+            @Override
+            public boolean pendingFocus() {
+                return pendingProjectFocus;
+            }
+
+            @Override
+            public void clearPendingFocus() {
+                pendingProjectFocus = false;
+            }
+
+            @Override
+            public void releaseSplitterDrag() {
+                if (splitterDrag != null) {
+                    finishSplitterDrag();
+                }
+            }
+
+            @Override
+            public EventResult splitterMouse(MouseEvent mouse) {
+                return handleSplitterMouse(mouse);
+            }
+        };
     }
 
     private void discoverProjectFiles() {
         frameLock.lock();
         try {
-            if (projectFilesLoading) {
+            if (projects.filesLoading()) {
                 refreshProjectTree();
             }
         } catch (Exception unavailable) {
-            projectFiles = List.of();
-            projectFilesLoading = false;
-            visibleNodeObjects = List.of();
-            rootNodes.clear();
-            projectList.items(List.of("Project files unavailable"));
-            state.selectFile("");
-            status = "Project files unavailable: " + unavailable.getMessage();
+            projects.markUnavailable(unavailable.getMessage());
         } finally {
             frameLock.unlock();
         }
@@ -963,7 +977,12 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     public void refreshProjectTree() {
         refreshReadFileSummary();
-        refreshProjectTree(true);
+        frameLock.lock();
+        try {
+            projects.refresh(true);
+        } finally {
+            frameLock.unlock();
+        }
     }
 
     public void refresh() {
@@ -978,186 +997,6 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         refreshProjectTree();
     }
 
-    private void refreshProjectTree(boolean updateStatus) {
-        frameLock.lock();
-        try {
-            if (projectSearch == null) {
-                return;
-            }
-            List<Path> files = projectSearch.listFiles();
-            List<Path> directories = projectSearch.listDirectories();
-            Set<Path> directoryPaths = new HashSet<>(directories);
-            List<Path> entries = new ArrayList<>(directories);
-            entries.addAll(files);
-            List<Path> filtered = showHiddenFiles ? entries
-                    : entries.stream().filter(path -> {
-                        for (int i = 0; i < path.getNameCount(); i++) {
-                            if (path.getName(i).toString().startsWith(".")) {
-                                return false;
-                            }
-                        }
-                        return true;
-                    }).toList();
-            buildProjectTree(filtered, directoryPaths);
-            String previous = (projectFiles == null || projectFiles.isEmpty()) ? ""
-                    : (projectList.selected() >= 0 && projectList.selected() < projectFiles.size()
-                            ? projectFiles.get(projectList.selected()) : "");
-            recomputeVisible(previous);
-            projectFilesLoading = false;
-            if (updateStatus) {
-                status = visibleNodeObjects.isEmpty() ? "No project files found" : "Project files loaded";
-            }
-        } finally {
-            frameLock.unlock();
-        }
-    }
-
-    private void buildProjectTree(List<Path> files, Set<Path> directoryPaths) {
-        Set<Path> expanded = new HashSet<>();
-        collectExpanded(rootNodes, expanded);
-        List<ProjectNode> newRoots = new ArrayList<>();
-        Map<Path, ProjectNode> byPath = new HashMap<>();
-        for (Path file : files) {
-            ProjectNode parent = null;
-            Path accumulated = Path.of("");
-            for (int i = 0; i < file.getNameCount(); i++) {
-                accumulated = accumulated.resolve(file.getName(i));
-                boolean leaf = i == file.getNameCount() - 1;
-                ProjectNode node = byPath.get(accumulated);
-                if (node == null) {
-                    node = new ProjectNode(accumulated, file.getName(i).toString(), !leaf || directoryPaths.contains(accumulated));
-                    node.expanded = expanded.contains(accumulated);
-                    node.parent = parent;
-                    node.children = new ArrayList<>();
-                    byPath.put(accumulated, node);
-                    if (parent == null) {
-                        newRoots.add(node);
-                    } else {
-                        parent.children.add(node);
-                    }
-                } else if (!leaf) {
-                    node.directory = true;
-                }
-                parent = node;
-            }
-        }
-        sortProjectNodes(newRoots);
-        rootNodes.clear();
-        rootNodes.addAll(newRoots);
-    }
-
-    private static void collectExpanded(List<ProjectNode> nodes, Set<Path> expanded) {
-        for (ProjectNode node : nodes) {
-            if (node.expanded) {
-                expanded.add(node.relative);
-            }
-            collectExpanded(node.children, expanded);
-        }
-    }
-
-    private void sortProjectNodes(List<ProjectNode> nodes) {
-        if (nodes == null || nodes.size() < 2) {
-            if (nodes != null) {
-                for (ProjectNode node : new ArrayList<>(nodes)) {
-                    if (node != null && node.children != null && !node.children.isEmpty()
-                            && node.children != nodes) {
-                        sortProjectNodes(node.children);
-                    }
-                }
-            }
-            return;
-        }
-        List<ProjectNode> sorted = new ArrayList<>(nodes);
-        sorted.sort(Comparator.comparing((ProjectNode node) -> !node.directory)
-                .thenComparing(node -> node.name));
-        nodes.clear();
-        nodes.addAll(sorted);
-        for (ProjectNode node : new ArrayList<>(nodes)) {
-            if (node != null && node.children != null && !node.children.isEmpty()
-                    && node.children != nodes) {
-                sortProjectNodes(node.children);
-            }
-        }
-    }
-
-    private void recomputeVisible(String previousSelection) {
-        List<ProjectNode> objects = new ArrayList<>();
-        appendVisible(rootNodes, objects);
-        visibleNodeObjects = List.copyOf(objects);
-        List<String> paths = new ArrayList<>();
-        for (ProjectNode node : objects) {
-            paths.add(node.relative.toString().replace('\\', '/'));
-        }
-        projectFiles = List.copyOf(paths);
-        List<String> labels = new ArrayList<>();
-        for (ProjectNode node : objects) {
-            labels.add(projectNodeLabel(node));
-        }
-        projectList.items(labels.isEmpty() ? List.of("No project files found") : labels);
-        int index = paths.indexOf(previousSelection);
-        if (index < 0 && !paths.isEmpty()) {
-            index = 0;
-        }
-        if (index >= 0) {
-            projectList.selected(index);
-        } else {
-            projectList.selected(0);
-        }
-        syncedFileIndex = projectList.selected();
-        if (paths.isEmpty()) {
-            state.selectFile("");
-        } else {
-            int selected = projectList.selected();
-            if (selected >= 0 && selected < paths.size()) {
-                state.selectFile(paths.get(selected));
-            }
-        }
-    }
-
-    private String projectNodeLabel(ProjectNode node) {
-        StringBuilder label = new StringBuilder(" ".repeat(projectDepth(node) * PROJECT_INDENT_WIDTH));
-        if (node.directory) {
-            label.append(disclosureGlyph(node)).append(' ');
-        } else {
-            label.append(vcsSlot(node.relative.toString()));
-        }
-        return label.append((node.directory ? fileIcons.folderIconFor(node.name) : fileIcons.iconFor(node.name))
-                .symbol(fileIcons.mode())).append(' ').append(node.name).toString();
-    }
-
-    private String disclosureGlyph(ProjectNode node) {
-        if (fileIcons.mode() == IconMode.NERD) {
-            return node.expanded ? "" : "";
-        }
-        if (unicodeProjectTree) {
-            return node.expanded ? "▾" : "▸";
-        }
-        return node.expanded ? "-" : "+";
-    }
-
-    private String vcsSlot(String relative) {
-        VersionControlCapability.State state = vcsStates.get(relative.replace('\\', '/'));
-        return state == null ? "  " : vcsMarker(state) + " ";
-    }
-
-    private static int projectDepth(ProjectNode node) {
-        int depth = 0;
-        for (ProjectNode parent = node.parent; parent != null; parent = parent.parent) {
-            depth++;
-        }
-        return depth;
-    }
-
-    private void appendVisible(List<ProjectNode> nodes, List<ProjectNode> output) {
-        for (ProjectNode node : nodes) {
-            output.add(node);
-            if (node.directory && node.expanded && node.children != null) {
-                appendVisible(node.children, output);
-            }
-        }
-        refreshVcs();
-    }
-
     /**
      * A caller is whichever thread the runner or the event router drives: the
      * returned element delegates every render and input call to the wrapped
@@ -1166,7 +1005,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
      * frame or an inspect render.
      */
     private Element locked(Element delegate) {
-        return new LockedElement(delegate, frameLock, null, false, false);
+        return new LockedElement(delegate, frameLock, null, false);
     }
 
     private Element centerPanel() {
@@ -1183,7 +1022,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         centerPanel.add(editorPane);
         centerPanel.add(paneSeparatorHorizontal);
         centerPanel.fill();
-        return new LockedElement(centerPanel, frameLock, this, false, false);
+        return new LockedElement(centerPanel, frameLock, this, false);
     }
 
     private static Column separator(String id) {
@@ -1213,7 +1052,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         List<StatusBarWidget> widgets = new ArrayList<>();
         String shellMessage = status.replace(" | IDEA MCP: disconnected", "");
         widgets.add(new StatusBarWidget("shell", 0, shellMessage, compactShellStatus(shellMessage)));
-        if (projectInputMode != InputMode.NONE || vcsPrompt != VcsPrompt.NONE || pendingDeletePath != null) {
+        if (projects.inputActive() || vcsPrompt != VcsPrompt.NONE || projects.deletePending()) {
             return List.copyOf(widgets);
         }
         if (capabilityRegistry != null) {
@@ -1374,7 +1213,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         if (splitterResult == EventResult.HANDLED) {
             return splitterResult;
         }
-        if (mouse.isClick() && projectClicked(mouse)) {
+        if (mouse.isClick() && projectPanel.clicked(mouse)) {
             return EventResult.HANDLED;
         }
         if (mouse.isClick() && editor != null) {
@@ -1622,10 +1461,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 return EventResult.HANDLED;
             }
         }
-        if (projectInputMode != InputMode.NONE && handleProjectKey(key)) {
+        if (projects.inputActive() && projectPanel.handleKey(key)) {
             return EventResult.HANDLED;
         }
-        if (pendingDeletePath != null) {
+        if (projects.deletePending()) {
             if (key.isCharIgnoreCase('y')) {
                 deleteSelectedConfirmed();
                 return EventResult.HANDLED;
@@ -1998,58 +1837,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     private void openSelectedFile() {
-        if (projectFiles.isEmpty()) {
-            status = projectFilesLoading ? "Loading project files..." : "No project files found";
-            return;
-        }
-        ProjectNode selected = selectedProjectNode();
-        if (selected != null && selected.directory) {
-            selected.expanded = !selected.expanded;
-            recomputeVisible(projectFiles.get(Math.min(projectList.selected(), projectFiles.size() - 1)));
-            status = (selected.expanded ? "Expanded " : "Collapsed ") + selected.relative;
-            return;
-        }
-        openFile(Path.of(projectFiles.get(projectList.selected())), 0);
-    }
-
-    /**
-     * Routes a left press on the project list. A press on a row selects it and
-     * focuses the panel; a second press on the same row within the double click
-     * window, or a press on the expand marker of a directory, does what Enter
-     * does. A press below the last row or on the scrollbar column only focuses
-     * the panel. While a new name or a rename is being typed, or a delete waits
-     * for confirmation, the press changes nothing, so the pending target and the
-     * typed input stay as they are.
-     *
-     * @return true when the press landed on the project list and was consumed
-     */
-    private boolean projectClicked(MouseEvent mouse) {
-        Rect area = projectList.renderedArea();
-        if (!shellLayout.isProjectVisible() || !contains(area, mouse)) {
-            return false;
-        }
-        if (projectInputMode != InputMode.NONE) {
-            updateProjectPrompt();
-            return true;
-        }
-        if (pendingDeletePath != null) {
-            return true;
-        }
-        focusProjectPanel();
-        int index = projectTop + mouse.y() - area.y();
-        boolean scrollbarColumn = projectFiles.size() > area.height() && mouse.x() >= area.right() - 1;
-        if (index < 0 || index >= projectFiles.size() || scrollbarColumn) {
-            projectDoubleClick.reset();
-            return true;
-        }
-        projectList.selected(index);
-        syncFileSelection();
-        boolean doubled = projectDoubleClick.register(index, clock.getAsLong());
-        ProjectNode node = selectedProjectNode();
-        if (doubled || (node != null && onExpandMarker(node, mouse.x(), area))) {
-            openSelectedFile();
-        }
-        return true;
+        projects.activateSelected().ifPresent(file -> openFile(file, 0));
     }
 
     private void focusProjectPanel() {
@@ -2061,41 +1849,6 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         if (manager != null) {
             manager.setFocus("project-panel");
         }
-    }
-
-    /**
-     * The column span of the disclosure glyph of a directory row. The row is drawn
-     * by {@link #projectNodeLabel(ProjectNode)} after the highlight symbol, with
-     * two columns per ancestor and then the glyph slot, so the geometry here
-     * follows that label layout.
-     */
-    private boolean onExpandMarker(ProjectNode node, int x, Rect area) {
-        if (!node.directory) {
-            return false;
-        }
-        int start = area.x() + PROJECT_HIGHLIGHT_WIDTH + projectDepth(node) * PROJECT_INDENT_WIDTH;
-        return x >= start && x < start + PROJECT_MARKER_WIDTH;
-    }
-
-    /**
-     * Keeps the index of the first drawn row in step with the list. TamboUI keeps
-     * the list offset private; with auto scroll it changes only to bring the
-     * selected row into view, so this applies the same rule on every render
-     * and a click maps to the row that is drawn under the pointer.
-     */
-    private void trackProjectScroll(int visibleRows) {
-        if (visibleRows <= 0) {
-            return;
-        }
-        int total = Math.max(1, projectFiles.size());
-        int selected = Math.clamp(projectList.selected(), 0, total - 1);
-        int top = projectTop;
-        if (selected < top) {
-            top = selected;
-        } else if (selected >= top + visibleRows) {
-            top = selected - visibleRows + 1;
-        }
-        projectTop = Math.clamp(top, 0, Math.max(0, total - visibleRows));
     }
 
     private void openFile(Path file, int line) {
@@ -2217,7 +1970,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             return;
         }
         adoptDefaultSizes();
-        setProjectWidth(projectList.renderedArea().width() + delta);
+        setProjectWidth(projectPanel.renderedArea().width() + delta);
         layoutDock.leftWidth(Constraint.length(leftRegionWidth(sizedProjectWidth())));
         persistLayout();
         status = "Project panel: " + sizedProjectWidth() + " columns";
@@ -2266,7 +2019,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         if (shellArea.width() > 0) {
             return shellArea.width() - TOOL_STRIP_WIDTH;
         }
-        Rect project = projectList.renderedArea();
+        Rect project = projectPanel.renderedArea();
         Rect center = centerPanel == null ? Rect.ZERO : centerPanel.renderedArea();
         return project.width() + center.width();
     }
@@ -2386,7 +2139,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         String editorUnavailable = editor == null ? "Built-in editor unavailable"
                 : hasDocument ? "" : "Open a project file first";
         addMenu(entries, "File", KeyActions.OPEN_FILE, "Open Selected File",
-                editor == null ? "Built-in editor unavailable" : projectFiles.isEmpty() ? "No project files found" : "");
+                editor == null ? "Built-in editor unavailable" : projects.fileCount() == 0 ? "No project files found" : "");
         addMenu(entries, "File", KeyActions.SAVE, "Save", canEdit ? "" : editorUnavailable);
         addMenu(entries, "File", KeyActions.CLOSE_TAB, "Close Editor Tab", canEdit ? "" : editorUnavailable);
         addMenu(entries, "File", KeyActions.QUIT, "Quit", "");
@@ -2540,35 +2293,12 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             if (request != vcsRefreshSequence.get()) { return; }
             toolbarVcsSequence.incrementAndGet();
             toolbarVcs = toolbar;
-            vcsStates = Map.copyOf(states);
-            if (editor != null) { editor.vcsStatus(vcsStates, changedLines); }
-            if (!projectFiles.isEmpty()) { projectList.items(projectRows()); }
+            projects.publishVcsStates(states);
+            if (editor != null) { editor.vcsStatus(projects.vcsStates(), changedLines); }
             status = newStatus;
         } finally {
             frameLock.unlock();
         }
-    }
-
-    private List<String> projectRows() {
-        if (visibleNodeObjects.isEmpty()) {
-            return projectFiles.stream().map(file -> vcsDecorated(file, file)).toList();
-        }
-        return visibleNodeObjects.stream().map(this::projectNodeLabel).toList();
-    }
-
-    private String vcsDecorated(String relative, String label) {
-        VersionControlCapability.State state = vcsStates.get(relative.replace('\\', '/'));
-        return state == null ? label : vcsMarker(state) + " " + label;
-    }
-
-    private static String vcsMarker(VersionControlCapability.State state) {
-        return switch (state) {
-            case ADDED -> "A";
-            case DELETED -> "D";
-            case MODIFIED -> "M";
-            case UNTRACKED -> "?";
-            case UNMERGED -> "!";
-        };
     }
 
     static Set<Integer> changedLines(String diffText) {
@@ -2979,42 +2709,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     public void moveSelection(int delta) {
-        if (projectFiles.isEmpty()) {
-            status = projectFilesLoading ? "Loading project files..." : "No project files found";
-            return;
-        }
-        int selected = projectList.selected();
-        int target = Math.clamp(selected + delta, 0, projectFiles.size() - 1);
-        if (target != selected) {
-            projectList.selected(target);
-            syncFileSelection();
-        }
+        projects.moveSelection(delta);
     }
 
-    /**
-     * Reads the selection back from the project list, the single source of
-     * truth, and mirrors it into the {@code ShellStateSnapshot} read model
-     * and the status line whenever it moved outside of this handler, which is
-     * where the focused list consumes arrows, page keys, Home/End and the wheel.
-     */
     private void syncFileSelection() {
-        if (projectFiles.isEmpty()) {
-            syncedFileIndex = projectList.selected();
-            state.selectFile("");
-            // Only report the loading/empty state; do not overwrite an action status
-            // that was set after the last frame (e.g. save, toggle).
-            if (projectFilesLoading) {
-                status = "Loading project files...";
-            }
-            return;
-        }
-        int selected = projectList.selected();
-        if (selected == syncedFileIndex) {
-            return;
-        }
-        syncedFileIndex = selected;
-        state.selectFile(projectFiles.get(selected));
-        status = "Selected: " + projectFiles.get(selected);
+        projects.syncSelection();
     }
 
     private void releaseCapture() {
@@ -3151,16 +2850,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             editor.requestFocus();
         } else if (Files.isDirectory(path)) {
             Path relative = projectRoot.relativize(path);
-            Path accumulated = Path.of("");
-            for (Path part : relative) {
-                accumulated = accumulated.resolve(part);
-                ProjectNode node = findProjectNode(accumulated.toString().replace('\\', '/'));
-                if (node != null) {
-                    node.expanded = true;
-                }
-            }
+            projects.expandPrefixes(relative);
             refreshProjectTree();
-            selectPath(relative.toString().replace('\\', '/'));
+            projects.selectPath(relative.toString().replace('\\', '/'));
             requestProjectFocus();
         } else {
             revealFile(path);
@@ -3301,8 +2993,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 activeToolIndexByAnchor.put(anchor, 0);
             }
         }
-        state.selectFile(projectFiles.isEmpty() ? "" : projectFiles.getFirst());
-        syncedFileIndex = 0;
+        projects.resetSync();
         status = "Vintelli ready | IDEA MCP: disconnected | ACP: stopped";
         KeymapParts current = overlays;
         if (current != null) {
@@ -3320,11 +3011,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     public int fileIndex() {
-        return projectList.selected();
+        return projects.selected();
     }
 
     public List<String> projectFiles() {
-        return projectFiles;
+        return projects.files();
     }
 
     public Path projectRoot() {
@@ -3332,230 +3023,49 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     public Path selectedPath() {
-        int selected = projectList.selected();
-        if (selected < 0 || selected >= projectFiles.size()) {
-            return null;
-        }
-        return projectRoot.resolve(projectFiles.get(selected));
+        return projects.selectedPath().orElse(null);
     }
 
     public String selectedPathString() {
-        int selected = projectList.selected();
-        if (selected < 0 || selected >= projectFiles.size()) {
-            return "";
-        }
-        return projectFiles.get(selected);
-    }
-
-    private ProjectNode selectedProjectNode() {
-        int selected = projectList.selected();
-        if (selected < 0 || selected >= visibleNodeObjects.size()) {
-            return null;
-        }
-        return visibleNodeObjects.get(selected);
+        return projects.selectedRelative().orElse("");
     }
 
     public void expandSelected() {
-        ProjectNode node = selectedProjectNode();
-        if (node != null && node.directory && !node.expanded) {
-            node.expanded = true;
-            recomputeVisible(selectedPathString());
-            status = "Expanded " + node.relative;
-        }
+        projects.expandSelected();
     }
 
     public void collapseSelected() {
-        ProjectNode node = selectedProjectNode();
-        if (node != null && node.directory && node.expanded) {
-            node.expanded = false;
-            recomputeVisible(selectedPathString());
-            status = "Collapsed " + node.relative;
-        }
+        projects.collapseSelected();
     }
 
     public void toggleSelected() {
-        ProjectNode node = selectedProjectNode();
-        if (node != null && node.directory) {
-            node.expanded = !node.expanded;
-            recomputeVisible(selectedPathString());
-            status = (node.expanded ? "Expanded " : "Collapsed ") + node.relative;
-        }
+        projects.toggleSelected();
     }
 
     private void beginProjectInput(InputMode mode) {
-        if (fileOperations == null) {
-            status = "Project file operations unavailable";
-            return;
+        if (projects.beginInput(mode)) {
+            requestProjectFocus();
         }
-        if (mode == InputMode.RENAME && selectedProjectNode() == null) {
-            status = "No selection";
-            return;
-        }
-        projectInputMode = mode;
-        projectInput.setLength(0);
-        requestProjectFocus();
-        updateProjectPrompt();
-    }
-
-    private void updateProjectPrompt() {
-        String label = switch (projectInputMode) {
-            case CREATE_FILE -> "New file";
-            case CREATE_DIRECTORY -> "New directory";
-            case RENAME -> "Rename";
-            case NONE -> "";
-        };
-        status = label + ": " + projectInput + " (Enter to confirm, Escape to cancel)";
-    }
-
-    private boolean handleProjectKey(KeyEvent key) {
-        if (projectInputMode != InputMode.NONE) {
-            if (key.isKey(KeyCode.ESCAPE)) {
-                projectInputMode = InputMode.NONE;
-                status = "Project action cancelled";
-            } else if (key.isKey(KeyCode.ENTER)) {
-                String name = projectInput.toString();
-                InputMode mode = projectInputMode;
-                projectInputMode = InputMode.NONE;
-                switch (mode) {
-                    case CREATE_FILE -> createFile(name);
-                    case CREATE_DIRECTORY -> createDirectory(name);
-                    case RENAME -> renameSelected(name);
-                    case NONE -> { }
-                }
-            } else if (key.isKey(KeyCode.BACKSPACE) && !projectInput.isEmpty()) {
-                projectInput.delete(projectInput.offsetByCodePoints(projectInput.length(), -1), projectInput.length());
-                updateProjectPrompt();
-            } else if (key.code() == KeyCode.CHAR && key.codePoint() >= 32 && !key.hasCtrl() && !key.hasAlt()) {
-                projectInput.appendCodePoint(key.codePoint());
-                updateProjectPrompt();
-            }
-            return true;
-        }
-        if (pendingDeletePath != null) {
-            if (key.isCharIgnoreCase('y')) {
-                deleteSelectedConfirmed();
-            } else if (key.isCharIgnoreCase('n') || key.isKey(KeyCode.ESCAPE)) {
-                cancelDelete();
-            }
-            return true;
-        }
-        KeymapParts parts = overlays();
-        if (inputCaptured || parts.menuPopup().isOpen() || parts.commandPalette().isOpen()
-                || parts.keymapHelp().isOpen() || (parts.searchModel() != null && parts.searchModel().isOpen())) {
-            return false;
-        }
-        if (parts.keymap().matches(key, KeyActions.PROJECT_NEW_FILE)) {
-            beginProjectInput(InputMode.CREATE_FILE);
-        } else if (parts.keymap().matches(key, KeyActions.PROJECT_NEW_DIRECTORY)) {
-            beginProjectInput(InputMode.CREATE_DIRECTORY);
-        } else if (parts.keymap().matches(key, KeyActions.PROJECT_RENAME)) {
-            beginProjectInput(InputMode.RENAME);
-        } else if (parts.keymap().matches(key, KeyActions.PROJECT_DELETE)) {
-            requestDeleteSelected();
-        } else if (parts.keymap().matches(key, KeyActions.PROJECT_REFRESH)) {
-            refreshProjectTree();
-        } else {
-            return false;
-        }
-        return true;
     }
 
     public boolean createFile(String name) {
-        return createEntry(name, false);
+        return projects.createFile(name);
     }
 
     public boolean createDirectory(String name) {
-        return createEntry(name, true);
-    }
-
-    private boolean createEntry(String name, boolean directory) {
-        if (name == null || name.isBlank()) {
-            status = "A name is required";
-            return false;
-        }
-        ProjectNode parent = selectedProjectNode();
-        if (parent != null && !parent.directory) {
-            parent = parent.parent;
-        }
-        if (fileOperations == null) {
-            status = "Project file operations unavailable";
-            return false;
-        }
-        Path parentRelative = parent == null ? Path.of("") : parent.relative;
-        CapabilityResult<Path> result = directory ? fileOperations.createDirectory(parentRelative, name)
-                : fileOperations.createFile(parentRelative, name);
-        if (result instanceof CapabilityResult.Failed<Path> failed) {
-            status = "Create failed: " + failed.failure().detail();
-            return false;
-        }
-        if (name.startsWith(".")) {
-            showHiddenFiles = true;
-        }
-        if (parent != null) {
-            parent.expanded = true;
-        }
-        Path newRelative = parentRelative.resolve(name);
-        refreshProjectTree();
-        selectPath(newRelative.toString().replace('\\', '/'));
-        status = (directory ? "Directory" : "File") + " created: " + newRelative;
-        return true;
+        return projects.createDirectory(name);
     }
 
     public boolean renameSelected(String newName) {
-        ProjectNode node = selectedProjectNode();
-        if (node == null) {
-            status = "No selection";
-            return false;
-        }
-        if (newName == null || newName.isBlank()) {
-            status = "A name is required";
-            return false;
-        }
-        if (fileOperations == null) {
-            status = "Project file operations unavailable";
-            return false;
-        }
-        CapabilityResult<Path> result = fileOperations.rename(node.relative, newName);
-        if (result instanceof CapabilityResult.Failed<Path> failed) {
-            status = "Rename failed: " + failed.failure().detail();
-            return false;
-        }
-        Path parent = node.relative.getParent();
-        Path newRelative = parent == null ? Path.of(newName) : parent.resolve(newName);
-        refreshProjectTree();
-        selectPath(newRelative.toString().replace('\\', '/'));
-        status = "Renamed to " + newName;
-        return true;
+        return projects.renameSelected(newName);
     }
 
     public void requestDeleteSelected() {
-        ProjectNode node = selectedProjectNode();
-        if (node == null) {
-            status = "No selection";
-            return;
-        }
-        pendingDeletePath = node.relative.toString().replace('\\', '/');
-        status = "Delete '" + node.name + "'? (y/n)";
+        projects.requestDelete();
     }
 
     public boolean deleteSelectedConfirmed() {
-        if (pendingDeletePath == null || pendingDeletePath.isBlank()) {
-            return false;
-        }
-        if (fileOperations == null) {
-            status = "Project file operations unavailable";
-            return false;
-        }
-        CapabilityResult<Path> result = fileOperations.delete(Path.of(pendingDeletePath));
-        if (result instanceof CapabilityResult.Failed<Path> failed) {
-            status = "Delete failed: " + failed.failure().detail();
-            return false;
-        }
-        String deleted = pendingDeletePath;
-        pendingDeletePath = null;
-        refreshProjectTree();
-        status = "Deleted " + deleted;
-        return true;
+        return projects.confirmDelete();
     }
 
     public void confirmDelete() {
@@ -3563,48 +3073,29 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     public void cancelDelete() {
-        pendingDeletePath = null;
-        status = "Delete cancelled";
+        projects.cancelDelete();
     }
 
     public boolean isDeletePending() {
-        return pendingDeletePath != null;
+        return projects.deletePending();
     }
 
     public void copySelectedPath() {
-        ProjectNode node = selectedProjectNode();
-        if (node == null) {
-            status = "No selection";
-            return;
-        }
-        copiedPath = projectRoot.resolve(node.relative.toString().replace('/', java.io.File.separatorChar));
-        status = "Copied path: " + copiedPath;
+        projects.copySelectedPath();
     }
 
     public Path copiedPath() {
-        return copiedPath;
+        return projects.copiedPath();
     }
 
     public void revealFile(Path file) {
         if (file == null) {
             return;
         }
-        try {
-            Path relative = projectRoot.toAbsolutePath().normalize()
-                    .relativize(file.toAbsolutePath().normalize());
-            String relativeText = relative.toString().replace('\\', '/');
-            Path accumulated = Path.of("");
-            for (Path part : relative) {
-                accumulated = accumulated.resolve(part);
-                ProjectNode node = findProjectNode(accumulated.toString().replace('\\', '/'));
-                if (node != null) {
-                    node.expanded = true;
-                }
-            }
+        String relative = projects.expandToFile(file);
+        if (relative != null) {
             refreshProjectTree();
-            selectPath(relativeText);
-        } catch (IllegalArgumentException outside) {
-            status = "File outside project";
+            projects.selectPath(relative);
         }
     }
 
@@ -3617,53 +3108,22 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     public void toggleShowHiddenFiles() {
-        setShowHiddenFiles(!showHiddenFiles);
+        setShowHiddenFiles(!projects.showHidden());
     }
 
     public void setShowHiddenFiles(boolean value) {
-        showHiddenFiles = value;
+        projects.setShowHidden(value);
         if (projectSearch != null) {
             refreshProjectTree();
         }
     }
 
     public boolean showHiddenFiles() {
-        return showHiddenFiles;
-    }
-
-    private ProjectNode findProjectNode(String relative) {
-        List<ProjectNode> current = rootNodes;
-        ProjectNode found = null;
-        Path accumulated = Path.of("");
-        for (String part : relative.split("/")) {
-            if (part.isBlank()) {
-                continue;
-            }
-            accumulated = accumulated.resolve(part);
-            ProjectNode next = null;
-            for (ProjectNode candidate : current) {
-                if (candidate.relative.equals(accumulated)) {
-                    next = candidate;
-                    break;
-                }
-            }
-            if (next == null) {
-                return null;
-            }
-            found = next;
-            current = next.children == null ? List.of() : next.children;
-        }
-        return found;
+        return projects.showHidden();
     }
 
     public void selectPath(String relative) {
-        int index = projectFiles.indexOf(relative);
-        if (index >= 0) {
-            projectList.selected(index);
-            syncedFileIndex = index;
-            state.selectFile(relative);
-            status = "Selected: " + relative;
-        }
+        projects.selectPath(relative);
     }
 
     public String status() {
@@ -3725,7 +3185,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
      * focus chain and the cascade identical to the unwrapped tree.
      */
     private record LockedElement(Element delegate, ReentrantLock lock, VintelliShell projectOwner,
-            boolean projectFocusOwner, boolean shellRoot) implements Element {
+            boolean shellRoot) implements Element {
 
         @Override
         public void render(Frame frame, Rect area, RenderContext context) {
@@ -3736,14 +3196,6 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                     if (context instanceof DefaultRenderContext drc) {
                         projectOwner.focusManager = drc.focusManager();
                     }
-                }
-                if (projectFocusOwner && projectOwner != null && projectOwner.pendingProjectFocus
-                        && context instanceof DefaultRenderContext drc) {
-                    drc.focusManager().setFocus("project-panel");
-                    projectOwner.pendingProjectFocus = false;
-                }
-                if (projectFocusOwner && projectOwner != null) {
-                    projectOwner.trackProjectScroll(area.height());
                 }
                 delegate.render(frame, area, context);
             } finally {
@@ -3762,9 +3214,6 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             try {
                 if (projectOwner != null && projectOwner.splitterDrag != null) {
                     projectOwner.finishSplitterDrag();
-                }
-                if (focused && projectFocusOwner && projectOwner != null && projectOwner.handleProjectKey(event)) {
-                    return EventResult.HANDLED;
                 }
                 return delegate.handleKeyEvent(event, focused);
             } finally {
@@ -3811,22 +3260,4 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         void draw(Frame frame, Rect area);
     }
 
-    private static final class ProjectNode {
-        Path relative;
-        String name;
-        boolean directory;
-        List<ProjectNode> children = new ArrayList<>();
-        ProjectNode parent;
-        boolean expanded;
-
-        ProjectNode(Path relative, String name, boolean directory) {
-            this.relative = relative;
-            this.name = name;
-            this.directory = directory;
-        }
-    }
-
-    private enum InputMode {
-        NONE, CREATE_FILE, CREATE_DIRECTORY, RENAME
-    }
 }
