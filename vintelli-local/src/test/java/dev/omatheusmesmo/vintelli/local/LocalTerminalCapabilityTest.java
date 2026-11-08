@@ -166,7 +166,7 @@ class LocalTerminalCapabilityTest {
             awaitLine(session, "42");
 
             session.clearOutput();
-            assertFalse(session.output().contains("42"), () -> "cleared output still holds 42: " + session.output());
+            assertFalse(outputContainsLine(session, "42"), () -> "cleared output still holds 42: " + session.output());
 
             session.write("echo 49\r".getBytes(StandardCharsets.UTF_8));
             awaitLine(session, "49");
@@ -176,7 +176,12 @@ class LocalTerminalCapabilityTest {
     }
 
     private static void awaitLine(TerminalSession session, String expected) {
-        TestProcesses.awaitUntil(Duration.ofSeconds(10), () -> session.output().contains(expected));
+        try {
+            TestProcesses.awaitUntil(Duration.ofSeconds(10), () -> outputContainsLine(session, expected));
+        } catch (AssertionError timeout) {
+            throw new AssertionError("Timed out waiting for line " + expected + "; terminal output was: "
+                    + session.output(), timeout);
+        }
     }
 
     private static String workingDirectoryCommand(String marker) {
