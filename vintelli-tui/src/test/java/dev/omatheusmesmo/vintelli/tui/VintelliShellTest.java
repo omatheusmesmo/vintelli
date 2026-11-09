@@ -4058,6 +4058,20 @@ class VintelliShellTest {
         return text.toString();
     }
 
+    @Test
+    void theProjectPaneToneFollowsTheThemeAndTheEditorStaysAnIsland() {
+        for (String name : List.of("dark", "darcula")) {
+            ShellThemes themes = new ShellThemes(name, (Path) null);
+            Buffer buffer = offlineFrame(defaultShell(themes));
+            String projectTone = name.equals("darcula") ? "panel" : "editor-bg";
+
+            assertEquals(themes.color(projectTone), cellBg(buffer, 6, 12),
+                    name + ": the project pane is drawn in the " + projectTone + " tone");
+            assertEquals(themes.color("editor-bg"), cellBg(buffer, 60, 5),
+                    name + ": the editor island is drawn in the editor-bg tone");
+        }
+    }
+
     private static Buffer offlineFrame(VintelliShell shell) {
         return offlineFocusFrame(shell, shell.themes(), null);
     }

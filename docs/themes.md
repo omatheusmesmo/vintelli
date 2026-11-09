@@ -74,8 +74,9 @@ Themes are configurable at three levels:
 
 The chrome palette (menu bar, tab bar, pane headers, the gaps and corners between pane islands, status bar) and the
 editor palette (`$editor-*`: text, keywords, strings and comments) live in
-separate sections of each stylesheet. The pane islands take `$editor-bg` and the
-frame takes `$panel`. The roles that draw the frame between islands are
+separate sections of each stylesheet. In `dark` the project pane, the tool window tab row and the stripes are
+islands in `$editor-bg` and the frame takes `$panel`. In `darcula`, the classic Darcula chrome, the project pane and the
+stripes stay `$panel` and only the editor and the tool window tab row take `$editor-bg`. The roles that draw the frame between islands are
 `.pane-gap` (island tone over the frame tone, for the half block cells),
 `.pane-corner` (frame tone over the island tone, for the quarter block corners) and
 `.pane-header-rule` (the frame tone that underlines a pane header row).
