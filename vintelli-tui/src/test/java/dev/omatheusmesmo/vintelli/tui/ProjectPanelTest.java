@@ -67,6 +67,33 @@ class ProjectPanelTest {
         assertTrue(render(panel).contains(row(icons, "Notes.java", null)));
     }
 
+    /**
+     * A scan that finishes while the rows are being built, which an executor
+     * that runs the task at once reproduces for a file the refresh did not
+     * revalidate, must not be taken for a scan the panel already drew: the
+     * next frame has to show the kind.
+     */
+    @Test
+    void aScanThatEndsWhileTheRowsAreBuiltIsDrawnOnTheNextFrame() throws IOException {
+        Files.createDirectories(root.resolve("sub"));
+        Files.writeString(root.resolve("sub/Deep.java"), "public enum Deep { ONE }");
+        ProjectTreeController controller = new ProjectTreeController(root, new ShellState(), search(root), null,
+                message -> { }, () -> { }, () -> { }, new JavaTypeKinds(Files::readString, Runnable::run));
+        controller.start();
+        controller.refresh(false);
+        ProjectPanel panel = panel(controller);
+        FileIcons icons = FileIcons.resolve();
+        render(panel);
+        controller.selectPath("sub");
+        controller.expandSelected();
+
+        String firstFrame = render(panel);
+        String secondFrame = render(panel);
+
+        assertTrue(firstFrame.contains("Deep.java"), firstFrame);
+        assertTrue(secondFrame.contains(row(icons, "Deep.java", JavaTypeKind.ENUM)), secondFrame);
+    }
+
     private static String row(FileIcons icons, String name, JavaTypeKind kind) {
         return icons.iconFor(name, kind).symbol(icons.mode()) + " " + name;
     }
@@ -178,7 +205,7 @@ class ProjectPanelTest {
 
             @Override
             public List<Path> listFiles() {
-                try (var files = Files.list(root)) {
+                try (var files = Files.walk(root)) {
                     return files.filter(Files::isRegularFile).map(file -> root.relativize(file)).toList();
                 } catch (IOException failure) {
                     throw new IllegalStateException(failure);

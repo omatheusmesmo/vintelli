@@ -123,9 +123,10 @@ final class ProjectPanel implements Element {
     void useUnicodeTree(boolean unicode) {
         this.unicodeTree = unicode;
         if (controller.fileCount() > 0) {
+            long kinds = controller.javaKindVersion();
             list.items(rows());
             pushedRevision = controller.revision();
-            pushedJavaKinds = controller.javaKindVersion();
+            pushedJavaKinds = kinds;
             pushedUnicode = unicode;
         }
     }
@@ -421,9 +422,10 @@ final class ProjectPanel implements Element {
     private void pushSelection() {
         if (pushedRevision != controller.revision() || pushedUnicode != unicodeTree
                 || pushedLeft != controller.leftColumn() || pushedJavaKinds != controller.javaKindVersion()) {
+            long kinds = controller.javaKindVersion();
             list.items(rows());
             pushedRevision = controller.revision();
-            pushedJavaKinds = controller.javaKindVersion();
+            pushedJavaKinds = kinds;
             pushedUnicode = unicodeTree;
             pushedLeft = controller.leftColumn();
         }
