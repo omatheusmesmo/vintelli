@@ -31,20 +31,17 @@ import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityStatus;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
-import dev.omatheusmesmo.vintelli.api.capability.EditorBridge.OpenRequest;
+import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Diagnostic;
 import dev.omatheusmesmo.vintelli.api.statusbar.StatusBarWidgetContributor;
 import dev.tamboui.layout.Constraint;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.terminal.Frame;
-import dev.tamboui.text.Line;
-import dev.tamboui.text.Text;
 import dev.tamboui.toolkit.Toolkit;
 import dev.tamboui.toolkit.element.DefaultRenderContext;
 import dev.tamboui.toolkit.element.Element;
 import dev.tamboui.toolkit.element.RenderContext;
 import dev.tamboui.toolkit.element.Size;
 import dev.tamboui.toolkit.elements.DockElement;
-import dev.tamboui.toolkit.elements.RichTextElement;
 import dev.tamboui.toolkit.elements.Row;
 import dev.tamboui.toolkit.elements.Spacer;
 import dev.tamboui.toolkit.elements.Column;
@@ -58,7 +55,6 @@ import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
 import dev.tamboui.tui.event.MouseEvent;
 import dev.tamboui.tui.event.MouseEventKind;
-import dev.tamboui.style.Style;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -141,12 +137,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private static final int TOOL_TAB_ROWS = ToolTabBarElement.ROWS;
     private static final int BOTTOM_HEIGHT = TOOL_WINDOW_HEIGHT + TOOL_TAB_ROWS + 1;
 
-    private static final int MAX_EDITOR_DIFF_LINES = 6;
-    private static final int MAX_EDITOR_LINE_LENGTH = 40;
-
     private static final List<String> MENUS = List.of("File", "Edit", "View", "Navigate", "Code", "Refactor", "Run", "Tools", "VCS", "Help");
     private static final String EMPTY_TOOL_WINDOWS_TEXT = "no tool window beans registered; implement ToolWindow and expose the bean";
-    private static final String EDITOR_TEXT = "editor tool window lands with issue #31; vintelli needs no external editor";
 
     /**
      * The keymap-driven parts of the shell, built together the first time the
@@ -196,17 +188,14 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private final ProjectTreeController projects;
     private final VcsActions vcsActions;
     private final ProjectPanel projectPanel;
+    private final EditorController editorController;
+    private final EditorPanel editorPanel;
     private Column centerPanel;
     private Column paneSeparatorVertical;
     private Column paneSeparatorHorizontal;
     private final Path projectRoot;
     private final FileIcons fileIcons;
     private boolean pendingProjectFocus;
-    private boolean navigationBarFocused;
-    private int selectedNavigationSegment;
-    private List<StatusBar.Breadcrumb> navigationPaths = List.of();
-    private Path navigationSymbolsFile;
-    private List<NavigationCapability.DocumentSymbol> navigationSymbols = List.of();
     private volatile Runnable quitAction;
     private volatile KeymapParts overlays;
     private final ThreadLocal<ActionSurface> actionSurface = ThreadLocal.withInitial(() -> ActionSurface.TUI);
@@ -219,8 +208,6 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     @ConfigProperty(name = "vintelli.mcp.allowed-actions", defaultValue = "none")
     private String mcpAllowedActions = "none";
 
-    private volatile ShellHighlightTarget highlight;
-    private volatile ShellUnifiedDiff diff;
     private volatile String status = "Vintelli ready | IDEA MCP: disconnected | ACP: stopped";
     private volatile boolean inputCaptured;
     private volatile ToolWindow capturedWindow;
@@ -362,36 +349,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         this.toolWindows = toolWindows.stream().filter(window -> !(window instanceof BuiltinEditor)).toList();
         this.toolWindows.stream().filter(StructureToolWindow.class::isInstance)
                 .map(StructureToolWindow.class::cast)
-                .forEach(window -> window.setNavigateHandler(symbol -> {
-                    if (editor != null) {
-                        editor.activeDocument().ifPresent(document -> {
-                            releaseCapture();
-                            openFile(Path.of(document.file()), symbol.selectionStartLine());
-                        });
-                    }
-                }));
+                .forEach(window -> window.setNavigateHandler(this::openStructureSymbol));
         this.toolWindows.stream().filter(ProblemsToolWindow.class::isInstance)
                 .map(ProblemsToolWindow.class::cast)
-                .forEach(window -> window.setNavigateHandler(problem -> {
-                    if (editor == null) {
-                        status = "Built-in editor unavailable";
-                        return;
-                    }
-                    try {
-                        Path root = editor.project().toRealPath();
-                        Path file = problem.filePath().isAbsolute() ? problem.filePath() : root.resolve(problem.filePath());
-                        file = file.toRealPath();
-                        if (!file.startsWith(root)) {
-                            status = "Diagnostic file is outside the project";
-                            return;
-                        }
-                        revealFile(file);
-                        releaseCapture();
-                        openFile(file, problem.startLine());
-                    } catch (IOException unavailable) {
-                        status = "Diagnostic file is unavailable";
-                    }
-                }));
+                .forEach(window -> window.setNavigateHandler(this::openDiagnostic));
         Path resolvedRoot = editor == null ? Path.of("").toAbsolutePath().normalize() : editor.project();
         try {
             if (Files.exists(resolvedRoot)) {
@@ -404,6 +365,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 message -> status = message, this::refreshProjectTree, this::refreshVcs);
         this.vcsActions = new VcsActions(vcsProviders, frameLock, message -> status = message, this::show,
                 projects, editor);
+        this.editorController = new EditorController(this.projectRoot, editor, projects, editorHost());
+        this.editorPanel = new EditorPanel(editorController, editor, themes);
         this.fileIcons = FileIcons.resolve();
         Path projectRoot = editor == null ? Path.of("").toAbsolutePath().normalize() : editor.project();
         Path configRoot = persistLayout ? ConfigDirectory.configRoot(ConfigDirectory.sharedConfigDir(),
@@ -910,7 +873,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
             @Override
             public void openFile(Path file) {
-                VintelliShell.this.openFile(file, 0);
+                editorController.openFile(file, 0);
             }
 
             @Override
@@ -935,6 +898,58 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 return handleSplitterMouse(mouse);
             }
         };
+    }
+
+    private EditorController.Host editorHost() {
+        return new EditorController.Host() {
+            @Override
+            public void status(String message) {
+                status = message;
+            }
+
+            @Override
+            public NavigationCapability navigationProvider() {
+                return availableNavigationProvider();
+            }
+
+            @Override
+            public void refreshVcs() {
+                vcsActions.refreshVcsAsync();
+            }
+
+            @Override
+            public void refreshProjectTree() {
+                VintelliShell.this.refreshProjectTree();
+            }
+
+            @Override
+            public void requestProjectFocus() {
+                VintelliShell.this.requestProjectFocus();
+            }
+
+            @Override
+            public void releaseCapture() {
+                VintelliShell.this.releaseCapture();
+            }
+
+            @Override
+            public void takeFocus(String elementId) {
+                inputCaptured = false;
+                focusedToolWindowId = null;
+                FocusManager manager = focusManager;
+                if (manager != null) {
+                    manager.setFocus(elementId);
+                }
+            }
+        };
+    }
+
+    private void openStructureSymbol(NavigationCapability.DocumentSymbol symbol) {
+        editorController.openActiveFileLine(symbol.selectionStartLine());
+    }
+
+    private void openDiagnostic(Diagnostic problem) {
+        editorController.openDiagnostic(problem);
     }
 
     private void discoverProjectFiles() {
@@ -989,7 +1004,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         editorPane.focusable();
         editorPane.add(new EditorHeader("editor-panel",
                 new PaneHeader("editor-panel", () -> "Editor", () -> themes, this::focusMark), editor, this::focusMark));
-        editorPane.add(Toolkit.lazy(this::editorContent));
+        editorPane.add(Toolkit.lazy(editorPanel::content));
         editorPane.fill();
         paneSeparatorHorizontal = separator(PaneGapElement.HORIZONTAL_SEPARATOR);
         paneSeparatorHorizontal.length(bottomWindowsHidden() ? 0 : 1);
@@ -1091,7 +1106,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             return EventResult.HANDLED;
         }
         if (parts.searchModel() != null && parts.searchModel().isOpen()) {
-            parts.searchOverlay().handleMouse(mouse).ifPresent(target -> openRevealed(target.file(), target.line()));
+            parts.searchOverlay().handleMouse(mouse).ifPresent(target -> editorController.openRevealed(target.file(), target.line()));
             return EventResult.HANDLED;
         }
         if (parts.keymapHelp().isOpen()) {
@@ -1121,21 +1136,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         if (mouse.isClick() && projectPanel.clicked(mouse)) {
             return EventResult.HANDLED;
         }
-        if (mouse.isClick() && editor != null) {
-            int tab = editor.tabAt(mouse.x(), mouse.y());
-            if (tab >= 0) {
-                editor.selectTab(tab);
-                editor.requestFocus();
-                status = "Editor tab: " + editor.activeDocument().orElseThrow().file();
-                return EventResult.HANDLED;
-            }
-            int segment = editor.navigationSegmentAt(mouse.x(), mouse.y());
-            if (segment >= 0) {
-                navigateToBreadcrumb(segment);
-                return EventResult.HANDLED;
-            }
+        if (mouse.isClick() && editorPanel.clicked(mouse)) {
+            return EventResult.HANDLED;
         }
-        if (editor != null && editor.handlePointer(mouse)) {
+        if (editorPanel.pointer(mouse)) {
             if (mouse.isPress()) {
                 inputCaptured = false;
                 capturedWindow = null;
@@ -1310,24 +1314,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             return EventResult.UNHANDLED;
         }
         syncFileSelection();
-        if (navigationBarFocused) {
-            if (key.isKey(KeyCode.ESCAPE)) {
-                navigationBarFocused = false;
-                editor.requestFocus();
-                return EventResult.HANDLED;
-            }
-            if (key.isKey(KeyCode.LEFT) || key.isKey(KeyCode.UP)) {
-                selectedNavigationSegment = Math.max(0, selectedNavigationSegment - 1);
-                return EventResult.HANDLED;
-            }
-            if (key.isKey(KeyCode.RIGHT) || key.isKey(KeyCode.DOWN)) {
-                selectedNavigationSegment = Math.min(navigationPaths.size() - 1, selectedNavigationSegment + 1);
-                return EventResult.HANDLED;
-            }
-            if (key.isKey(KeyCode.ENTER) && !navigationPaths.isEmpty()) {
-                navigateToBreadcrumb(selectedNavigationSegment);
-                return EventResult.HANDLED;
-            }
+        if (editorPanel.handleNavigationKey(key)) {
+            return EventResult.HANDLED;
         }
         if (projects.inputActive() && projectPanel.handleKey(key)) {
             return EventResult.HANDLED;
@@ -1387,7 +1375,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             return EventResult.HANDLED;
         }
         if (parts.searchModel() != null && parts.searchModel().isOpen()) {
-            parts.searchOverlay().handleKey(key).ifPresent(target -> openRevealed(target.file(), target.line()));
+            parts.searchOverlay().handleKey(key).ifPresent(target -> editorController.openRevealed(target.file(), target.line()));
             return EventResult.HANDLED;
         }
         if (parts.keymap().matchesReserved(key, KeyActions.MENU)) {
@@ -1513,7 +1501,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         switch (actionId) {
             case KeyActions.FOCUS_NAVIGATION_BAR -> {
                 closeOverlays(parts);
-                focusNavigationBar();
+                editorController.focusNavigationBar();
             }
             case KeyActions.QUIT -> {
                 closeOverlays(parts);
@@ -1543,19 +1531,19 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             }
             case KeyActions.OPEN_FILE -> {
                 closeOverlays(parts);
-                openSelectedFile();
+                editorController.openSelectedFile();
             }
             case KeyActions.SAVE -> {
                 closeOverlays(parts);
-                saveActiveFile();
+                editorController.saveActiveFile();
             }
             case KeyActions.UNDO -> {
                 closeOverlays(parts);
-                editorUndo();
+                editorController.editorUndo();
             }
             case KeyActions.REDO -> {
                 closeOverlays(parts);
-                editorRedo();
+                editorController.editorRedo();
             }
             case KeyActions.FIND, KeyActions.FIND_IN_FILES -> {
                 closeOverlays(parts);
@@ -1567,32 +1555,27 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             }
             case KeyActions.CLOSE_TAB -> {
                 closeOverlays(parts);
-                closeEditorTab();
+                editorController.closeActiveTab();
             }
             case KeyActions.NEXT_TAB -> {
                 closeOverlays(parts);
-                selectEditorTab(true);
+                editorController.selectEditorTab(true);
             }
             case KeyActions.PREVIOUS_TAB -> {
                 closeOverlays(parts);
-                selectEditorTab(false);
+                editorController.selectEditorTab(false);
             }
             case KeyActions.DEFINITION -> {
                 closeOverlays(parts);
-                navigateToSymbol(false);
+                editorController.navigateToSymbol(false);
             }
             case KeyActions.USAGES -> {
                 closeOverlays(parts);
-                navigateToSymbol(true);
+                editorController.navigateToSymbol(true);
             }
             case KeyActions.TOGGLE_IMPORT_FOLD -> {
                 closeOverlays(parts);
-                if (editor == null) {
-                    status = "Built-in editor unavailable";
-                } else {
-                    editor.toggleImportFold();
-                    status = editor.status();
-                }
+                editorController.toggleImportFold();
             }
             case KeyActions.NEXT_PROBLEM -> {
                 closeOverlays(parts);
@@ -1709,62 +1692,14 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         }
     }
 
-    private void openSelectedFile() {
-        projects.activateSelected().ifPresent(file -> openFile(file, 0));
-    }
-
     private void focusProjectPanel() {
         inputCaptured = false;
         capturedWindow = null;
         focusedToolWindowId = null;
-        navigationBarFocused = false;
+        editorController.leaveNavigationBar();
         FocusManager manager = focusManager;
         if (manager != null) {
             manager.setFocus("project-panel");
-        }
-    }
-
-    private void openRevealed(Path file, int line) {
-        revealFile(file);
-        openFile(file, line);
-    }
-
-    private void openFile(Path file, int line) {
-        if (editor == null) {
-            status = "Built-in editor unavailable";
-            return;
-        }
-        if (editor.open(new OpenRequest(file, line)).isFailure()) {
-            status = editor.status();
-            return;
-        }
-        vcsActions.refreshVcsAsync();
-        status = editor.status();
-    }
-
-    private void saveActiveFile() {
-        if (editor == null) {
-            status = "Built-in editor unavailable";
-            return;
-        }
-        editor.save();
-        vcsActions.refreshVcsAsync();
-        status = editor.status();
-    }
-
-    private void editorUndo() {
-        if (editor == null || !editor.undo()) {
-            status = editor == null ? "Built-in editor unavailable" : "Nothing to undo";
-        } else {
-            status = "Undo";
-        }
-    }
-
-    private void editorRedo() {
-        if (editor == null || !editor.redo()) {
-            status = editor == null ? "Built-in editor unavailable" : "Nothing to redo";
-        } else {
-            status = "Redo";
         }
     }
 
@@ -1779,53 +1714,6 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         inputCaptured = false;
         parts.searchModel().open(mode);
         status = mode == ProjectSearchModel.Mode.FILES ? "Go to File: type to filter" : "Find in Files: type to search";
-    }
-
-    private void closeEditorTab() {
-        if (editor == null) {
-            status = "Built-in editor unavailable";
-            return;
-        }
-        BuiltinEditor.CloseResult result = editor.closeActive();
-        status = result == BuiltinEditor.CloseResult.CONFIRM_REQUIRED ? editor.status()
-                : result == BuiltinEditor.CloseResult.EMPTY ? "No editor tab is open" : "Tab closed";
-    }
-
-    private void selectEditorTab(boolean next) {
-        if (editor == null || editor.tabs().isEmpty()) {
-            status = "No editor tab is open";
-            return;
-        }
-        if (next) {
-            editor.nextTab();
-        } else {
-            editor.previousTab();
-        }
-        status = "Editor tab: " + editor.activeDocument().orElseThrow().file();
-    }
-
-    private void navigateToSymbol(boolean references) {
-        if (editor == null || editor.activeDocument().isEmpty()) {
-            status = "Open a project file first";
-            return;
-        }
-        NavigationCapability provider = availableNavigationProvider();
-        if (provider == null) {
-            status = "Navigation provider unavailable";
-            return;
-        }
-        BuiltinEditor.DocumentView document = editor.activeDocument().orElseThrow();
-        NavigationCapability.SourcePosition position = new NavigationCapability.SourcePosition(
-                Path.of(document.file()), document.line(), document.column());
-        CapabilityResult<List<NavigationCapability.Location>> result = references
-                ? provider.references(position, true) : provider.definition(position);
-        if (result instanceof CapabilityResult.Ok<List<NavigationCapability.Location>> ok && !ok.value().isEmpty()) {
-            NavigationCapability.Location location = ok.value().getFirst();
-            openRevealed(location.filePath(), location.line());
-        } else {
-            status = result.failureOf().map(failure -> failure.reason() + ": " + failure.detail())
-                    .orElse(references ? "No usages found" : "No definition found");
-        }
     }
 
     private void nextProblem() {
@@ -2295,174 +2183,12 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     @Override
     public void highlight(ShellHighlightTarget target) {
-        Objects.requireNonNull(target, "target");
-        highlight = target;
+        editorController.pushHighlight(target);
     }
 
     @Override
     public void show(ShellUnifiedDiff unifiedDiff) {
-        Objects.requireNonNull(unifiedDiff, "unifiedDiff");
-        diff = unifiedDiff;
-    }
-
-    private Element editorContent() {
-        ShellHighlightTarget pushed = highlight;
-        ShellUnifiedDiff pushedDiff = diff;
-        // Show pushed highlights/diffs even when a document is open
-        if (pushed != null || pushedDiff != null) {
-            List<Line> lines = new ArrayList<>();
-            if (pushed != null) {
-                lines.add(Line.styled("> highlight: " + pushed.file() + ":" + pushed.line(),
-                        styledRole("editor-push-highlight")));
-            }
-            if (pushedDiff != null) {
-                renderDiff(lines, pushedDiff);
-            }
-            RichTextElement content = Toolkit.richText(Text.from(lines));
-            content.id("editor-content");
-            content.addClass("editor-content");
-            return content;
-        }
-        if (editor != null && editor.activeDocument().isPresent()) {
-            updateNavigationBar();
-            return editor.element();
-        }
-        List<Line> lines = new ArrayList<>();
-        lines.add(Line.from(EDITOR_TEXT));
-        RichTextElement content = Toolkit.richText(Text.from(lines));
-        content.id("editor-content");
-        content.addClass("editor-content");
-        return content;
-    }
-
-    private void updateNavigationBar() {
-        if (editor == null || editor.activeDocument().isEmpty()) {
-            navigationPaths = List.of();
-            return;
-        }
-        Path file = Path.of(editor.activeDocument().orElseThrow().file()).toAbsolutePath().normalize();
-        BuiltinEditor.DocumentView document = editor.activeDocument().orElseThrow();
-        Path root = projectRoot.toAbsolutePath().normalize();
-        try {
-            Path relative = root.relativize(file);
-            List<StatusBar.Breadcrumb> paths = new ArrayList<>(StatusBar.pathBreadcrumbs(root, relative));
-            if (!file.equals(navigationSymbolsFile)) {
-                navigationSymbolsFile = file;
-                navigationSymbols = List.of();
-                NavigationCapability provider = availableNavigationProvider();
-                if (provider != null) {
-                    try {
-                        CapabilityResult<List<NavigationCapability.DocumentSymbol>> result = provider.documentSymbols(file);
-                        if (result instanceof CapabilityResult.Ok<List<NavigationCapability.DocumentSymbol>> ok) {
-                            navigationSymbols = ok.value();
-                        }
-                    } catch (RuntimeException unavailable) {
-                        navigationSymbols = List.of();
-                    }
-                }
-            }
-            List<NavigationCapability.DocumentSymbol> containing = new ArrayList<>();
-            collectContainingSymbols(navigationSymbols, document.line(), containing);
-            paths.addAll(StatusBar.symbolBreadcrumbs(file, containing));
-            navigationPaths = List.copyOf(paths);
-            selectedNavigationSegment = Math.clamp(selectedNavigationSegment, 0, paths.size() - 1);
-            if (!navigationBarFocused) {
-                selectedNavigationSegment = paths.size() - 1;
-            }
-            editor.navigationBar(paths.stream().map(StatusBar.Breadcrumb::label).toList(), selectedNavigationSegment);
-        } catch (IllegalArgumentException outsideProject) {
-            navigationPaths = List.of();
-            editor.navigationBar(List.of(), 0);
-        }
-    }
-
-    private void focusNavigationBar() {
-        updateNavigationBar();
-        if (navigationPaths.isEmpty()) {
-            status = "Open a project file to navigate its path";
-            return;
-        }
-        navigationBarFocused = true;
-        focusedToolWindowId = null;
-        inputCaptured = false;
-        FocusManager manager = focusManager;
-        if (manager != null) {
-            manager.setFocus("editor-navigation-bar");
-        }
-        status = "Navigation bar: arrows move, Enter opens, Escape returns to editor";
-    }
-
-    private void navigateToBreadcrumb(int segment) {
-        if (segment < 0 || segment >= navigationPaths.size()) {
-            return;
-        }
-        StatusBar.Breadcrumb breadcrumb = navigationPaths.get(segment);
-        Path path = breadcrumb.path();
-        navigationBarFocused = false;
-        if (breadcrumb.line() >= 0) {
-            editor.open(new OpenRequest(path, breadcrumb.line()));
-            editor.requestFocus();
-        } else if (Files.isDirectory(path)) {
-            Path relative = projectRoot.relativize(path);
-            projects.expandPrefixes(relative);
-            refreshProjectTree();
-            projects.selectPath(relative.toString().replace('\\', '/'));
-            requestProjectFocus();
-        } else {
-            revealFile(path);
-            requestProjectFocus();
-        }
-    }
-
-    private static void collectContainingSymbols(List<NavigationCapability.DocumentSymbol> symbols, int line,
-            List<NavigationCapability.DocumentSymbol> result) {
-        for (NavigationCapability.DocumentSymbol symbol : symbols) {
-            if (line >= symbol.startLine() && line <= symbol.endLine()) {
-                result.add(symbol);
-                collectContainingSymbols(symbol.children(), line, result);
-                return;
-            }
-        }
-    }
-
-    private void renderDiff(List<Line> lines, ShellUnifiedDiff pushedDiff) {
-        lines.add(Line.styled("diff: " + pushedDiff.title(), styledRole("editor-diff-title")));
-        String[] split = pushedDiff.unifiedDiff().split("\n", -1);
-        int end = split.length;
-        if (end > 1 && split[end - 1].isEmpty()) {
-            end--;
-        }
-        int shown = Math.min(end, MAX_EDITOR_DIFF_LINES);
-        for (int index = 0; index < shown; index++) {
-            lines.add(Line.styled(clip(split[index]), styledRole(diffRoleOf(split[index]))));
-        }
-        if (end > shown) {
-            lines.add(Line.styled("... (" + (end - shown) + " more lines)", styledRole("editor-diff-marker")));
-        }
-    }
-
-    private String diffRoleOf(String diffLine) {
-        if (diffLine.startsWith("@@") || diffLine.startsWith("diff ")) {
-            return "editor-diff-title";
-        }
-        if (diffLine.startsWith("+")) {
-            return "editor-diff-added";
-        }
-        if (diffLine.startsWith("-")) {
-            return "editor-diff-removed";
-        }
-        return "editor-diff-context";
-    }
-
-    private String clip(String diffLine) {
-        if (diffLine.length() <= MAX_EDITOR_LINE_LENGTH) {
-            return diffLine;
-        }
-        return diffLine.substring(0, MAX_EDITOR_LINE_LENGTH) + " ...";
-    }
-
-    private Style styledRole(String role) {
-        return themes.resolver(role).toStyle();
+        editorController.pushDiff(unifiedDiff);
     }
 
     /**
@@ -2639,22 +2365,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     public void revealFile(Path file) {
-        if (file == null) {
-            return;
-        }
-        String relative = projects.expandToFile(file);
-        if (relative != null) {
-            refreshProjectTree();
-            projects.selectPath(relative);
-        }
+        editorController.revealFile(file);
     }
 
     public void revealActiveFile() {
-        if (editor == null || editor.activeDocument() == null) {
-            status = "No active file";
-            return;
-        }
-        revealFile(Path.of(editor.activeDocument().orElseThrow().file()));
+        editorController.revealActiveFile();
     }
 
     public void toggleShowHiddenFiles() {
