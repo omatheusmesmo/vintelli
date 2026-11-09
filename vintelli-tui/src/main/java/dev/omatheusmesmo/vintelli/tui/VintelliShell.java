@@ -13,8 +13,8 @@ import dev.omatheusmesmo.vintelli.tui.keymap.KeymapHelpOverlay;
 import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeymapRegistry;
 import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
-import dev.omatheusmesmo.vintelli.tui.menu.MenuEntry;
 import dev.omatheusmesmo.vintelli.tui.menu.MenuPopup;
+import dev.omatheusmesmo.vintelli.tui.OverlayStack.Kind;
 import dev.omatheusmesmo.vintelli.tui.layout.ShellLayout;
 import dev.omatheusmesmo.vintelli.tui.layout.ShellLayoutStore;
 import dev.omatheusmesmo.vintelli.tui.keymap.ConfigDirectory;
@@ -138,7 +138,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
      * TUI session actually uses them.
      */
     private record KeymapParts(Keymap keymap, CommandPalette commandPalette, KeymapHelpOverlay keymapHelp,
-            MenuPopup menuPopup, ProjectSearchModel searchModel, ProjectSearchOverlay searchOverlay) {
+            MenuPopup menuPopup, ProjectSearchModel searchModel, ProjectSearchOverlay searchOverlay,
+            OverlayStack stack) {
     }
 
     private enum SplitterDrag { PROJECT, BOTTOM }
@@ -410,12 +411,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         if (parts == null) {
             synchronized (this) {
                 if (overlays == null) {
-                    Keymap keymap = keymapSupplier.get();
-                    ProjectSearchModel searchModel = projectSearch == null ? null : new ProjectSearchModel(projectSearch);
-                    overlays = new KeymapParts(keymap, new CommandPalette(keymap.actions(), keymap),
-                            new KeymapHelpOverlay(keymap), new MenuPopup(MENUS, this::menuEntries,
-                                    keymap::describeBindings, MainToolbar.MENU_ORIGIN), searchModel,
-                            searchModel == null ? null : new ProjectSearchOverlay(searchModel));
+                    overlays = buildOverlays();
                 }
                 parts = overlays;
             }
@@ -423,13 +419,95 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         return parts;
     }
 
+    private KeymapParts buildOverlays() {
+        Keymap keymap = keymapSupplier.get();
+        ProjectSearchModel searchModel = projectSearch == null ? null : new ProjectSearchModel(projectSearch);
+        ShellMenuCatalog menuCatalog = new ShellMenuCatalog(menuCatalogHost());
+        CommandPalette commandPalette = new CommandPalette(keymap.actions(), keymap);
+        KeymapHelpOverlay keymapHelp = new KeymapHelpOverlay(keymap);
+        MenuPopup menuPopup = new MenuPopup(MENUS, menuCatalog::entries, keymap::describeBindings,
+                MainToolbar.MENU_ORIGIN);
+        ProjectSearchOverlay searchOverlay = searchModel == null ? null : new ProjectSearchOverlay(searchModel);
+        OverlayStack stack = new OverlayStack();
+        KeymapParts built = new KeymapParts(keymap, commandPalette, keymapHelp, menuPopup, searchModel,
+                searchOverlay, stack);
+        stack.registerOverlay(Kind.COMMAND_PALETTE, commandPalette::isOpen, commandPalette::close);
+        stack.registerOverlay(Kind.KEYMAP_HELP, keymapHelp::isOpen, keymapHelp::close);
+        stack.registerOverlay(Kind.MENU, menuPopup::isOpen, () -> closeMenu(built));
+        if (searchModel != null) {
+            stack.registerOverlay(Kind.PROJECT_SEARCH, searchModel::isOpen, searchModel::close);
+        }
+        stack.registerPrompt(Kind.PROJECT_DELETE, projects::deletePending);
+        if (editor != null) {
+            stack.registerPrompt(Kind.EDITOR_CLOSE, editor::closeConfirmationPending);
+        }
+        stack.registerPrompt(Kind.VCS_PROMPT, vcsActions::promptOpen);
+        return built;
+    }
+
+    private ShellMenuCatalog.Host menuCatalogHost() {
+        return new ShellMenuCatalog.Host() {
+            @Override
+            public boolean editorAvailable() {
+                return editor != null;
+            }
+
+            @Override
+            public boolean documentOpen() {
+                return editor != null && editor.activeDocument().isPresent();
+            }
+
+            @Override
+            public boolean dirtyEditorTab() {
+                return editor != null && editor.tabs().stream().anyMatch(BuiltinEditor.TabView::dirty);
+            }
+
+            @Override
+            public int projectFileCount() {
+                return projects.fileCount();
+            }
+
+            @Override
+            public boolean projectSearchAvailable() {
+                return projectSearch != null;
+            }
+
+            @Override
+            public String navigationUnavailableReason() {
+                if (availableNavigationProvider() != null) {
+                    return "";
+                }
+                return navigationProviders.isEmpty() ? "Navigation provider unavailable"
+                        : navigationProviders.stream().map(provider -> provider.health().reason())
+                                .filter(Objects::nonNull).findFirst().orElse("Navigation provider unavailable");
+            }
+
+            @Override
+            public List<ToolWindow> toolWindows() {
+                return toolWindows;
+            }
+
+            @Override
+            public boolean ideaConnectInProgress() {
+                return ideaConnectInProgress.get();
+            }
+
+            @Override
+            public String vcsUnavailableReason() {
+                return vcsActions.unavailableReason();
+            }
+
+            @Override
+            public boolean vcsWriteInProgress() {
+                return vcsActions.writeInProgress();
+            }
+        };
+    }
+
     private StackElement buildRootContent() {
         StackElement stack = Toolkit.stack();
         stack.add(Toolkit.lazy(this::shellLayout));
-        stack.add(Toolkit.lazy(this::paletteOverlayElement));
-        stack.add(Toolkit.lazy(this::keymapHelpOverlayElement));
-        stack.add(Toolkit.lazy(this::menuOverlayElement));
-        stack.add(Toolkit.lazy(this::projectSearchOverlayElement));
+        stack.add(Toolkit.lazy(this::overlayElements));
         return stack;
     }
 
@@ -951,36 +1029,27 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         return new StatusBarElement(statusBar::widgets);
     }
 
-    private Element paletteOverlayElement() {
+    private Element overlayElements() {
         KeymapParts parts = overlays();
-        if (!parts.commandPalette().isOpen()) {
+        List<Kind> open = parts.stack().openOverlays();
+        if (open.isEmpty()) {
             return null;
         }
-        return new OverlayElement("command-palette", parts.commandPalette()::render);
+        StackElement layers = Toolkit.stack();
+        for (Kind kind : open) {
+            layers.add(overlayElement(parts, kind));
+        }
+        return layers;
     }
 
-    private Element keymapHelpOverlayElement() {
-        KeymapParts parts = overlays();
-        if (!parts.keymapHelp().isOpen()) {
-            return null;
-        }
-        return new OverlayElement("keymap-help", parts.keymapHelp()::render);
-    }
-
-    private Element menuOverlayElement() {
-        MenuPopup popup = overlays().menuPopup();
-        if (!popup.isOpen()) {
-            return null;
-        }
-        return new OverlayElement("menu-popup", popup::render);
-    }
-
-    private Element projectSearchOverlayElement() {
-        KeymapParts parts = overlays();
-        if (parts.searchModel() == null || !parts.searchModel().isOpen()) {
-            return null;
-        }
-        return new OverlayElement("project-search", parts.searchOverlay()::render);
+    private static Element overlayElement(KeymapParts parts, Kind kind) {
+        return switch (kind) {
+            case COMMAND_PALETTE -> new OverlayElement("command-palette", parts.commandPalette()::render);
+            case KEYMAP_HELP -> new OverlayElement("keymap-help", parts.keymapHelp()::render);
+            case MENU -> new OverlayElement("menu-popup", parts.menuPopup()::render);
+            case PROJECT_SEARCH -> new OverlayElement("project-search", parts.searchOverlay()::render);
+            default -> throw new IllegalStateException("Not a drawn overlay: " + kind);
+        };
     }
 
     @Override
@@ -1009,24 +1078,25 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     private EventResult handleMouse(MouseEvent mouse) {
         KeymapParts parts = overlays();
-        if (parts.commandPalette().isOpen()) {
+        Kind top = parts.stack().topOverlay().orElse(null);
+        if (top == Kind.COMMAND_PALETTE) {
             parts.commandPalette().handleMouse(mouse).ifPresent(action -> dispatch(parts, action.id()));
             return EventResult.HANDLED;
         }
-        if (parts.searchModel() != null && parts.searchModel().isOpen()) {
+        if (top == Kind.PROJECT_SEARCH) {
             parts.searchOverlay().handleMouse(mouse).ifPresent(target -> editorController.openRevealed(target.file(), target.line()));
             return EventResult.HANDLED;
         }
-        if (parts.keymapHelp().isOpen()) {
+        if (top == Kind.KEYMAP_HELP) {
             if (mouse.isClick()) {
-                parts.keymapHelp().close();
+                parts.stack().close(Kind.KEYMAP_HELP);
             }
             return EventResult.HANDLED;
         }
         if (mouse.isClick() && mouse.y() == 0 && toolbarClicked(mouse)) {
             return EventResult.HANDLED;
         }
-        if (parts.menuPopup().isOpen()) {
+        if (top == Kind.MENU) {
             if (mouse.isClick()) {
                 Optional<String> action = parts.menuPopup().click(mouse.x(), mouse.y());
                 syncEditorMenuNavigation(parts);
@@ -1132,9 +1202,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     private boolean splitterOverlayOpen() {
-        KeymapParts parts = overlays();
-        return parts.menuPopup().isOpen() || parts.commandPalette().isOpen() || parts.keymapHelp().isOpen()
-                || parts.searchModel() != null && parts.searchModel().isOpen();
+        return overlays().stack().overlayOpen();
     }
 
     private void resizeSplitter(MouseEvent mouse) {
@@ -1200,13 +1268,23 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     private void showMenu(KeymapParts parts, int index) {
-        parts.commandPalette().close();
-        parts.keymapHelp().close();
-        if (parts.searchModel() != null) {
-            parts.searchModel().close();
-        }
-        openMenu(parts, index);
+        parts.stack().open(Kind.MENU, () -> openMenu(parts, index));
         inputCaptured = false;
+    }
+
+    private void handleOverlayKey(KeymapParts parts, Kind overlay, KeyEvent key) {
+        switch (overlay) {
+            case COMMAND_PALETTE -> parts.commandPalette().handleKey(key).ifPresent(action -> dispatch(parts, action.id()));
+            case KEYMAP_HELP -> parts.keymapHelp().handleKey(key);
+            case MENU -> {
+                Optional<String> action = parts.menuPopup().handleKey(key);
+                syncEditorMenuNavigation(parts);
+                action.ifPresent(value -> dispatch(parts, value));
+            }
+            case PROJECT_SEARCH -> parts.searchOverlay().handleKey(key)
+                    .ifPresent(target -> editorController.openRevealed(target.file(), target.line()));
+            default -> throw new IllegalStateException("Not a drawn overlay: " + overlay);
+        }
     }
 
     private EventResult accept(Event event) {
@@ -1220,7 +1298,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         if (projects.inputActive() && projectPanel.handleKey(key)) {
             return EventResult.HANDLED;
         }
-        if (projects.deletePending()) {
+        KeymapParts parts = overlays();
+        Kind prompt = parts.stack().topPrompt().orElse(null);
+        if (prompt == Kind.PROJECT_DELETE) {
             if (key.isCharIgnoreCase('y')) {
                 deleteSelectedConfirmed();
                 return EventResult.HANDLED;
@@ -1235,12 +1315,12 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             releaseCapture();
             return EventResult.HANDLED;
         }
-        if (editor != null && editor.closeConfirmationPending()) {
+        if (prompt == Kind.EDITOR_CLOSE) {
             editor.handleKey(key);
             status = editor.status();
             return EventResult.HANDLED;
         }
-        if (vcsActions.promptOpen()) {
+        if (prompt == Kind.VCS_PROMPT) {
             vcsActions.handleVcsPromptKey(promptKey(key));
             return EventResult.HANDLED;
         }
@@ -1248,7 +1328,6 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             status = "Git operation in progress";
             return EventResult.HANDLED;
         }
-        KeymapParts parts = overlays();
         if (!inputCaptured && parts.keymap().matches(key, KeyActions.QUIT)) {
             return EventResult.UNHANDLED;
         }
@@ -1260,26 +1339,13 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             toggleKeymapHelp(parts);
             return EventResult.HANDLED;
         }
-        if (parts.commandPalette().isOpen()) {
-            parts.commandPalette().handleKey(key).ifPresent(action -> dispatch(parts, action.id()));
-            return EventResult.HANDLED;
-        }
-        if (parts.keymapHelp().isOpen()) {
-            parts.keymapHelp().handleKey(key);
-            return EventResult.HANDLED;
-        }
-        if (parts.menuPopup().isOpen()) {
-            Optional<String> action = parts.menuPopup().handleKey(key);
-            syncEditorMenuNavigation(parts);
-            action.ifPresent(value -> dispatch(parts, value));
-            return EventResult.HANDLED;
-        }
-        if (parts.searchModel() != null && parts.searchModel().isOpen()) {
-            parts.searchOverlay().handleKey(key).ifPresent(target -> editorController.openRevealed(target.file(), target.line()));
+        Kind overlay = parts.stack().topOverlay().orElse(null);
+        if (overlay != null) {
+            handleOverlayKey(parts, overlay, key);
             return EventResult.HANDLED;
         }
         if (parts.keymap().matchesReserved(key, KeyActions.MENU)) {
-            openMenu(parts, 0);
+            parts.stack().open(Kind.MENU, () -> openMenu(parts, 0));
             inputCaptured = false;
             return EventResult.HANDLED;
         }
@@ -1388,185 +1454,179 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     private void dispatch(KeymapParts parts, String actionId, KeyEvent sourceKey) {
         if (isCommandAction(actionId) && !actionAllowed(actionSurface.get(), actionId)) {
-            closeOverlays(parts);
+            parts.stack().closeOverlays();
             status = "Action disabled for " + actionSurface.get().name().toLowerCase() + " surface: " + actionId;
             return;
         }
         for (ToolWindow window : toolWindows) {
             if (window.performAction(actionId, sourceKey)) {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 return;
             }
         }
         if (projectPanel.performAction(actionId)) {
-            closeOverlays(parts);
+            parts.stack().closeOverlays();
             return;
         }
         switch (actionId) {
             case KeyActions.FOCUS_NAVIGATION_BAR -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 editorController.focusNavigationBar();
             }
             case KeyActions.QUIT -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 Runnable quit = quitAction;
                 if (quit != null) {
                     quit.run();
                 }
             }
             case KeyActions.SEARCH_EVERYWHERE -> {
-                parts.keymapHelp().close();
-                parts.commandPalette().open();
+                parts.stack().open(Kind.COMMAND_PALETTE, parts.commandPalette()::open);
                 status = "Command palette: type to filter, Enter runs the action, Escape closes";
             }
-            case KeyActions.KEYMAP_HELP -> {
-                parts.commandPalette().close();
-                openKeymapHelp(parts);
-            }
+            case KeyActions.KEYMAP_HELP -> openKeymapHelp(parts);
             case KeyActions.MENU -> {
-                parts.commandPalette().close();
-                parts.keymapHelp().close();
-                openMenu(parts, 0);
+                parts.stack().open(Kind.MENU, () -> openMenu(parts, 0));
                 inputCaptured = false;
             }
             case KeyActions.IDEA_MCP_CONNECT -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 connectIdeaMcpAsync();
             }
             case KeyActions.OPEN_FILE -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 editorController.openSelectedFile();
             }
             case KeyActions.SAVE -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 editorController.saveActiveFile();
             }
             case KeyActions.UNDO -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 editorController.editorUndo();
             }
             case KeyActions.REDO -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 editorController.editorRedo();
             }
             case KeyActions.FIND, KeyActions.FIND_IN_FILES -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 openSearch(parts, ProjectSearchModel.Mode.TEXT);
             }
             case KeyActions.GO_TO_FILE -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 openSearch(parts, ProjectSearchModel.Mode.FILES);
             }
             case KeyActions.CLOSE_TAB -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 editorController.closeActiveTab();
             }
             case KeyActions.NEXT_TAB -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 editorController.selectEditorTab(true);
             }
             case KeyActions.PREVIOUS_TAB -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 editorController.selectEditorTab(false);
             }
             case KeyActions.DEFINITION -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 editorController.navigateToSymbol(false);
             }
             case KeyActions.USAGES -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 editorController.navigateToSymbol(true);
             }
             case KeyActions.TOGGLE_IMPORT_FOLD -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 editorController.toggleImportFold();
             }
             case KeyActions.NEXT_PROBLEM -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 nextProblem();
             }
             case KeyActions.VCS_REFRESH -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 vcsActions.refreshVcsAsync();
             }
             case KeyActions.VCS_SHOW_DIFF -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 vcsActions.showVcsDiff();
             }
             case KeyActions.VCS_DIFF_WORKING_TREE -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 vcsActions.showVcsWorkingTreeDiff();
             }
             case KeyActions.VCS_STAGE -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 vcsActions.requestStage(false);
             }
             case KeyActions.VCS_UNSTAGE -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 vcsActions.requestStage(true);
             }
             case KeyActions.VCS_COMMIT -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 vcsActions.requestCommit();
             }
             case KeyActions.VCS_SWITCH_BRANCH -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 vcsActions.requestBranchSwitch();
             }
             case KeyActions.PROJECT_NEW_FILE -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 beginProjectInput(InputMode.CREATE_FILE);
             }
             case KeyActions.PROJECT_NEW_DIRECTORY -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 beginProjectInput(InputMode.CREATE_DIRECTORY);
             }
             case KeyActions.PROJECT_RENAME -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 beginProjectInput(InputMode.RENAME);
             }
             case KeyActions.PROJECT_DELETE -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 requestDeleteSelected();
             }
             case KeyActions.PROJECT_REFRESH -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 refreshProjectTree();
             }
             case KeyActions.PROJECT_WIDER -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 resizeProject(2);
             }
             case KeyActions.PROJECT_NARROWER -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 resizeProject(-2);
             }
             case KeyActions.BOTTOM_TALLER -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 resizeBottom(1);
             }
             case KeyActions.BOTTOM_SHORTER -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 resizeBottom(-1);
             }
             case KeyActions.SWITCH_THEME -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 List<String> themeNames = themes.availableThemeNames();
                 int themeIndex = themeNames.indexOf(themes.activeTheme());
                 themes.switchTheme(themeNames.get(Math.floorMod(themeIndex + 1, themeNames.size())));
                 status = "Theme: " + themes.activeTheme();
             }
             case KeyActions.SHELL_SETTINGS -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 parts.commandPalette().openWith("theme");
                 status = "Settings: pick the shell theme (icons: " + fileIcons.mode().name() + ", set with vintelli.icons)";
             }
             case KeyActions.MOVE_UP -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 moveSelection(-1);
             }
             case KeyActions.MOVE_DOWN -> {
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 moveSelection(1);
             }
             default -> {
@@ -1574,13 +1634,13 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                     for (ToolWindow tw : toolWindows) {
                         if (KeyActions.toggleToolWindow(tw.id()).equals(actionId)) {
                             toggleToolWindow(tw.id());
-                            closeOverlays(parts);
+                            parts.stack().closeOverlays();
                             return;
                         }
                     }
                 }
                 OptionalInt toolWindowIndex = indexOfActivation(actionId);
-                closeOverlays(parts);
+                parts.stack().closeOverlays();
                 if (editor != null && KeyActions.activateToolWindow(editor.id()).equals(actionId)) {
                     editor.requestFocus();
                     inputCaptured = false;
@@ -1612,11 +1672,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             status = "Project search unavailable";
             return;
         }
-        parts.commandPalette().close();
-        parts.keymapHelp().close();
-        closeMenu(parts);
         inputCaptured = false;
-        parts.searchModel().open(mode);
+        parts.stack().open(Kind.PROJECT_SEARCH, () -> parts.searchModel().open(mode));
         status = mode == ProjectSearchModel.Mode.FILES ? "Go to File: type to filter" : "Find in Files: type to search";
     }
 
@@ -1764,29 +1821,19 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     private void toggleCommandPalette(KeymapParts parts) {
         inputCaptured = false;
-        parts.keymapHelp().close();
-        closeMenu(parts);
-        if (parts.searchModel() != null) {
-            parts.searchModel().close();
-        }
-        if (parts.commandPalette().isOpen()) {
-            parts.commandPalette().close();
+        if (parts.stack().isOpen(Kind.COMMAND_PALETTE)) {
+            parts.stack().close(Kind.COMMAND_PALETTE);
             status = "Command palette closed";
             return;
         }
-        parts.commandPalette().open();
+        parts.stack().open(Kind.COMMAND_PALETTE, parts.commandPalette()::open);
         status = "Command palette: type to filter, Enter runs the action, Escape closes";
     }
 
     private void toggleKeymapHelp(KeymapParts parts) {
         inputCaptured = false;
-        parts.commandPalette().close();
-        closeMenu(parts);
-        if (parts.searchModel() != null) {
-            parts.searchModel().close();
-        }
-        if (parts.keymapHelp().isOpen()) {
-            parts.keymapHelp().close();
+        if (parts.stack().isOpen(Kind.KEYMAP_HELP)) {
+            parts.stack().close(Kind.KEYMAP_HELP);
             status = "Keymap help closed";
             return;
         }
@@ -1794,61 +1841,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     private void openKeymapHelp(KeymapParts parts) {
-        parts.keymapHelp().open();
+        parts.stack().open(Kind.KEYMAP_HELP, parts.keymapHelp()::open);
         status = "Keymap: " + parts.keymap().source();
-    }
-
-    private List<MenuEntry> menuEntries() {
-        List<MenuEntry> entries = new ArrayList<>();
-        boolean hasDocument = editor != null && editor.activeDocument().isPresent();
-        boolean canEdit = hasDocument;
-        String editorUnavailable = editor == null ? "Built-in editor unavailable"
-                : hasDocument ? "" : "Open a project file first";
-        addMenu(entries, "File", KeyActions.OPEN_FILE, "Open Selected File",
-                editor == null ? "Built-in editor unavailable" : projects.fileCount() == 0 ? "No project files found" : "");
-        addMenu(entries, "File", KeyActions.SAVE, "Save", canEdit ? "" : editorUnavailable);
-        addMenu(entries, "File", KeyActions.CLOSE_TAB, "Close Editor Tab", canEdit ? "" : editorUnavailable);
-        addMenu(entries, "File", KeyActions.QUIT, "Quit", "");
-        addMenu(entries, "Edit", KeyActions.UNDO, "Undo", canEdit ? "" : editorUnavailable);
-        addMenu(entries, "Edit", KeyActions.REDO, "Redo", canEdit ? "" : editorUnavailable);
-        addMenu(entries, "Edit", KeyActions.FIND, "Find", canEdit ? "" : editorUnavailable);
-        addMenu(entries, "View", KeyActions.PROJECT_WIDER, "Widen Project Panel", "");
-        addMenu(entries, "View", KeyActions.PROJECT_NARROWER, "Narrow Project Panel", "");
-        addMenu(entries, "View", KeyActions.BOTTOM_TALLER, "Grow Tool Windows", "");
-        addMenu(entries, "View", KeyActions.BOTTOM_SHORTER, "Shrink Tool Windows", "");
-        addMenu(entries, "View", KeyActions.TOGGLE_IMPORT_FOLD, "Fold or Unfold Imports", canEdit ? "" : editorUnavailable);
-        addMenu(entries, "Navigate", KeyActions.GO_TO_FILE, "Go to File",
-                projectSearch == null ? "Project search unavailable" : "");
-        addMenu(entries, "Navigate", KeyActions.FIND_IN_FILES, "Find in Files",
-                projectSearch == null ? "Project search unavailable" : "");
-        String navigationUnavailable = availableNavigationProvider() == null
-                ? navigationProviders.isEmpty() ? "Navigation provider unavailable"
-                        : navigationProviders.stream().map(provider -> provider.health().reason())
-                                .filter(Objects::nonNull).findFirst().orElse("Navigation provider unavailable")
-                : "";
-        addMenu(entries, "Navigate", KeyActions.DEFINITION, "Go to Definition",
-                canEdit ? navigationUnavailable : editorUnavailable);
-        addMenu(entries, "Navigate", KeyActions.USAGES, "Find Usages",
-                canEdit ? navigationUnavailable : editorUnavailable);
-        addMenu(entries, "Code", KeyActions.NEXT_PROBLEM, "Next Problem", canEdit ? "" : editorUnavailable);
-        for (ToolWindow window : toolWindows) {
-            entries.addAll(window.menuEntries());
-        }
-        addMenu(entries, "Tools", KeyActions.IDEA_MCP_CONNECT, "Connect / Reconnect IntelliJ IDEA",
-                ideaConnectInProgress.get() ? "IDEA MCP connection is already in progress" : "");
-        String vcsUnavailable = vcsActions.unavailableReason();
-        addMenu(entries, "VCS", KeyActions.VCS_REFRESH, "Refresh", vcsUnavailable);
-        addMenu(entries, "VCS", KeyActions.VCS_SHOW_DIFF, "Show Diff", canEdit ? vcsUnavailable : editorUnavailable);
-        addMenu(entries, "VCS", KeyActions.VCS_DIFF_WORKING_TREE, "Diff Working Tree", vcsUnavailable);
-        String writeUnavailable = vcsActions.writeInProgress() ? "A Git operation is already running" : vcsUnavailable;
-        String fileWriteUnavailable = !canEdit ? editorUnavailable : writeUnavailable;
-        String branchUnavailable = editor != null && editor.tabs().stream().anyMatch(BuiltinEditor.TabView::dirty)
-                ? "Save or close dirty editor tabs before switching branches" : writeUnavailable;
-        addMenu(entries, "VCS", KeyActions.VCS_STAGE, "Stage Active File...", fileWriteUnavailable);
-        addMenu(entries, "VCS", KeyActions.VCS_UNSTAGE, "Unstage Active File...", fileWriteUnavailable);
-        addMenu(entries, "VCS", KeyActions.VCS_COMMIT, "Commit Staged Changes...", writeUnavailable);
-        addMenu(entries, "VCS", KeyActions.VCS_SWITCH_BRANCH, "Switch Branch...", branchUnavailable);
-        return List.copyOf(entries);
     }
 
     private NavigationCapability availableNavigationProvider() {
@@ -1877,10 +1871,6 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     public void showVcsWorkingTreeDiff() {
         vcsActions.showVcsWorkingTreeDiff();
-    }
-
-    private static void addMenu(List<MenuEntry> entries, String menu, String action, String label, String reason) {
-        entries.add(new MenuEntry(menu, action, label, reason));
     }
 
     private void connectIdeaMcpAsync() {
@@ -1941,20 +1931,6 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         if (editor != null) {
             editor.menuNavigationActive(parts.menuPopup().isOpen());
         }
-    }
-
-    /**
-     * Closes the overlays; the keymap runs the closing at every non overlay
-     * dispatch, so the shell returns to navigation with the next action.
-     */
-    private boolean closeOverlays(KeymapParts parts) {
-        parts.commandPalette().close();
-        parts.keymapHelp().close();
-        closeMenu(parts);
-        if (parts.searchModel() != null) {
-            parts.searchModel().close();
-        }
-        return false;
     }
 
     private void switchToToolWindow(int globalIndex) {
@@ -2145,12 +2121,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         status = "Vintelli ready | IDEA MCP: disconnected | ACP: stopped";
         KeymapParts current = overlays;
         if (current != null) {
-            current.commandPalette().close();
-            current.keymapHelp().close();
-            closeMenu(current);
-            if (current.searchModel() != null) {
-                current.searchModel().close();
-            }
+            current.stack().closeOverlays();
         }
     }
 
