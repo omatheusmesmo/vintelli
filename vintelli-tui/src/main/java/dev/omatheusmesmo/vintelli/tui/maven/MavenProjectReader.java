@@ -36,6 +36,11 @@ public final class MavenProjectReader {
     private MavenProjectReader() {
     }
 
+    /** Reads the project at a directory given as text, resolved to an absolute normalised path. */
+    public static MavenProjectLoad read(String projectRoot) {
+        return read(Path.of(projectRoot).toAbsolutePath().normalize());
+    }
+
     public static MavenProjectLoad read(Path projectRoot) {
         Path root;
         try {
