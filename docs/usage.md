@@ -227,6 +227,10 @@ The editor shows clickable project path breadcrumbs and, when an LSP provider
 returns document symbols, the containing type and method. `Alt+Home` focuses
 the breadcrumbs; arrows move between segments, Enter selects one, and Escape
 returns focus to the editor.
+With no file open, the editor shows a start screen with the project name and the
+main shortcuts (Go to File, Find in Files, Search Everywhere, the menu and the keymap
+help). Its keys come from the active keymap, so a custom keymap file shows its own
+chords, and an action without a chord has no row.
 `Ctrl+O` opens Go to File, `Alt+F` searches file contents, `F12` requests a
 definition, `Alt+U` requests references, and `F8` moves to the next diagnostic, and `Alt+I` folds or unfolds the import block.
 In the editor, a left click places the caret on the character under the pointer
