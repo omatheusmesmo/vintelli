@@ -1,12 +1,12 @@
 package dev.omatheusmesmo.vintelli.tui.keymap;
 
+import dev.omatheusmesmo.vintelli.tui.OverlayInput;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.terminal.Frame;
 import dev.tamboui.style.Style;
 import dev.tamboui.text.Line;
 import dev.tamboui.text.Span;
 import dev.tamboui.text.Text;
-import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
 import dev.tamboui.widgets.paragraph.Paragraph;
 
@@ -30,10 +30,11 @@ public final class KeymapHelpOverlay {
     private static final Style FOOTER_STYLE = Style.create().dim();
 
     private final Keymap keymap;
-    private boolean open;
+    private final KeymapHelpController controller;
 
     public KeymapHelpOverlay(Keymap keymap) {
         this.keymap = keymap;
+        this.controller = new KeymapHelpController(keymap.actions());
     }
 
     /**
@@ -41,15 +42,15 @@ public final class KeymapHelpOverlay {
      * layered user file is always visible.
      */
     public void open() {
-        open = true;
+        controller.open();
     }
 
     public void close() {
-        open = false;
+        controller.close();
     }
 
     public boolean isOpen() {
-        return open;
+        return controller.isOpen();
     }
 
     /**
@@ -57,9 +58,7 @@ public final class KeymapHelpOverlay {
      * {@code KeymapHelp} action close it, the overlay stays modal otherwise.
      */
     public void handleKey(KeyEvent key) {
-        if (key.isKey(KeyCode.ESCAPE) || keymap.matchesReserved(key, KeyActions.KEYMAP_HELP)) {
-            close();
-        }
+        controller.press(OverlayInput.key(key), keymap.matchesReserved(key, KeyActions.KEYMAP_HELP));
     }
 
     /**
@@ -69,21 +68,20 @@ public final class KeymapHelpOverlay {
      * silently cut off.
      */
     public void render(Frame frame, Rect area) {
-        if (!open) {
+        if (!controller.isOpen()) {
             return;
         }
-        List<KeyAction> actions = keymap.actions();
-        int height = Math.max(6, actions.size() + 5);
-        Rect panel = OverlayPanel.centered(area, MIN_WIDTH, MAX_WIDTH, height);
+        Rect panel = OverlayPanel.centered(area, MIN_WIDTH, MAX_WIDTH, controller.panelHeight());
         Rect inner = OverlayPanel.renderChrome(frame, panel, "Keymap: " + keymap.source());
 
         List<Line> lines = new ArrayList<>();
         int visibleRows = inner.height() - 1;
-        int shown = Math.min(actions.size(), visibleRows);
+        int shown = controller.shownActions(visibleRows);
         for (int index = 0; index < shown; index++) {
-            lines.add(row(actions.get(index), inner.width()));
+            lines.add(row(controller.actions().get(index), inner.width()));
         }
-        String clipped = actions.size() > shown ? " (+" + (actions.size() - shown) + " more)" : "";
+        int hidden = controller.hiddenActions(visibleRows);
+        String clipped = hidden > 0 ? " (+" + hidden + " more)" : "";
         lines.add(Line.from(Span.styled("Escape closes the overlay" + clipped, FOOTER_STYLE)));
         frame.renderWidget(Paragraph.builder().text(Text.from(lines)).build(), inner);
     }
