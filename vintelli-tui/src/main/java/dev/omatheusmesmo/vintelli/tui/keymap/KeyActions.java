@@ -46,6 +46,7 @@ public final class KeyActions {
     public static final String THEME_SWITCH = SWITCH_THEME;
     public static final String SWITCH_SHELL_THEME = SWITCH_THEME;
     public static final String SHELL_THEME_SWITCH = SWITCH_THEME;
+    public static final String SHELL_SETTINGS = "shell.settings";
     public static final String PROJECT_NEW_FILE = "project_new_file";
     public static final String PROJECT_NEW_DIRECTORY = "project_new_directory";
     public static final String PROJECT_RENAME = "project_rename";
@@ -100,6 +101,7 @@ public final class KeyActions {
                 new KeyAction(BOTTOM_TALLER, "Grow Tool Window", ""),
                 new KeyAction(BOTTOM_SHORTER, "Shrink Tool Window", ""),
                 new KeyAction(SWITCH_THEME, "Switch Shell Theme", ""),
+                new KeyAction(SHELL_SETTINGS, "Open Settings", ""),
                 new KeyAction(IDEA_MCP_CONNECT, "Connect to IntelliJ IDEA", ""),
                 new KeyAction(RUN_EXECUTE, "Run Selected Configuration", ""),
                 new KeyAction(RUN_REFRESH, "Refresh Run Configurations", ""),

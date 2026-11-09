@@ -20,13 +20,21 @@ import dev.tamboui.toolkit.element.StyledElement;
 import dev.tamboui.widgets.paragraph.Paragraph;
 
 /**
- * The one-row main toolbar of the shell: the menu button, the project and
- * branch widgets on the left and the run widget on the right. The widgets are
- * laid out by {@link #layout} from a {@link Model} snapshot, so the cells this
- * element paints and the hit areas {@link #segmentAt} answers for come from the
- * same segments. The model is read from volatile snapshots only: the branch
- * and the run state are refreshed off the render thread, so painting never
- * calls a capability.
+ * The one-row main toolbar of the shell, laid out like the IntelliJ New UI
+ * toolbar. The left group holds the menu button, the project and the branch
+ * widgets. The right group, right-aligned, holds the run configuration, the
+ * Run slot (Run while idle, Stop while a configuration runs), the disabled
+ * Debug button, the more button, Search and Settings. Buttons are separated by
+ * one blank column and the right group keeps two blank columns from the left
+ * group. The widgets are laid out by {@link #layout} from a {@link Model}
+ * snapshot, so the cells this element paints and the hit areas
+ * {@link #segmentAt} answers for come from the same segments. The model is read
+ * from volatile snapshots only: the branch and the run state are refreshed off
+ * the render thread, so painting never calls a capability.
+ *
+ * <p>When the row is too narrow the right group drops its leftmost buttons
+ * first, so Settings is the last button to go. The branch widget is dropped
+ * only when the left group alone does not fit.
  *
  * <p>While the menu popup is open the left group shows the menu labels in
  * place of the project and branch widgets, and each label sits at the column
@@ -38,28 +46,45 @@ final class MainToolbar extends StyledElement<MainToolbar> {
     static final int MENU_ORIGIN = 3;
     static final String ID = "main-toolbar";
 
-    private static final int GAP = 2;
+    private static final int GROUP_GAP = 2;
+    private static final int BUTTON_GAP = 1;
     private static final int MAX_LABEL_WIDTH = 24;
 
-    enum Kind { MENU_BUTTON, PROJECT, BRANCH, MENU, RUN, RUN_STOP }
+    enum Kind { MENU_BUTTON, PROJECT, BRANCH, MENU, CONFIGURATION, RUN, RUN_STOP, DEBUG, MORE, SEARCH, SETTINGS }
 
-    /** The glyphs of the toolbar, one set per {@link IconMode} face. */
-    record Glyphs(String menu, String dropdown, String play, String stop) {
+    /**
+     * The glyphs of the toolbar, one set per face. Standard Unicode glyphs
+     * follow the Unicode probe, Nerd Font glyphs follow {@link IconMode#NERD}.
+     */
+    record Glyphs(String menu, String dropdown, String play, String stop, String debug, String more,
+            String search, String settings) {
 
-        static final Glyphs UNICODE = new Glyphs("≡", "▾", "▶", "■");
-        static final Glyphs ASCII = new Glyphs("=", "v", ">", "#");
+        static final Glyphs UNICODE = new Glyphs("≡", "▾", "▶", "■", "◌", "⋮", "⌕", "⚙");
+        static final Glyphs ASCII = new Glyphs("=", "v", ">", "#", "d", ":", "/", "*");
+        private static final String NERD_DEBUG = "";
+        private static final String NERD_SEARCH = "";
+        private static final String NERD_SETTINGS = "";
 
-        static Glyphs of(IconMode mode) {
-            return mode == IconMode.ASCII ? ASCII : UNICODE;
+        static Glyphs of(IconMode mode, boolean unicode) {
+            if (mode == IconMode.ASCII) {
+                return ASCII;
+            }
+            Glyphs base = unicode ? UNICODE : ASCII;
+            if (mode != IconMode.NERD) {
+                return base;
+            }
+            return new Glyphs(base.menu(), base.dropdown(), base.play(), base.stop(), NERD_DEBUG, base.more(),
+                    NERD_SEARCH, NERD_SETTINGS);
         }
     }
 
     /**
-     * What the toolbar shows: a {@code null} branch or run label hides that
-     * widget, and {@code activeMenu} is the highlighted label while the popup is
+     * What the toolbar shows: a {@code null} run label hides the run
+     * configuration and the Run slot, {@code running} switches the Run slot to
+     * Stop, and {@code activeMenu} is the highlighted label while the popup is
      * open.
      */
-    record Model(String project, String branch, String run, boolean menuOpen, int activeMenu) {
+    record Model(String project, String branch, String run, boolean running, boolean menuOpen, int activeMenu) {
     }
 
     /** One drawn piece of the toolbar at a column of its row. */
@@ -81,9 +106,13 @@ final class MainToolbar extends StyledElement<MainToolbar> {
     private volatile List<Segment> lastSegments = List.of();
 
     MainToolbar(Supplier<Model> model, List<String> menus, IconMode mode, Supplier<ShellThemes> themes) {
+        this(model, menus, Glyphs.of(mode, ProjectTreeGlyphs.supportsUnicode()), themes);
+    }
+
+    MainToolbar(Supplier<Model> model, List<String> menus, Glyphs glyphs, Supplier<ShellThemes> themes) {
         this.model = model;
         this.menus = List.copyOf(menus);
-        this.glyphs = Glyphs.of(mode);
+        this.glyphs = glyphs;
         this.themes = themes;
         id(ID);
         length(1);
@@ -94,27 +123,24 @@ final class MainToolbar extends StyledElement<MainToolbar> {
     }
 
     /**
-     * The segments the toolbar draws in a row of {@code width} cells. The menu
-     * button always stays. The run group goes first when the two groups do not
-     * fit side by side, then the branch widget, and the project name is clipped
-     * last.
+     * The segments the toolbar draws in a row of {@code width} cells. The left
+     * group keeps the branch while it fits. The right group takes the longest
+     * tail of its buttons that fits two cells after the left group, so the
+     * leftmost buttons drop first and Settings stays last.
      */
     static List<Segment> layout(int width, Model model, List<String> menus, Glyphs glyphs) {
         if (width <= 0) {
             return List.of();
         }
         List<Item> left = leftItems(model, menus, glyphs);
-        List<Item> right = model.run() == null ? List.of() : runItems(model, glyphs);
-        if (!right.isEmpty() && itemsWidth(left) + GAP + itemsWidth(right) > width) {
-            right = List.of();
-        }
         if (itemsWidth(left) > width) {
-            left = left.stream().filter(item -> item.kind() != Kind.BRANCH).toList();
+            left = withoutBranch(left);
         }
+        List<Item> right = fittingTail(rightItems(model, glyphs), width - itemsWidth(left) - GROUP_GAP);
         List<Segment> segments = new ArrayList<>();
-        place(segments, 0, width, left);
+        place(segments, 0, width, left, 0);
         if (!right.isEmpty()) {
-            place(segments, width - itemsWidth(right), width, right);
+            place(segments, width - groupWidth(right), width, right, BUTTON_GAP);
         }
         return List.copyOf(segments);
     }
@@ -135,17 +161,44 @@ final class MainToolbar extends StyledElement<MainToolbar> {
         return items;
     }
 
-    private static List<Item> runItems(Model model, Glyphs glyphs) {
-        return List.of(
-                new Item(Kind.RUN, " " + glyphs.play() + " " + labelFor(model.run()) + " ", -1),
-                new Item(Kind.RUN_STOP, " " + glyphs.stop() + " ", -1));
+    private static List<Item> rightItems(Model model, Glyphs glyphs) {
+        List<Item> items = new ArrayList<>();
+        if (model.run() != null) {
+            items.add(new Item(Kind.CONFIGURATION, " " + labelFor(model.run()) + " " + glyphs.dropdown(), -1));
+            items.add(model.running()
+                    ? new Item(Kind.RUN_STOP, " " + glyphs.stop(), -1)
+                    : new Item(Kind.RUN, " " + glyphs.play(), -1));
+        }
+        items.add(new Item(Kind.DEBUG, " " + glyphs.debug(), -1));
+        items.add(new Item(Kind.MORE, " " + glyphs.more(), -1));
+        items.add(new Item(Kind.SEARCH, " " + glyphs.search(), -1));
+        items.add(new Item(Kind.SETTINGS, " " + glyphs.settings(), -1));
+        return items;
+    }
+
+    private static List<Item> withoutBranch(List<Item> items) {
+        return items.stream().filter(item -> item.kind() != Kind.BRANCH).toList();
+    }
+
+    private static List<Item> fittingTail(List<Item> items, int budget) {
+        for (int start = 0; start < items.size(); start++) {
+            List<Item> tail = items.subList(start, items.size());
+            if (groupWidth(tail) <= budget) {
+                return tail;
+            }
+        }
+        return List.of();
     }
 
     private static int itemsWidth(List<Item> items) {
         return items.stream().mapToInt(item -> CharWidth.of(item.text())).sum();
     }
 
-    private static void place(List<Segment> segments, int start, int width, List<Item> items) {
+    private static int groupWidth(List<Item> items) {
+        return itemsWidth(items) + BUTTON_GAP * Math.max(0, items.size() - 1);
+    }
+
+    private static void place(List<Segment> segments, int start, int width, List<Item> items, int gap) {
         int x = start;
         for (Item item : items) {
             if (x >= width) {
@@ -156,7 +209,7 @@ final class MainToolbar extends StyledElement<MainToolbar> {
                 return;
             }
             segments.add(new Segment(item.kind(), x, text, item.menuIndex()));
-            x += CharWidth.of(text);
+            x += CharWidth.of(text) + gap;
         }
     }
 
@@ -196,11 +249,14 @@ final class MainToolbar extends StyledElement<MainToolbar> {
     }
 
     private static Style styleOf(Segment segment, Model current, ShellThemes theme, Style base) {
-        if (segment.kind() != Kind.MENU) {
-            return base;
-        }
-        String role = segment.menuIndex() == current.activeMenu() ? "menu-entry-active" : "menu-entry";
-        return theme.resolver(role).toStyle();
+        return switch (segment.kind()) {
+            case MENU -> {
+                String role = segment.menuIndex() == current.activeMenu() ? "menu-entry-active" : "menu-entry";
+                yield theme.resolver(role).toStyle();
+            }
+            case DEBUG -> base.dim();
+            default -> base;
+        };
     }
 
     @Override

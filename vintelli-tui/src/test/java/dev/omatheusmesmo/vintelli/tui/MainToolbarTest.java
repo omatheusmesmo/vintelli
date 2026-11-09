@@ -44,25 +44,33 @@ import dev.tamboui.tui.pilot.Pilot;
 import org.junit.jupiter.api.Test;
 
 /**
- * The main toolbar: the layout at narrow widths, the ASCII face, the hit areas
- * against the drawn cells and the Run widget driven through Pilot.
+ * The main toolbar: the layout at narrow widths, the IntelliJ order of the right
+ * group, the ASCII face, the hit areas against the drawn cells and the Run widgets
+ * driven through Pilot.
  */
 class MainToolbarTest {
 
     private static final int WIDTH = 120;
-    private static final Rect VIEWPORT = new Rect(0, 0, WIDTH, 1);
-    private static final List<String> MENUS = List.of("File", "Edit", "View");
     private static final Duration WAIT = Duration.ofSeconds(2);
-    private static final MainToolbar.Model CLOSED = new MainToolbar.Model("vintelli", "main", "idea:First", false, -1);
+    private static final List<String> MENUS = List.of("File", "Edit", "View");
+    private static final MainToolbar.Model CLOSED = new MainToolbar.Model("vintelli", "main", "idea:First", false, false, -1);
     private static final MainToolbar.Glyphs UNICODE = MainToolbar.Glyphs.UNICODE;
+    private static final MainToolbar.Glyphs NERD = MainToolbar.Glyphs.of(IconMode.NERD, true);
+    private static final MainToolbar.Kind[] RIGHT_GROUP = {
+        MainToolbar.Kind.CONFIGURATION, MainToolbar.Kind.RUN, MainToolbar.Kind.DEBUG,
+        MainToolbar.Kind.MORE, MainToolbar.Kind.SEARCH, MainToolbar.Kind.SETTINGS };
 
     @Test
-    void narrowWidthDropsTheRunGroupThenTheBranchAndKeepsTheMenuButton() {
+    void narrowWidthDropsTheRightGroupFromTheLeftAndKeepsTheMenuButton() {
         assertEquals(List.of(MainToolbar.Kind.MENU_BUTTON, MainToolbar.Kind.PROJECT, MainToolbar.Kind.BRANCH,
-                MainToolbar.Kind.RUN, MainToolbar.Kind.RUN_STOP), kinds(MainToolbar.layout(60, CLOSED, MENUS, UNICODE)));
-        assertEquals(List.of(MainToolbar.Kind.MENU_BUTTON, MainToolbar.Kind.PROJECT, MainToolbar.Kind.BRANCH),
-                kinds(MainToolbar.layout(40, CLOSED, MENUS, UNICODE)));
-        assertEquals(List.of(MainToolbar.Kind.MENU_BUTTON, MainToolbar.Kind.PROJECT),
+                MainToolbar.Kind.CONFIGURATION, MainToolbar.Kind.RUN, MainToolbar.Kind.DEBUG, MainToolbar.Kind.MORE,
+                MainToolbar.Kind.SEARCH, MainToolbar.Kind.SETTINGS), kinds(MainToolbar.layout(60, CLOSED, MENUS, UNICODE)));
+        assertEquals(List.of(MainToolbar.Kind.MENU_BUTTON, MainToolbar.Kind.PROJECT, MainToolbar.Kind.BRANCH,
+                MainToolbar.Kind.RUN, MainToolbar.Kind.DEBUG, MainToolbar.Kind.MORE, MainToolbar.Kind.SEARCH,
+                MainToolbar.Kind.SETTINGS), kinds(MainToolbar.layout(40, CLOSED, MENUS, UNICODE)));
+        assertEquals(List.of(MainToolbar.Kind.MENU_BUTTON, MainToolbar.Kind.PROJECT, MainToolbar.Kind.BRANCH,
+                MainToolbar.Kind.SEARCH, MainToolbar.Kind.SETTINGS), kinds(MainToolbar.layout(30, CLOSED, MENUS, UNICODE)));
+        assertEquals(List.of(MainToolbar.Kind.MENU_BUTTON, MainToolbar.Kind.PROJECT, MainToolbar.Kind.SETTINGS),
                 kinds(MainToolbar.layout(20, CLOSED, MENUS, UNICODE)));
         List<MainToolbar.Segment> clipped = MainToolbar.layout(14, CLOSED, MENUS, UNICODE);
         assertEquals(List.of(MainToolbar.Kind.MENU_BUTTON, MainToolbar.Kind.PROJECT), kinds(clipped));
@@ -72,10 +80,11 @@ class MainToolbarTest {
 
     @Test
     void menuLabelsOpenAtTheColumnsThePopupPanelsUse() {
-        MainToolbar.Model open = new MainToolbar.Model("vintelli", "main", "idea:First", true, 1);
+        MainToolbar.Model open = new MainToolbar.Model("vintelli", "main", "idea:First", false, true, 1);
         List<MainToolbar.Segment> segments = MainToolbar.layout(WIDTH, open, MENUS, UNICODE);
         assertEquals(List.of(MainToolbar.Kind.MENU_BUTTON, MainToolbar.Kind.MENU, MainToolbar.Kind.MENU,
-                MainToolbar.Kind.MENU, MainToolbar.Kind.RUN, MainToolbar.Kind.RUN_STOP), kinds(segments));
+                MainToolbar.Kind.MENU, MainToolbar.Kind.CONFIGURATION, MainToolbar.Kind.RUN, MainToolbar.Kind.DEBUG,
+                MainToolbar.Kind.MORE, MainToolbar.Kind.SEARCH, MainToolbar.Kind.SETTINGS), kinds(segments));
         for (MainToolbar.Segment segment : segments) {
             if (segment.kind() == MainToolbar.Kind.MENU) {
                 assertEquals(MenuPopup.labelOffset(MENUS, segment.menuIndex(), MainToolbar.MENU_ORIGIN), segment.x());
@@ -92,15 +101,16 @@ class MainToolbarTest {
         }
         assertTrue(row.startsWith(" =  vintelli v "), row);
         assertTrue(row.contains(" main v "), row);
-        assertTrue(row.contains(" > idea:First "), row);
-        assertTrue(row.trim().endsWith("#"), row);
+        assertTrue(row.contains(" idea:First v "), row);
+        assertTrue(row.contains(" > "), row);
+        assertTrue(row.trim().endsWith("*"), row);
     }
 
     @Test
     void hitAreasMatchTheDrawnSegmentsAndRejectOutOfBoundsCells() {
-        MainToolbar toolbar = new MainToolbar(() -> CLOSED, MENUS, IconMode.NERD, MainToolbarTest::themes);
+        MainToolbar toolbar = new MainToolbar(() -> CLOSED, MENUS, NERD, MainToolbarTest::themes);
         render(toolbar, WIDTH);
-        for (MainToolbar.Segment segment : MainToolbar.layout(WIDTH, CLOSED, MENUS, UNICODE)) {
+        for (MainToolbar.Segment segment : MainToolbar.layout(WIDTH, CLOSED, MENUS, NERD)) {
             assertEquals(segment, toolbar.segmentAt(segment.x(), 0).orElseThrow());
             assertEquals(segment, toolbar.segmentAt(segment.x() + segment.width() - 1, 0).orElseThrow());
         }
@@ -112,17 +122,95 @@ class MainToolbarTest {
 
     @Test
     void hitAreasFollowTheLatestRenderedWidth() {
-        MainToolbar toolbar = new MainToolbar(() -> CLOSED, MENUS, IconMode.NERD, MainToolbarTest::themes);
+        MainToolbar toolbar = new MainToolbar(() -> CLOSED, MENUS, NERD, MainToolbarTest::themes);
         render(toolbar, WIDTH);
-        assertTrue(toolbar.segmentAt(WIDTH - 2, 0).isPresent(), "the run stop is drawn at the right edge");
+        assertTrue(toolbar.segmentAt(WIDTH - 2, 0).isPresent(), "the settings button is drawn at the right edge");
         render(toolbar, 20);
         assertTrue(toolbar.segmentAt(WIDTH - 2, 0).isEmpty(), "the old right edge is outside the 20 cell row");
     }
 
     @Test
+    void rightGroupFollowsTheIntelliJOrderWithOneBlankColumnBetweenButtons() {
+        List<MainToolbar.Segment> segments = MainToolbar.layout(WIDTH, CLOSED, MENUS, UNICODE);
+        List<MainToolbar.Segment> right = segments.subList(3, segments.size());
+        assertEquals(List.of(RIGHT_GROUP), kinds(right));
+        for (int index = 1; index < right.size(); index++) {
+            MainToolbar.Segment previous = right.get(index - 1);
+            assertEquals(1, right.get(index).x() - (previous.x() + previous.width()),
+                    "one blank column between " + previous.kind() + " and " + right.get(index).kind());
+        }
+        MainToolbar.Segment settings = right.get(right.size() - 1);
+        assertEquals(WIDTH, settings.x() + settings.width(), "the group ends at the right edge of the row");
+    }
+
+    @Test
+    void twoBlankColumnsSeparateTheGroupsWhenTheRowIsTight() {
+        int leftWidth = 3 + 12 + 8;
+        int groupWidth = 13 + 2 * 5 + 5;
+        List<MainToolbar.Segment> segments = MainToolbar.layout(leftWidth + 2 + groupWidth, CLOSED, MENUS, UNICODE);
+        MainToolbar.Segment branch = segments.stream()
+                .filter(segment -> segment.kind() == MainToolbar.Kind.BRANCH).findFirst().orElseThrow();
+        MainToolbar.Segment configuration = segments.stream()
+                .filter(segment -> segment.kind() == MainToolbar.Kind.CONFIGURATION).findFirst().orElseThrow();
+        assertEquals(2, configuration.x() - (branch.x() + branch.width()), "two blank columns before the group");
+    }
+
+    @Test
+    void theRightGroupIsAlwaysAContiguousTailThatEndsWithSettingsAndNeverOverlapsTheLeftGroup() {
+        for (int width = 1; width <= 160; width++) {
+            List<MainToolbar.Segment> segments = MainToolbar.layout(width, CLOSED, MENUS, UNICODE);
+            int previousEnd = 0;
+            for (MainToolbar.Segment segment : segments) {
+                assertTrue(segment.x() >= previousEnd, "no overlap at " + width + " cells: " + segments);
+                previousEnd = segment.x() + segment.width();
+            }
+            assertTrue(previousEnd <= width, "the row stays inside " + width + " cells: " + segments);
+            List<MainToolbar.Kind> kinds = kinds(segments);
+            int rightStart = kinds.indexOf(MainToolbar.Kind.CONFIGURATION);
+            if (rightStart < 0) {
+                rightStart = kinds.indexOf(MainToolbar.Kind.RUN);
+            }
+            if (rightStart < 0) {
+                rightStart = kinds.indexOf(MainToolbar.Kind.DEBUG);
+            }
+            if (rightStart >= 0) {
+                assertEquals(MainToolbar.Kind.SETTINGS, kinds.get(kinds.size() - 1), "settings is the last button at " + width);
+                List<MainToolbar.Kind> tail = List.of(RIGHT_GROUP).subList(
+                        List.of(RIGHT_GROUP).size() - (kinds.size() - rightStart), List.of(RIGHT_GROUP).size());
+                assertEquals(tail, kinds.subList(rightStart, kinds.size()), "the right group drops from the left at " + width);
+            }
+        }
+    }
+
+    @Test
+    void theConfigurationDropsFirstAndTheBranchNameStaysAtEightyColumns() {
+        MainToolbar.Model real = new MainToolbar.Model("quarkus-langchain4j",
+                "test/oracle-native-integration-test", "Current File", false, false, -1);
+        List<MainToolbar.Segment> segments = MainToolbar.layout(80, real, MENUS, UNICODE);
+        assertEquals(List.of(MainToolbar.Kind.MENU_BUTTON, MainToolbar.Kind.PROJECT, MainToolbar.Kind.BRANCH,
+                MainToolbar.Kind.RUN, MainToolbar.Kind.DEBUG, MainToolbar.Kind.MORE, MainToolbar.Kind.SEARCH,
+                MainToolbar.Kind.SETTINGS), kinds(segments));
+        MainToolbar.Segment branch = segments.get(2);
+        assertTrue(branch.text().contains("test/oracle"), "the branch name is kept: " + branch.text());
+    }
+
+    @Test
+    void theSlotDrawsStopWhileAConfigurationRunsAndPlayWhileIdle() {
+        MainToolbar.Model running = new MainToolbar.Model("vintelli", "main", "idea:First", true, false, -1);
+        List<MainToolbar.Segment> busy = MainToolbar.layout(WIDTH, running, MENUS, UNICODE);
+        assertTrue(kinds(busy).contains(MainToolbar.Kind.RUN_STOP));
+        assertFalse(kinds(busy).contains(MainToolbar.Kind.RUN));
+        assertEquals(UNICODE.stop(), segmentOf(busy, MainToolbar.Kind.RUN_STOP).text().trim());
+        List<MainToolbar.Segment> idle = MainToolbar.layout(WIDTH, CLOSED, MENUS, UNICODE);
+        assertTrue(kinds(idle).contains(MainToolbar.Kind.RUN));
+        assertFalse(kinds(idle).contains(MainToolbar.Kind.RUN_STOP));
+        assertEquals(UNICODE.play(), segmentOf(idle, MainToolbar.Kind.RUN).text().trim());
+    }
+
+    @Test
     void runButtonDispatchesRunExecuteThroughTheRunToolWindow() throws Exception {
         FakeRunProvider provider = new FakeRunProvider(true);
-        try (Fixture fixture = new Fixture(provider)) {
+        try (Fixture fixture = new Fixture(provider, WIDTH)) {
             Pilot pilot = fixture.pilot();
             pilot.click(column(fixture.awaitRow("idea:First"), glyphs().play()), 0);
             assertTrue(provider.started.await(WAIT.toMillis(), TimeUnit.MILLISECONDS), "the run never started");
@@ -131,9 +219,57 @@ class MainToolbarTest {
     }
 
     @Test
+    void configurationButtonSelectsTheNextConfigurationInTheRunWindow() throws Exception {
+        FakeRunProvider provider = new FakeRunProvider(true);
+        try (Fixture fixture = new Fixture(provider, WIDTH)) {
+            Pilot pilot = fixture.pilot();
+            String row = fixture.awaitRow("idea:First");
+            pilot.click(row.indexOf("idea:First") + 2, 0);
+            fixture.awaitRow("idea:Second");
+            assertEquals(1L, provider.started.getCount(), "selecting a configuration never starts a run");
+        }
+    }
+
+    @Test
+    void rightGroupReadsInIntelliJOrderAtWideWidth() throws Exception {
+        FakeRunProvider provider = new FakeRunProvider(true);
+        try (Fixture fixture = new Fixture(provider, 150)) {
+            String row = fixture.awaitRow("idea:First");
+            int configuration = row.indexOf("idea:First");
+            int run = row.indexOf(glyphs().play());
+            int debug = row.lastIndexOf(glyphs().debug());
+            int more = row.lastIndexOf(glyphs().more());
+            int search = row.lastIndexOf(glyphs().search());
+            int settings = row.lastIndexOf(glyphs().settings());
+            assertTrue(configuration < run && run < debug && debug < more && more < search && search < settings,
+                    "the right group must read configuration, run, debug, more, search, settings: " + row);
+            assertEquals(3, debug - run, "one blank column between the run and debug buttons");
+            assertEquals(3, more - debug, "one blank column between the debug and more buttons");
+            assertEquals(3, search - more, "one blank column between the more and search buttons");
+            assertEquals(3, settings - search, "one blank column between the search and settings buttons");
+            assertEquals(150 - 1, settings, "the settings glyph is the last cell of the 150 cell row");
+        }
+    }
+
+    @Test
+    void runButtonIsInertWhileTheMenuPopupIsOpen() throws Exception {
+        FakeRunProvider provider = new FakeRunProvider(true);
+        try (Fixture fixture = new Fixture(provider, WIDTH)) {
+            Pilot pilot = fixture.pilot();
+            fixture.awaitRow("idea:First");
+            pilot.click(1, 0);
+            String row = fixture.awaitRow("File");
+            assertTrue(row.contains("idea:First"), "the run widget stays drawn behind the menu: " + row);
+            pilot.click(column(row, glyphs().play()), 0);
+            assertFalse(provider.started.await(400, TimeUnit.MILLISECONDS),
+                    "a click on the run widget behind an open menu must not start a run");
+        }
+    }
+
+    @Test
     void stopButtonCancelsACancellableRun() throws Exception {
         FakeRunProvider provider = new FakeRunProvider(true);
-        try (Fixture fixture = new Fixture(provider)) {
+        try (Fixture fixture = new Fixture(provider, WIDTH)) {
             Pilot pilot = fixture.pilot();
             pilot.click(column(fixture.awaitRow("idea:First"), glyphs().play()), 0);
             assertTrue(provider.started.await(WAIT.toMillis(), TimeUnit.MILLISECONDS));
@@ -146,7 +282,7 @@ class MainToolbarTest {
     @Test
     void stopButtonDoesNothingWhenTheRunCannotBeCancelled() throws Exception {
         FakeRunProvider provider = new FakeRunProvider(false);
-        try (Fixture fixture = new Fixture(provider)) {
+        try (Fixture fixture = new Fixture(provider, WIDTH)) {
             Pilot pilot = fixture.pilot();
             pilot.click(column(fixture.awaitRow("idea:First"), glyphs().play()), 0);
             assertTrue(provider.started.await(WAIT.toMillis(), TimeUnit.MILLISECONDS));
@@ -158,13 +294,13 @@ class MainToolbarTest {
 
     @Test
     void hitAreasStayOnTheDrawnCellsWhenTheBranchHasWideCharacters() {
-        MainToolbar.Model wide = new MainToolbar.Model("vintelli", "機能/日本語ブランチ", "idea:First", false, -1);
-        MainToolbar toolbar = new MainToolbar(() -> wide, MENUS, IconMode.NERD, MainToolbarTest::themes);
+        MainToolbar.Model wide = new MainToolbar.Model("vintelli", "機能/日本語ブランチ", "idea:First", false, false, -1);
+        MainToolbar toolbar = new MainToolbar(() -> wide, MENUS, NERD, MainToolbarTest::themes);
         Rect area = new Rect(0, 0, WIDTH, 1);
         Buffer buffer = Buffer.empty(area);
         toolbar.render(Frame.forTesting(buffer), area, DefaultRenderContext.createEmpty());
 
-        List<MainToolbar.Segment> segments = MainToolbar.layout(WIDTH, wide, MENUS, UNICODE);
+        List<MainToolbar.Segment> segments = MainToolbar.layout(WIDTH, wide, MENUS, NERD);
         int previousEnd = 0;
         for (MainToolbar.Segment segment : segments) {
             assertTrue(segment.x() >= previousEnd, "segments must not overlap: " + segments);
@@ -178,40 +314,25 @@ class MainToolbarTest {
         assertEquals(" 機能/日本語ブランチ ▾ ", branch.text(), "the wide branch label is kept whole");
         assertEquals(23, branch.width(), "the branch covers its 23 drawn cells, not its 14 characters");
         List<MainToolbar.Segment> narrow = MainToolbar.layout(50, wide, MENUS, UNICODE);
-        assertEquals(List.of(MainToolbar.Kind.MENU_BUTTON, MainToolbar.Kind.PROJECT, MainToolbar.Kind.BRANCH),
-                kinds(narrow), "at 50 cells the run group does not fit beside the wide branch and is dropped");
+        assertEquals(List.of(MainToolbar.Kind.MENU_BUTTON, MainToolbar.Kind.PROJECT, MainToolbar.Kind.BRANCH,
+                MainToolbar.Kind.MORE, MainToolbar.Kind.SEARCH, MainToolbar.Kind.SETTINGS),
+                kinds(narrow), "at 50 cells the configuration and the run slot do not fit beside the wide branch");
         int narrowEnd = 0;
         for (MainToolbar.Segment segment : narrow) {
             assertTrue(segment.x() >= narrowEnd, "no overlap at 50 cells: " + narrow);
             narrowEnd = segment.x() + segment.width();
         }
 
-        int stopCell = cellOf(buffer, UNICODE.stop());
-        int playCell = cellOf(buffer, UNICODE.play());
-        MainToolbar.Segment stop = segments.stream()
-                .filter(segment -> segment.kind() == MainToolbar.Kind.RUN_STOP).findFirst().orElseThrow();
-        MainToolbar.Segment run = segments.stream()
-                .filter(segment -> segment.kind() == MainToolbar.Kind.RUN).findFirst().orElseThrow();
-        assertEquals(stop.x() + 1, stopCell, "the stop glyph is drawn where its hit area starts");
+        int playCell = cellOf(buffer, NERD.play());
+        MainToolbar.Segment run = segmentOf(segments, MainToolbar.Kind.RUN);
         assertEquals(run.x() + 1, playCell, "the play glyph is drawn where its hit area starts");
-        assertEquals(MainToolbar.Kind.RUN_STOP, toolbar.segmentAt(stopCell, 0).orElseThrow().kind());
         assertEquals(MainToolbar.Kind.RUN, toolbar.segmentAt(playCell, 0).orElseThrow().kind());
-        assertEquals(WIDTH, stop.x() + stop.width(), "the run group ends at the right edge of the row");
+        MainToolbar.Segment settings = segments.get(segments.size() - 1);
+        assertEquals(WIDTH, settings.x() + settings.width(), "the settings button ends at the right edge of the row");
     }
 
-    @Test
-    void runButtonIsInertWhileTheMenuPopupIsOpen() throws Exception {
-        FakeRunProvider provider = new FakeRunProvider(true);
-        try (Fixture fixture = new Fixture(provider)) {
-            Pilot pilot = fixture.pilot();
-            fixture.awaitRow("idea:First");
-            pilot.click(1, 0);
-            String row = fixture.awaitRow("File");
-            assertTrue(row.contains("idea:First"), "the run widget stays drawn behind the menu: " + row);
-            pilot.click(column(row, glyphs().play()), 0);
-            assertFalse(provider.started.await(400, TimeUnit.MILLISECONDS),
-                    "a click on the run widget behind an open menu must not start a run");
-        }
+    private static MainToolbar.Segment segmentOf(List<MainToolbar.Segment> segments, MainToolbar.Kind kind) {
+        return segments.stream().filter(segment -> segment.kind() == kind).findFirst().orElseThrow();
     }
 
     private static int cellOf(Buffer buffer, String glyph) {
@@ -224,7 +345,7 @@ class MainToolbarTest {
     }
 
     private static MainToolbar.Glyphs glyphs() {
-        return MainToolbar.Glyphs.of(FileIcons.resolve().mode());
+        return MainToolbar.Glyphs.of(FileIcons.resolve().mode(), ProjectTreeGlyphs.supportsUnicode());
     }
 
     private static ShellThemes themes() {
@@ -269,8 +390,10 @@ class MainToolbarTest {
         private final Thread renderThread;
         private final AtomicReference<String> rendered = new AtomicReference<>("");
         private final AtomicReference<Throwable> failure = new AtomicReference<>();
+        private final int width;
 
-        private Fixture(FakeRunProvider provider) throws Exception {
+        private Fixture(FakeRunProvider provider, int width) throws Exception {
+            this.width = width;
             ShellThemes themes = themes();
             UiWorkQueue uiWork = new UiWorkQueue();
             CapabilityRegistry registry = new FakeRegistry(provider);
@@ -280,7 +403,7 @@ class MainToolbarTest {
                     themes, null, List.of(), registry);
             shell.useUiWorkQueue(uiWork);
             run.refreshConfigurations();
-            TestBackend backend = new TestBackend(WIDTH, 24);
+            TestBackend backend = new TestBackend(width, 24);
             TuiConfig config = TuiConfig.builder()
                     .rawMode(false)
                     .alternateScreen(false)
@@ -295,7 +418,7 @@ class MainToolbarTest {
                     .config(config)
                     .styleEngine(themes.engine())
                     .postRenderProcessor((frame, elements, styles, focus, elapsed) ->
-                            rendered.set(rowOf(frame.buffer(), WIDTH)))
+                            rendered.set(rowOf(frame.buffer(), width)))
                     .build();
             runner.eventRouter().addGlobalHandler(shell);
             shell.bindQuit(runner::quit);
@@ -324,7 +447,7 @@ class MainToolbarTest {
             long deadline = System.nanoTime() + WAIT.toNanos();
             String row;
             do {
-                pilot.resize(WIDTH, 24);
+                pilot.resize(width, 24);
                 pilot.pause(Duration.ofMillis(30));
                 row = rendered.get();
             } while (!row.contains(text) && System.nanoTime() < deadline);
@@ -356,7 +479,8 @@ class MainToolbarTest {
 
         @Override
         public CapabilityResult<List<RunConfiguration>> listConfigurations() {
-            return CapabilityResult.ok(List.of(new RunConfiguration("idea:First", "First launch")));
+            return CapabilityResult.ok(List.of(new RunConfiguration("idea:First", "First launch"),
+                    new RunConfiguration("idea:Second", "Second launch")));
         }
 
         @Override

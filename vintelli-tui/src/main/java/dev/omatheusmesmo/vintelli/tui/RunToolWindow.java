@@ -320,6 +320,11 @@ public final class RunToolWindow implements ToolWindow {
         return index < 0 || index >= listed.size() ? "Run" : listed.get(index).identifier();
     }
 
+    /** True while a configuration runs; the main toolbar shows Stop in its Run slot then. */
+    boolean running() {
+        return handle != null;
+    }
+
     /** True when a running handle supports cancellation, the same check the Stop control makes. */
     boolean canStop() {
         RunCapability.RunHandle active = handle;
