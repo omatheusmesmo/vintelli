@@ -5,6 +5,8 @@
 A terminal IDE for Java with an IntelliJ IDEA-like layout.
 It runs with open tooling only. IntelliJ IDEA is an optional extra.
 
+![Vintelli terminal IDE shell with stripes, editor tabs and a tool window open on a Java project](docs/images/vintelli-shell.png)
+
 ## Why you will like it
 
 - 🖥️ **Work where you already are.** A full IDE layout in your terminal, with no window to open.
