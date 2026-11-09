@@ -3,6 +3,7 @@ package dev.omatheusmesmo.vintelli.tui;
 import dev.omatheusmesmo.vintelli.api.ShellHighlightTarget;
 import dev.omatheusmesmo.vintelli.api.ShellUnifiedDiff;
 import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
+import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
 import dev.tamboui.style.Style;
 import dev.tamboui.text.Line;
 import dev.tamboui.text.Text;
@@ -13,30 +14,34 @@ import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
 import dev.tamboui.tui.event.MouseEvent;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * The editor pane body: the pushed highlight and diff, the open document with
- * its navigation bar, or the placeholder text. It draws the
+ * its navigation bar, or the start screen while no document is open. It draws the
  * {@link EditorController} state, routes the navigation keys and the editor bar
  * and text pointer events to the controller and the editor. The tab bar and the
  * pane header stay with {@link EditorHeader}.
  */
 final class EditorPanel {
 
-    private static final String EDITOR_TEXT = "editor tool window lands with issue #31; vintelli needs no external editor";
     private static final int MAX_EDITOR_DIFF_LINES = 6;
     private static final int MAX_EDITOR_LINE_LENGTH = 40;
 
     private final EditorController controller;
     private final BuiltinEditor editor;
     private final ShellThemes themes;
+    private final EditorStartScreen startScreen;
 
-    EditorPanel(EditorController controller, BuiltinEditor editor, ShellThemes themes) {
+    EditorPanel(EditorController controller, BuiltinEditor editor, ShellThemes themes, Supplier<Keymap> keymap,
+            Path projectRoot) {
         this.controller = controller;
         this.editor = editor;
         this.themes = themes;
+        this.startScreen = new EditorStartScreen(projectRoot, keymap, themes);
     }
 
     /**
@@ -64,12 +69,7 @@ final class EditorPanel {
             controller.refreshNavigation();
             return editor.element();
         }
-        List<Line> lines = new ArrayList<>();
-        lines.add(Line.from(EDITOR_TEXT));
-        RichTextElement content = Toolkit.richText(Text.from(lines));
-        content.id("editor-content");
-        content.addClass("editor-content");
-        return content;
+        return startScreen.element();
     }
 
     /**

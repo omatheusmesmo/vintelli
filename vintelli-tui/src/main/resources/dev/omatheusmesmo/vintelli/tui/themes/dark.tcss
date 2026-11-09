@@ -150,6 +150,14 @@ ListElement-scrollbar-track {
   color: $editor-fg;
 }
 
+.editor-start-text {
+  color: $editor-fg;
+}
+
+.editor-start-hint {
+  color: $muted;
+}
+
 #editor-tabs {
   background: $editor-bg;
 }
