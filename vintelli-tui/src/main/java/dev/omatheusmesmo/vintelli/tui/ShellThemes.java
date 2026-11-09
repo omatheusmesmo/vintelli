@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -116,6 +117,7 @@ public final class ShellThemes {
     private final Map<String, Stylesheet> parsed = new LinkedHashMap<>();
     private final Map<String, String> sources = new LinkedHashMap<>();
     private final ColorLevel colorLevel;
+    private final List<Runnable> switchListeners = new CopyOnWriteArrayList<>();
     private volatile String activeTheme;
 
     @Inject
@@ -204,6 +206,24 @@ public final class ShellThemes {
         String validated = validated(name, availableThemeNames());
         engine.setActiveStylesheet(validated);
         activeTheme = validated;
+        switchListeners.forEach(Runnable::run);
+    }
+
+    /**
+     * Runs the listener after every switch, on the thread that switched. The
+     * listener reads the new tone through {@link #frameTone()}.
+     */
+    public void onSwitch(Runnable listener) {
+        switchListeners.add(listener);
+    }
+
+    /**
+     * The frame tone of the active theme, the {@code panel} variable, as RGB:
+     * a 256 color depth reports the nearest index, so its RGB is an approximation
+     * of the authored value.
+     */
+    public Rgb frameTone() {
+        return color("panel").toRgb();
     }
 
     /**

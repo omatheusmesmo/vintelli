@@ -11,6 +11,7 @@ import dev.omatheusmesmo.vintelli.tui.ShellThemes;
 import dev.omatheusmesmo.vintelli.tui.VintelliShell;
 import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeymapRegistry;
+import dev.omatheusmesmo.vintelli.tui.terminal.TerminalBackground;
 import dev.tamboui.toolkit.app.ToolkitRunner;
 import io.quarkus.runtime.Quarkus;
 import io.quarkus.runtime.QuarkusApplication;
@@ -29,12 +30,14 @@ public final class VintelliMain implements QuarkusApplication {
     private final VintelliCliRepl cliRepl;
     private final boolean fileLogging;
     private final Optional<String> logFile;
+    private final boolean terminalBackground;
 
     @Inject
     VintelliMain(Instance<VintelliShell> shell, Instance<KeymapRegistry> keymapRegistry,
             Instance<ShellThemes> themes, VintelliCliCommands cliCommands, VintelliCliRepl cliRepl,
             @ConfigProperty(name = "quarkus.log.file.enabled", defaultValue = "false") boolean fileLogging,
-            @ConfigProperty(name = "quarkus.log.file.path") Optional<String> logFile) {
+            @ConfigProperty(name = "quarkus.log.file.path") Optional<String> logFile,
+            @ConfigProperty(name = TerminalBackground.CONFIG_PROPERTY, defaultValue = "true") boolean terminalBackground) {
         this.shell = shell;
         this.keymapRegistry = keymapRegistry;
         this.themes = themes;
@@ -42,6 +45,13 @@ public final class VintelliMain implements QuarkusApplication {
         this.cliRepl = cliRepl;
         this.fileLogging = fileLogging;
         this.logFile = logFile;
+        this.terminalBackground = terminalBackground;
+    }
+
+    private Optional<TerminalBackground> attachBackground(ToolkitRunner runner, ShellThemes shellThemes) {
+        return TerminalBackground.attach(TerminalBackground.channel(runner.tuiRunner().backend()), shellThemes,
+                terminalBackground, System.getenv(),
+                TerminalBackground.consoleAttached() || TerminalBackground.recordedSession());
     }
 
     static String tuiFailure(String message, boolean fileLogging, Optional<String> logFile) {
@@ -69,7 +79,9 @@ public final class VintelliMain implements QuarkusApplication {
                         .build()) {
                     runner.eventRouter().addGlobalHandler(tuiShell);
                     tuiShell.bindQuit(runner::quit);
-                    runner.run(tuiShell::root);
+                    try (TerminalBackground background = attachBackground(runner, shellThemes).orElse(null)) {
+                        runner.run(tuiShell::root);
+                    }
                 }
                 Quarkus.asyncExit(0);
                 return 0;

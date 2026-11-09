@@ -18,6 +18,18 @@ TUI (default, real terminal required):
 java -jar vintelli-app/target/quarkus-app/quarkus-run.jar
 ```
 
+While the TUI runs, the terminal's own default background takes the frame
+tone of the active theme (the `panel` variable), so the padding and margin the
+terminal draws around the grid match the shell. It is set with the OSC 11
+escape sequence and reset with OSC 111 when the TUI stops, including after a
+crash or SIGTERM; a theme switch moves it at once. Vintelli writes the sequences
+only when the terminal is attached, its `TERM` (or `TERM_PROGRAM`) names one of
+alacritty, foot, ghostty, kitty, WezTerm or xterm, and the session is local (no
+`SSH_CONNECTION`, `SSH_CLIENT` or `SSH_TTY`). Headless runs, tape recordings and
+the `serve` surface never write them. Some terminals ignore or mishandle OSC 11:
+set `vintelli.tui.terminal-background=false` (or the environment variable
+`VINTELLI_TUI_TERMINAL_BACKGROUND=false`) to leave the terminal background alone.
+
 Headless server (HTTP, MCP endpoint, web terminal):
 
 ```bash
