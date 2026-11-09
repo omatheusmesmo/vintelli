@@ -119,7 +119,7 @@ TabsElement-divider {
 }
 
 #project-panel {
-  background: $editor-bg;
+  background: $panel;
   color: $chrome-fg;
 }
 
@@ -242,15 +242,15 @@ EditorTabBarElement-overflow {
    is a half block in the island tone over the frame tone (.pane-gap), a corner
    is a quarter block in the frame tone over the island tone (.pane-corner). */
 #project-pane {
-  background: $editor-bg;
+  background: $panel;
 }
 
 #bottom-stripe {
-  background: $editor-bg;
+  background: $panel;
 }
 
 #right-tool-stripe {
-  background: $editor-bg;
+  background: $panel;
 }
 
 .pane-gap {

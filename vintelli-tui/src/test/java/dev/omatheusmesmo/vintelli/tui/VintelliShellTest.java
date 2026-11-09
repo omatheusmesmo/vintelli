@@ -3370,8 +3370,8 @@ class VintelliShellTest {
         int afterTabRow = findBottomTabRow(afterBuffer);
         assertEquals(themes.color("focus-border"), afterBuffer.get(EDITOR_HEADER_X + 1, afterTabRow + 1).style().fg().orElse(null),
                 "the switched theme reaches the selected tab underline");
-        assertEquals(themes.color("editor-bg"), cellBg(afterBuffer, 2, SECOND_PROJECT_ROW),
-                "the switched theme reaches the project panel");
+        assertEquals(themes.color("panel"), cellBg(afterBuffer, 2, SECOND_PROJECT_ROW),
+                "the switched theme reaches the project panel, which is panel toned in darcula");
         assertEquals(themes.color("editor-bg"), cellBg(afterBuffer, EDITOR_PROBE_X, EDITOR_PROBE_Y),
                 "the switched theme reaches the editor panel");
         assertEquals(themes.color("panel"), cellBg(afterBuffer, 40, STATUS_ROW),
@@ -4056,6 +4056,20 @@ class VintelliShellTest {
             text.append('\n');
         }
         return text.toString();
+    }
+
+    @Test
+    void theProjectPaneToneFollowsTheThemeAndTheEditorStaysAnIsland() {
+        for (String name : List.of("dark", "darcula")) {
+            ShellThemes themes = new ShellThemes(name, (Path) null);
+            Buffer buffer = offlineFrame(defaultShell(themes));
+            String projectTone = name.equals("darcula") ? "panel" : "editor-bg";
+
+            assertEquals(themes.color(projectTone), cellBg(buffer, 6, 12),
+                    name + ": the project pane is drawn in the " + projectTone + " tone");
+            assertEquals(themes.color("editor-bg"), cellBg(buffer, 60, 5),
+                    name + ": the editor island is drawn in the editor-bg tone");
+        }
     }
 
     private static Buffer offlineFrame(VintelliShell shell) {
