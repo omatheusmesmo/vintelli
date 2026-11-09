@@ -125,9 +125,13 @@
                     <artifactId>maven-surefire-plugin</artifactId>
                     <version>${surefire-plugin.version}</version>
                     <configuration>
+                        <environmentVariables>
+                            <VINTELLI_CONFIG_DIR>${project.build.directory}/vintelli-test-config</VINTELLI_CONFIG_DIR>
+                        </environmentVariables>
                         <systemPropertyVariables>
                             <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
                             <maven.home>${maven.home}</maven.home>
+                            <vintelli.config.dir>${project.build.directory}/vintelli-test-config</vintelli.config.dir>
                         </systemPropertyVariables>
                     </configuration>
                 </plugin>
@@ -144,10 +148,14 @@
                     </executions>
                     <configuration>
                         <argLine>@{argLine}</argLine>
+                        <environmentVariables>
+                            <VINTELLI_CONFIG_DIR>${project.build.directory}/vintelli-test-config</VINTELLI_CONFIG_DIR>
+                        </environmentVariables>
                         <systemPropertyVariables>
                             <native.image.path>${project.build.directory}/${project.build.finalName}-runner</native.image.path>
                             <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
                             <maven.home>${maven.home}</maven.home>
+                            <vintelli.config.dir>${project.build.directory}/vintelli-test-config</vintelli.config.dir>
                         </systemPropertyVariables>
                     </configuration>
                 </plugin>

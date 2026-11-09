@@ -7,11 +7,22 @@ import java.util.Map;
 import java.util.Properties;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ConfigDirectoryTest {
 
     private static final Path SHARED = Path.of("shared-config");
     private static final Path KEYMAP = Path.of("keymap-config");
+
+    @Test
+    void theBuildPointsTheSharedConfigDirInsideTheModuleBuildOutput() {
+        String configured = ConfigDirectory.sharedConfigDir();
+
+        assertNotNull(configured, "tests must not fall through to the user's real configuration directory");
+        assertTrue(Path.of(configured).toAbsolutePath().normalize()
+                .startsWith(Path.of("target").toAbsolutePath().normalize()));
+    }
 
     @Test
     void sharedConfigDirOverrideRelocatesTheUserKeymap() {
