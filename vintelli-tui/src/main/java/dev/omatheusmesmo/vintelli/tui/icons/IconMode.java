@@ -1,5 +1,7 @@
 package dev.omatheusmesmo.vintelli.tui.icons;
 
+import dev.omatheusmesmo.vintelli.tui.terminal.TerminalTrust;
+
 import java.io.Console;
 import java.util.Locale;
 import java.util.Map;
@@ -100,7 +102,7 @@ public enum IconMode {
         if (trustedTerminal(surroundings.terminalName(), env)) {
             return NERD;
         }
-        if (!surroundings.terminalAttached() || remoteSession(env) || basicTerminal(env)) {
+        if (!surroundings.terminalAttached() || TerminalTrust.remoteSession(env) || TerminalTrust.basicTerminal(env)) {
             return ASCII;
         }
         return NerdFontProbe.installed(env, surroundings.osName(), surroundings.home()) ? NERD : ASCII;
@@ -109,25 +111,11 @@ public enum IconMode {
     private static boolean trustedTerminal(String terminalName, Map<String, String> env) {
         String name = terminalName == null ? "" : terminalName.trim().toLowerCase(Locale.ROOT);
         return TRUSTED_TERMINALS.contains(name)
-                || present(env, "KITTY_PID")
-                || present(env, "KITTY_WINDOW_ID")
-                || present(env, "GHOSTTY_RESOURCES_DIR")
-                || present(env, "WEZTERM_EXECUTABLE")
+                || TerminalTrust.present(env, "KITTY_PID")
+                || TerminalTrust.present(env, "KITTY_WINDOW_ID")
+                || TerminalTrust.present(env, "GHOSTTY_RESOURCES_DIR")
+                || TerminalTrust.present(env, "WEZTERM_EXECUTABLE")
                 || "WezTerm".equalsIgnoreCase(env.get("TERM_PROGRAM"));
-    }
-
-    private static boolean remoteSession(Map<String, String> env) {
-        return present(env, "SSH_CONNECTION") || present(env, "SSH_CLIENT") || present(env, "SSH_TTY");
-    }
-
-    private static boolean basicTerminal(Map<String, String> env) {
-        String term = env.get("TERM");
-        return "dumb".equalsIgnoreCase(term) || "linux".equalsIgnoreCase(term);
-    }
-
-    private static boolean present(Map<String, String> env, String key) {
-        String value = env.get(key);
-        return value != null && !value.isBlank();
     }
 
     /**

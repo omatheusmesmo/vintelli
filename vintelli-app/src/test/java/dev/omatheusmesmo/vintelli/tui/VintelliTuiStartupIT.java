@@ -1,5 +1,6 @@
 package dev.omatheusmesmo.vintelli.tui;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -10,12 +11,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 import io.quarkus.test.junit.QuarkusIntegrationTest;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 /**
@@ -40,6 +43,10 @@ class VintelliTuiStartupIT {
             Sleep 500ms
             Ctrl+C
             """;
+    private static final String OSC_SET = "\u001b]11;#";
+    private static final String OSC_RESET = "\u001b]111";
+    private static final List<String> TERMINAL_ENVIRONMENT = List.of("TERM", "TERM_PROGRAM", "SSH_CONNECTION", "SSH_CLIENT",
+            "SSH_TTY", "KITTY_WINDOW_ID", "GHOSTTY_RESOURCES_DIR", "WEZTERM_EXECUTABLE");
     private static final List<String> BACKEND_FAILURES = List.of(
             "BackendProvider", "none could be initialized", "cannot start the TUI");
 
@@ -49,9 +56,31 @@ class VintelliTuiStartupIT {
     @ParameterizedTest
     @ValueSource(booleans = { false, true })
     void theTuiStartsAndDrawsItsToolWindowsThroughTapePlayback(boolean explicitTui) throws Exception {
-        Path tape = Files.writeString(workDir.resolve("startup.tape"), TAPE);
-        Path cast = workDir.resolve("startup.cast");
-        Path config = Files.createDirectories(workDir.resolve("config"));
+        Recorded recorded = record(Map.of(), explicitTui, "startup");
+        for (String failure : BACKEND_FAILURES) {
+            assertFalse(recorded.report().contains(failure), "The TUI reported a backend failure\n" + recorded.report());
+        }
+        assertTrue(recorded.exited(), "The TUI did not exit within " + EXIT_TIMEOUT_SECONDS + "s\n" + recorded.report());
+        assertTrue(recorded.castExists(), "No cast was recorded\n" + recorded.report());
+        assertTrue(recorded.cast().contains(TOOL_WINDOW_MARKER), "The TUI never drew its tool windows\n" + recorded.report());
+    }
+
+    @ParameterizedTest
+    @CsvSource({ "foot,1", "vt100,0" })
+    void theTerminalBackgroundIsSetAndResetOnceOnATrustedTerminalOnly(String term, int expected) throws Exception {
+        Recorded recorded = record(Map.of("TERM", term), false, "background-" + term);
+        assertTrue(recorded.exited(), "The TUI did not exit within " + EXIT_TIMEOUT_SECONDS + "s\n" + recorded.report());
+        assertEquals(expected, occurrences(recorded.stdout(), OSC_SET), "set sequences for TERM=" + term + "\n" + recorded.report());
+        assertEquals(expected, occurrences(recorded.stdout(), OSC_RESET), "reset sequences for TERM=" + term + "\n" + recorded.report());
+    }
+
+    private record Recorded(boolean exited, boolean castExists, String cast, String stdout, String report) {
+    }
+
+    private Recorded record(Map<String, String> environment, boolean explicitTui, String name) throws Exception {
+        Path tape = Files.writeString(workDir.resolve(name + ".tape"), TAPE);
+        Path cast = workDir.resolve(name + ".cast");
+        Path config = Files.createDirectories(workDir.resolve("config-" + name));
         List<String> options = List.of(
                 "-Dtamboui.record=" + cast,
                 "-Dtamboui.record.config=" + tape,
@@ -66,7 +95,10 @@ class VintelliTuiStartupIT {
             command.add("--tui");
         }
 
-        Process process = new ProcessBuilder(command).start();
+        ProcessBuilder builder = new ProcessBuilder(command);
+        builder.environment().keySet().removeAll(TERMINAL_ENVIRONMENT);
+        builder.environment().putAll(environment);
+        Process process = builder.start();
         process.getOutputStream().close();
         CompletableFuture<String> stdout = read(process.getInputStream());
         CompletableFuture<String> stderr = read(process.getErrorStream());
@@ -74,15 +106,18 @@ class VintelliTuiStartupIT {
         if (!exited) {
             process.destroyForcibly();
         }
-        String castText = Files.exists(cast) ? Files.readString(cast, StandardCharsets.UTF_8) : "";
-        String report = describe(exited, process, stdout.get(), stderr.get(), castText);
+        boolean castExists = Files.exists(cast);
+        String castText = castExists ? Files.readString(cast, StandardCharsets.UTF_8) : "";
+        String out = stdout.get();
+        return new Recorded(exited, castExists, castText, out, describe(exited, process, out, stderr.get(), castText));
+    }
 
-        for (String failure : BACKEND_FAILURES) {
-            assertFalse(report.contains(failure), "The TUI reported a backend failure\n" + report);
+    private static int occurrences(String text, String needle) {
+        int count = 0;
+        for (int at = text.indexOf(needle); at >= 0; at = text.indexOf(needle, at + needle.length())) {
+            count++;
         }
-        assertTrue(exited, "The TUI did not exit within " + EXIT_TIMEOUT_SECONDS + "s\n" + report);
-        assertTrue(Files.exists(cast), "No cast was recorded\n" + report);
-        assertTrue(castText.contains(TOOL_WINDOW_MARKER), "The TUI never drew its tool windows\n" + report);
+        return count;
     }
 
     private static String describe(boolean exited, Process process, String stdout, String stderr, String cast) {
