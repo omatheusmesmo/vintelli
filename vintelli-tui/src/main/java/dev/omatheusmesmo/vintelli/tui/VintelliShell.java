@@ -64,15 +64,12 @@ import java.nio.file.Path;
 import java.nio.file.Files;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
@@ -128,17 +125,13 @@ import java.util.stream.Collectors;
 @Singleton
 public final class VintelliShell implements GlobalEventHandler, ShellHighlightPort, ShellDiffViewPort {
 
-    static final int TOOL_WINDOW_HEIGHT = 9;
     static final int PROJECT_PANEL_WIDTH = 30;
     static final int SIDE_PANEL_WIDTH = 20;
     static final int ACP_SIDE_PANEL_WIDTH = 32;
     static final int TOOL_STRIP_WIDTH = ToolStripElement.WIDTH;
     private static final int PANE_SEPARATOR_WIDTH = 1;
-    private static final int TOOL_TAB_ROWS = ToolTabBarElement.ROWS;
-    private static final int BOTTOM_HEIGHT = TOOL_WINDOW_HEIGHT + TOOL_TAB_ROWS + 1;
 
     private static final List<String> MENUS = List.of("File", "Edit", "View", "Navigate", "Code", "Refactor", "Run", "Tools", "VCS", "Help");
-    private static final String EMPTY_TOOL_WINDOWS_TEXT = "no tool window beans registered; implement ToolWindow and expose the bean";
 
     /**
      * The keymap-driven parts of the shell, built together the first time the
@@ -172,19 +165,17 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private volatile DockElement layoutDock;
     private volatile DockElement bottomDock;
     private volatile FocusManager focusManager;
-    private volatile Rect activeToolWindowArea = Rect.ZERO;
-    private volatile Rect activeRightToolWindowArea = Rect.ZERO;
+    private final ToolWindowHost toolWindowHost;
+    private final ToolWindowPanel toolWindowPanel;
     private Rect shellArea = Rect.ZERO;
     private SplitterDrag splitterDrag;
     private boolean splitterChanged;
     private int nextDiagnosticIndex;
-    private final Map<ToolWindow.Anchor, List<ToolWindow>> windowsByAnchor;
     private final ReentrantLock frameLock = new ReentrantLock();
     private final AtomicBoolean ideaConnectInProgress = new AtomicBoolean();
     private final Supplier<Keymap> keymapSupplier;
     private final StackElement rootBase;
     private final Element lockedRoot;
-    private final Map<ToolWindow.Anchor, ToolTabBarElement> tabBars = new ConcurrentHashMap<>();
     private final ProjectTreeController projects;
     private final VcsActions vcsActions;
     private final ProjectPanel projectPanel;
@@ -211,11 +202,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private volatile String status = "Vintelli ready | IDEA MCP: disconnected | ACP: stopped";
     private volatile boolean inputCaptured;
     private volatile ToolWindow capturedWindow;
-    private volatile String focusedToolWindowId;
     private volatile int toolIndex;
-
-    // Active tool window index per anchor (for stripe tab selection)
-    private final Map<ToolWindow.Anchor, Integer> activeToolIndexByAnchor = new ConcurrentHashMap<>();
 
     @Inject
     public VintelliShell(ToolWindowRegistry registry, ShellState state, KeymapRegistry keymapRegistry,
@@ -379,8 +366,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 .map(ToolWindow::id)
                 .collect(Collectors.toSet());
         this.shellLayout = layoutStore.load(allWindowIds, defaultVisibleWindowIds);
-        this.windowsByAnchor = this.toolWindows.stream()
-                .collect(Collectors.groupingBy(ToolWindow::anchor, Collectors.toList()));
+        this.toolWindowHost = new ToolWindowHost(this.toolWindows, shellLayout, toolWindowShellHost());
         this.keymapSupplier = keymapSupplier;
         if (!this.toolWindows.isEmpty()) {
             state.selectToolWindow(this.toolWindows.get(0).id());
@@ -394,21 +380,13 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         this.toolbar = new ToolbarController(projectRoot.getFileName() == null ? projectRoot.toString()
                 : projectRoot.getFileName().toString(), runWindow, this::toolbarBranch, toolbarHost());
         this.mainToolbar = new MainToolbar(toolbar::model, MENUS, fileIcons.mode(), () -> themes);
-        this.toolStripes = new ToolStripes(windowsByAnchor, fileIcons.mode(), stripHost());
+        this.toolWindowPanel = new ToolWindowPanel(toolWindowHost, fileIcons.mode(), () -> themes, this::focusMark,
+                toolWindowElementHost());
+        this.toolStripes = new ToolStripes(toolWindowHost.windowsByAnchor(), fileIcons.mode(), stripHost());
         this.statusBar = new StatusBar(() -> status, () -> projects.inputActive() || vcsActions.promptOpen()
                 || projects.deletePending(), capabilityRegistry, editor, statusBarContributors);
         this.rootBase = buildRootContent();
         this.lockedRoot = new LockedElement(rootBase, frameLock, this, true);
-        // Initialize active index for each anchor to first window
-        for (ToolWindow.Anchor anchor : ToolWindow.Anchor.values()) {
-            List<ToolWindow> windows = visibleWindows(anchor);
-            if (!windows.isEmpty()) {
-                int selected = anchor == ToolWindow.Anchor.RIGHT
-                        ? windows.stream().map(ToolWindow::id).toList().indexOf("structure")
-                        : -1;
-                activeToolIndexByAnchor.put(anchor, selected < 0 ? 0 : selected);
-            }
-        }
         if (projectSearch != null) {
             Thread.ofVirtual().start(this::discoverProjectFiles);
         }
@@ -464,7 +442,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 ? sizedProjectWidth() : PROJECT_PANEL_WIDTH));
         DockElement editorDock = Toolkit.dock()
                 .center(centerPanel())
-                .bottom(bottomStripe())
+                .bottom(toolWindowPanel.bottomStripe())
                 .bottomHeight(bottomPaneConstraint(customized));
         editorDock.id("editor-dock");
         bottomDock = editorDock;
@@ -489,15 +467,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
      * shell, so the pane takes one row less than the stored value.
      */
     private Constraint bottomPaneConstraint(boolean customized) {
-        if (bottomWindowsHidden()) {
-            return Constraint.length(0);
-        }
-        int stored = customized ? shellLayout.bottomHeight(availableHeight()) : defaultBottomHeight();
-        return Constraint.length(bottomPaneRows(stored));
-    }
-
-    private static int bottomPaneRows(int storedHeight) {
-        return Math.max(0, storedHeight - 1);
+        return Constraint.length(toolWindowHost.bottomPaneRows(customized, availableHeight()));
     }
 
     /**
@@ -549,6 +519,55 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         };
     }
 
+    private ToolWindowHost.Host toolWindowShellHost() {
+        return new ToolWindowHost.Host() {
+            @Override
+            public void persistLayout() {
+                VintelliShell.this.persistLayout();
+            }
+
+            @Override
+            public void moveFocus(String focusId) {
+                FocusManager manager = focusManager;
+                if (manager != null) {
+                    manager.setFocus(focusId);
+                }
+            }
+
+            @Override
+            public void windowHidden(ToolWindow window) {
+                if (capturedWindow == window) {
+                    inputCaptured = false;
+                    capturedWindow = null;
+                }
+            }
+
+            @Override
+            public void status(String message) {
+                VintelliShell.this.status = message;
+            }
+        };
+    }
+
+    private ToolWindowElement.Host toolWindowElementHost() {
+        return new ToolWindowElement.Host() {
+            @Override
+            public boolean isActive(ToolWindow window) {
+                return toolWindowHost.isActive(window);
+            }
+
+            @Override
+            public void rendered(ToolWindow window, Rect area) {
+                toolWindowPanel.rendered(window, area);
+            }
+
+            @Override
+            public EventResult handle(Event event) {
+                return VintelliShell.this.handle(event, ActionSurface.TUI);
+            }
+        };
+    }
+
     private ToolStripes.Host stripHost() {
         return new ToolStripes.Host() {
             @Override
@@ -558,7 +577,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
             @Override
             public boolean windowVisible(String id) {
-                return shellLayout.isVisible(id);
+                return toolWindowHost.isVisible(id);
             }
 
             @Override
@@ -597,13 +616,13 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     private Element leftPanel() {
-        List<ToolWindow> leftWindows = visibleWindows(ToolWindow.Anchor.LEFT);
+        List<ToolWindow> leftWindows = toolWindowHost.visibleWindows(ToolWindow.Anchor.LEFT);
         if (leftWindows.isEmpty()) {
             return projectPane();
         }
         Column column = Toolkit.column().id("left-panel");
         column.add(projectPane());
-        column.add(toolWindowStripe(ToolWindow.Anchor.LEFT));
+        column.add(toolWindowPanel.stripe(ToolWindow.Anchor.LEFT));
         column.fill();
         return column;
     }
@@ -614,9 +633,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             return null;
         }
         Row stripe = Toolkit.row().id("right-stripe");
-        if (!visibleWindows(ToolWindow.Anchor.RIGHT).isEmpty()) {
+        if (!toolWindowHost.visibleWindows(ToolWindow.Anchor.RIGHT).isEmpty()) {
             Column column = Toolkit.column().id("right-tool-stripe");
-            column.add(toolWindowStripe(ToolWindow.Anchor.RIGHT));
+            column.add(toolWindowPanel.stripe(ToolWindow.Anchor.RIGHT));
             column.fill();
             stripe.add(separator("pane-separator-right"));
             stripe.add(column);
@@ -626,111 +645,17 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         return stripe;
     }
 
-    private Element bottomStripe() {
-        if (windowsByAnchor.getOrDefault(ToolWindow.Anchor.BOTTOM, List.of()).isEmpty()) {
-            TextElement empty = Toolkit.text(EMPTY_TOOL_WINDOWS_TEXT);
-            empty.id("tool-windows-empty");
-            empty.length(TOOL_WINDOW_HEIGHT + 1);
-            return empty;
-        }
-        Column column = Toolkit.column().id("bottom-stripe");
-        column.add(toolWindowStripe(ToolWindow.Anchor.BOTTOM));
-        column.fill();
-        return column;
-    }
-
-    private boolean hasBottomWindows() {
-        return !windowsByAnchor.getOrDefault(ToolWindow.Anchor.BOTTOM, List.of()).isEmpty();
-    }
-
-    private boolean bottomWindowsHidden() {
-        return hasBottomWindows() && visibleWindows(ToolWindow.Anchor.BOTTOM).isEmpty();
-    }
-
     private int leftRegionWidth(int projectWidth) {
         return TOOL_STRIP_WIDTH + (shellLayout.isProjectVisible() ? projectWidth + PANE_SEPARATOR_WIDTH : 0);
     }
 
-    private String tabUnderline() {
-        return fileIcons.mode() == IconMode.ASCII ? "-" : "━";
-    }
-
-    private Element toolWindowStripe(ToolWindow.Anchor anchor) {
-        List<ToolWindow> windows = visibleWindows(anchor);
-        if (windows.isEmpty()) {
-            tabBars.remove(anchor);
-            return Toolkit.text("").length(0);
-        }
-        List<ToolTabBarElement.Label> labels = windows.stream()
-                .map(w -> new ToolTabBarElement.Label(String.valueOf(w.shortcut()),
-                        anchor == ToolWindow.Anchor.RIGHT ? compactRightTabTitle(w) : w.title()))
-                .toList();
-        int activeIdx = activeToolIndexByAnchor.getOrDefault(anchor, 0);
-        int clampedTab = Math.min(Math.max(activeIdx, 0), windows.size() - 1);
-        ToolTabBarElement tabs = new ToolTabBarElement("tool-tabs-" + anchor.name().toLowerCase(Locale.ROOT),
-                labels, clampedTab, tabUnderline());
-        tabBars.put(anchor, tabs);
-
-        Column column = Toolkit.column().id("tool-stripe-" + anchor.name().toLowerCase(Locale.ROOT));
-        column.add(tabs);
-        column.add(Toolkit.lazy(() -> activeToolWindowElement(anchor)));
-        column.fill();
-        return column;
-    }
-
-    private static String compactRightTabTitle(ToolWindow window) {
-        return switch (window.id()) {
-            case "acp.agents" -> "ACP";
-            case "structure" -> "Struct";
-            default -> window.title();
-        };
-    }
-
-
-    private List<ToolWindow> visibleWindows(ToolWindow.Anchor anchor) {
-        return windowsByAnchor.getOrDefault(anchor, List.of()).stream()
-                .filter(w -> shellLayout.isVisible(w.id()))
-                .toList();
-    }
 
     public boolean isToolWindowVisible(String id) {
-        return shellLayout.isVisible(id);
+        return toolWindowHost.isVisible(id);
     }
 
     public void toggleToolWindow(String id) {
-        boolean wasVisible = shellLayout.isVisible(id);
-        shellLayout.toggle(id);
-        persistLayout();
-        if (wasVisible && !shellLayout.isVisible(id)) {
-            ToolWindow target = toolWindows.stream().filter(w -> w.id().equals(id)).findFirst().orElse(null);
-            if (target != null) {
-                releaseHiddenWindow(target);
-                ToolWindow.Anchor anchor = target.anchor();
-                List<ToolWindow> remaining = visibleWindows(anchor);
-                if (!remaining.isEmpty() && !remaining.contains(target)) {
-                    int firstGlobal = toolWindows.indexOf(remaining.getFirst());
-                    if (firstGlobal >= 0) {
-                        switchToToolWindow(firstGlobal);
-                        return;
-                    }
-                }
-            }
-        }
-        status = shellLayout.isVisible(id) ? "Tool window shown: " + id : "Tool window hidden: " + id;
-    }
-
-    private void releaseHiddenWindow(ToolWindow hidden) {
-        if (capturedWindow == hidden) {
-            inputCaptured = false;
-            capturedWindow = null;
-        }
-        if (hidden.id().equals(focusedToolWindowId)) {
-            focusedToolWindowId = null;
-            FocusManager manager = focusManager;
-            if (manager != null) {
-                manager.setFocus("editor-panel");
-            }
-        }
+        toolWindowHost.toggle(id).ifPresent(window -> switchToToolWindow(toolWindows.indexOf(window)));
     }
 
     private void requestProjectFocus() {
@@ -763,43 +688,20 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             toolStripes.click(icon.get());
             return true;
         }
-        for (Map.Entry<ToolWindow.Anchor, ToolTabBarElement> entry : tabBars.entrySet()) {
-            int index = entry.getValue().tabAt(mouse.x(), mouse.y());
-            List<ToolWindow> windows = visibleWindows(entry.getKey());
-            if (index >= 0 && index < windows.size()) {
-                switchToToolWindow(toolWindows.indexOf(windows.get(index)));
-                return true;
-            }
+        Optional<ToolWindow> tab = toolWindowPanel.tabAt(mouse.x(), mouse.y());
+        if (tab.isPresent()) {
+            switchToToolWindow(toolWindows.indexOf(tab.get()));
+            return true;
         }
         return false;
     }
 
     public void showToolWindow(String id) {
-        shellLayout.setVisible(id, true);
-        persistLayout();
-        status = "Tool window shown: " + id;
+        toolWindowHost.show(id);
     }
 
     public void hideToolWindow(String id) {
-        shellLayout.setVisible(id, false);
-        persistLayout();
-        status = "Tool window hidden: " + id;
-    }
-
-    private Element activeToolWindowElement(ToolWindow.Anchor anchor) {
-        List<ToolWindow> windows = visibleWindows(anchor);
-        if (windows.isEmpty()) {
-            return Toolkit.text("").length(0);
-        }
-        int index = activeToolIndexByAnchor.getOrDefault(anchor, 0);
-        int clamped = Math.min(index, windows.size() - 1);
-        if (clamped < 0) { clamped = 0; }
-        ToolWindow window = windows.get(clamped);
-        Column pane = Toolkit.column().id("tool-pane-" + window.id());
-        pane.add(new PaneHeader("tool-" + window.id(), context -> isToolWindowFocused(window.id()), window::title,
-                () -> themes, this::focusMark));
-        pane.add(new ToolWindowElement(window, -1, this));
-        return anchor == ToolWindow.Anchor.BOTTOM ? pane.length(TOOL_WINDOW_HEIGHT) : pane.fill();
+        toolWindowHost.hide(id);
     }
 
     private Element projectPane() {
@@ -945,7 +847,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             @Override
             public void takeFocus(String elementId) {
                 inputCaptured = false;
-                focusedToolWindowId = null;
+                toolWindowHost.clearFocus();
                 FocusManager manager = focusManager;
                 if (manager != null) {
                     manager.setFocus(elementId);
@@ -1017,7 +919,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         editorPane.add(Toolkit.lazy(editorPanel::content));
         editorPane.fill();
         paneSeparatorHorizontal = separator(PaneGapElement.HORIZONTAL_SEPARATOR);
-        paneSeparatorHorizontal.length(bottomWindowsHidden() ? 0 : 1);
+        paneSeparatorHorizontal.length(toolWindowHost.bottomWindowsHidden() ? 0 : 1);
         centerPanel = Toolkit.column().id("editor-area");
         centerPanel.add(editorPane);
         centerPanel.add(paneSeparatorHorizontal);
@@ -1037,10 +939,6 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     ShellThemes activeThemes() {
         return themes;
-    }
-
-    boolean isToolWindowFocused(String id) {
-        return id.equals(focusedToolWindowId);
     }
 
     /**
@@ -1158,7 +1056,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         }
         for (ToolWindow.Anchor anchor : List.of(ToolWindow.Anchor.BOTTOM, ToolWindow.Anchor.RIGHT)) {
             ToolWindow activeWindow = activeToolWindow(anchor);
-            Rect activeArea = anchor == ToolWindow.Anchor.BOTTOM ? activeToolWindowArea : activeRightToolWindowArea;
+            Rect activeArea = toolWindowPanel.activeArea(anchor);
             if (activeWindow != null && contains(activeArea, mouse)) {
                 String action = activeWindow.actionForMouse(mouse);
                 if (action != null) {
@@ -1182,14 +1080,6 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private static boolean contains(Rect area, MouseEvent mouse) {
         return mouse.x() >= area.x() && mouse.x() < area.x() + area.width()
                 && mouse.y() >= area.y() && mouse.y() < area.y() + area.height();
-    }
-
-    void renderedToolWindowArea(ToolWindow window, Rect area) {
-        if (window.anchor() == ToolWindow.Anchor.BOTTOM && window == activeBottomWindow()) {
-            activeToolWindowArea = area;
-        } else if (window.anchor() == ToolWindow.Anchor.RIGHT && window == activeToolWindow(ToolWindow.Anchor.RIGHT)) {
-            activeRightToolWindowArea = area;
-        }
     }
 
     /**
@@ -1224,7 +1114,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         }
         int right = horizontal.x() + horizontal.width() - 1;
         int bottom = vertical.y() + vertical.height() - 1;
-        if (!bottomWindowsHidden() && mouse.y() == horizontal.y() && mouse.x() >= horizontal.x() && mouse.x() <= right) {
+        if (!toolWindowHost.bottomWindowsHidden() && mouse.y() == horizontal.y() && mouse.x() >= horizontal.x() && mouse.x() <= right) {
             splitterDrag = SplitterDrag.BOTTOM;
         } else if (shellLayout.isProjectVisible() && mouse.x() == vertical.x()
                 && mouse.y() >= vertical.y() && mouse.y() <= bottom) {
@@ -1274,8 +1164,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             adoptDefaultSizes();
             int mainTop = shellArea.y() + 1;
             int editorHeight = mouse.y() - mainTop + 1;
-            shellLayout.bottomHeight(available - editorHeight, available);
-            int height = bottomPaneRows(shellLayout.bottomHeight(available));
+            toolWindowHost.storeBottomHeight(available - editorHeight, available);
+            int height = toolWindowHost.bottomRows(available);
             bottomDock.bottomHeight(Constraint.length(height));
             splitterChanged = true;
             status = "Tool window height: " + height + " rows";
@@ -1411,7 +1301,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         }
         if (!inputCaptured) {
             ToolWindow active = activeBottomWindow();
-            if (active != null && active.id().equals(focusedToolWindowId)
+            if (active != null && toolWindowHost.isFocused(active.id())
                     && active.shouldHandleKeyBeforeShell(key)) {
                 return handleToolWindowKey(parts, active, key) ? EventResult.HANDLED : EventResult.UNHANDLED;
             }
@@ -1434,8 +1324,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             ToolWindow capturing = capturedWindow;
             if (capturing == null) {
                 // Fall back to the active bottom window if capture state is stale
-                int bottomIndex = activeToolIndexByAnchor.getOrDefault(ToolWindow.Anchor.BOTTOM, 0);
-                List<ToolWindow> bottomWindows = windowsByAnchor.getOrDefault(ToolWindow.Anchor.BOTTOM, List.of());
+                int bottomIndex = toolWindowHost.activeIndex(ToolWindow.Anchor.BOTTOM);
+                List<ToolWindow> bottomWindows = toolWindowHost.registered(ToolWindow.Anchor.BOTTOM);
                 if (bottomIndex >= 0 && bottomIndex < bottomWindows.size()) {
                     capturing = bottomWindows.get(bottomIndex);
                 }
@@ -1709,7 +1599,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private void focusProjectPanel() {
         inputCaptured = false;
         capturedWindow = null;
-        focusedToolWindowId = null;
+        toolWindowHost.clearFocus();
         editorController.leaveNavigationBar();
         FocusManager manager = focusManager;
         if (manager != null) {
@@ -1762,14 +1652,14 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             status = "Tool window layout is not ready";
             return;
         }
-        if (bottomWindowsHidden()) {
+        if (toolWindowHost.bottomWindowsHidden()) {
             status = "Bottom tool windows are hidden";
             return;
         }
         adoptDefaultSizes();
-        shellLayout.bottomHeight(Math.max(0, available - centerPanel.renderedArea().height()), available);
-        shellLayout.resizeBottom(delta, available);
-        int height = bottomPaneRows(shellLayout.bottomHeight(available));
+        toolWindowHost.storeBottomHeight(Math.max(0, available - centerPanel.renderedArea().height()), available);
+        toolWindowHost.resizeBottom(delta, available);
+        int height = toolWindowHost.bottomRows(available);
         bottomDock.bottomHeight(Constraint.length(height));
         persistLayout();
         status = "Tool window height: " + height + " rows";
@@ -1782,12 +1672,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private void adoptDefaultSizes() {
         if (!shellLayout.isSizeCustomized()) {
             shellLayout.projectWidth(PROJECT_PANEL_WIDTH, projectBase());
-            shellLayout.bottomHeight(defaultBottomHeight(), availableHeight());
+            toolWindowHost.adoptBottomDefault(availableHeight());
         }
-    }
-
-    private int defaultBottomHeight() {
-        return hasBottomWindows() ? BOTTOM_HEIGHT : TOOL_WINDOW_HEIGHT + 2;
     }
 
     /**
@@ -1820,11 +1706,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     private int rightStripeWidth() {
-        if (windowsByAnchor.getOrDefault(ToolWindow.Anchor.RIGHT, List.of()).isEmpty()) {
+        if (!toolWindowHost.hasWindows(ToolWindow.Anchor.RIGHT)) {
             return 0;
         }
         int panelWidth = 0;
-        if (!visibleWindows(ToolWindow.Anchor.RIGHT).isEmpty()) {
+        if (!toolWindowHost.visibleWindows(ToolWindow.Anchor.RIGHT).isEmpty()) {
             ToolWindow active = activeToolWindow(ToolWindow.Anchor.RIGHT);
             panelWidth = active instanceof AcpAgentsToolWindow ? ACP_SIDE_PANEL_WIDTH : SIDE_PANEL_WIDTH;
         }
@@ -1836,7 +1722,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             return shellArea.height() - 1;
         }
         Rect center = centerPanel == null ? Rect.ZERO : centerPanel.renderedArea();
-        return center.height() + BOTTOM_HEIGHT;
+        return center.height() + ToolWindowHost.BOTTOM_HEIGHT;
     }
 
     private void persistLayout() {
@@ -2073,26 +1959,14 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     private void switchToToolWindow(int globalIndex) {
         ToolWindow window = toolWindows.get(globalIndex);
-        ToolWindow.Anchor anchor = window.anchor();
 
-        // Make sure the target is visible before activating it
-        if (!shellLayout.isVisible(window.id())) {
-            showToolWindow(window.id());
-        }
-
-        int anchorIndex = visibleWindows(anchor).indexOf(window);
-        if (anchorIndex >= 0) {
-            activeToolIndexByAnchor.put(anchor, anchorIndex);
-        }
-
-        // Update the global toolIndex for backward compatibility (bottom anchor)
-        if (anchor == ToolWindow.Anchor.BOTTOM) {
+        if (window.anchor() == ToolWindow.Anchor.BOTTOM) {
             toolIndex = globalIndex;
         }
 
         inputCaptured = window.capturesInput();
         capturedWindow = inputCaptured ? window : null;
-        focusToolWindow(window);
+        toolWindowHost.switchTo(window);
         state.selectToolWindow(window.id());
         status = "Tool window: " + window.title();
     }
@@ -2102,8 +1976,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             return false;
         }
         // Route to the active tool window of the bottom anchor (legacy behavior)
-        int bottomIndex = activeToolIndexByAnchor.getOrDefault(ToolWindow.Anchor.BOTTOM, 0);
-        List<ToolWindow> bottomWindows = windowsByAnchor.getOrDefault(ToolWindow.Anchor.BOTTOM, List.of());
+        int bottomIndex = toolWindowHost.activeIndex(ToolWindow.Anchor.BOTTOM);
+        List<ToolWindow> bottomWindows = toolWindowHost.registered(ToolWindow.Anchor.BOTTOM);
         if (bottomWindows.isEmpty() || bottomIndex >= bottomWindows.size()) {
             return false;
         }
@@ -2111,7 +1985,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         if (active.capturesInput()) {
             return false;
         }
-        if (active instanceof RunToolWindow && !active.id().equals(focusedToolWindowId)) {
+        if (active instanceof RunToolWindow && !toolWindowHost.isFocused(active.id())) {
             return false;
         }
         return handleToolWindowKey(overlays(), active, key);
@@ -2143,21 +2017,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     private ToolWindow activeToolWindow(ToolWindow.Anchor anchor) {
-        List<ToolWindow> visible = visibleWindows(anchor);
-        int index = activeToolIndexByAnchor.getOrDefault(anchor, 0);
-        return index >= 0 && index < visible.size() ? visible.get(index) : null;
+        return toolWindowHost.activeWindow(anchor);
     }
 
     private void focusToolWindow(ToolWindow window) {
-        focusedToolWindowId = window.id();
-        FocusManager manager = focusManager;
-        if (manager != null) {
-            manager.setFocus("tool-" + window.id());
-        }
-    }
-
-    boolean isFocusedToolWindow(ToolWindow window) {
-        return window == activeToolWindow(window.anchor()) && window.id().equals(focusedToolWindowId);
+        toolWindowHost.focusWindow(window);
     }
 
     private static boolean isCommandAction(String actionId) {
@@ -2190,7 +2054,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private void releaseCapture() {
         inputCaptured = false;
         capturedWindow = null;
-        focusedToolWindowId = null;
+        toolWindowHost.clearFocus();
         pendingProjectFocus = shellLayout.isProjectVisible();
         status = "Focus: shell navigation";
     }
@@ -2276,13 +2140,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             toolIndex = 0;
             inputCaptured = false;
         }
-        // Reset all anchor active indices to first window
-        for (ToolWindow.Anchor anchor : ToolWindow.Anchor.values()) {
-            List<ToolWindow> windows = windowsByAnchor.getOrDefault(anchor, List.of());
-            if (!windows.isEmpty()) {
-                activeToolIndexByAnchor.put(anchor, 0);
-            }
-        }
+        toolWindowHost.reset();
         projects.resetSync();
         status = "Vintelli ready | IDEA MCP: disconnected | ACP: stopped";
         KeymapParts current = overlays;
@@ -2297,7 +2155,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     public int toolIndex() {
-        return activeToolIndexByAnchor.getOrDefault(ToolWindow.Anchor.BOTTOM, 0);
+        return toolWindowHost.activeIndex(ToolWindow.Anchor.BOTTOM);
     }
 
     public int fileIndex() {
