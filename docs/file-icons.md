@@ -6,8 +6,11 @@ The `icons` package of `vintelli-tui` maps a file or folder name to an icon.
 The mapping is data: the built-in resource
 `dev/omatheusmesmo/vintelli/tui/icons/file-icons.properties` lists, per exact
 file or folder name (`name.pom.xml`, `name..git`) and per extension
-(`ext.java`), a Nerd Font glyph, a pure ASCII marker and an optional ANSI
-color. Lookup order for a file: exact name, then the extension (case
+(`ext.java`), a Nerd Font glyph, a pure ASCII marker and an optional color.
+The color is either a fixed `#RRGGBB` value or an ANSI name such as `red`. The
+built-in mapping uses fixed hex values close to the IntelliJ file type icons,
+so the icons look the same in every terminal theme; an ANSI name is painted in
+the palette of the terminal instead. Lookup order for a file: exact name, then the extension (case
 insensitive, after the last dot), then the default file icon. Folders use the
 exact name, then the default folder icon. Only the last path segment is
 matched, so whole paths can be passed.
@@ -63,9 +66,11 @@ then `APPDATA`, then `$HOME/.config`) is layered on top
 with the same keys and is optional when missing. The `vintelli.icons.file`
 property names an explicit user file instead and must exist. Each key
 overrides exactly the field it names, so `ext.java.ascii=Jv` changes only the
-ASCII marker of Java files; keys are case-insensitive. An invalid key, a
-duplicate key, an unknown color name or an unknown `vintelli.icons` value
-fails fast and names the source.
+ASCII marker of Java files; keys are case-insensitive. A color is written as a
+hex value, for example `ext.zig.color=#E8A56B` (six digits after the `#`, in
+any case), or as an ANSI name such as `ext.zig.color=magenta`. An invalid key,
+a duplicate key, a color that is neither (for example `#FFF` or `#GG0000`) or an
+unknown `vintelli.icons` value fails fast and names the source.
 
 Project tree disclosure arrows are chosen separately from icon fonts. The tree
 draws no connector lines. With `vintelli.icons=nerd` the folders use the thin

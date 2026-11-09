@@ -33,8 +33,9 @@ import dev.tamboui.style.Color;
  * with the keys {@code default.file.*}, {@code default.folder.*},
  * {@code name.<file name>.*} (exact name match, files and folders, for example
  * {@code name.pom.xml.glyph}) and {@code ext.<extension>.*}, each defining
- * {@code glyph}, {@code ascii} and an optional {@code color} (ANSI color name
- * such as {@code red} or {@code light-blue}). A user file
+ * {@code glyph}, {@code ascii} and an optional {@code color}: a fixed
+ * {@code #RRGGBB} value, or an ANSI color name such as {@code red} or
+ * {@code light-blue} that the terminal palette paints. A user file
  * {@code <config>/vintelli/file-icons.properties}, where the config directory
  * is resolved by {@link ConfigDirectory} with the shared
  * {@code vintelli.config.dir} override first (the same one the themes and the
@@ -66,6 +67,7 @@ public final class FileIcons {
     private static final String RESOURCE_SOURCE = "resource '" + RESOURCE + "'";
     private static final Pattern KEY_PATTERN =
             Pattern.compile("^(name|ext|default)\\.(.*)\\.(glyph|ascii|color)$");
+    private static final Pattern HEX_COLOR_PATTERN = Pattern.compile("^#[0-9a-fA-F]{6}$");
     private static final Map<String, Color> COLOR_NAMES = buildColorNames();
 
     private final IconMode mode;
@@ -191,10 +193,13 @@ public final class FileIcons {
         if (setting == null || setting.value().isBlank()) {
             return null;
         }
-        Color color = COLOR_NAMES.get(setting.value().trim().toLowerCase(Locale.ROOT));
+        String value = setting.value().trim();
+        Color color = HEX_COLOR_PATTERN.matcher(value).matches()
+                ? Color.hex(value)
+                : COLOR_NAMES.get(value.toLowerCase(Locale.ROOT));
         if (color == null) {
             throw new IllegalArgumentException(label + " in " + setting.source() + ": unknown color name '"
-                    + setting.value() + "'");
+                    + setting.value() + "' (expected #RRGGBB or an ANSI color name)");
         }
         return color;
     }
