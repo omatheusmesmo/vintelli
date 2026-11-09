@@ -294,12 +294,16 @@ final class ProjectTreeController {
         return true;
     }
 
+    private static String slashed(Path relative) {
+        return relative.toString().replace('\\', '/');
+    }
+
     void expandSelected() {
         ProjectNode node = selectedNode();
         if (node != null && node.directory && !node.expanded) {
             setChainExpanded(node, true);
             recomputeVisible(selectedRelative().orElse(""));
-            statusSink.accept("Expanded " + node.relative);
+            statusSink.accept("Expanded " + slashed(node.relative));
         }
     }
 
@@ -308,7 +312,7 @@ final class ProjectTreeController {
         if (node != null && node.directory && node.expanded) {
             setChainExpanded(node, false);
             recomputeVisible(selectedRelative().orElse(""));
-            statusSink.accept("Collapsed " + node.relative);
+            statusSink.accept("Collapsed " + slashed(node.relative));
         }
     }
 
@@ -317,7 +321,7 @@ final class ProjectTreeController {
         if (node != null && node.directory) {
             setChainExpanded(node, !node.expanded);
             recomputeVisible(selectedRelative().orElse(""));
-            statusSink.accept((node.expanded ? "Expanded " : "Collapsed ") + node.relative);
+            statusSink.accept((node.expanded ? "Expanded " : "Collapsed ") + slashed(node.relative));
         }
     }
 
