@@ -17,7 +17,7 @@
         <dependency>
             <groupId>org.aesh</groupId>
             <artifactId>terminal-detect</artifactId>
-            <version>3.18.7</version>
+            <version>3.18.8</version>
         </dependency>
         <dependency>
             <groupId>dev.omatheusmesmo</groupId>
