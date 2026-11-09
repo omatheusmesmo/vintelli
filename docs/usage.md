@@ -269,6 +269,24 @@ in Search Everywhere (`Ctrl+P`); the icon face is set with `vintelli.icons`.
 When the row is too narrow, the right group drops its leftmost buttons first,
 so Settings is the last one to go, and the branch widget stays unless the left
 group alone does not fit.
+
+The project pane header reads `Project ▾` on the left. On the right, one blank
+column apart and right aligned, it has New (`+`), Select Opened File (a
+crosshair), Expand All, Collapse All, Options (`⋮`) and Hide (`─`), as in the
+IntelliJ New UI. The arrow opens the view menu, which lists Project as the only
+view. New opens a menu with New File (`F7`) and New Directory (`F9`), created in
+the selected folder. Options opens a menu with Show Hidden Files. Select Opened
+File reveals the file of the active editor tab and expands its folders; Expand
+All and Collapse All act on the whole tree, and Collapse All keeps the selection
+on the top folder that holds it. Hide works like the Project icon on the left
+strip, and the command palette (`Ctrl+P`) runs every header action from
+anywhere. Each button dispatches the same action as its keys, with the project
+panel focused: `F3` Select Opened File, `F4` Expand All, `Alt+c` Collapse All,
+`Alt+v` the view menu, `Alt+n` the New menu, `Alt+o` the options menu and `Alt+p`
+Hide. A click on a blank header cell does nothing. When the pane is narrow, the
+buttons drop from the left and Hide stays last. Nerd Font mode draws Nerd
+glyphs; otherwise the header uses the Unicode symbols when the tree does, and
+plain ASCII (`v`, `+`, `o`, `=`, `-`, `:`, `_`) when it does not.
 Panes have no frames and no separator lines: each one is an island of the editor
 tone on the frame tone, and starts with a header row that is underlined in the
 frame tone. The left strip, the toolbar, the right stripe and the status bar sit

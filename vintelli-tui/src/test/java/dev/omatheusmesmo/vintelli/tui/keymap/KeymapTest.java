@@ -120,6 +120,8 @@ class KeymapTest {
                 "layout_project_wider", "layout_project_narrower", "layout_bottom_taller", "layout_bottom_shorter",
                 "shell.theme.switch", "shell.settings", "project_new_file", "project_new_directory", "project_rename",
                 "project_delete", "project_refresh", "idea-mcp.connect",
+                "project_view_menu", "project_new_menu", "project_select_opened_file", "project_expand_all",
+                "project_collapse_all", "project_options_menu", "project_show_hidden", "project_hide",
                 "ActivateRunToolWindow", "ActivateTerminalToolWindow", "ActivateProblemsToolWindow",
                 "ActivateAcpAgentsToolWindow");
         assertEquals(expected, ids);

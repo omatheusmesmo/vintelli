@@ -338,6 +338,38 @@ final class ProjectTreeController {
         }
     }
 
+    void expandAll() {
+        setExpanded(rootNodes, true);
+        recomputeVisible(selectedRelative().orElse(""));
+        statusSink.accept("Expanded all");
+    }
+
+    /**
+     * Collapses every directory and keeps the selection on the top level folder
+     * that holds the selected row, so the selection stays visible.
+     */
+    void collapseAll() {
+        ProjectNode top = selectedNode();
+        while (top != null && top.parent != null) {
+            top = top.parent;
+        }
+        String keep = top == null ? "" : top.relative.toString().replace('\\', '/');
+        setExpanded(rootNodes, false);
+        recomputeVisible(keep);
+        statusSink.accept("Collapsed all");
+    }
+
+    private static void setExpanded(List<ProjectNode> nodes, boolean expanded) {
+        for (ProjectNode node : nodes) {
+            if (node.directory) {
+                node.expanded = expanded;
+            }
+            if (node.children != null) {
+                setExpanded(node.children, expanded);
+            }
+        }
+    }
+
     /**
      * The Enter action on the selected row: a directory toggles and returns
      * empty, a file is returned for the editor to open.
