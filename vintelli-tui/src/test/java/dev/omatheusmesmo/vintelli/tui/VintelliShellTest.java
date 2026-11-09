@@ -8,6 +8,7 @@ import dev.omatheusmesmo.vintelli.tui.menu.MenuPopup;
 import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
 import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
+import dev.omatheusmesmo.vintelli.tui.icons.JavaTypeKind;
 import dev.omatheusmesmo.vintelli.tui.layout.ShellLayoutStore;
 import dev.omatheusmesmo.vintelli.tui.layout.ShellLayout;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
@@ -983,7 +984,7 @@ class VintelliShellTest {
     }
 
     @Test
-    void vcsRefreshKeepsTheProjectTreeForm() throws IOException {
+    void vcsRefreshKeepsTheProjectTreeForm() throws IOException, InterruptedException {
         Path changed = project.resolve("src/main/A.java");
         Files.createDirectories(changed.getParent());
         Files.writeString(changed, "class A {}");
@@ -997,12 +998,11 @@ class VintelliShellTest {
         shell.selectPath("src/main/A.java");
 
         shell.refreshVcs();
-        String rendered = bufferText(offlineFrame(shell));
-
         FileIcons icons = FileIcons.resolve();
         String srcRow = ProjectTreeTest.disclosureGlyph(icons, ProjectTreeGlyphs.supportsUnicode(), true) + " "
                 + icons.folderIconFor("main").symbol(icons.mode()) + " src/main";
-        String changedRow = "  M " + icons.iconFor("A.java").symbol(icons.mode()) + " A.java";
+        String changedRow = "  M " + icons.iconFor("A.java", JavaTypeKind.CLASS).symbol(icons.mode()) + " A.java";
+        String rendered = awaitRendered(shell, changedRow);
         assertTrue(rendered.contains(srcRow), "the expanded directory keeps its tree row: " + rendered);
         assertTrue(rendered.contains(changedRow), "the changed file keeps its tree row and marker: " + rendered);
         assertFalse(rendered.contains("M src/main/A.java"), "the refresh must not flatten rows to paths: " + rendered);
@@ -1038,8 +1038,11 @@ class VintelliShellTest {
 
     private static VintelliShell shellWithVcsTree(VersionControlCapability vcs, Path root) {
         ShellThemes themes = defaultThemes();
-        List<ToolWindow> windows = defaultWindows();
-        return new VintelliShell(windows, new ShellState(), () -> Keymap.defaultKeymap(windows), themes,
+        List<ToolWindow> windows = new ArrayList<>(defaultWindows());
+        windows.add(new BuiltinEditor(root, null, () -> null));
+        ToolWindowRegistry registry = new ToolWindowRegistry(windows);
+        return new VintelliShell(registry.toolWindows(), new ShellState(),
+                () -> Keymap.defaultKeymap(registry.toolWindows()), themes,
                 ProjectTreeTest.fakeSearch(root), List.of(), List.of(vcs));
     }
 
@@ -4731,6 +4734,16 @@ class VintelliShellTest {
 
     private static Buffer offlineFrame(VintelliShell shell) {
         return offlineFocusFrame(shell, shell.themes(), null);
+    }
+
+    private static String awaitRendered(VintelliShell shell, String expected) throws InterruptedException {
+        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        String rendered = bufferText(offlineFrame(shell));
+        while (!rendered.contains(expected) && System.nanoTime() < deadline) {
+            Thread.sleep(10);
+            rendered = bufferText(offlineFrame(shell));
+        }
+        return rendered;
     }
 
     private static Buffer offlineFrame(VintelliShell shell, Size size) {

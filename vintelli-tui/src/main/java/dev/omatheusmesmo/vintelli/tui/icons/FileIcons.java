@@ -7,6 +7,7 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Locale;
@@ -45,12 +46,18 @@ import dev.tamboui.style.Color;
  * A missing default user file is absent; the {@code vintelli.icons.file}
  * system property names an explicit user file, which must exist.
  *
- * <p>Lookup order for an ordinary file: exact name match first, then the
- * extension (after the last dot, case-insensitive), then the
- * {@code default.file} icon. Folders check the exact name match and fall back
- * to {@code default.folder}. Names and extensions compare in lowercase. A
- * file name is taken from its last path segment, so callers may pass whole
- * relative or absolute paths or bare names.
+ * <p>The {@code type.<kind>.*} keys (kinds {@code class}, {@code interface},
+ * {@code enum}, {@code record} and {@code annotation}, see {@link JavaTypeKind})
+ * give the icon of a Java source whose first top-level type has that kind. They
+ * apply only when the caller passes the kind, and an {@code ext.java} entry of
+ * the user file replaces them, so a user keeps the extension icon by choosing it.
+ *
+ * <p>Lookup order for an ordinary file: exact name match first, then, for a
+ * Java source with a known kind, the kind icon, then the extension (after the
+ * last dot, case-insensitive), then the {@code default.file} icon. Folders check
+ * the exact name match and fall back to {@code default.folder}. Names and
+ * extensions compare in lowercase. A file name is taken from its last path
+ * segment, so callers may pass whole relative or absolute paths or bare names.
  *
  * <p>Invalid mapping data fails fast: an unknown key grammar, a duplicate key
  * of one source, a field with an unknown color name or an entry missing its
@@ -64,25 +71,32 @@ public final class FileIcons {
     static final String RESOURCE = "dev/omatheusmesmo/vintelli/tui/icons/file-icons.properties";
     static final String USER_FILE_PROPERTY = "vintelli.icons.file";
 
+    private static final String JAVA_EXTENSION = "java";
+
     private static final String RESOURCE_SOURCE = "resource '" + RESOURCE + "'";
     private static final Pattern KEY_PATTERN =
-            Pattern.compile("^(name|ext|default)\\.(.*)\\.(glyph|ascii|color)$");
+            Pattern.compile("^(name|ext|default|type)\\.(.*)\\.(glyph|ascii|color)$");
     private static final Pattern HEX_COLOR_PATTERN = Pattern.compile("^#[0-9a-fA-F]{6}$");
     private static final Map<String, Color> COLOR_NAMES = buildColorNames();
 
     private final IconMode mode;
     private final Map<String, FileIcon> byName;
     private final Map<String, FileIcon> byExtension;
+    private final Map<JavaTypeKind, FileIcon> byType;
     private final FileIcon defaultFile;
     private final FileIcon defaultFolder;
+    private final boolean javaExtensionOverridden;
 
     private FileIcons(IconMode mode, Map<String, FileIcon> byName, Map<String, FileIcon> byExtension,
-            FileIcon defaultFile, FileIcon defaultFolder) {
+            Map<JavaTypeKind, FileIcon> byType, FileIcon defaultFile, FileIcon defaultFolder,
+            boolean javaExtensionOverridden) {
         this.mode = mode;
         this.byName = byName;
         this.byExtension = byExtension;
+        this.byType = byType;
         this.defaultFile = defaultFile;
         this.defaultFolder = defaultFolder;
+        this.javaExtensionOverridden = javaExtensionOverridden;
     }
 
     /**
@@ -134,8 +148,8 @@ public final class FileIcons {
             Matcher matcher = KEY_PATTERN.matcher(declared.toLowerCase(Locale.ROOT));
             if (!matcher.matches()) {
                 throw new IllegalArgumentException("invalid icon mapping key '" + declared + "' in " + source
-                        + "; expected 'default.{file|folder}.{glyph|ascii|color}', 'name.<file name>.{...}' or "
-                        + "'ext.<extension>.{...}'");
+                        + "; expected 'default.{file|folder}.{glyph|ascii|color}', 'name.<file name>.{...}', "
+                        + "'ext.<extension>.{...}' or 'type.<kind>.{...}'");
             }
             Map<String, Setting> group = groups.computeIfAbsent(matcher.group(1) + ":" + matcher.group(2),
                     key -> new LinkedHashMap<>());
@@ -150,6 +164,7 @@ public final class FileIcons {
         Map<String, FileIcon> byName = new HashMap<>();
         Map<String, FileIcon> byExtension = new HashMap<>();
         Map<String, FileIcon> defaults = new HashMap<>();
+        Map<JavaTypeKind, FileIcon> types = new EnumMap<>(JavaTypeKind.class);
         for (Map.Entry<String, Map<String, Setting>> group : groups.entrySet()) {
             String id = group.getKey();
             String scope = id.substring(0, id.indexOf(':'));
@@ -163,6 +178,7 @@ public final class FileIcons {
             switch (scope) {
                 case "name" -> byName.put(base.toLowerCase(Locale.ROOT), icon);
                 case "ext" -> byExtension.put(base.toLowerCase(Locale.ROOT), icon);
+                case "type" -> types.put(typeKind(base, origin), icon);
                 default -> {
                     if (!base.equals("file") && !base.equals("folder")) {
                         throw new IllegalArgumentException("invalid default '" + base + "' in " + origin
@@ -178,7 +194,26 @@ public final class FileIcons {
             throw new IllegalArgumentException("missing default." + (file == null ? "file" : "folder")
                     + " mapping in " + RESOURCE_SOURCE);
         }
-        return new FileIcons(mode, Map.copyOf(byName), Map.copyOf(byExtension), file, folder);
+        for (JavaTypeKind kind : JavaTypeKind.values()) {
+            if (!types.containsKey(kind)) {
+                throw new IllegalArgumentException("missing type." + kind.name().toLowerCase(Locale.ROOT)
+                        + " mapping in " + RESOURCE_SOURCE);
+            }
+        }
+        boolean javaOverridden = groups.getOrDefault("ext:" + JAVA_EXTENSION, Map.of()).values().stream()
+                .anyMatch(setting -> !RESOURCE_SOURCE.equals(setting.source()));
+        return new FileIcons(mode, Map.copyOf(byName), Map.copyOf(byExtension), Map.copyOf(types), file, folder,
+                javaOverridden);
+    }
+
+    private static JavaTypeKind typeKind(String base, String origin) {
+        for (JavaTypeKind kind : JavaTypeKind.values()) {
+            if (kind.name().toLowerCase(Locale.ROOT).equals(base)) {
+                return kind;
+            }
+        }
+        throw new IllegalArgumentException("invalid type '" + base + "' in " + origin
+                + "; expected one of class, interface, enum, record, annotation");
     }
 
     private static String requireField(String field, Map<String, Setting> values, String prefix) {
@@ -289,19 +324,34 @@ public final class FileIcons {
      * the default file icon.
      */
     public FileIcon iconFor(String fileName) {
+        return iconFor(fileName, null);
+    }
+
+    /**
+     * Icon of an ordinary file whose Java kind is known, or null when it is not.
+     * A Java source takes the icon of its kind after an exact name match, unless
+     * the user mapping file defines {@code ext.java}; every other name is looked
+     * up as by {@link #iconFor(String)}.
+     */
+    public FileIcon iconFor(String fileName, JavaTypeKind kind) {
         String name = lastSegment(fileName);
         FileIcon byName = this.byName.get(name.toLowerCase(Locale.ROOT));
         if (byName != null) {
             return byName;
         }
-        int dot = name.lastIndexOf('.');
-        if (dot > 0 && dot < name.length() - 1) {
-            FileIcon byExtension = this.byExtension.get(name.substring(dot + 1).toLowerCase(Locale.ROOT));
-            if (byExtension != null) {
-                return byExtension;
-            }
+        String extension = extensionOf(name);
+        if (extension == null) {
+            return defaultFile;
         }
-        return defaultFile;
+        if (kind != null && JAVA_EXTENSION.equals(extension) && !javaExtensionOverridden) {
+            return byType.get(kind);
+        }
+        return byExtension.getOrDefault(extension, defaultFile);
+    }
+
+    private static String extensionOf(String name) {
+        int dot = name.lastIndexOf('.');
+        return dot > 0 && dot < name.length() - 1 ? name.substring(dot + 1).toLowerCase(Locale.ROOT) : null;
     }
 
     /**
@@ -326,6 +376,10 @@ public final class FileIcons {
 
     Map<String, FileIcon> extensionEntries() {
         return byExtension;
+    }
+
+    Map<JavaTypeKind, FileIcon> typeEntries() {
+        return byType;
     }
 
     private record Setting(String value, String source) {

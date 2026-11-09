@@ -4,6 +4,8 @@ import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.ProjectFileOperations;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
 import dev.omatheusmesmo.vintelli.api.search.ProjectSearch;
+import dev.omatheusmesmo.vintelli.tui.icons.JavaTypeKind;
+import dev.omatheusmesmo.vintelli.tui.icons.JavaTypeKinds;
 
 import java.io.File;
 import java.nio.file.Path;
@@ -47,6 +49,7 @@ final class ProjectTreeController {
     private final Consumer<String> statusSink;
     private final Runnable treeRefresh;
     private final Runnable vcsRefresh;
+    private final JavaTypeKinds javaKinds;
     private final DoubleClickTracker doubleClick = new DoubleClickTracker();
     private final StringBuilder input = new StringBuilder();
     private final List<ProjectNode> rootNodes = new ArrayList<>();
@@ -69,6 +72,13 @@ final class ProjectTreeController {
     ProjectTreeController(Path projectRoot, ShellState state, ProjectSearch projectSearch,
             ProjectFileOperations fileOperations, Consumer<String> statusSink, Runnable treeRefresh,
             Runnable vcsRefresh) {
+        this(projectRoot, state, projectSearch, fileOperations, statusSink, treeRefresh, vcsRefresh,
+                JavaTypeKinds.ofFiles());
+    }
+
+    ProjectTreeController(Path projectRoot, ShellState state, ProjectSearch projectSearch,
+            ProjectFileOperations fileOperations, Consumer<String> statusSink, Runnable treeRefresh,
+            Runnable vcsRefresh, JavaTypeKinds javaKinds) {
         this.projectRoot = projectRoot;
         this.state = state;
         this.projectSearch = projectSearch;
@@ -76,6 +86,7 @@ final class ProjectTreeController {
         this.statusSink = statusSink;
         this.treeRefresh = treeRefresh;
         this.vcsRefresh = vcsRefresh;
+        this.javaKinds = javaKinds;
         this.files = projectSearch == null ? PROJECT_FILES : List.of();
         this.filesLoading = projectSearch != null;
     }
@@ -135,6 +146,14 @@ final class ProjectTreeController {
     ProjectNode selectedNode() {
         List<ProjectNode> nodes = visibleNodes;
         return selected < 0 || selected >= nodes.size() ? null : nodes.get(selected);
+    }
+
+    JavaTypeKind javaKind(ProjectNode node) {
+        return javaKinds.kindOf(projectRoot.resolve(node.relative));
+    }
+
+    long javaKindVersion() {
+        return javaKinds.version();
     }
 
     Optional<String> selectedRelative() {
@@ -267,10 +286,19 @@ final class ProjectTreeController {
         String previous = files.isEmpty() ? ""
                 : (selected >= 0 && selected < files.size() ? files.get(selected) : "");
         recomputeVisible(previous);
+        revalidateJavaKinds();
         filesLoading = false;
         unavailable = false;
         if (updateStatus) {
             statusSink.accept(visibleNodes.isEmpty() ? EMPTY_LABEL : "Project files loaded");
+        }
+    }
+
+    private void revalidateJavaKinds() {
+        for (ProjectNode node : visibleNodes) {
+            if (!node.directory) {
+                javaKinds.revalidate(projectRoot.resolve(node.relative));
+            }
         }
     }
 
