@@ -114,12 +114,14 @@ class VintelliShellPushTest {
     }
 
     @Test
-    void keepsTheEditorPlaceholderWhenNothingWasPushed() throws IOException {
+    void showsTheStartScreenWhenNothingWasPushed() throws IOException {
         VintelliShell shell = defaultShell();
         Buffer buffer = offlineFrame(shell);
 
-        String firstEditorRow = rowText(buffer, FIRST_EDITOR_ROW);
-        assertTrue(firstEditorRow.contains("editor tool window"), firstEditorRow);
+        String screen = bufferText(buffer);
+        assertTrue(screen.contains("Go to File"), screen);
+        assertTrue(screen.contains("Keymap Help"), screen);
+        assertFalse(screen.contains("lands with issue"), screen);
     }
 
     /**
@@ -249,6 +251,14 @@ class VintelliShellPushTest {
         StringBuilder text = new StringBuilder();
         for (int x = 0; x < buffer.width(); x++) {
             text.append(buffer.get(x, row).symbol());
+        }
+        return text.toString();
+    }
+
+    private static String bufferText(Buffer buffer) {
+        StringBuilder text = new StringBuilder();
+        for (int row = 0; row < buffer.height(); row++) {
+            text.append(rowText(buffer, row)).append('\n');
         }
         return text.toString();
     }

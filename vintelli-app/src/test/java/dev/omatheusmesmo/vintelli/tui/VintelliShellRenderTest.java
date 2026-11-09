@@ -70,6 +70,21 @@ class VintelliShellRenderTest {
         assertFalse(mainArea.contains("─"), "no horizontal separator line above the bottom windows:\n" + mainArea);
     }
 
+    /**
+     * With no file open the editor island shows the start screen: the main
+     * shortcuts with the chords of the active keymap, and no development note.
+     * The inherited IT replays this on the native runner, where the keymap
+     * lookup behind the key labels has to work for the rows to appear.
+     */
+    @Test
+    void showsTheStartScreenWithTheKeymapChordsWhenNoFileIsOpen() throws InterruptedException {
+        String mainArea = awaitSettledMainArea();
+        assertTrue(mainArea.contains("Go to File") && mainArea.contains("Find in Files"),
+                "the start screen lists the main shortcuts:\n" + mainArea);
+        assertTrue(mainArea.contains("Ctrl+o"), "the Go to File row carries its chord:\n" + mainArea);
+        assertFalse(mainArea.contains("lands with issue"), "the old development note is gone:\n" + mainArea);
+    }
+
     private static String awaitSettledMainArea() throws InterruptedException {
         long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
         String mainArea = "";

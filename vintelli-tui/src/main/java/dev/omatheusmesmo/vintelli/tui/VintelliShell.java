@@ -355,7 +355,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         this.vcsActions = new VcsActions(vcsProviders, frameLock, message -> status = message, this::show,
                 projects, editor);
         this.editorController = new EditorController(this.projectRoot, editor, projects, editorHost());
-        this.editorPanel = new EditorPanel(editorController, editor, themes);
+        this.editorPanel = new EditorPanel(editorController, editor, themes, () -> overlays().keymap(), this.projectRoot);
         this.fileIcons = FileIcons.resolve();
         Path projectRoot = editor == null ? Path.of("").toAbsolutePath().normalize() : editor.project();
         Path configRoot = persistLayout ? ConfigDirectory.configRoot(ConfigDirectory.sharedConfigDir(),

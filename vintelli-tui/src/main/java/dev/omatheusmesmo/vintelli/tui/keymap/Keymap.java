@@ -503,6 +503,14 @@ public final class Keymap {
     }
 
     /**
+     * Whether the action has at least one chord in this keymap. An action that
+     * the user file leaves without triggers has none.
+     */
+    public boolean isBound(String actionId) {
+        return !bindings.triggersFor(bindingName(actionId)).isEmpty();
+    }
+
+    /**
      * Human readable description of the shortcuts bound to the action, for
      * example {@code Ctrl+P}; used by the palette and the help overlay. Empty
      * when the user file left the action without triggers.
