@@ -1669,6 +1669,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 themes.switchTheme(themeNames.get(Math.floorMod(themeIndex + 1, themeNames.size())));
                 status = "Theme: " + themes.activeTheme();
             }
+            case KeyActions.SHELL_SETTINGS -> {
+                closeOverlays(parts);
+                parts.commandPalette().openWith("theme");
+                status = "Settings: pick the shell theme (icons: " + fileIcons.mode().name() + ", set with vintelli.icons)";
+            }
             case KeyActions.MOVE_UP -> {
                 closeOverlays(parts);
                 moveSelection(-1);

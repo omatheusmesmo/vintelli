@@ -50,6 +50,8 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -1291,7 +1293,9 @@ class VintelliShellTest {
      * key are needed to read the result back. Every action still starts from a
      * fresh shell, and the two assertions are the ones the runner driven
      * version made: the dispatch must not end in an unhandled status, and the
-     * palette must close unless the action is the palette itself.
+     * palette must close unless the action is the palette itself. The Settings
+     * action is the exception: it narrows the palette to the theme choice, so
+     * the palette stays open for it.
      */
     @Test
     void everyCatalogActionDispatchesFromThePaletteWithoutAnUnhandledStatus() {
@@ -1308,7 +1312,8 @@ class VintelliShellTest {
             shell.handle(KeyEvent.ofKey(KeyCode.ENTER));
 
             assertFalse(shell.status().startsWith("Unhandled action"), action.id() + ": " + shell.status());
-            assertFalse(shell.paletteOpen() && !action.id().equals(KeyActions.SEARCH_EVERYWHERE), action.id());
+            assertFalse(shell.paletteOpen() && !action.id().equals(KeyActions.SEARCH_EVERYWHERE)
+                    && !action.id().equals(KeyActions.SHELL_SETTINGS), action.id());
         }
     }
 
@@ -3538,8 +3543,12 @@ class VintelliShellTest {
     void theBranchWidgetIsHiddenWithoutAVcsProvider() {
         String row = rowText(offlineFrame(defaultShell()), MENU_ROW);
         String project = Path.of("").toAbsolutePath().normalize().getFileName().toString();
-        assertTrue(row.trim().endsWith(project + " " + toolbarGlyphs().dropdown()),
-                "the project widget is the last widget of the row: " + row);
+        assertTrue(row.contains(" " + project + " " + toolbarGlyphs().dropdown() + " "),
+                "the project widget is drawn: " + row);
+        String projectWidget = project + " " + toolbarGlyphs().dropdown();
+        String afterProject = row.substring(row.indexOf(projectWidget) + projectWidget.length());
+        assertFalse(afterProject.contains(toolbarGlyphs().dropdown()),
+                "no branch widget is drawn after the project widget: " + row);
     }
 
     @Test
@@ -3590,7 +3599,7 @@ class VintelliShellTest {
     @Test
     void aClickOnAnEmptyToolbarCellDoesNothing() throws Exception {
         try (MouseShellRunner test = runMouseShell(defaultShell(), SIZE)) {
-            test.pilot().click(VIEWPORT.width() - 1, MENU_ROW);
+            test.pilot().click(40, MENU_ROW);
             settle(test.pilot());
             assertFalse(firstRow(test.renderedFrame()).contains("Edit  View"));
         }
@@ -3611,6 +3620,87 @@ class VintelliShellTest {
             assertTrue(shell.status().startsWith("VCS: main"), shell.status());
             assertEquals(0, vcs.switchCalls.get(), "the branch widget must not switch branches");
         }
+    }
+
+    @Test
+    void toolbarSearchButtonOpensTheProjectSearch() throws Exception {
+        VintelliShell shell = shellWithProjectSearch();
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            String row = firstRow(awaitRenderedFrame(test.pilot(), test, toolbarGlyphs().settings()));
+            test.pilot().click(row.lastIndexOf(toolbarGlyphs().search()), MENU_ROW);
+            settle(test.pilot());
+            awaitShellStatus(shell, "Find in Files: type to search");
+            assertEquals("Find in Files: type to search", shell.status());
+        }
+    }
+
+    @Test
+    void toolbarMoreButtonOpensTheActionMenu() throws Exception {
+        try (MouseShellRunner test = runMouseShell(defaultShell(), SIZE)) {
+            String row = firstRow(awaitRenderedFrame(test.pilot(), test, toolbarGlyphs().more()));
+            test.pilot().click(row.lastIndexOf(toolbarGlyphs().more()), MENU_ROW);
+            settle(test.pilot());
+            assertTrue(firstRow(awaitRenderedFrame(test.pilot(), test, "Edit  View")).contains("Edit  View"));
+        }
+    }
+
+    @Test
+    void toolbarSettingsButtonOpensTheThemeChoice() throws Exception {
+        VintelliShell shell = defaultShell();
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            String row = firstRow(awaitRenderedFrame(test.pilot(), test, toolbarGlyphs().settings()));
+            test.pilot().click(row.lastIndexOf(toolbarGlyphs().settings()), MENU_ROW);
+            settle(test.pilot());
+            String frame = awaitRenderedFrame(test.pilot(), test, "Switch Shell Theme");
+            assertTrue(frame.contains("Switch Shell Theme"), "the palette is narrowed to the theme choice: " + frame);
+            assertTrue(frame.contains("> theme"), "the palette filter reads theme: " + frame);
+            assertTrue(shell.status().startsWith("Settings: pick the shell theme"), shell.status());
+        }
+    }
+
+    @Test
+    void toolbarDebugButtonIsDisabledAndDispatchesNothing() throws Exception {
+        VintelliShell shell = defaultShell();
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            String row = firstRow(awaitRenderedFrame(test.pilot(), test, toolbarGlyphs().debug()));
+            String before = shell.status();
+            test.pilot().click(row.lastIndexOf(toolbarGlyphs().debug()), MENU_ROW);
+            settle(test.pilot());
+            pause(test.pilot(), Duration.ofMillis(100));
+            assertEquals(before, shell.status(), "the disabled debug button changes no state");
+            String frame = test.renderedFrame();
+            assertFalse(firstRow(frame).contains("Edit  View"), "debug does not open the menu: " + firstRow(frame));
+            assertFalse(frame.contains("Switch Shell Theme"), "debug does not open the palette");
+        }
+    }
+
+    @Test
+    void toolbarRightGroupKeepsSettingsLastWithOneBlankColumnBetweenButtonsAtEightyColumns() throws Exception {
+        try (MouseShellRunner test = runMouseShell(defaultShell(), SIZE)) {
+            String row = firstRow(awaitRenderedFrame(test.pilot(), test, toolbarGlyphs().settings()));
+            int debug = row.lastIndexOf(toolbarGlyphs().debug());
+            int more = row.lastIndexOf(toolbarGlyphs().more());
+            int search = row.lastIndexOf(toolbarGlyphs().search());
+            int settings = row.lastIndexOf(toolbarGlyphs().settings());
+            assertEquals(VIEWPORT.width() - 1, settings, "settings is the last cell of the 80 column row: " + row);
+            assertEquals(3, search - more, row);
+            assertEquals(3, more - debug, row);
+            assertEquals(3, settings - search, row);
+        }
+    }
+
+    private static void awaitShellStatus(VintelliShell shell, String expected) {
+        long deadline = System.nanoTime() + SETTLE_TIMEOUT.toNanos();
+        while (!expected.equals(shell.status()) && System.nanoTime() < deadline) {
+            napMillis(10);
+        }
+    }
+
+    private static VintelliShell shellWithProjectSearch() {
+        ShellThemes themes = defaultThemes();
+        List<ToolWindow> windows = defaultWindows();
+        return new VintelliShell(windows, new ShellState(), () -> Keymap.defaultKeymap(windows), themes,
+                new IdleProjectSearch());
     }
 
     private static void napMillis(long millis) {
@@ -3681,7 +3771,7 @@ class VintelliShellTest {
     }
 
     private static MainToolbar.Glyphs toolbarGlyphs() {
-        return MainToolbar.Glyphs.of(FileIcons.resolve().mode());
+        return MainToolbar.Glyphs.of(FileIcons.resolve().mode(), ProjectTreeGlyphs.supportsUnicode());
     }
 
     private static VintelliShell shellWithVcs(VersionControlCapability vcs) {
@@ -4008,6 +4098,48 @@ class VintelliShellTest {
     private static String frameCells(String line, int x, int width) {
         String padded = line.length() < x + width ? line + " ".repeat(x + width - line.length()) : line;
         return padded.substring(x, x + width);
+    }
+
+    /** A search that finds nothing and never fails, for the overlays that only need the search to open. */
+    private static final class IdleProjectSearch implements ProjectSearch {
+
+        @Override
+        public List<Path> listFiles() {
+            return List.of();
+        }
+
+        @Override
+        public List<Path> listDirectories() {
+            return List.of();
+        }
+
+        @Override
+        public SearchTask files(String query, Consumer<List<FileMatch>> results) {
+            return idle();
+        }
+
+        @Override
+        public SearchTask text(String query, boolean regex, Consumer<List<TextMatch>> results) {
+            return idle();
+        }
+
+        private static SearchTask idle() {
+            return new SearchTask() {
+                @Override
+                public void cancel() {
+                }
+
+                @Override
+                public boolean cancelled() {
+                    return false;
+                }
+
+                @Override
+                public CompletionStage<Void> completion() {
+                    return CompletableFuture.completedFuture(null);
+                }
+            };
+        }
     }
 
     private static final class FixedProjectSearch implements ProjectSearch {

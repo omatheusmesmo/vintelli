@@ -256,6 +256,19 @@ an arrow, or `+` and `-`) toggles it. The list keeps the selected row in view
 when the keyboard or the wheel moves the selection. Clicks below the last row
 change nothing, and a click while a new name or a rename is being typed is
 ignored, so the typed input and its target stay as they are.
+The main toolbar follows the IntelliJ New UI order. On the left are the menu
+button, the project widget and the branch widget. On the right, aligned to the
+edge, are the run configuration, the Run slot, Debug, the more button, Search
+and Settings, with one blank column between buttons and two before the group.
+The Run slot shows Run while idle and Stop while a configuration runs; a click
+on the configuration selects the next one. Debug is drawn dimmed and does
+nothing until debugging exists. The more button opens the action menu, the same
+as `F10`. Search opens Find in Files, the same as `Alt+F`. Settings opens the
+palette narrowed to the theme choice, which is also listed as `Open Settings`
+in Search Everywhere (`Ctrl+P`); the icon face is set with `vintelli.icons`.
+When the row is too narrow, the right group drops its leftmost buttons first,
+so Settings is the last one to go, and the branch widget stays unless the left
+group alone does not fit.
 Panes have no frames and no separator lines: each one is an island of the editor
 tone on the frame tone, and starts with a header row that is underlined in the
 frame tone. The left strip, the toolbar, the right stripe and the status bar sit

@@ -65,8 +65,16 @@ public final class CommandPalette {
      * survive a round trip.
      */
     public void open() {
+        openWith("");
+    }
+
+    /**
+     * Opens the palette with a starting filter, so a surface such as the
+     * toolbar Settings button can open the list already narrowed to one topic.
+     */
+    public void openWith(String initialFilter) {
         open = true;
-        filter = "";
+        filter = initialFilter;
         selected = 0;
         scrollOffset = 0;
         doubleClick.reset();
