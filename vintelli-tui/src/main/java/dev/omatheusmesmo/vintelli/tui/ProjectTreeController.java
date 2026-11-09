@@ -62,6 +62,7 @@ final class ProjectTreeController {
     private volatile int selected;
     private volatile int syncedIndex = -1;
     private volatile int top;
+    private volatile int leftColumn;
     private volatile long revision;
     private volatile Path copiedPath;
 
@@ -117,6 +118,10 @@ final class ProjectTreeController {
 
     int top() {
         return top;
+    }
+
+    int leftColumn() {
+        return leftColumn;
     }
 
     long revision() {
@@ -231,6 +236,14 @@ final class ProjectTreeController {
         top = Math.clamp(offset, 0, Math.max(0, total - visibleRows));
     }
 
+    /**
+     * Sets the number of leading columns cut from every row so that the end of
+     * the selected row is visible. A row that fits the view gives column 0.
+     */
+    void trackColumn(int selectedWidth, int viewWidth) {
+        leftColumn = Math.max(0, selectedWidth - viewWidth);
+    }
+
     boolean registerClick(int index) {
         return doubleClick.register(index, clock.getAsLong());
     }
@@ -281,30 +294,47 @@ final class ProjectTreeController {
         return true;
     }
 
+    private static String slashed(Path relative) {
+        return relative.toString().replace('\\', '/');
+    }
+
     void expandSelected() {
         ProjectNode node = selectedNode();
         if (node != null && node.directory && !node.expanded) {
-            node.expanded = true;
+            setChainExpanded(node, true);
             recomputeVisible(selectedRelative().orElse(""));
-            statusSink.accept("Expanded " + node.relative);
+            statusSink.accept("Expanded " + slashed(node.relative));
         }
     }
 
     void collapseSelected() {
         ProjectNode node = selectedNode();
         if (node != null && node.directory && node.expanded) {
-            node.expanded = false;
+            setChainExpanded(node, false);
             recomputeVisible(selectedRelative().orElse(""));
-            statusSink.accept("Collapsed " + node.relative);
+            statusSink.accept("Collapsed " + slashed(node.relative));
         }
     }
 
     void toggleSelected() {
         ProjectNode node = selectedNode();
         if (node != null && node.directory) {
-            node.expanded = !node.expanded;
+            setChainExpanded(node, !node.expanded);
             recomputeVisible(selectedRelative().orElse(""));
-            statusSink.accept((node.expanded ? "Expanded " : "Collapsed ") + node.relative);
+            statusSink.accept((node.expanded ? "Expanded " : "Collapsed ") + slashed(node.relative));
+        }
+    }
+
+    /**
+     * Sets the expansion of a compacted chain on every folder of it, so the
+     * state survives when a later change breaks the chain into separate rows.
+     */
+    private static void setChainExpanded(ProjectNode row, boolean expanded) {
+        for (ProjectNode node = row; ; node = node.parent) {
+            node.expanded = expanded;
+            if (node.parent == null || !node.parent.compactsChild()) {
+                return;
+            }
         }
     }
 
@@ -351,14 +381,32 @@ final class ProjectTreeController {
         }
     }
 
+    /**
+     * Selects the row of {@code relative}. A folder folded into a compacted
+     * chain has no row of its own, so it selects the row of the chain it is in.
+     */
     void selectPath(String relative) {
-        int index = files.indexOf(relative);
+        int index = rowIndexOf(relative);
         if (index >= 0) {
+            String row = files.get(index);
             selected = index;
             syncedIndex = index;
-            state.selectFile(relative);
-            statusSink.accept("Selected: " + relative);
+            state.selectFile(row);
+            statusSink.accept("Selected: " + row);
         }
+    }
+
+    private int rowIndexOf(String relative) {
+        int exact = files.indexOf(relative);
+        if (exact >= 0) {
+            return exact;
+        }
+        for (int index = 0; index < files.size(); index++) {
+            if (files.get(index).startsWith(relative + "/")) {
+                return index;
+            }
+        }
+        return -1;
     }
 
     boolean beginInput(InputMode mode) {
@@ -625,9 +673,10 @@ final class ProjectTreeController {
 
     private void appendVisible(List<ProjectNode> nodes, List<ProjectNode> output) {
         for (ProjectNode node : nodes) {
-            output.add(node);
-            if (node.directory && node.expanded && node.children != null) {
-                appendVisible(node.children, output);
+            ProjectNode row = node.compactEnd();
+            output.add(row);
+            if (row.directory && row.expanded && row.children != null) {
+                appendVisible(row.children, output);
             }
         }
         vcsRefresh.run();

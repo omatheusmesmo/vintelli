@@ -900,8 +900,8 @@ class VintelliShellTest {
 
         FileIcons icons = FileIcons.resolve();
         String srcRow = ProjectTreeTest.disclosureGlyph(icons, ProjectTreeGlyphs.supportsUnicode(), true) + " "
-                + icons.folderIconFor("src").symbol(icons.mode()) + " src";
-        String changedRow = "    M " + icons.iconFor("A.java").symbol(icons.mode()) + " A.java";
+                + icons.folderIconFor("main").symbol(icons.mode()) + " src/main";
+        String changedRow = "  M " + icons.iconFor("A.java").symbol(icons.mode()) + " A.java";
         assertTrue(rendered.contains(srcRow), "the expanded directory keeps its tree row: " + rendered);
         assertTrue(rendered.contains(changedRow), "the changed file keeps its tree row and marker: " + rendered);
         assertFalse(rendered.contains("M src/main/A.java"), "the refresh must not flatten rows to paths: " + rendered);
@@ -1910,7 +1910,8 @@ class VintelliShellTest {
     @Test
     void disclosureClicksToggleAndNameClicksSelectAtDepthZeroAndThree() throws Exception {
         VintelliShell shell = projectTreeShell(defaultThemes(), null, null,
-                List.of("alpha/beta/gamma/delta/Leaf.txt", "Zed.txt"),
+                List.of("alpha/beta/gamma/delta/Leaf.txt", "alpha/Side.txt", "alpha/beta/Side.txt",
+                        "alpha/beta/gamma/Side.txt", "Zed.txt"),
                 List.of("alpha", "alpha/beta", "alpha/beta/gamma", "alpha/beta/gamma/delta"));
         awaitProjectTree(shell);
         try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
@@ -1919,14 +1920,14 @@ class VintelliShellTest {
             Rect list = pilot.findElement("project-panel");
 
             clickDisclosure(pilot, test, list, "alpha", 2);
-            assertEquals(List.of("alpha", "alpha/beta", "Zed.txt"), shell.projectFiles(),
+            assertEquals(List.of("alpha", "alpha/beta", "alpha/Side.txt", "Zed.txt"), shell.projectFiles(),
                     "the disclosure of a depth 0 folder expands it");
 
             selectByName(pilot, test, list, "Zed.txt");
             assertEquals("Zed.txt", shell.selectedPathString());
             selectByName(pilot, test, list, "alpha");
             assertEquals("alpha", shell.selectedPathString(), "a name click selects the depth 0 folder");
-            assertEquals(List.of("alpha", "alpha/beta", "Zed.txt"), shell.projectFiles(),
+            assertEquals(List.of("alpha", "alpha/beta", "alpha/Side.txt", "Zed.txt"), shell.projectFiles(),
                     "a name click does not toggle the folder");
 
             clickDisclosure(pilot, test, list, "beta", 4);
@@ -1949,7 +1950,8 @@ class VintelliShellTest {
         List<String> directories = List.of("n1", "n1/n2", "n1/n2/n3", "n1/n2/n3/n4", "n1/n2/n3/n4/n5",
                 "n1/n2/n3/n4/n5/n6");
         VintelliShell shell = projectTreeShell(defaultThemes(), null, null,
-                List.of("n1/n2/n3/n4/n5/n6/Deep.txt", "Zed.txt"), directories);
+                List.of("n1/n2/n3/n4/n5/n6/Deep.txt", "n1/Side.txt", "n1/n2/Side.txt", "n1/n2/n3/Side.txt",
+                        "n1/n2/n3/n4/Side.txt", "n1/n2/n3/n4/n5/Side.txt", "Zed.txt"), directories);
         awaitProjectTree(shell);
         for (String directory : directories) {
             shell.selectPath(directory);
@@ -1968,6 +1970,146 @@ class VintelliShellTest {
             String drawn = frameCells(frame.split("\n", -1)[row], list.x(), list.width());
             assertTrue(drawn.startsWith(" ".repeat(16) + icon + " Deep.txt"),
                     "highlight 2 + six levels of 2 columns + a 2 column slot precede the icon: " + drawn);
+        }
+    }
+
+    private static final String DEEP_TUI = "src/main/java/dev/omatheusmesmo/vintelli/tui";
+    private static final String LONG_FILE = "AVeryLongNameForTheProjectPaneScrollTest.java";
+
+    private VintelliShell deepJavaShell(List<String> files) {
+        List<String> directories = new ArrayList<>();
+        String prefix = "";
+        for (String part : DEEP_TUI.split("/")) {
+            prefix = prefix.isEmpty() ? part : prefix + "/" + part;
+            directories.add(prefix);
+        }
+        VintelliShell shell = projectTreeShell(defaultThemes(), null, null, files, directories);
+        awaitProjectTree(shell);
+        return shell;
+    }
+
+    @Test
+    void aDeepJavaPathCompactsAndEveryFileNameIsReadableIn80x24() throws Exception {
+        VintelliShell shell = deepJavaShell(List.of(DEEP_TUI + "/ProjectPanel.java", DEEP_TUI + "/ProjectNode.java",
+                "README.md"));
+        shell.selectPath("src");
+        shell.expandSelected();
+        assertEquals(List.of(DEEP_TUI, DEEP_TUI + "/ProjectNode.java", DEEP_TUI + "/ProjectPanel.java", "README.md"),
+                shell.projectFiles(), "the deep path is one row");
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            settle(pilot);
+            Rect list = pilot.findElement("project-panel");
+            pilot.press(KeyCode.DOWN);
+            pilot.press(KeyCode.DOWN);
+            pilot.press(KeyCode.DOWN);
+            settle(pilot);
+            String frame = test.renderedFrame();
+
+            assertTrue(projectRowOf(frame, list, "src/main/java/dev") >= 0, "the chain row starts at the top: " + frame);
+            assertEquals(-1, projectRowOf(frame, list, "vintelli/tui"),
+                    "the chain row is one row, cut at the pane edge while it is not selected: " + frame);
+            assertTrue(projectRowOf(frame, list, "ProjectNode.java") >= 0, "ProjectNode.java is whole: " + frame);
+            assertTrue(projectRowOf(frame, list, "ProjectPanel.java") >= 0, "ProjectPanel.java is whole: " + frame);
+            assertTrue(projectRowOf(frame, list, "README.md") >= 0, "README.md is whole: " + frame);
+        }
+    }
+
+    @Test
+    void keyboardAndPointerExpandAndCollapseACompactedRow() throws Exception {
+        VintelliShell shell = deepJavaShell(List.of(DEEP_TUI + "/ProjectPanel.java", "README.md"));
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            settle(pilot);
+            Rect list = pilot.findElement("project-panel");
+            assertEquals(List.of(DEEP_TUI, "README.md"), shell.projectFiles());
+
+            pilot.press(KeyCode.ENTER);
+            settle(pilot);
+            assertEquals(List.of(DEEP_TUI, DEEP_TUI + "/ProjectPanel.java", "README.md"), shell.projectFiles(),
+                    "Enter on the compacted row expands its last folder");
+            pilot.press(KeyCode.ENTER);
+            settle(pilot);
+            assertEquals(List.of(DEEP_TUI, "README.md"), shell.projectFiles(), "Enter again collapses it");
+
+            pilot.press(KeyCode.DOWN);
+            settle(pilot);
+            clickDisclosure(pilot, test, list, "src/main/java/dev", 2);
+            assertTrue(shell.projectFiles().contains(DEEP_TUI + "/ProjectPanel.java"),
+                    "the chevron of the compacted row expands it: " + shell.projectFiles());
+
+            pilot.press(KeyCode.DOWN);
+            settle(pilot);
+            int row = projectRowOf(test.renderedFrame(), list, "src/main/java/dev");
+            pilot.click(list.x() + 2, row);
+            settle(pilot);
+            assertEquals(List.of(DEEP_TUI, "README.md"), shell.projectFiles(), "the chevron collapses it again");
+            assertEquals(DEEP_TUI, shell.selectedPathString(), "a chevron click selects the compacted row");
+        }
+    }
+
+    @Test
+    void aLongSelectedNameScrollsIntoViewAndReturnsWhenAShortRowIsSelected() throws Exception {
+        VintelliShell shell = deepJavaShell(List.of(DEEP_TUI + "/" + LONG_FILE, DEEP_TUI + "/ProjectNode.java",
+                "README.md"));
+        shell.selectPath("src");
+        shell.expandSelected();
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            settle(pilot);
+            Rect list = pilot.findElement("project-panel");
+
+            pilot.press(KeyCode.DOWN);
+            settle(pilot);
+            assertEquals(DEEP_TUI + "/" + LONG_FILE, shell.selectedPathString());
+            String scrolled = test.renderedFrame();
+            assertTrue(projectRowOf(scrolled, list, "ScrollTest.java") >= 0,
+                    "the end of the selected name is drawn: " + scrolled);
+            assertEquals(-1, projectRowOf(scrolled, list, "AVeryLong"),
+                    "the start of the selected name is scrolled out: " + scrolled);
+
+            pilot.press(KeyCode.DOWN);
+            settle(pilot);
+            String fitting = test.renderedFrame();
+            assertTrue(projectRowOf(fitting, list, "AVeryLongNameForThe") >= 0,
+                    "a row that fits returns to column 0: " + fitting);
+            assertTrue(projectRowOf(fitting, list, "ProjectNode.java") >= 0, fitting);
+        }
+    }
+
+    @Test
+    void clicksLandOnTheDrawnRowAfterAHorizontalScrollAndAResize() throws Exception {
+        VintelliShell shell = deepJavaShell(List.of(DEEP_TUI + "/" + LONG_FILE, DEEP_TUI + "/ProjectNode.java",
+                "README.md"));
+        shell.selectPath("src");
+        shell.expandSelected();
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            settle(pilot);
+            Rect list = pilot.findElement("project-panel");
+            pilot.press(KeyCode.DOWN);
+            settle(pilot);
+            assertEquals(-1, projectRowOf(test.renderedFrame(), list, "AVeryLong"), "the list is scrolled");
+
+            pilot.click(list.x() + 5, list.y() + 2);
+            settle(pilot);
+            assertEquals(DEEP_TUI + "/ProjectNode.java", shell.selectedPathString(),
+                    "a click on the blank drawn row selects that row");
+
+            pilot.press(KeyCode.UP);
+            settle(pilot);
+            test.resize(60, SIZE.height());
+            settle(pilot);
+            list = pilot.findElement("project-panel");
+            String resized = test.renderedFrame();
+            assertTrue(projectRowOf(resized, list, "ScrollTest.java") >= 0,
+                    "after the resize the selected name still ends in view: " + resized);
+
+            int chainRow = projectRowOf(resized, list, "tui");
+            pilot.click(list.x() + projectNameColumn(resized, list, "tui"), chainRow);
+            settle(pilot);
+            assertEquals(DEEP_TUI, shell.selectedPathString(),
+                    "a click on the drawn chain row lands on it after the resize");
         }
     }
 

@@ -8,6 +8,7 @@ import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import dev.tamboui.layout.Constraint;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.terminal.Frame;
+import dev.tamboui.text.CharWidth;
 import dev.tamboui.toolkit.Toolkit;
 import dev.tamboui.toolkit.element.DefaultRenderContext;
 import dev.tamboui.toolkit.element.Element;
@@ -73,6 +74,7 @@ final class ProjectPanel implements Element {
     private boolean unicodeTree;
     private long pushedRevision = -1;
     private boolean pushedUnicode;
+    private int pushedLeft;
 
     ProjectPanel(ProjectTreeController controller, FileIcons fileIcons, boolean unicodeTree, ReentrantLock lock,
             Host host) {
@@ -116,6 +118,7 @@ final class ProjectPanel implements Element {
                 host.clearPendingFocus();
             }
             controller.trackScroll(area.height());
+            controller.trackColumn(selectedLabelWidth(), viewWidth(area));
             pushSelection();
             list.render(frame, area, context);
         } finally {
@@ -270,10 +273,12 @@ final class ProjectPanel implements Element {
     }
 
     private void pushSelection() {
-        if (pushedRevision != controller.revision() || pushedUnicode != unicodeTree) {
+        if (pushedRevision != controller.revision() || pushedUnicode != unicodeTree
+                || pushedLeft != controller.leftColumn()) {
             list.items(rows());
             pushedRevision = controller.revision();
             pushedUnicode = unicodeTree;
+            pushedLeft = controller.leftColumn();
         }
         if (list.selected() != controller.selected()) {
             list.selected(controller.selected());
@@ -293,11 +298,12 @@ final class ProjectPanel implements Element {
         if (files.isEmpty()) {
             return List.of(controller.emptyLabel());
         }
+        int left = controller.leftColumn();
         List<ProjectNode> nodes = controller.visibleNodes();
         if (nodes.isEmpty()) {
-            return files.stream().map(file -> vcsDecorated(file, file)).toList();
+            return files.stream().map(file -> dropColumns(vcsDecorated(file, file), left)).toList();
         }
-        return nodes.stream().map(this::nodeLabel).toList();
+        return nodes.stream().map(node -> dropColumns(nodeLabel(node), left)).toList();
     }
 
     private String nodeLabel(ProjectNode node) {
@@ -308,7 +314,29 @@ final class ProjectPanel implements Element {
             label.append(vcsSlot(node.relative.toString()));
         }
         return label.append((node.directory ? fileIcons.folderIconFor(node.name) : fileIcons.iconFor(node.name))
-                .symbol(fileIcons.mode())).append(' ').append(node.name).toString();
+                .symbol(fileIcons.mode())).append(' ').append(node.compactName()).toString();
+    }
+
+    private int selectedLabelWidth() {
+        ProjectNode node = controller.selectedNode();
+        return node == null ? 0 : CharWidth.of(nodeLabel(node));
+    }
+
+    private int viewWidth(Rect area) {
+        boolean scrollbar = controller.fileCount() > area.height();
+        return area.width() - HIGHLIGHT_WIDTH - (scrollbar ? 1 : 0);
+    }
+
+    private static String dropColumns(String label, int columns) {
+        int skipped = 0;
+        int index = 0;
+        while (index < label.length() && skipped < columns) {
+            int codePoint = label.codePointAt(index);
+            index += Character.charCount(codePoint);
+            skipped += CharWidth.of(codePoint);
+        }
+        String rest = label.substring(index);
+        return skipped > columns ? " ".repeat(skipped - columns) + rest : rest;
     }
 
     private String vcsSlot(String relative) {
@@ -333,15 +361,16 @@ final class ProjectPanel implements Element {
 
     /**
      * The column span of the disclosure glyph of a directory row. The row is drawn
-     * after the highlight symbol, with two columns per ancestor and then the glyph
-     * slot, so the geometry here follows that label layout.
+     * after the highlight symbol, with two columns per row above it and then the
+     * glyph slot, cut by the horizontal offset, so the geometry here follows that
+     * label layout.
      */
     private boolean onExpandMarker(ProjectNode node, int x, Rect area) {
         if (!node.directory) {
             return false;
         }
-        int start = area.x() + HIGHLIGHT_WIDTH + node.depth() * INDENT_WIDTH;
-        return x >= start && x < start + MARKER_WIDTH;
+        int start = area.x() + HIGHLIGHT_WIDTH + node.depth() * INDENT_WIDTH - controller.leftColumn();
+        return x >= Math.max(start, area.x() + HIGHLIGHT_WIDTH) && x < start + MARKER_WIDTH;
     }
 
     private static boolean contains(Rect area, MouseEvent mouse) {
