@@ -52,6 +52,15 @@ public final class KeyActions {
     public static final String PROJECT_RENAME = "project_rename";
     public static final String PROJECT_DELETE = "project_delete";
     public static final String PROJECT_REFRESH = "project_refresh";
+    public static final String PROJECT_VIEW_MENU = "project_view_menu";
+    public static final String PROJECT_VIEW_PROJECT = "project_view_project";
+    public static final String PROJECT_NEW_MENU = "project_new_menu";
+    public static final String PROJECT_SELECT_OPENED_FILE = "project_select_opened_file";
+    public static final String PROJECT_EXPAND_ALL = "project_expand_all";
+    public static final String PROJECT_COLLAPSE_ALL = "project_collapse_all";
+    public static final String PROJECT_OPTIONS_MENU = "project_options_menu";
+    public static final String PROJECT_SHOW_HIDDEN = "project_show_hidden";
+    public static final String PROJECT_HIDE = "project_hide";
         public static final String TOGGLE_TOOL_WINDOW = "ToggleToolWindow";
     public static final String VCS_REFRESH = "vcs_refresh";
     public static final String VCS_SHOW_DIFF = "vcs_showDiff";
@@ -121,7 +130,15 @@ public final class KeyActions {
                 new KeyAction(PROJECT_NEW_DIRECTORY, "New Project Directory", ""),
                 new KeyAction(PROJECT_RENAME, "Rename Project Entry", ""),
                 new KeyAction(PROJECT_DELETE, "Delete Project Entry", ""),
-                new KeyAction(PROJECT_REFRESH, "Refresh Project Tree", ""));
+                new KeyAction(PROJECT_REFRESH, "Refresh Project Tree", ""),
+                new KeyAction(PROJECT_VIEW_MENU, "Project View Menu", ""),
+                new KeyAction(PROJECT_NEW_MENU, "New Project Entry Menu", ""),
+                new KeyAction(PROJECT_SELECT_OPENED_FILE, "Select Opened File in Project", ""),
+                new KeyAction(PROJECT_EXPAND_ALL, "Expand All Project Entries", ""),
+                new KeyAction(PROJECT_COLLAPSE_ALL, "Collapse All Project Entries", ""),
+                new KeyAction(PROJECT_OPTIONS_MENU, "Project Options Menu", ""),
+                new KeyAction(PROJECT_SHOW_HIDDEN, "Show Hidden Files", ""),
+                new KeyAction(PROJECT_HIDE, "Hide Project Panel", ""));
     }
 
     private KeyActions() {

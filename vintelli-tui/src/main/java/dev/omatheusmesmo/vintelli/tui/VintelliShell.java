@@ -841,7 +841,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     private Element projectPane() {
         Column pane = Toolkit.column().id("project-pane");
-        pane.add(new PaneHeader("project-panel", () -> "Project", () -> themes, this::focusMark));
+        pane.add(projectPanel.header(() -> themes, this::focusMark));
         pane.add(projectPanel);
         pane.add(new PaneHeader("project-read-file", context -> false, this::readFileTitle, () -> themes, () -> " ",
                 false));
@@ -933,6 +933,16 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             @Override
             public EventResult splitterMouse(MouseEvent mouse) {
                 return handleSplitterMouse(mouse);
+            }
+
+            @Override
+            public void togglePanel() {
+                VintelliShell.this.toggleProjectPanel();
+            }
+
+            @Override
+            public void revealActiveFile() {
+                VintelliShell.this.revealActiveFile();
             }
         };
     }
@@ -1509,6 +1519,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 closeOverlays(parts);
                 return;
             }
+        }
+        if (projectPanel.performAction(actionId)) {
+            closeOverlays(parts);
+            return;
         }
         switch (actionId) {
             case KeyActions.FOCUS_NAVIGATION_BAR -> {

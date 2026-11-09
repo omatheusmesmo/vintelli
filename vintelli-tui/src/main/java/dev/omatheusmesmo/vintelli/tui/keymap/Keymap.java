@@ -146,6 +146,13 @@ public final class Keymap {
         builder.bind(KeyTrigger.key(KeyCode.F2), KeyActions.PROJECT_RENAME);
         builder.bind(KeyTrigger.key(KeyCode.DELETE), KeyActions.PROJECT_DELETE);
         builder.bind(KeyTrigger.key(KeyCode.F5), KeyActions.PROJECT_REFRESH);
+        builder.bind(KeyTrigger.key(KeyCode.F3), KeyActions.PROJECT_SELECT_OPENED_FILE);
+        builder.bind(KeyTrigger.key(KeyCode.F4), KeyActions.PROJECT_EXPAND_ALL);
+        builder.bind(KeyTrigger.alt('c'), KeyActions.PROJECT_COLLAPSE_ALL);
+        builder.bind(KeyTrigger.alt('v'), KeyActions.PROJECT_VIEW_MENU);
+        builder.bind(KeyTrigger.alt('n'), KeyActions.PROJECT_NEW_MENU);
+        builder.bind(KeyTrigger.alt('o'), KeyActions.PROJECT_OPTIONS_MENU);
+        builder.bind(KeyTrigger.alt('p'), KeyActions.PROJECT_HIDE);
         builder.bind(KeyTrigger.key(KeyCode.ENTER), KeyActions.OPEN_FILE);
         builder.bind(KeyTrigger.ctrl('s'), KeyActions.SAVE);
         builder.bind(KeyTrigger.ctrl('z'), KeyActions.UNDO);

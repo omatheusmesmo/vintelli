@@ -168,7 +168,23 @@ public final class MenuPopup {
         return Optional.of(action);
     }
 
+    /** Whether the cell lies inside the panel drawn by the last render. */
+    public boolean contains(int x, int y) {
+        return open && inner.width() > 0 && inner.height() > 0
+                && x >= inner.x() && x < inner.x() + inner.width()
+                && y >= inner.y() && y < inner.y() + inner.height();
+    }
+
     public void render(Frame frame, Rect area) {
+        render(frame, area, originX);
+    }
+
+    /**
+     * Draws the panel below the first row of {@code area}, starting at column
+     * {@code panelOrigin} of that area, or at its right edge when the panel
+     * would not fit there.
+     */
+    public void render(Frame frame, Rect area, int panelOrigin) {
         if (!open) {
             return;
         }
@@ -181,7 +197,7 @@ public final class MenuPopup {
         int desiredWidth = rows.stream().mapToInt(entry -> entry.label().length()
                 + shortcuts.apply(entry.actionId()).length() + 7).max().orElse(24);
         int width = Math.min(area.width(), Math.min(60, Math.max(24, desiredWidth)));
-        int offset = labelOffset(menus, menuIndex, originX);
+        int offset = labelOffset(menus, menuIndex, panelOrigin);
         int estimatedInnerWidth = Math.max(1, width - 2);
         List<PopupLine> content = popupLines(rows, estimatedInnerWidth);
         Rect panel = new Rect(area.x() + Math.min(offset, area.width() - width), area.y() + 1,

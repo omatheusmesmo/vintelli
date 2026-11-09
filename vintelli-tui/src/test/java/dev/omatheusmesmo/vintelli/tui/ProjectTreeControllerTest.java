@@ -208,6 +208,21 @@ class ProjectTreeControllerTest {
     }
 
     @Test
+    void expandAllOpensEveryDirectoryAndCollapseAllFoldsThemBackToTheTopFolder() throws IOException {
+        ProjectTreeController controller = controllerWithProject();
+        controller.expandAll();
+        assertEquals(List.of("src/main", "src/main/A.java", "README.md"), controller.files());
+        assertEquals("Expanded all", statuses.getLast());
+
+        controller.selectPath("src/main/A.java");
+        controller.collapseAll();
+        assertEquals(List.of("src/main", "README.md"), controller.files(), "collapse all folds every directory");
+        assertEquals(Optional.of("src/main"), controller.selectedRelative(),
+                "the selection moves to the top folder that holds the collapsed row");
+        assertEquals("Collapsed all", statuses.getLast());
+    }
+
+    @Test
     void vcsStateIsReadPerRowAndPublishingMovesTheRevision() throws IOException {
         ProjectTreeController controller = controllerWithProject();
         long before = controller.revision();
