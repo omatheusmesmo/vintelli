@@ -3370,8 +3370,8 @@ class VintelliShellTest {
         int afterTabRow = findBottomTabRow(afterBuffer);
         assertEquals(themes.color("focus-border"), afterBuffer.get(EDITOR_HEADER_X + 1, afterTabRow + 1).style().fg().orElse(null),
                 "the switched theme reaches the selected tab underline");
-        assertEquals(themes.color("editor-bg"), cellBg(afterBuffer, 2, SECOND_PROJECT_ROW),
-                "the switched theme reaches the project panel");
+        assertEquals(themes.color("panel"), cellBg(afterBuffer, 2, SECOND_PROJECT_ROW),
+                "the switched theme reaches the project panel, which is panel toned in darcula");
         assertEquals(themes.color("editor-bg"), cellBg(afterBuffer, EDITOR_PROBE_X, EDITOR_PROBE_Y),
                 "the switched theme reaches the editor panel");
         assertEquals(themes.color("panel"), cellBg(afterBuffer, 40, STATUS_ROW),
