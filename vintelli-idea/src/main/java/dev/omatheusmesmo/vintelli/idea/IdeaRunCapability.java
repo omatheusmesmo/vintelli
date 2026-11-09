@@ -107,6 +107,11 @@ public final class IdeaRunCapability implements RunCapability {
         Objects.requireNonNull(request, "request");
         Objects.requireNonNull(outputLines, "outputLines");
         Objects.requireNonNull(completion, "completion");
+        if (!request.arguments().isEmpty()) {
+            return CapabilityResult.failed(new CapabilityFailure(
+                    "The IDEA run provider cannot apply arguments to '" + request.configurationName() + "'",
+                    "Run the configuration without arguments"));
+        }
         Map<String, Object> arguments = new java.util.LinkedHashMap<>();
         arguments.put("configurationName", request.configurationName());
         String projectPath = client.projectPath();

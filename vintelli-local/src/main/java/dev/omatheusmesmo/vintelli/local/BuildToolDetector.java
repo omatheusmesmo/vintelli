@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
+import dev.omatheusmesmo.vintelli.api.build.MavenLifecycle;
+
 /**
  * Detection of the build tool of the {@link LocalProjectRoot}, resolved once
  * at construction so the health read of the run provider never performs I O.
@@ -113,6 +115,30 @@ final class BuildToolDetector {
             }
             command = List.copyOf(command);
         }
+    }
+
+    /**
+     * The command for one run request: a listed configuration without
+     * arguments, or a Maven lifecycle phase with the request arguments
+     * appended after the phase. Plugin goals never resolve here.
+     */
+    Optional<RunConfigurationSpecification> specification(String identifier, List<String> arguments) {
+        for (RunConfigurationSpecification listed : specifications()) {
+            if (listed.identifier().equals(identifier) && arguments.isEmpty()) {
+                return Optional.of(listed);
+            }
+        }
+        if (tool != BuildTool.MAVEN || !identifier.startsWith(MavenLifecycle.GOAL_PREFIX)) {
+            return Optional.empty();
+        }
+        String phase = identifier.substring(MavenLifecycle.GOAL_PREFIX.length());
+        if (!MavenLifecycle.isPhase(phase)) {
+            return Optional.empty();
+        }
+        List<String> command = new ArrayList<>(effectiveCommand);
+        command.add(phase);
+        command.addAll(arguments);
+        return Optional.of(new RunConfigurationSpecification(identifier, List.copyOf(command)));
     }
 
     private List<RunConfigurationSpecification> lifecycle(String toolLabel, List<String> goals) {

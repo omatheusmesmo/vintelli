@@ -75,6 +75,11 @@ public final class KeyActions {
     public static final String RUN_REFRESH = "run.refresh";
     public static final String RUN_SELECT_NEXT = "run.select-next";
     public static final String RUN_SELECT_PREVIOUS = "run.select-previous";
+    public static final String MAVEN_ACTIVATE = "maven.activate";
+    public static final String MAVEN_SELECT_NEXT = "maven.select-next";
+    public static final String MAVEN_SELECT_PREVIOUS = "maven.select-previous";
+    public static final String MAVEN_EXPAND = "maven.expand";
+    public static final String MAVEN_COLLAPSE = "maven.collapse";
     public static final String TERMINAL_EXECUTE = "terminal.execute";
     public static final String ACP_CHAT_NEW = "acp.chat.new";
     public static final String ACP_CHAT_SEND = "acp.chat.send";

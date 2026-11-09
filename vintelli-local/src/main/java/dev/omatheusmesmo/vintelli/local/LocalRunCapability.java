@@ -6,10 +6,12 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Consumer;
 
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
+import dev.omatheusmesmo.vintelli.api.build.MavenLifecycle;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityFailure;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
@@ -119,10 +121,15 @@ public final class LocalRunCapability implements RunCapability {
             return CapabilityResult.failed(new CapabilityFailure("The working directory does not exist",
                     request.workingDirectory().toString()));
         }
-        for (BuildToolDetector.RunConfigurationSpecification specification : detector.specifications()) {
-            if (specification.identifier().equals(request.configurationName())) {
-                return run(specification, request, outputLines, completion, confined);
-            }
+        if (!MavenLifecycle.acceptsArguments(request.arguments())) {
+            return CapabilityResult.failed(new CapabilityFailure(
+                    "Unsupported run arguments for '" + request.configurationName() + "'",
+                    "Only -pl <module> is accepted"));
+        }
+        Optional<BuildToolDetector.RunConfigurationSpecification> specification =
+                detector.specification(request.configurationName(), request.arguments());
+        if (specification.isPresent()) {
+            return run(specification.get(), request, outputLines, completion, confined);
         }
         return CapabilityResult.failed(new CapabilityFailure(
                 "Unknown run configuration '" + request.configurationName() + "'",

@@ -430,7 +430,27 @@ public final class RunToolWindow implements ToolWindow {
             status = "Select an available run configuration first";
             return;
         }
-        RunCapability.RunConfiguration configuration = configurations.get(selectedIndex);
+        startRun(configurations.get(selectedIndex).identifier(), List.of());
+    }
+
+    /**
+     * Runs a named build tool goal with extra arguments, such as a Maven phase
+     * in one module, and shows its output here. A run that is already active
+     * keeps running and the status line says so.
+     */
+    public void startGoal(String identifier, List<String> arguments) {
+        if (capabilities == null) {
+            status = "Run provider unavailable";
+            return;
+        }
+        if (starting || running) {
+            status = "A run is already active; stop it first";
+            return;
+        }
+        startRun(identifier, arguments);
+    }
+
+    private void startRun(String identifier, List<String> arguments) {
         RunCapability selected = provider;
         if (selected == null) {
             status = "Run provider unavailable; refresh configurations";
@@ -440,9 +460,9 @@ public final class RunToolWindow implements ToolWindow {
         starting = true;
         running = true;
         handle = null;
-        status = "Starting " + configuration.identifier();
+        status = "Starting " + identifier;
         output.clear();
-        append("Starting " + configuration.identifier() + " via " + selected.identifier());
+        append("Starting " + identifier + " via " + selected.identifier());
         AtomicReference<RunCapability.RunCompletion> completion = new AtomicReference<>();
         Thread.ofVirtual().name("vintelli-run-start").start(() -> {
             CapabilitySelection<RunCapability> selection;
@@ -483,7 +503,7 @@ public final class RunToolWindow implements ToolWindow {
             CapabilityResult<RunCapability.RunHandle> result;
             try {
                 result = selected.start(
-                        new RunCapability.RunRequest(configuration.identifier(), workingDirectory, Map.of()),
+                        new RunCapability.RunRequest(identifier, workingDirectory, Map.of(), arguments),
                         line -> uiWork.execute(() -> {
                             if (sequence == runSequence.get()) {
                                 append(line);
@@ -516,7 +536,7 @@ public final class RunToolWindow implements ToolWindow {
                 } else {
                     handle = ((CapabilityResult.Ok<RunCapability.RunHandle>) result).value();
                     running = true;
-                    status = "Running " + configuration.identifier();
+                    status = "Running " + identifier;
                 }
             });
         });

@@ -186,6 +186,78 @@ class LocalRunCapabilityTest {
         assertEquals("The working directory does not exist", failure.reason());
     }
 
+    @Test
+    void runsAPhaseWithTheModuleSelectorAfterThePhaseThroughTheWrapper() throws IOException {
+        mavenProject("args");
+
+        LocalRunCapability capability = LocalRunCapability.of(root(), GENEROUS);
+        List<String> observed = new CopyOnWriteArrayList<>();
+
+        assertOk(capability.start(new RunCapability.RunRequest("maven:validate", temp, Map.of(),
+                List.of("-pl", "vintelli-tui")), observed::add));
+
+        awaitSummary(observed);
+        assertTrue(observed.contains("args:validate -pl vintelli-tui"), observed.toString());
+    }
+
+    @Test
+    void runsTheRootPhaseWithoutAnyReactorSelector() throws IOException {
+        mavenProject("args");
+
+        LocalRunCapability capability = LocalRunCapability.of(root(), GENEROUS);
+        List<String> observed = new CopyOnWriteArrayList<>();
+
+        assertOk(capability.start(new RunCapability.RunRequest("maven:validate", temp, Map.of()), observed::add));
+
+        awaitSummary(observed);
+        assertTrue(observed.contains("args:validate"), observed.toString());
+    }
+
+    @Test
+    void refusesPluginGoalsEvenWhenTheyAreNamedLikeAMavenRun() throws IOException {
+        mavenProject("args");
+
+        LocalRunCapability capability = LocalRunCapability.of(root(), GENEROUS);
+
+        CapabilityResult<RunCapability.RunHandle> result = capability.start(
+                new RunCapability.RunRequest("maven:dependency:tree", temp, Map.of()), line -> {
+                });
+        assertTrue(result.isFailure());
+        assertEquals("Unknown run configuration 'maven:dependency:tree'", failureReason(result));
+    }
+
+    @Test
+    void refusesArgumentsThatAreNotAModuleSelector() throws IOException {
+        mavenProject("args");
+
+        LocalRunCapability capability = LocalRunCapability.of(root(), GENEROUS);
+
+        CapabilityResult<RunCapability.RunHandle> result = capability.start(
+                new RunCapability.RunRequest("maven:validate", temp, Map.of(), List.of("-Dskip.everything=true")),
+                line -> {
+                });
+        assertTrue(result.isFailure());
+        assertEquals("Unsupported run arguments for 'maven:validate'", failureReason(result));
+    }
+
+    @Test
+    void refusesModuleSelectorsThatEscapeTheReactorSyntax() throws IOException {
+        mavenProject("args");
+
+        LocalRunCapability capability = LocalRunCapability.of(root(), GENEROUS);
+
+        assertTrue(capability.start(new RunCapability.RunRequest("maven:validate", temp, Map.of(),
+                List.of("-pl", "../outside")), line -> {
+                }).isFailure());
+        assertTrue(capability.start(new RunCapability.RunRequest("maven:validate", temp, Map.of(),
+                List.of("-pl", "--settings")), line -> {
+                }).isFailure());
+    }
+
+    private static String failureReason(CapabilityResult<?> result) {
+        return result.failureOf().map(CapabilityFailure::reason).orElse("");
+    }
+
     private static void awaitSummary(List<String> observed) {
         TestProcesses.awaitUntil(GENEROUS, () -> observed.stream().anyMatch(line -> line.startsWith("Run ")));
     }
@@ -246,6 +318,7 @@ class LocalRunCapabilityTest {
     private static String shellScript(String flavor) {
         return "#!/bin/sh" + System.lineSeparator()
                 + "echo mvnw-wrapper-called-" + flavor + System.lineSeparator()
+                + ("args".equals(flavor) ? "echo args:$*" + System.lineSeparator() : "")
                 + ("cancel".equals(flavor)
                         ? "echo goal-pumping" + System.lineSeparator()
                                 + "echo still-going" + System.lineSeparator()
@@ -256,6 +329,7 @@ class LocalRunCapabilityTest {
     private static String batchScript(String flavor) {
         return "@echo off" + System.lineSeparator()
                 + "echo mvnw-wrapper-called-" + flavor + System.lineSeparator()
+                + ("args".equals(flavor) ? "echo args:%*" + System.lineSeparator() : "")
                 + ("cancel".equals(flavor)
                         ? "echo goal-pumping" + System.lineSeparator()
                                 + "echo still-going" + System.lineSeparator()

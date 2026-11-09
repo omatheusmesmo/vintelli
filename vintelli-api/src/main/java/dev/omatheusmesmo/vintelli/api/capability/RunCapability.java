@@ -77,7 +77,14 @@ public interface RunCapability extends ProviderDescriptor {
         }
     }
 
-    record RunRequest(String configurationName, Path workingDirectory, Map<String, String> environment) {
+    /**
+     * What to run and where. The {@code arguments} extend the named run with
+     * extra command line tokens, for example {@code -pl <module>} for a Maven
+     * phase in one module. Providers that cannot apply arguments refuse the
+     * request instead of running the bare configuration.
+     */
+    record RunRequest(String configurationName, Path workingDirectory, Map<String, String> environment,
+            List<String> arguments) {
 
         public RunRequest {
             if (configurationName == null || configurationName.isBlank()) {
@@ -85,6 +92,11 @@ public interface RunCapability extends ProviderDescriptor {
             }
             Objects.requireNonNull(workingDirectory, "workingDirectory");
             environment = environment == null ? Map.of() : Map.copyOf(environment);
+            arguments = arguments == null ? List.of() : List.copyOf(arguments);
+        }
+
+        public RunRequest(String configurationName, Path workingDirectory, Map<String, String> environment) {
+            this(configurationName, workingDirectory, environment, List.of());
         }
     }
 

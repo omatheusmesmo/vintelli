@@ -61,4 +61,23 @@ class IdeaRunCapabilityTest {
             assertEquals(List.of("started", "finished", "Run finished with exit code 0"), lines);
         }
     }
+
+    @Test
+    void refusesRunArgumentsInsteadOfRunningTheBareConfiguration() throws Exception {
+        try (FakeIdeaMcpServer server = new FakeIdeaMcpServer();
+                IdeaMcpClient client = new IdeaMcpClient(server.streamUrl(), "/proj", null, "test", MAPPER, VALIDATOR)) {
+            client.reconnect();
+            IdeaRunCapability capability = new IdeaRunCapability(client);
+
+            var result = capability.start(
+                    new RunCapability.RunRequest("vintelli-app", Paths.get("/proj"), Map.of(),
+                            List.of("-pl", "vintelli-tui")),
+                    line -> {
+                    });
+
+            assertTrue(result.isFailure(), result.toString());
+            assertEquals("The IDEA run provider cannot apply arguments to 'vintelli-app'",
+                    result.failureOf().orElseThrow().reason());
+        }
+    }
 }

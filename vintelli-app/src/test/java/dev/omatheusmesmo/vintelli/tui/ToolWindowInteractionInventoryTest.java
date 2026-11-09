@@ -87,6 +87,8 @@ class ToolWindowInteractionInventoryTest {
                 "keyboardAndPointerNavigateTheSameProblemAndKeepWindowFocus"));
         entries.put("acp.agents", passive("Placeholder for future ACP sessions (#7)"));
         entries.put("structure", gap("Pointer selection and scrolling are tracked by #197"));
+        entries.put("maven", contracted("dev.omatheusmesmo.vintelli.tui.MavenToolWindowInteractionContractTest",
+                "keyboardAndPointerRunTheSameMavenPhase"));
         entries.put("editor", gap("Editor pointer behavior is tracked by #195"));
         return Map.copyOf(entries);
     }
