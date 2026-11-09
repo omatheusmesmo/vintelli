@@ -42,6 +42,19 @@ the picked action with `Enter`; the help overlay lists the active keymap
 are reserved for the `vim` profile and the registry never assigns them as
 tool window shortcuts.
 
+Project pane header actions (active while the project panel has the focus; the
+palette runs them from anywhere):
+
+| Action | Keys | Button |
+|---|---|---|
+| `project_select_opened_file` | `F3` | Select Opened File (crosshair) |
+| `project_expand_all` | `F4` | Expand All |
+| `project_collapse_all` | `Alt+c` | Collapse All |
+| `project_new_menu` | `Alt+n` | New, a menu with New File (`F7`) and New Directory (`F9`) |
+| `project_view_menu` | `Alt+v` | The `Project ▾` title, the view menu |
+| `project_options_menu` | `Alt+o` | Options, a menu with Show Hidden Files |
+| `project_hide` | `Alt+p` | Hide, like the Project icon on the left strip |
+
 Chords a terminal cannot deliver, and their alternatives:
 
 - **Double Shift** (Search Everywhere in IntelliJ): needs key release events

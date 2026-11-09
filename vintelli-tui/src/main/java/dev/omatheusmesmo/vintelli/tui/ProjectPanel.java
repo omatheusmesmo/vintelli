@@ -5,6 +5,7 @@ import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
 import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
 import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
+import dev.omatheusmesmo.vintelli.tui.menu.MenuEntry;
 import dev.tamboui.layout.Constraint;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.terminal.Frame;
@@ -22,7 +23,9 @@ import dev.tamboui.widgets.common.ScrollBarPolicy;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Supplier;
 
 /**
  * The project panel element: it draws the {@link ProjectTreeController} rows
@@ -63,16 +66,33 @@ final class ProjectPanel implements Element {
         void releaseSplitterDrag();
 
         EventResult splitterMouse(MouseEvent mouse);
+
+        void togglePanel();
+
+        void revealActiveFile();
     }
+
+    private static final List<String> HEADER_ACTIONS = List.of(
+            KeyActions.PROJECT_VIEW_MENU,
+            KeyActions.PROJECT_NEW_MENU,
+            KeyActions.PROJECT_SELECT_OPENED_FILE,
+            KeyActions.PROJECT_EXPAND_ALL,
+            KeyActions.PROJECT_COLLAPSE_ALL,
+            KeyActions.PROJECT_OPTIONS_MENU,
+            KeyActions.PROJECT_SHOW_HIDDEN,
+            KeyActions.PROJECT_HIDE);
 
     private final ProjectTreeController controller;
     private final FileIcons fileIcons;
     private final ReentrantLock lock;
     private final Host host;
     private final ListElement<?> list;
+    private final ProjectMenus menus;
     private boolean unicodeTree;
     private long pushedRevision = -1;
     private boolean pushedUnicode;
+    private volatile Rect headerRow = Rect.ZERO;
+    private volatile List<ProjectHeader.Target> headerTargets = List.of();
 
     ProjectPanel(ProjectTreeController controller, FileIcons fileIcons, boolean unicodeTree, ReentrantLock lock,
             Host host) {
@@ -81,6 +101,7 @@ final class ProjectPanel implements Element {
         this.unicodeTree = unicodeTree;
         this.lock = lock;
         this.host = host;
+        this.menus = new ProjectMenus(this::menuEntries, actionId -> host.keymap().describeBindings(actionId));
         this.list = Toolkit.list(rows());
         list.id(ID);
         list.addClass("tool-panel");
@@ -104,6 +125,20 @@ final class ProjectPanel implements Element {
         }
     }
 
+    IconMode iconMode() {
+        return fileIcons.mode();
+    }
+
+    /** The header row of the pane, which the shell places above the list. */
+    ProjectHeader header(Supplier<ShellThemes> themes, Supplier<String> focusMark) {
+        return new ProjectHeader(this, themes, focusMark);
+    }
+
+    void headerRendered(Rect row, List<ProjectHeader.Target> targets) {
+        headerRow = row;
+        headerTargets = List.copyOf(targets);
+    }
+
     @Override
     public void render(Frame frame, Rect area, RenderContext context) {
         lock.lock();
@@ -118,6 +153,10 @@ final class ProjectPanel implements Element {
             controller.trackScroll(area.height());
             pushSelection();
             list.render(frame, area, context);
+            if (!headerRow.isEmpty() && menus.isOpen()) {
+                menus.render(frame, new Rect(headerRow.x(), headerRow.y(), headerRow.width(),
+                        area.y() + area.height() - headerRow.y()));
+            }
         } finally {
             lock.unlock();
         }
@@ -182,18 +221,43 @@ final class ProjectPanel implements Element {
     }
 
     /**
-     * Routes a left press on the project list. A press on a row selects it and
-     * focuses the panel; a second press on the same row within the double click
-     * window, or a press on the expand marker of a directory, does what Enter
-     * does. A press below the last row or on the scrollbar column only focuses
-     * the panel. While a new name or a rename is being typed, or a delete waits
-     * for confirmation, the press changes nothing.
+     * Routes a left press on the project pane. A press on an open header menu
+     * picks its entry; a press outside it closes the menu and goes on. A press on
+     * a header button runs the action of its shortcut, and a press elsewhere on
+     * the header row only focuses the panel. A press on the project list selects
+     * the row and focuses the panel; a second press on the same row within the
+     * double click window, or a press on the expand marker of a directory, does
+     * what Enter does. A press below the last row or on the scrollbar column only
+     * focuses the panel. While a new name or a rename is being typed, or a delete
+     * waits for confirmation, the press changes nothing.
      *
-     * @return true when the press landed on the project list and was consumed
+     * @return true when the press landed on the project pane and was consumed
      */
     boolean clicked(MouseEvent mouse) {
+        if (!host.layoutVisible()) {
+            return false;
+        }
+        if (menus.isOpen()) {
+            if (menus.contains(mouse.x(), mouse.y())) {
+                menus.click(mouse.x(), mouse.y()).ifPresent(this::runAction);
+                return true;
+            }
+            menus.close();
+        }
+        Optional<ProjectHeader.Target> target = headerTargetAt(mouse);
+        if (target.isPresent()) {
+            if (!controller.inputActive() && !controller.deletePending()) {
+                host.focusPanel();
+                runAction(target.get().actionId());
+            }
+            return true;
+        }
+        if (contains(headerRow, mouse)) {
+            host.focusPanel();
+            return true;
+        }
         Rect area = list.renderedArea();
-        if (!host.layoutVisible() || !contains(area, mouse)) {
+        if (!contains(area, mouse)) {
             return false;
         }
         if (controller.inputActive()) {
@@ -225,6 +289,10 @@ final class ProjectPanel implements Element {
      * project shortcuts. Returns false when the key belongs to the shell or the list.
      */
     boolean handleKey(KeyEvent key) {
+        if (menus.isOpen()) {
+            menus.handleKey(key).ifPresent(this::runAction);
+            return true;
+        }
         if (controller.inputActive()) {
             if (key.isKey(KeyCode.ESCAPE)) {
                 controller.cancelInput();
@@ -260,9 +328,84 @@ final class ProjectPanel implements Element {
         } else if (keymap.matches(key, KeyActions.PROJECT_REFRESH)) {
             host.refreshTree();
         } else {
-            return false;
+            Optional<String> headerAction = HEADER_ACTIONS.stream().filter(id -> keymap.matches(key, id)).findFirst();
+            if (headerAction.isEmpty()) {
+                return false;
+            }
+            runAction(headerAction.get());
         }
         return true;
+    }
+
+    /**
+     * Runs a header action for the shell dispatcher, which reaches it from the
+     * command palette and the keymap. Returns false for every other action.
+     */
+    boolean performAction(String actionId) {
+        if (!HEADER_ACTIONS.contains(actionId)) {
+            return false;
+        }
+        runAction(actionId);
+        return true;
+    }
+
+    /**
+     * The one path a header button, its shortcut and its menu entry take. A
+     * menu opens below its button; the entries run the same action ids as the
+     * New, Hide and tree shortcuts.
+     */
+    void runAction(String actionId) {
+        switch (actionId) {
+            case KeyActions.PROJECT_VIEW_MENU -> openMenu(ProjectMenus.VIEW, actionId);
+            case KeyActions.PROJECT_NEW_MENU -> openMenu(ProjectMenus.NEW, actionId);
+            case KeyActions.PROJECT_OPTIONS_MENU -> openMenu(ProjectMenus.OPTIONS, actionId);
+            case KeyActions.PROJECT_VIEW_PROJECT -> menus.close();
+            case KeyActions.PROJECT_NEW_FILE -> host.beginInput(ProjectTreeController.InputMode.CREATE_FILE);
+            case KeyActions.PROJECT_NEW_DIRECTORY -> host.beginInput(ProjectTreeController.InputMode.CREATE_DIRECTORY);
+            case KeyActions.PROJECT_SELECT_OPENED_FILE -> host.revealActiveFile();
+            case KeyActions.PROJECT_EXPAND_ALL -> controller.expandAll();
+            case KeyActions.PROJECT_COLLAPSE_ALL -> controller.collapseAll();
+            case KeyActions.PROJECT_SHOW_HIDDEN -> {
+                controller.setShowHidden(!controller.showHidden());
+                host.refreshTree();
+            }
+            case KeyActions.PROJECT_HIDE -> host.togglePanel();
+            default -> {
+            }
+        }
+    }
+
+    private void openMenu(String menu, String actionId) {
+        host.focusPanel();
+        menus.open(menu, anchorOf(actionId));
+    }
+
+    private int anchorOf(String actionId) {
+        return headerTargets.stream()
+                .filter(target -> target.actionId().equals(actionId))
+                .findFirst()
+                .map(target -> target.cell().x())
+                .orElse(headerRow.isEmpty() ? list.renderedArea().x() : headerRow.x());
+    }
+
+    private Optional<ProjectHeader.Target> headerTargetAt(MouseEvent mouse) {
+        return headerTargets.stream().filter(target -> contains(target.cell(), mouse)).findFirst();
+    }
+
+    private List<MenuEntry> menuEntries() {
+        return List.of(
+                new MenuEntry(ProjectMenus.VIEW, KeyActions.PROJECT_VIEW_PROJECT, check(true) + " Project"),
+                new MenuEntry(ProjectMenus.NEW, KeyActions.PROJECT_NEW_FILE, "New File"),
+                new MenuEntry(ProjectMenus.NEW, KeyActions.PROJECT_NEW_DIRECTORY, "New Directory"),
+                new MenuEntry(ProjectMenus.OPTIONS, KeyActions.PROJECT_SHOW_HIDDEN,
+                        check(controller.showHidden()) + " Show Hidden Files"));
+    }
+
+    private String check(boolean checked) {
+        if (!checked) {
+            return "  ";
+        }
+        return unicodeTree ? "✓" : "*";
     }
 
     private void openSelected() {

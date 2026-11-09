@@ -1971,6 +1971,291 @@ class VintelliShellTest {
         }
     }
 
+    @Test
+    void projectHeaderDrawsTheTitleArrowAndTheButtonsRightAlignedWithBlankColumns() throws Exception {
+        String previous = useAsciiIconFace();
+        try {
+            VintelliShell shell = projectHeaderShell(defaultThemes(), null, null);
+            try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+                Pilot pilot = test.pilot();
+                settle(pilot);
+                Rect header = pilot.findElement(ProjectHeader.ID);
+                String row = frameCells(test.renderedFrame().split("\n", -1)[header.y()], header.x(), header.width());
+                assertTrue(row.contains("Project v"), "the title carries the view arrow: " + row);
+                assertTrue(row.endsWith("+ o = - : _ "),
+                        "New, Locate, Expand, Collapse, Options and Hide, one blank column apart, right aligned: " + row);
+            }
+        } finally {
+            restoreProperty(IconMode.CONFIG_PROPERTY, previous);
+        }
+    }
+
+    @Test
+    void clickingExpandAllAndF4ExpandEveryDirectory() throws Exception {
+        String previous = useAsciiIconFace();
+        try {
+            VintelliShell shell = projectHeaderShell(defaultThemes(), null, null);
+            try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+                Pilot pilot = test.pilot();
+                settle(pilot);
+                assertEquals(List.of("src", "README.md"), shell.projectFiles());
+                clickHeaderButton(pilot, test, "=");
+                assertEquals(EXPANDED_TREE, shell.projectFiles(), "the expand button opens every directory");
+                clickHeaderButton(pilot, test, "-");
+                assertEquals(List.of("src", "README.md"), shell.projectFiles());
+                pilot.press(KeyCode.F4);
+                settle(pilot);
+                assertEquals(EXPANDED_TREE, shell.projectFiles(), "F4 expands every directory like the button");
+            }
+        } finally {
+            restoreProperty(IconMode.CONFIG_PROPERTY, previous);
+        }
+    }
+
+    @Test
+    void clickingCollapseAllAndAltCFoldEveryDirectoryAndKeepTheTopFolderSelected() throws Exception {
+        String previous = useAsciiIconFace();
+        try {
+            VintelliShell shell = projectHeaderShell(defaultThemes(), null, null);
+            try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+                Pilot pilot = test.pilot();
+                settle(pilot);
+                clickHeaderButton(pilot, test, "=");
+                shell.selectPath("src/main/A.java");
+                clickHeaderButton(pilot, test, "-");
+                assertEquals(List.of("src", "README.md"), shell.projectFiles(), "the collapse button folds the tree");
+                assertEquals("src", shell.selectedPathString(), "the selection moves to the top folder that holds it");
+                shell.expandSelected();
+                shell.selectPath("src/main");
+                shell.expandSelected();
+                pilot.press('c', KeyModifiers.ALT);
+                settle(pilot);
+                assertEquals(List.of("src", "README.md"), shell.projectFiles(), "Alt+c folds the tree like the button");
+            }
+        } finally {
+            restoreProperty(IconMode.CONFIG_PROPERTY, previous);
+        }
+    }
+
+    @Test
+    void locateButtonAndF3RevealTheFileOfTheActiveEditorTab() throws Exception {
+        String previous = useAsciiIconFace();
+        try {
+            Files.createDirectories(project.resolve("src/main"));
+            Files.writeString(project.resolve("src/main/A.java"), "class A {}\n");
+            ShellThemes themes = defaultThemes();
+            BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
+            VintelliShell shell = projectHeaderShell(themes, editor, null);
+            assertFalse(editor.open(new OpenRequest(project.resolve("src/main/A.java"), 0)).isFailure());
+            try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+                Pilot pilot = test.pilot();
+                settle(pilot);
+                clickHeaderButton(pilot, test, "-");
+                assertEquals(List.of("src", "README.md"), shell.projectFiles());
+                clickHeaderButton(pilot, test, "o");
+                assertEquals(EXPANDED_TREE, shell.projectFiles(), "locate expands the folders of the active file");
+                assertEquals("src/main/A.java", shell.selectedPathString());
+                clickHeaderButton(pilot, test, "-");
+                pilot.press(KeyCode.F3);
+                settle(pilot);
+                assertEquals(EXPANDED_TREE, shell.projectFiles(), "F3 locates the active file like the button");
+                assertEquals("src/main/A.java", shell.selectedPathString());
+            }
+        } finally {
+            restoreProperty(IconMode.CONFIG_PROPERTY, previous);
+        }
+    }
+
+    @Test
+    void newButtonOpensTheNewMenuWhoseEntriesMatchTheF7AndF9Shortcuts() throws Exception {
+        String previous = useAsciiIconFace();
+        try {
+            RecordingFileOperations operations = new RecordingFileOperations();
+            VintelliShell shell = projectHeaderShell(defaultThemes(), null, operations);
+            try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+                Pilot pilot = test.pilot();
+                settle(pilot);
+                clickHeaderButton(pilot, test, "+");
+                String frame = test.renderedFrame();
+                assertTrue(frame.contains("New File") && frame.contains("New Directory"),
+                        "the New button lists both entries: " + frame);
+                pilot.press(KeyCode.ENTER);
+                settle(pilot);
+                assertTrue(shell.status().startsWith("New file:"), shell.status());
+                type(pilot, "Made.java");
+                pilot.press(KeyCode.ENTER);
+                settle(pilot);
+                assertEquals(List.of("Made.java"), operations.created);
+
+                pilot.press(KeyCode.F7);
+                settle(pilot);
+                assertTrue(shell.status().startsWith("New file:"), "F7 starts the same entry: " + shell.status());
+                type(pilot, "Other.java");
+                pilot.press(KeyCode.ENTER);
+                settle(pilot);
+                assertEquals(List.of("Made.java", "Other.java"), operations.created);
+            }
+        } finally {
+            restoreProperty(IconMode.CONFIG_PROPERTY, previous);
+        }
+    }
+
+    @Test
+    void optionsButtonTogglesHiddenFilesFromItsMenuAndAltOTogglesThemBack() throws Exception {
+        String previous = useAsciiIconFace();
+        try {
+            VintelliShell shell = projectHeaderShell(defaultThemes(), null, null);
+            try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+                Pilot pilot = test.pilot();
+                settle(pilot);
+                clickHeaderButton(pilot, test, ":");
+                clickMenuRow(pilot, test, "Show Hidden Files");
+                assertTrue(shell.showHiddenFiles(), "the options entry shows the hidden files");
+                assertTrue(shell.projectFiles().contains(".hidden"), shell.projectFiles().toString());
+
+                pilot.press('o', KeyModifiers.ALT);
+                settle(pilot);
+                pilot.press(KeyCode.ENTER);
+                settle(pilot);
+                assertFalse(shell.showHiddenFiles(), "Alt+o and Enter hide them again");
+            }
+        } finally {
+            restoreProperty(IconMode.CONFIG_PROPERTY, previous);
+        }
+    }
+
+    @Test
+    void hideButtonHidesTheProjectPanelLikeItsStripeIconAndAltPHidesItFromTheKeyboard() throws Exception {
+        String previous = useAsciiIconFace();
+        try {
+            VintelliShell shell = projectHeaderShell(defaultThemes(), null, null);
+            int projectIcon = findRow(offlineFrame(shell), 1, "P");
+            try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+                Pilot pilot = test.pilot();
+                settle(pilot);
+                clickHeaderButton(pilot, test, "_");
+                assertFalse(pilot.hasElement("project-panel"), "the hide button removes the panel");
+                assertEquals("Project panel hidden", shell.status());
+
+                pilot.click(1, projectIcon);
+                settle(pilot);
+                assertTrue(pilot.hasElement("project-panel"), "the stripe icon shows the panel again");
+
+                pilot.click("project-panel", 3, 3);
+                settle(pilot);
+                pilot.press('p', KeyModifiers.ALT);
+                settle(pilot);
+                assertFalse(pilot.hasElement("project-panel"), "Alt+p hides the panel from the keyboard");
+                assertEquals("Project panel hidden", shell.status());
+            }
+        } finally {
+            restoreProperty(IconMode.CONFIG_PROPERTY, previous);
+        }
+    }
+
+    @Test
+    void theProjectTitleOpensTheViewMenuAndChoosingProjectLeavesTheTreeAsItIs() throws Exception {
+        String previous = useAsciiIconFace();
+        try {
+            VintelliShell shell = projectHeaderShell(defaultThemes(), null, null);
+            try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+                Pilot pilot = test.pilot();
+                settle(pilot);
+                Rect header = pilot.findElement(ProjectHeader.ID);
+                List<String> before = shell.projectFiles();
+                pilot.click(header.x() + 3, header.y());
+                settle(pilot);
+                assertTrue(test.renderedFrame().contains("* Project"), "the view menu shows Project as selected");
+                clickMenuRow(pilot, test, "* Project");
+                assertFalse(test.renderedFrame().contains("* Project"), "choosing the entry closes the menu");
+                assertEquals(before, shell.projectFiles());
+            }
+        } finally {
+            restoreProperty(IconMode.CONFIG_PROPERTY, previous);
+        }
+    }
+
+    @Test
+    void aBlankHeaderCellOnlyFocusesThePanelAndTheButtonsFollowTheLatestPaneWidth() throws Exception {
+        String previous = useAsciiIconFace();
+        try {
+            VintelliShell shell = projectHeaderShell(defaultThemes(), null, null);
+            try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+                Pilot pilot = test.pilot();
+                settle(pilot);
+                pilot.click("editor-panel", 3, 3);
+                settle(pilot);
+                Rect header = pilot.findElement(ProjectHeader.ID);
+                pilot.click(header.x() + 14, header.y());
+                settle(pilot);
+                assertEquals("project-panel", test.runner().focusManager().focusedId(),
+                        "a click on the header row focuses the project panel");
+                assertTrue(pilot.hasElement("project-panel"), "a blank cell keeps the panel");
+                assertEquals(List.of("src", "README.md"), shell.projectFiles());
+                assertFalse(test.renderedFrame().contains("New File"), "a blank cell opens no menu");
+
+                pilot.press('=', KeyModifiers.ALT);
+                settle(pilot);
+                Rect widened = pilot.findElement(ProjectHeader.ID);
+                assertTrue(widened.width() > header.width(), "the pane grew");
+                pilot.click(header.x() + header.width() - 2, widened.y());
+                settle(pilot);
+                assertTrue(test.renderedFrame().contains("Show Hidden Files"),
+                        "the column that held Hide now holds Options: " + test.renderedFrame());
+                pilot.press(KeyCode.ESCAPE);
+                settle(pilot);
+                clickHeaderButton(pilot, test, "_");
+                assertFalse(pilot.hasElement("project-panel"), "Hide sits at the new right edge");
+            }
+        } finally {
+            restoreProperty(IconMode.CONFIG_PROPERTY, previous);
+        }
+    }
+
+    private static final List<String> EXPANDED_TREE = List.of("src", "src/main", "src/main/A.java", "README.md");
+
+    private VintelliShell projectHeaderShell(ShellThemes themes, BuiltinEditor editor,
+            ProjectFileOperations operations) {
+        VintelliShell shell = projectTreeShell(themes, editor, operations,
+                List.of("src/main/A.java", "README.md", ".hidden/secret.txt"), List.of("src", "src/main", ".hidden"));
+        shell.useUnicodeProjectTree(false);
+        awaitProjectTree(shell);
+        return shell;
+    }
+
+    private static String useAsciiIconFace() {
+        String previous = System.getProperty(IconMode.CONFIG_PROPERTY);
+        System.setProperty(IconMode.CONFIG_PROPERTY, "ascii");
+        return previous;
+    }
+
+    private void clickHeaderButton(Pilot pilot, MouseShellRunner test, String glyph) {
+        Rect header = pilot.findElement(ProjectHeader.ID);
+        pilot.click(headerColumn(test.renderedFrame(), header, glyph), header.y());
+        settle(pilot);
+    }
+
+    private static int headerColumn(String frame, Rect header, String glyph) {
+        String row = frame.split("\n", -1)[header.y()];
+        int from = header.x() + header.width() / 2;
+        int index = frameCells(row, from, header.x() + header.width() - from).indexOf(glyph);
+        assertTrue(index >= 0, "the header draws " + glyph + ": " + row);
+        return from + index;
+    }
+
+    private void clickMenuRow(Pilot pilot, MouseShellRunner test, String label) {
+        String[] lines = test.renderedFrame().split("\n", -1);
+        for (int y = 0; y < lines.length; y++) {
+            int column = lines[y].indexOf(label);
+            if (column >= 0) {
+                pilot.click(column + 1, y);
+                settle(pilot);
+                return;
+            }
+        }
+        throw new AssertionError(label + " is drawn in the menu: " + test.renderedFrame());
+    }
+
     private void clickDisclosure(Pilot pilot, MouseShellRunner test, Rect list, String name, int column) {
         String frame = test.renderedFrame();
         int row = projectRowOf(frame, list, name);
