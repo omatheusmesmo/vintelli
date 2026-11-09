@@ -35,7 +35,6 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 import java.util.Map;
 import java.util.Set;
@@ -54,7 +53,8 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
      */
     public record PointerState(int line, int column, int anchorLine, int anchorColumn, String selectedText,
             int scrollRow, int scrollCol) {}
-    public record StatusBarInfo(int line, int column, String encoding, String lineSeparator, String fileType) {}
+    public record StatusBarInfo(int line, int column, String encoding, String lineSeparator, String indent,
+            boolean readOnly) {}
     public static final int TAB_BAR_ROWS = EditorTabBarElement.ROWS;
     public static final String TEXT_AREA_ID = "editor-text-area";
     private static final long MAX_FILE_BYTES = 4L * 1024 * 1024;
@@ -112,12 +112,6 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     }
 
     public Element element() { return element; }
-    public synchronized void navigationBar(List<String> labels, int selected) {
-        element.navigationBar(labels, selected);
-    }
-    public synchronized int navigationSegmentAt(int x, int y) {
-        return element.navigationSegmentAt(x, y);
-    }
     public synchronized boolean hasDocument() {
         ensureSession();
         return document() != null;
@@ -235,12 +229,9 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
         if (document == null) {
             return Optional.empty();
         }
-        String name = document.file().getFileName().toString();
-        int extension = name.lastIndexOf('.');
-        String fileType = extension < 0 ? "Plain Text" : name.substring(extension + 1).toUpperCase(Locale.ROOT);
         String lineSeparator = document.lineSeparator().equals("\r\n") ? "CRLF" : "LF";
         return Optional.of(new StatusBarInfo(document.row() + 1, document.column() + 1, "UTF-8", lineSeparator,
-                fileType));
+                EditorIndent.describe(document.text()), !Files.isWritable(document.file())));
     }
 
     public synchronized List<TabView> tabs() {

@@ -11,6 +11,8 @@ import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
 import dev.omatheusmesmo.vintelli.tui.layout.ShellLayoutStore;
 import dev.omatheusmesmo.vintelli.tui.layout.ShellLayout;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
+import dev.omatheusmesmo.vintelli.api.capability.CapabilityStatus;
+import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
 import dev.omatheusmesmo.vintelli.api.idea.IdeaMcpConnection;
 import dev.omatheusmesmo.vintelli.api.capability.ProjectFileOperations;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
@@ -538,6 +540,103 @@ class VintelliShellTest {
             assertFalse(themes.color("tab-selected-bg").equals(buffer.get(1, terminalIcon).style().bg().orElse(null)),
                     "an inactive icon carries no selected background in " + theme);
         }
+    }
+
+    @Test
+    void wideShellDrawsTheBreadcrumbAndTheEditorWidgetsOnTheStatusRow() throws Exception {
+        EditorShell opened = openEditorShell("Main.java", "class Main {\n    void run() {\n    }\n}\n", 1);
+        try (MouseShellRunner test = runMouseShell(opened.shell(), WIDE)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+
+            String status = statusRow(test, WIDE);
+            assertTrue(status.startsWith(project.getFileName() + " › Main.java"), status);
+            assertTrue(status.matches("(?s).*\\d+:\\d+  LF  UTF-8  4 spaces$"), status);
+            assertFalse(status.contains("│"), status);
+            assertFalse(status.contains("IDEA"), status);
+            pressCtrlC(pilot);
+        }
+    }
+
+    @Test
+    void narrowShellKeepsTheFileCaretEncodingAndAReadableMessageAtEightyColumns() throws Exception {
+        EditorShell opened = openEditorShell("Main.java", "class Main {\n    void run() {\n    }\n}\n", 1);
+        try (MouseShellRunner test = runMouseShell(opened.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+
+            String status = statusRow(test, SIZE);
+            assertTrue(CharWidth.of(status) <= SIZE.width(), status);
+            assertTrue(status.contains("Main.java"), status);
+            assertTrue(status.matches("(?s).*\\d+:\\d+  LF  UTF-8.*"), status);
+            assertTrue(status.contains("Ready"), status);
+            pressCtrlC(pilot);
+        }
+    }
+
+    @Test
+    void theProviderIndicatorIsHiddenWhileEveryProviderIsHealthy() throws Exception {
+        VintelliShell shell = shellWithRegistry(FixedStatusRegistry.withStatuses(List.of(
+                CapabilityStatus.available(CapabilityType.RUN, "local", "config", List.of()))));
+        try (MouseShellRunner test = runMouseShell(shell, WIDE)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+
+            assertFalse(statusRow(test, WIDE).contains("provider"), statusRow(test, WIDE));
+            pressCtrlC(pilot);
+        }
+    }
+
+    @Test
+    void clickingTheDegradedIndicatorOpensTheProviderPopupAndEscapeCloses() throws Exception {
+        VintelliShell shell = shellWithRegistry(FixedStatusRegistry.withStatuses(List.of(
+                CapabilityStatus.available(CapabilityType.RUN, "local", "config", List.of()),
+                CapabilityStatus.unavailable(CapabilityType.TERMINAL, "pty is missing"))));
+        try (MouseShellRunner test = runMouseShell(shell, WIDE)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+
+            String status = statusRow(test, WIDE);
+            assertTrue(status.contains("1 provider degraded"), status);
+            assertFalse(test.renderedFrame().contains("Terminal: unavailable"), test.renderedFrame());
+
+            pilot.click(status.indexOf("provider"), WIDE.height() - 1);
+            settle(pilot);
+            String popup = awaitRenderedFrame(pilot, test, "Terminal: unavailable: pty is missing");
+            assertTrue(popup.contains("Providers"), popup);
+            assertTrue(popup.contains("Run: local (config)"), popup);
+
+            pilot.press(KeyCode.ESCAPE);
+            settle(pilot);
+            assertFalse(test.renderedFrame().contains("Terminal: unavailable"), test.renderedFrame());
+            pressCtrlC(pilot);
+        }
+    }
+
+    @Test
+    void aClickOutsideTheProviderPopupClosesItWithoutSwallowingTheClick() throws Exception {
+        VintelliShell shell = shellWithRegistry(FixedStatusRegistry.withStatuses(List.of(
+                CapabilityStatus.unavailable(CapabilityType.TERMINAL, "pty is missing"))));
+        try (MouseShellRunner test = runMouseShell(shell, WIDE)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+            pilot.click(statusRow(test, WIDE).indexOf("provider"), WIDE.height() - 1);
+            settle(pilot);
+            awaitRenderedFrame(pilot, test, "Terminal: unavailable");
+
+            pilot.click(WIDE.width() / 2, 10);
+            settle(pilot);
+            assertFalse(test.renderedFrame().contains("Terminal: unavailable"), test.renderedFrame());
+            pressCtrlC(pilot);
+        }
+    }
+
+    private VintelliShell shellWithRegistry(FixedStatusRegistry registry) {
+        return new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), registry);
+    }
+
+    private static String statusRow(MouseShellRunner test, Size size) {
+        return test.renderedFrame().lines().skip(size.height() - 1).findFirst().orElse("").stripTrailing();
     }
 
     private static int findRow(Buffer buffer, int x, String symbol) {
@@ -3150,7 +3249,6 @@ class VintelliShellTest {
         String edited = rowText(offlineFrame(shell), HEADER_ROW);
         assertTrue(edited.contains("pom.xml " + dirtyMark()), "an edited buffer shows the dirty dot after the name: " + edited);
     }
-
 
     @Test
     void editorTabBarShowsEveryOpenFileWithTheDirtyMarkAndTheUnderlineUnderTheSelectedTab() throws IOException {

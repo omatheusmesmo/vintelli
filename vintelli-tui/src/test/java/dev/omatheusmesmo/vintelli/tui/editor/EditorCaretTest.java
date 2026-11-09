@@ -66,7 +66,7 @@ class EditorCaretTest {
         ShellThemes themes = new ShellThemes("dark", (Path) null);
         BuiltinEditor editor = open(themes, "Caret.java", "first line\nsecond line\n", 1);
 
-        for (String focus : new String[] {null, "project-panel", "tool-run", "editor-navigation-bar",
+        for (String focus : new String[] {null, "project-panel", "tool-run", "status-bar",
                 "editor-close-confirmation"}) {
             assertEquals(0, reversedCells(render(editor, themes, focus)).size(),
                     "no caret is drawn while the focus is " + focus);

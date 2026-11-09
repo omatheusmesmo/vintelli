@@ -103,7 +103,7 @@ class EditorControllerTest {
         controller.openFile(project.resolve("src/Main.java"), 0);
         controller.focusNavigationBar();
         assertTrue(controller.navigationBarFocused());
-        assertEquals(List.of("editor-navigation-bar"), focusTargets);
+        assertEquals(List.of(StatusBarElement.ID), focusTargets);
     }
 
     private EditorController.Host host() {

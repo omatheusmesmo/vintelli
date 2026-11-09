@@ -169,17 +169,27 @@ looking at, and the write ports
 `ShellHighlightPort` and `ShellDiffViewPort` (implemented by the shell) let
 it push a highlight and a diff back into the TUI.
 
-The status bar combines the shell message, live IDEA MCP connection state,
-active provider for each capability, and the active editor's caret position,
-encoding, line separator, and file type. Tool windows and selected capability
-providers can contribute ordered widgets; the VCS provider refreshes its
-branch label asynchronously. On narrow terminals the bar uses compact labels
-and truncates to the available width; unavailable providers are marked with
-`!`, with their reason shown when space allows. Provider selections are read
-from the live capability registry.
+The status bar is one row. On the left is the breadcrumb of the active file, from
+the project root down to the file, followed by the containing type and method
+when the LSP provider returns document symbols. Each segment is clickable, and
+`Alt+Home` focuses the breadcrumb: arrows move between segments, Enter selects
+one, and Escape returns focus to the editor. On the right, from left to right:
+the shell message (a running task such as loading or connecting shows here), a
+`⚠ N providers degraded` indicator only while a capability has no healthy
+provider, the caret as `line:column`, the line separator, the encoding, the
+indent detected from the file (`4 spaces` or `Tab`, hidden for a file with no
+indented line), and a read only marker, a lock glyph in the Nerd Font face and
+`Read-only` otherwise, shown only for a read only file. Two blank columns separate the
+items. The `!` replaces `⚠` when the terminal has no Unicode. Clicking the
+indicator opens a Providers popup with every provider state, the reason of an
+unavailable one included; Escape or a click elsewhere closes it. The branch is
+shown in the toolbar. On narrow terminals the leftmost breadcrumb segments go
+first, then the indent, then the line separator and encoding. The message
+shortens to `Ready` before it is clipped, and the caret and the file name stay
+last. Provider selections are read from the live capability registry.
 
 Capability states: the Run, Terminal and Problems tool windows use the same
-wording as the status bar, and the project pane footer shows the Read File
+wording as the provider popup, and the project pane footer shows the Read File
 state. The text is read from the registry snapshot off the render thread. The
 active provider reads `Problems: jdtls (jdtls over stdio)`, and an unavailable
 capability reads `Problems unavailable: <reason>` with the registry reason as
@@ -223,10 +233,8 @@ existing entry. In the editor, `Ctrl+S` saves, `Ctrl+Z`/`Ctrl+Y` undo and redo,
 for confirmation). `F10` opens the menus, the menu icon at the left of the
 toolbar does the same with the mouse, and long unavailable reasons can be
 scrolled with Page Up/Down.
-The editor shows clickable project path breadcrumbs and, when an LSP provider
-returns document symbols, the containing type and method. `Alt+Home` focuses
-the breadcrumbs; arrows move between segments, Enter selects one, and Escape
-returns focus to the editor.
+The breadcrumb of the active file is on the status bar (see above), and
+`Alt+Home` focuses it.
 `Ctrl+O` opens Go to File, `Alt+F` searches file contents, `F12` requests a
 definition, `Alt+U` requests references, and `F8` moves to the next diagnostic, and `Alt+I` folds or unfolds the import block.
 In the editor, a left click places the caret on the character under the pointer

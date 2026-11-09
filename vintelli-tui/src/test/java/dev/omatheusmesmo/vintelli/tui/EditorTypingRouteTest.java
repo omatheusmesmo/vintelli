@@ -53,8 +53,8 @@ class EditorTypingRouteTest {
                     () -> test.runner().focusManager().setFocus("editor-content"), 'd'),
                     "the editor content takes typed characters");
             assertFalse(typesInto(editor, pilot,
-                    () -> test.runner().focusManager().setFocus("editor-navigation-bar"), 'e'),
-                    "the navigation bar does not write into the document");
+                    () -> test.runner().focusManager().setFocus(StatusBarElement.ID), 'e'),
+                    "the status bar breadcrumb does not write into the document");
         } finally {
             test.close();
         }

@@ -1,92 +1,123 @@
 package dev.omatheusmesmo.vintelli.tui;
 
-import dev.omatheusmesmo.vintelli.api.statusbar.StatusBarWidget;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import dev.tamboui.layout.Size;
-import dev.tamboui.layout.Rect;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
+
+import dev.omatheusmesmo.vintelli.api.capability.CapabilityStatus;
+import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
+import dev.omatheusmesmo.vintelli.tui.StatusBarLayout.Line;
+import dev.omatheusmesmo.vintelli.tui.StatusBarLayout.Placement;
+import dev.omatheusmesmo.vintelli.tui.StatusBarLayout.Segment;
+import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
 import dev.tamboui.buffer.Buffer;
+import dev.tamboui.layout.Rect;
+import dev.tamboui.layout.Size;
 import dev.tamboui.terminal.Frame;
 import dev.tamboui.text.Text;
 import dev.tamboui.toolkit.app.ToolkitTestRunner;
 import dev.tamboui.toolkit.element.DefaultRenderContext;
+import dev.tamboui.tui.event.KeyCode;
+import dev.tamboui.tui.event.KeyEvent;
 import dev.tamboui.tui.pilot.Pilot;
-import java.time.Duration;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
-import java.util.List;
-
 import org.junit.jupiter.api.Test;
 
 class StatusBarLayoutTest {
 
-    @Test
-    void ordersWidgetsByOrderThenId() {
-        List<StatusBarWidget> widgets = List.of(
-                new StatusBarWidget("z-provider", 10, "Terminal: local", "T:local"),
-                new StatusBarWidget("shell", 0, "Tool window: Run", "Tool: Run"),
-                new StatusBarWidget("a-provider", 10, "Run: local", "R:local"));
+    private static final int STATUS_ROW = 5;
 
-        assertEquals("Tool window: Run │ Run: local │ Terminal: local", StatusBarLayout.render(widgets, 100));
+    private static final String DIVIDER = " › ";
+    private static final String GAP = "  ";
+    private static final String LEFT_FULL = "vintelli › vintelli-tui › VintelliShell.java";
+    private static final String LEFT_WITHOUT_ROOT = "… › vintelli-tui › VintelliShell.java";
+    private static final String RIGHT = "Ready  246:5  LF  UTF-8  4 spaces  RO";
+
+    @Test
+    void keepsTheBreadcrumbOnTheLeftAndTheEditorWidgetsOnTheRightAtOneHundredFiftyColumns() {
+        Line line = StatusBarLayout.layout(crumbSegments(), DIVIDER, editorWidgets(), GAP, 150);
+
+        String row = line.text();
+        assertTrue(row.startsWith(LEFT_FULL), row);
+        assertTrue(row.endsWith(RIGHT), row);
+        assertEquals(150, row.length(), row);
     }
 
     @Test
-    void keepsCompactProviderNamesVisibleAndTruncatesTheLastWidget() {
-        List<StatusBarWidget> widgets = List.of(
-                new StatusBarWidget("shell", 0, "Tool window: Run", "Tool: Run"),
-                new StatusBarWidget("provider", 10, "Problems: jdtls (Java language server diagnostics provider)",
-                        "P:jdtls"),
-                new StatusBarWidget("next", 20, "VCS: git", "V:git"));
+    void dropsTheLeftmostBreadcrumbAncestorFirstAndKeepsTheFileAtEightyColumns() {
+        Line line = StatusBarLayout.layout(crumbSegments(), DIVIDER, editorWidgets(), GAP, 80);
 
-        String rendered = StatusBarLayout.render(widgets, 34);
-
-        assertTrue(rendered.startsWith("Tool window: Run │ P:jdtls │ V:git"), rendered);
-        assertTrue(rendered.length() <= 34, rendered);
+        String row = line.text();
+        assertTrue(row.startsWith(LEFT_WITHOUT_ROOT), row);
+        assertTrue(row.endsWith(RIGHT), row);
+        assertEquals(80, row.length(), row);
+        assertFalse(row.contains("vintelli ›"), row);
     }
 
     @Test
-    void keepsLongBranchAndProviderStatesVisibleWithCaretAtEightyColumns() {
-        List<StatusBarWidget> widgets = List.of(
-                new StatusBarWidget("problems", 13, "Problems: jdtls diagnostics", "P:jdtls"),
-                new StatusBarWidget("read-file", 12, "Read File: backup-reader", "RF:backup…"),
-                new StatusBarWidget("terminal", 11, "Terminal: local", "T:local"),
-                new StatusBarWidget("run", 10, "Run: local", "R:local"),
-                new StatusBarWidget("caret", 8, "Caret L12:C1", "L12:C1"),
-                new StatusBarWidget("vcs-branch", 7, "Branch: feat/issue-121-impl", "Git:feat/issue-121-impl"),
-                new StatusBarWidget("idea", 5, "IDEA MCP: disconnected", "IDEA:off"),
-                new StatusBarWidget("shell", 0, "Project files loaded", "Ready"));
+    void shrinksTheMessageToItsShortTextBeforeAnyWidgetIsDropped() {
+        List<Segment> right = List.of(
+                new Segment(StatusBarLayout.MESSAGE_ID, 80, "Vintelli ready and waiting", "Ready"),
+                Segment.of("caret", 100, "1:1"),
+                Segment.of("line-separator", 45, "LF"));
 
-        String rendered = StatusBarLayout.render(widgets, 80);
+        Line line = StatusBarLayout.layout(List.of(), DIVIDER, right, GAP, 20);
 
-        assertEquals("Ready │ IDEA:off │ Git:feat… │ L12:C1 │ R:local │ T:local │ RF:backup… │ P:jdtls",
-                rendered);
-        assertTrue(Text.raw(rendered).width() <= 80, rendered);
+        assertEquals("      Ready  1:1  LF", line.text());
+    }
+
+    @Test
+    void dropsTheLeastImportantWidgetFirstWhenTheMessageCannotShrinkFurther() {
+        List<Segment> right = List.of(
+                new Segment(StatusBarLayout.MESSAGE_ID, 80, "Vintelli ready and waiting", "Ready"),
+                Segment.of("caret", 100, "1:1"),
+                Segment.of("line-separator", 45, "LF"));
+
+        Line line = StatusBarLayout.layout(List.of(), DIVIDER, right, GAP, 12);
+
+        assertEquals("  Ready  1:1", line.text());
+    }
+
+    @Test
+    void neverOverlapsAndNeverExceedsTheWidthAtAnyWidth() {
+        for (int width = 1; width <= 160; width++) {
+            Line line = StatusBarLayout.layout(crumbSegments(), DIVIDER, editorWidgets(), GAP, width);
+
+            int cells = 0;
+            boolean caretDrawn = false;
+            for (Placement placement : line.placements()) {
+                if (placement.text().isEmpty()) {
+                    continue;
+                }
+                assertTrue(placement.x() >= cells, "overlap at width " + width + ": " + line.text());
+                assertTrue(placement.right() <= width, "overflow at width " + width + ": " + line.text());
+                cells = placement.right();
+                caretDrawn |= "caret".equals(placement.id());
+            }
+            assertTrue(Text.raw(line.text()).width() <= width, "width " + width + ": " + line.text());
+            if (width >= 5) {
+                assertTrue(caretDrawn, "the caret survives at width " + width + ": " + line.text());
+            }
+        }
     }
 
     @Test
     void truncatesWithinAWidgetWhenTheTerminalIsExtremelyNarrow() {
-        assertEquals("…", StatusBarLayout.render(
-                List.of(new StatusBarWidget("shell", 0, "Tool window: Run", "Tool: Run")), 1));
-    }
-
-    @Test
-    void compactWidgetsRespectCellWidthsAcrossSeparators() {
-        List<StatusBarWidget> widgets = List.of(
-                new StatusBarWidget("first", 0, "界界", "界界"),
-                new StatusBarWidget("second", 1, "tail", "tail"));
-
-        String rendered = StatusBarLayout.render(widgets, 8);
-
-        assertTrue(Text.raw(rendered).width() <= 8, rendered);
+        assertEquals("…", StatusBarLayout.truncate("Tool window: Run", 1));
     }
 
     @Test
     void truncatesByTerminalCellsWithoutSplittingWideOrCombiningCharacters() {
         String emojiText = StatusBarLayout.truncate("A😀Z", 3);
-        String combiningText = StatusBarLayout.truncate("e\u0301界Z", 2);
+        String combiningText = StatusBarLayout.truncate("é界Z", 2);
 
         assertTrue(Text.raw(emojiText).width() <= 3, emojiText);
         assertFalse(Character.isHighSurrogate(emojiText.charAt(emojiText.length() - 1)), emojiText);
@@ -95,55 +126,133 @@ class StatusBarLayoutTest {
     }
 
     @Test
-    void pilotRendersOrderedCompactWidgetsWithinTheNarrowTerminalWidth() throws Exception {
-        List<StatusBarWidget> widgets = List.of(
-                new StatusBarWidget("vcs", 20, "VCS: git", "V:git"),
-                new StatusBarWidget("shell", 0, "Tool window: Run", "Tool:Run"),
-                new StatusBarWidget("problems", 10, "Problems: jdtls (Java diagnostics provider)", "P:jdtls"));
+    void pilotDrawsTheBreadcrumbAndTheShellMessageOnOneRowAtEightyColumns() throws Exception {
+        StatusBar bar = statusBar(() -> "Vintelli ready", breadcrumbs());
         try (ToolkitTestRunner test = ToolkitTestRunner.runTest(
-                () -> new StatusBarElement(() -> widgets), new Size(34, 1))) {
+                () -> new StatusBarElement(bar, index -> { }), new Size(80, 1))) {
             Pilot pilot = test.pilot();
             pilot.pause(Duration.ofMillis(100));
 
             assertTrue(pilot.hasElement("status-bar"));
-            String terminalOutput = render(test, widgets, 34);
-            assertTrue(terminalOutput.contains("Tool window: Run"), terminalOutput);
-            assertTrue(terminalOutput.contains("P:jdtls"), terminalOutput);
-            assertTrue(terminalOutput.contains("V:git"), terminalOutput);
+            String row = render(test, bar, 80);
+            assertTrue(row.startsWith(LEFT_FULL), row);
+            assertTrue(row.endsWith("Vintelli ready"), row);
+            assertEquals(80, row.length(), row);
         }
     }
 
     @Test
-    void pilotReadsProviderUpdatesFromTheWidgetSourceWithoutRestarting() throws Exception {
-        AtomicReference<List<StatusBarWidget>> widgets = new AtomicReference<>(List.of(
-                new StatusBarWidget("run", 10, "Run: old-provider", "R:old-provider")));
-        AtomicReference<List<StatusBarWidget>> lastRendered = new AtomicReference<>();
+    void aClickAnswersTheBreadcrumbSegmentTheIndicatorOrTheOpenPopupOnly() {
+        List<Integer> clicked = new ArrayList<>();
+        StatusBarElement element = new StatusBarElement(degradedBar(() -> new StatusBar.Navigation(breadcrumbs(), 2,
+                false)), clicked::add);
+        Buffer buffer = drawOn(element, 80, 6);
 
+        assertTrue(rowText(buffer, STATUS_ROW).contains("! 1 provider degraded"), rowText(buffer, STATUS_ROW));
+        assertTrue(element.click(13, STATUS_ROW), "a click on the second breadcrumb segment is answered");
+        assertEquals(List.of(1), clicked);
+
+        assertTrue(element.click(rowText(buffer, STATUS_ROW).indexOf("provider"), STATUS_ROW),
+                "a click on the indicator is answered");
+        assertTrue(element.popupOpen(), "the indicator opens the popup");
+        Buffer popupFrame = drawOn(element, 80, 6);
+        assertTrue(rowText(popupFrame, 3).contains("Providers"), rowText(popupFrame, 3));
+
+        assertTrue(element.click(79, 4), "a click inside the popup stays with the status bar");
+        assertTrue(element.popupOpen(), "a click inside the popup keeps it open");
+        assertFalse(element.click(0, 2), "a click outside the popup is not consumed");
+        assertFalse(element.popupOpen(), "a click outside the popup closes it");
+        assertEquals(List.of(1), clicked, "closing the popup never selects a segment");
+    }
+
+    @Test
+    void escapeClosesAnOpenPopupAndLeavesOtherKeysAlone() {
+        StatusBarElement element = new StatusBarElement(degradedBar(() -> StatusBar.Navigation.NONE), index -> { });
+        Buffer buffer = drawOn(element, 80, 6);
+        element.click(rowText(buffer, STATUS_ROW).indexOf("provider"), STATUS_ROW);
+
+        assertFalse(element.escape(KeyEvent.ofChar('x')), "other keys are not taken");
+        assertTrue(element.popupOpen());
+        assertTrue(element.escape(KeyEvent.ofKey(KeyCode.ESCAPE)));
+        assertFalse(element.popupOpen());
+    }
+
+    private static StatusBar degradedBar(Supplier<StatusBar.Navigation> navigation) {
+        return new StatusBar(() -> "Ready", () -> false, FixedStatusRegistry.withStatuses(List.of(
+                CapabilityStatus.unavailable(CapabilityType.TERMINAL, "pty is missing"))), null, List.of(),
+                new StatusBar.Glyphs(false, IconMode.ASCII), navigation);
+    }
+
+    private static Buffer drawOn(StatusBarElement element, int width, int height) {
+        Buffer buffer = Buffer.empty(new Rect(0, 0, width, height));
+        element.render(Frame.forTesting(buffer), new Rect(0, height - 1, width, 1),
+                DefaultRenderContext.createEmpty());
+        return buffer;
+    }
+
+    private static String rowText(Buffer buffer, int row) {
+        StringBuilder text = new StringBuilder();
+        for (int x = 0; x < buffer.area().width(); x++) {
+            text.append(buffer.get(x, row).symbol());
+        }
+        return text.toString();
+    }
+
+    @Test
+    void pilotReadsMessageUpdatesFromTheSourceWithoutRestarting() throws Exception {
+        AtomicReference<String> message = new AtomicReference<>("Run: old-provider");
+        StatusBar bar = statusBar(message::get, List.of());
         try (ToolkitTestRunner test = ToolkitTestRunner.runTest(
-                () -> new StatusBarElement(() -> {
-                    List<StatusBarWidget> current = widgets.get();
-                    lastRendered.set(current);
-                    return current;
-                }), new Size(40, 1))) {
+                () -> new StatusBarElement(bar, index -> { }), new Size(40, 1))) {
             Pilot pilot = test.pilot();
             pilot.pause(Duration.ofMillis(100));
-            assertTrue(render(test, lastRendered.get(), 40).contains("Run: old-provider"));
+            assertTrue(render(test, bar, 40).contains("Run: old-provider"));
 
-            widgets.set(List.of(new StatusBarWidget("run", 10, "Run: new-provider", "R:new-provider")));
+            message.set("Run: new-provider");
             pilot.resize(39, 1);
             pilot.pause(Duration.ofMillis(100));
 
-            assertTrue(render(test, lastRendered.get(), 40).contains("Run: new-provider"));
+            assertTrue(render(test, bar, 40).contains("Run: new-provider"));
         }
     }
 
-    private static String render(ToolkitTestRunner test, List<StatusBarWidget> widgets, int width) throws Exception {
+    private static StatusBar statusBar(Supplier<String> message, List<StatusBar.Breadcrumb> crumbs) {
+        return new StatusBar(message, () -> false, null, null, List.of(),
+                new StatusBar.Glyphs(true, IconMode.NERD),
+                () -> new StatusBar.Navigation(crumbs, crumbs.size() - 1, false));
+    }
+
+    private static List<StatusBar.Breadcrumb> breadcrumbs() {
+        return List.of(
+                new StatusBar.Breadcrumb("vintelli", Path.of("vintelli"), -1),
+                new StatusBar.Breadcrumb("vintelli-tui", Path.of("vintelli", "vintelli-tui"), -1),
+                new StatusBar.Breadcrumb("VintelliShell.java", Path.of("VintelliShell.java"), -1));
+    }
+
+    private static List<Segment> crumbSegments() {
+        return List.of(
+                Segment.of("crumb-0", 10, "vintelli"),
+                Segment.of("crumb-1", 11, "vintelli-tui"),
+                Segment.of("crumb-2", 90, "VintelliShell.java"));
+    }
+
+    private static List<Segment> editorWidgets() {
+        return List.of(
+                new Segment(StatusBarLayout.MESSAGE_ID, 80, "Ready", "Ready"),
+                Segment.of("caret", 100, "246:5"),
+                Segment.of("line-separator", 45, "LF"),
+                Segment.of("encoding", 45, "UTF-8"),
+                Segment.of("indent", 30, "4 spaces"),
+                Segment.of("read-only", 40, "RO"));
+    }
+
+    private static String render(ToolkitTestRunner test, StatusBar bar, int width) throws Exception {
         CompletableFuture<String> result = new CompletableFuture<>();
         test.runner().runOnRenderThread(() -> {
             try {
                 Rect area = new Rect(0, 0, width, 1);
                 Buffer buffer = Buffer.empty(area);
-                new StatusBarElement(() -> widgets).render(Frame.forTesting(buffer), area,
+                new StatusBarElement(bar, index -> { }).render(Frame.forTesting(buffer), area,
                         DefaultRenderContext.createEmpty());
                 StringBuilder text = new StringBuilder();
                 for (int x = 0; x < width; x++) {

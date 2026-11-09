@@ -56,7 +56,6 @@ final class EditorElement implements Element {
     private final BuiltinEditor editor;
     private final TextAreaElement textArea = Toolkit.textArea();
     private final MenuAwareTextArea menuAwareTextArea;
-    private final NavigationBarElement navigationBar = new NavigationBarElement();
     private final EditorTabBarElement tabBar = new EditorTabBarElement();
     private Rect renderedArea = Rect.ZERO;
     private Rect bodyArea = Rect.ZERO;
@@ -67,14 +66,6 @@ final class EditorElement implements Element {
         this.editor = editor;
         textArea.id(null).focusable(false);
         menuAwareTextArea = new MenuAwareTextArea();
-    }
-
-    void navigationBar(List<String> labels, int selected) {
-        navigationBar.segments(labels, selected);
-    }
-
-    int navigationSegmentAt(int x, int y) {
-        return navigationBar.segmentAt(x, y);
     }
 
     void renderTabBar(Frame frame, Rect area, RenderContext context, boolean focused, String focusMark) {
@@ -219,17 +210,15 @@ final class EditorElement implements Element {
             bodyArea = Rect.ZERO;
             Column column = Toolkit.column().id("editor-document");
             if (document == null) {
-                column.add(navigationBar);
                 column.add(Toolkit.text("Open a file from Project or Go to File").fill());
             } else {
-                column.add(navigationBar);
                 Row body = Toolkit.row().fill();
                 int gutterWidth = Integer.toString(document.lineCount()).length() + 3;
-                int bodyHeight = Math.max(0, area.height() - (navigationBar.hasSegments() ? 1 : 0) - 1);
+                int bodyHeight = Math.max(0, area.height() - 1);
                 if (document.consumeReveal()) {
                     document.state().ensureCursorVisible(bodyHeight, Math.max(0, area.width() - gutterWidth));
                 }
-                bodyArea = new Rect(area.x(), area.y() + (navigationBar.hasSegments() ? 1 : 0), area.width(), bodyHeight);
+                bodyArea = new Rect(area.x(), area.y(), area.width(), bodyHeight);
                 body.add(Toolkit.richText(gutter(document, bodyHeight, gutterWidth, context))
                         .length(gutterWidth).id("editor-gutter"));
                 document.highlighter().editorPalette(editor.palette());
