@@ -160,6 +160,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private final IdeaMcpConnection ideaMcpConnection;
     private final ToolStripes toolStripes;
     private final StatusBar statusBar;
+    private final StatusBarElement statusBarElement;
     private final ProjectFileOperations fileOperations;
     private final ShellLayout shellLayout;
     private final ShellLayoutStore layoutStore;
@@ -385,7 +386,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 toolWindowElementHost());
         this.toolStripes = new ToolStripes(toolWindowHost.windowsByAnchor(), fileIcons.mode(), stripHost());
         this.statusBar = new StatusBar(() -> status, () -> projects.inputActive() || vcsActions.promptOpen()
-                || projects.deletePending(), capabilityRegistry, editor, statusBarContributors);
+                || projects.deletePending(), capabilityRegistry, editor, statusBarContributors,
+                new StatusBar.Glyphs(ProjectTreeGlyphs.supportsUnicode(), fileIcons.mode()),
+                editorController::statusNavigation);
+        this.statusBarElement = new StatusBarElement(statusBar, editorController::navigateToBreadcrumb);
         this.rootBase = buildRootContent();
         this.lockedRoot = new LockedElement(rootBase, frameLock, this, true);
         if (projectSearch != null) {
@@ -1026,7 +1030,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
      */
     private Element statusBarEntry() {
         syncFileSelection();
-        return new StatusBarElement(statusBar::widgets);
+        editorController.refreshNavigation();
+        return statusBarElement;
     }
 
     private Element overlayElements() {
@@ -1102,6 +1107,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 syncEditorMenuNavigation(parts);
                 action.ifPresent(value -> dispatch(parts, value));
             }
+            return EventResult.HANDLED;
+        }
+        if (mouse.isClick() && statusBarElement.click(mouse.x(), mouse.y())) {
             return EventResult.HANDLED;
         }
         if (mouse.isClick() && toolChromeClicked(mouse)) {
@@ -1292,6 +1300,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             return EventResult.UNHANDLED;
         }
         syncFileSelection();
+        if (statusBarElement.escape(key)) {
+            return EventResult.HANDLED;
+        }
         if (editorPanel.handleNavigationKey(key)) {
             return EventResult.HANDLED;
         }

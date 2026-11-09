@@ -8,18 +8,20 @@ import java.util.function.Supplier;
 
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityRegistry;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityStatus;
-import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
-import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability;
 import dev.omatheusmesmo.vintelli.api.statusbar.CapabilityStatusWidgets;
+import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability;
 import dev.omatheusmesmo.vintelli.api.statusbar.StatusBarWidget;
 import dev.omatheusmesmo.vintelli.api.statusbar.StatusBarWidgetContributor;
 import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
+import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
 
 /**
- * Builds the widgets of the status bar from the shell message, the capability
- * snapshot, the editor caret and the contributors, and the segments of the
- * editor breadcrumb. It holds no TamboUI type: {@link StatusBarElement} draws
- * the widgets, and the shell hands the segments to the editor navigation bar.
+ * Builds the segments of the status bar: the breadcrumb on the left, and on the
+ * right the shell message, the degraded-provider indicator, the caret, the line
+ * separator, the encoding, the indent and the read-only lock. The provider
+ * states go to a popup on the indicator, see {@link #providerLines()}. It holds
+ * no TamboUI type: {@link StatusBarElement} draws the segments, and the shell
+ * hands the breadcrumb to the editor navigation.
  */
 final class StatusBar {
 
@@ -27,71 +29,176 @@ final class StatusBar {
     record Breadcrumb(String label, Path path, int line) {
     }
 
+    /** The breadcrumb the shell navigates, the selected segment and whether the keyboard has it. */
+    record Navigation(List<Breadcrumb> segments, int selected, boolean focused) {
+
+        static final Navigation NONE = new Navigation(List.of(), 0, false);
+
+        Navigation {
+            segments = List.copyOf(segments);
+        }
+    }
+
+    /**
+     * The standard Unicode marks follow the Unicode probe, and the private-use
+     * lock glyph follows the icon face. Each has an ASCII form.
+     */
+    record Glyphs(boolean unicode, IconMode icons) {
+
+        String divider() {
+            return unicode ? " › " : " > ";
+        }
+
+        String warning() {
+            return unicode ? "⚠" : "!";
+        }
+
+        String readOnly() {
+            return icons == IconMode.NERD ? "" : "Read-only";
+        }
+    }
+
+    static final String BREADCRUMB_PREFIX = "crumb-";
+    static final String PROVIDERS_ID = "providers";
+    static final String GAP = "  ";
+
     private static final String IDEA_SUFFIX = " | IDEA MCP: disconnected";
     private static final int COMPACT_MESSAGE_WIDTH = 8;
-    private static final int COMPACT_PROVIDER_WIDTH = 7;
-    private static final int COMPACT_REASON_WIDTH = 12;
-    private static final int CAPABILITY_ORDER = 10;
+    private static final int PRIORITY_CARET = 100;
+    private static final int PRIORITY_FILE = 90;
+    private static final int PRIORITY_PROVIDERS = 85;
+    private static final int PRIORITY_MESSAGE = 80;
+    private static final int PRIORITY_SYMBOL = 60;
+    private static final int PRIORITY_LOCK = 40;
+    private static final int PRIORITY_ENCODING = 45;
+    private static final int PRIORITY_INDENT = 30;
+    private static final int PRIORITY_ANCESTOR = 10;
 
     private final Supplier<String> message;
     private final BooleanSupplier inputBlocking;
     private final CapabilityRegistry registry;
     private final BuiltinEditor editor;
     private final List<StatusBarWidgetContributor> contributors;
+    private final Glyphs glyphs;
+    private final Supplier<Navigation> navigation;
 
     StatusBar(Supplier<String> message, BooleanSupplier inputBlocking, CapabilityRegistry registry,
-            BuiltinEditor editor, List<? extends StatusBarWidgetContributor> contributors) {
+            BuiltinEditor editor, List<? extends StatusBarWidgetContributor> contributors, Glyphs glyphs,
+            Supplier<Navigation> navigation) {
         this.message = message;
         this.inputBlocking = inputBlocking;
         this.registry = registry;
         this.editor = editor;
         this.contributors = List.copyOf(contributors);
+        this.glyphs = glyphs;
+        this.navigation = navigation;
     }
 
     /**
-     * The widgets in the order the layout sorts them. While the project or a
-     * version control prompt takes input, only the shell message stays.
+     * The breadcrumb segments, the leftmost first. The file is the most important
+     * path segment, the ancestors go from the root up, and the symbols go last.
+     * While a prompt takes input there is none.
      */
-    List<StatusBarWidget> widgets() {
-        List<StatusBarWidget> widgets = new ArrayList<>();
-        String shellMessage = message.get().replace(IDEA_SUFFIX, "");
-        widgets.add(new StatusBarWidget("shell", 0, shellMessage, compactShell(shellMessage)));
+    List<StatusBarLayout.Segment> left() {
         if (inputBlocking.getAsBoolean()) {
-            return List.copyOf(widgets);
+            return List.of();
         }
-        if (registry != null) {
-            int order = CAPABILITY_ORDER;
-            for (CapabilityStatusWidgets capabilityStatusWidgets : registry.statusBarSnapshot()) {
-                widgets.add(capabilityWidget(capabilityStatusWidgets.status(), order++));
-                widgets.addAll(capabilityStatusWidgets.widgets());
+        List<Breadcrumb> crumbs = navigation().segments();
+        int fileIndex = -1;
+        for (int i = 0; i < crumbs.size(); i++) {
+            if (crumbs.get(i).line() < 0) {
+                fileIndex = i;
             }
         }
-        if (editor != null) {
-            editor.statusBarInfo().ifPresent(info -> {
-                String cursor = "L" + info.line() + ":C" + info.column();
-                widgets.add(new StatusBarWidget("editor-caret", 8, "Caret " + cursor, cursor));
-                String details = info.encoding() + " · " + info.lineSeparator() + " · " + info.fileType();
-                widgets.add(new StatusBarWidget("editor-format", 101, details,
-                        info.encoding().replace("-", "") + " " + info.lineSeparator() + " " + info.fileType()));
-            });
+        List<StatusBarLayout.Segment> segments = new ArrayList<>();
+        for (int i = 0; i < crumbs.size(); i++) {
+            Breadcrumb crumb = crumbs.get(i);
+            int priority = crumb.line() >= 0 ? PRIORITY_SYMBOL : i == fileIndex ? PRIORITY_FILE : PRIORITY_ANCESTOR + i;
+            segments.add(StatusBarLayout.Segment.of(BREADCRUMB_PREFIX + i, priority, crumb.label()));
         }
-        for (StatusBarWidgetContributor contributor : contributors) {
-            widgets.addAll(contributor.statusBarWidgets());
-        }
-        return List.copyOf(widgets);
+        return List.copyOf(segments);
     }
 
-    static StatusBarWidget capabilityWidget(CapabilityStatus status, int order) {
-        String label = CapabilityStateLine.label(status.capability());
-        String shortLabel = shortLabel(status.capability());
-        String id = "capability-" + status.capability().label();
-        if (status.isAvailable()) {
-            return new StatusBarWidget(id, order,
-                    label + ": " + status.providerIdentifier() + " (" + status.provenance() + ")",
-                    shortLabel + ":" + StatusBarLayout.truncate(status.providerIdentifier(), COMPACT_PROVIDER_WIDTH));
+    /**
+     * The right group in display order. While the project or a version control
+     * prompt takes input, only the shell message stays.
+     */
+    List<StatusBarLayout.Segment> right() {
+        List<StatusBarLayout.Segment> segments = new ArrayList<>();
+        String shellMessage = message.get().replace(IDEA_SUFFIX, "");
+        if (degradedCount() > 0 && !inputBlocking.getAsBoolean()) {
+            segments.add(degradedIndicator());
         }
-        return new StatusBarWidget(id, order, label + ": unavailable: " + status.health().reason(),
-                shortLabel + ":!" + compactReason(status.health().reason()));
+        segments.add(new StatusBarLayout.Segment(StatusBarLayout.MESSAGE_ID, PRIORITY_MESSAGE, shellMessage,
+                compactShell(shellMessage)));
+        if (inputBlocking.getAsBoolean() || editor == null) {
+            return List.copyOf(segments);
+        }
+        editor.statusBarInfo().ifPresent(info -> {
+            String cursor = info.line() + ":" + info.column();
+            segments.add(StatusBarLayout.Segment.of("caret", PRIORITY_CARET, cursor));
+            segments.add(StatusBarLayout.Segment.of("line-separator", PRIORITY_ENCODING, info.lineSeparator()));
+            segments.add(StatusBarLayout.Segment.of("encoding", PRIORITY_ENCODING, info.encoding()));
+            if (!info.indent().isBlank()) {
+                segments.add(StatusBarLayout.Segment.of("indent", PRIORITY_INDENT, info.indent()));
+            }
+            if (info.readOnly()) {
+                segments.add(StatusBarLayout.Segment.of("read-only", PRIORITY_LOCK, glyphs.readOnly()));
+            }
+        });
+        return List.copyOf(segments);
+    }
+
+    /**
+     * The provider lines of the popup: the capability states first, each with the
+     * widgets its provider contributes, then the contributors of the tool windows.
+     */
+    List<String> providerLines() {
+        List<String> lines = new ArrayList<>();
+        if (registry != null) {
+            for (CapabilityStatusWidgets capabilityStatusWidgets : registry.statusBarSnapshot()) {
+                lines.add(providerText(capabilityStatusWidgets.status()));
+                for (StatusBarWidget widget : capabilityStatusWidgets.widgets()) {
+                    lines.add(widget.text());
+                }
+            }
+        }
+        for (StatusBarWidgetContributor contributor : contributors) {
+            for (StatusBarWidget widget : contributor.statusBarWidgets()) {
+                lines.add(widget.text());
+            }
+        }
+        return List.copyOf(lines);
+    }
+
+    /** The number of capabilities without a healthy provider. Zero hides the indicator. */
+    int degradedCount() {
+        if (registry == null) {
+            return 0;
+        }
+        return (int) registry.statusBarSnapshot().stream()
+                .filter(widgets -> !widgets.status().isAvailable())
+                .count();
+    }
+
+    String divider() {
+        return glyphs.divider();
+    }
+
+    String gap() {
+        return GAP;
+    }
+
+    Navigation navigation() {
+        return navigation.get() == null ? Navigation.NONE : navigation.get();
+    }
+
+    static String providerText(CapabilityStatus status) {
+        String label = CapabilityStateLine.label(status.capability());
+        if (status.isAvailable()) {
+            return label + ": " + status.providerIdentifier() + " (" + status.provenance() + ")";
+        }
+        return label + ": unavailable: " + status.health().reason();
     }
 
     static String compactShell(String message) {
@@ -134,24 +241,15 @@ final class StatusBar {
                 .toList();
     }
 
+    private StatusBarLayout.Segment degradedIndicator() {
+        int count = degradedCount();
+        String plural = count == 1 ? "provider" : "providers";
+        return new StatusBarLayout.Segment(PROVIDERS_ID, PRIORITY_PROVIDERS,
+                glyphs.warning() + " " + count + " " + plural + " degraded",
+                glyphs.warning() + " " + count + " degraded");
+    }
+
     private static boolean isTypeOrCallable(int kind) {
         return kind == 5 || kind == 6 || kind == 9 || kind == 11 || kind == 12 || kind == 23;
-    }
-
-    private static String shortLabel(CapabilityType capability) {
-        return switch (capability) {
-            case RUN -> "R";
-            case TERMINAL -> "T";
-            case READ_FILE -> "RF";
-            case DIAGNOSTICS -> "P";
-            case CALL_HIERARCHY -> "CH";
-            case CODE_ACTION -> "CA";
-            case EDITOR_BRIDGE -> "E";
-            case VERSION_CONTROL -> "VCS";
-        };
-    }
-
-    private static String compactReason(String reason) {
-        return StatusBarLayout.truncate(reason, COMPACT_REASON_WIDTH);
     }
 }

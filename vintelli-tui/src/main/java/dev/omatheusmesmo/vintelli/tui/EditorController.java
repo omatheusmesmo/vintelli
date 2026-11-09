@@ -71,6 +71,10 @@ final class EditorController {
         return navigationBarFocused;
     }
 
+    StatusBar.Navigation statusNavigation() {
+        return new StatusBar.Navigation(navigationPaths, selectedNavigationSegment, navigationBarFocused);
+    }
+
     ShellHighlightTarget pushedHighlight() {
         return highlight;
     }
@@ -91,9 +95,9 @@ final class EditorController {
 
     /**
      * Routes a click on the editor bar: a tab selects its document and focuses
-     * the text, a breadcrumb segment opens its path or symbol.
+     * the text.
      *
-     * @return true when the click landed on a tab or a breadcrumb segment
+     * @return true when the click landed on a tab
      */
     boolean clickEditorBar(int x, int y) {
         if (editor == null) {
@@ -106,19 +110,13 @@ final class EditorController {
             host.status("Editor tab: " + editor.activeDocument().orElseThrow().file());
             return true;
         }
-        int segment = editor.navigationSegmentAt(x, y);
-        if (segment >= 0) {
-            navigateToBreadcrumb(segment);
-            return true;
-        }
         return false;
     }
 
     /**
-     * Rebuilds the breadcrumb segments of the active document and the labels of
-     * the editor bar. The editor content calls it while it renders, under the
-     * frame lock, so the bar and the segments change in the same pass that draws
-     * the document.
+     * Rebuilds the breadcrumb segments of the active document. The editor content
+     * and the status bar call it while they render, under the frame lock, so the
+     * segments change in the same pass that draws them.
      */
     void refreshNavigation() {
         if (editor == null || editor.activeDocument().isEmpty()) {
@@ -154,10 +152,8 @@ final class EditorController {
             if (!navigationBarFocused) {
                 selectedNavigationSegment = paths.size() - 1;
             }
-            editor.navigationBar(paths.stream().map(StatusBar.Breadcrumb::label).toList(), selectedNavigationSegment);
         } catch (IllegalArgumentException outsideProject) {
             navigationPaths = List.of();
-            editor.navigationBar(List.of(), 0);
         }
     }
 
@@ -168,7 +164,7 @@ final class EditorController {
             return;
         }
         navigationBarFocused = true;
-        host.takeFocus("editor-navigation-bar");
+        host.takeFocus(StatusBarElement.ID);
         host.status("Navigation bar: arrows move, Enter opens, Escape returns to editor");
     }
 
@@ -202,7 +198,7 @@ final class EditorController {
         return true;
     }
 
-    private void navigateToBreadcrumb(int segment) {
+    void navigateToBreadcrumb(int segment) {
         if (segment < 0 || segment >= navigationPaths.size()) {
             return;
         }

@@ -23,7 +23,7 @@ import static org.hamcrest.Matchers.hasSize;
 @WithTestResource(value = EditorTabBarInspectResource.class, scope = TestResourceScope.RESTRICTED_TO_CLASS)
 class EditorCaretRenderTest {
 
-    private static final int EDITOR_FIRST_ROW = 4;
+    private static final int EDITOR_FIRST_ROW = 3;
 
     @TestHTTPResource("/inspect/editor")
     URI editor;

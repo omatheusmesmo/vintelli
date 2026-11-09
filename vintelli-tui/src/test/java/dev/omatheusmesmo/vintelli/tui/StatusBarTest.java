@@ -1,20 +1,26 @@
 package dev.omatheusmesmo.vintelli.tui;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Path;
 import java.util.List;
 
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityStatus;
+import dev.omatheusmesmo.vintelli.api.statusbar.CapabilityStatusWidgets;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
 import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability;
 import dev.omatheusmesmo.vintelli.api.statusbar.StatusBarWidget;
+import dev.omatheusmesmo.vintelli.tui.StatusBarLayout.Segment;
+import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
 import org.junit.jupiter.api.Test;
 
 class StatusBarTest {
 
     private static final Path ROOT = Path.of("work", "vintelli");
+    private static final StatusBar.Glyphs UNICODE = new StatusBar.Glyphs(true, IconMode.NERD);
+    private static final StatusBar.Glyphs ASCII = new StatusBar.Glyphs(false, IconMode.ASCII);
 
     @Test
     void compactsTheShellMessageToTheKnownStates() {
@@ -32,13 +38,31 @@ class StatusBarTest {
     }
 
     @Test
-    void drawsTheShellWidgetAloneWhileInputIsBlocking() {
+    void drawsTheShellMessageAloneAndNoBreadcrumbWhileInputIsBlocking() {
         StatusBar bar = new StatusBar(() -> "Vintelli ready | IDEA MCP: disconnected", () -> true, null, null,
-                List.of());
+                List.of(), UNICODE, () -> StatusBar.Navigation.NONE);
 
-        List<StatusBarWidget> widgets = bar.widgets();
+        assertEquals(List.of(), bar.left());
+        assertEquals(List.of(new Segment(StatusBarLayout.MESSAGE_ID, 80, "Vintelli ready", "Ready")), bar.right());
+    }
 
-        assertEquals(List.of(new StatusBarWidget("shell", 0, "Vintelli ready", "Ready")), widgets);
+    @Test
+    void leftSegmentsRankTheFileAboveItsAncestorsAndBelowNothingElse() {
+        StatusBar bar = new StatusBar(() -> "Ready", () -> false, null, null, List.of(), UNICODE,
+                () -> new StatusBar.Navigation(List.of(
+                        new StatusBar.Breadcrumb("vintelli", ROOT, -1),
+                        new StatusBar.Breadcrumb("src", ROOT.resolve("src"), -1),
+                        new StatusBar.Breadcrumb("Main.java", ROOT.resolve("src").resolve("Main.java"), -1),
+                        new StatusBar.Breadcrumb("run", ROOT.resolve("src").resolve("Main.java"), 9)),
+                        3, false));
+
+        List<Segment> left = bar.left();
+
+        assertEquals(List.of("crumb-0", "crumb-1", "crumb-2", "crumb-3"), ids(left));
+        assertEquals(10, left.get(0).priority());
+        assertEquals(11, left.get(1).priority());
+        assertEquals(90, left.get(2).priority());
+        assertEquals(60, left.get(3).priority());
     }
 
     @Test
@@ -67,26 +91,70 @@ class StatusBarTest {
     }
 
     @Test
-    void capabilityWidgetNamesTheProviderAndCompactsItToSevenCells() {
-        CapabilityStatus status = CapabilityStatus.available(CapabilityType.RUN, "local", "config", List.of());
+    void providerTextNamesTheProviderAndTheUnavailableReason() {
+        CapabilityStatus available = CapabilityStatus.available(CapabilityType.RUN, "local", "config", List.of());
+        CapabilityStatus unavailable = CapabilityStatus.unavailable(CapabilityType.TERMINAL, "pty is missing");
 
-        StatusBarWidget widget = StatusBar.capabilityWidget(status, 10);
-
-        assertEquals(new StatusBarWidget("capability-run", 10, "Run: local (config)", "R:local"), widget);
+        assertEquals("Run: local (config)", StatusBar.providerText(available));
+        assertEquals("Terminal: unavailable: pty is missing", StatusBar.providerText(unavailable));
     }
 
     @Test
-    void capabilityWidgetShowsAnUnavailableReasonCompactedToTwelveCells() {
-        CapabilityStatus status = CapabilityStatus.unavailable(CapabilityType.TERMINAL, "pty is missing");
+    void theIndicatorAppearsOnlyWhileACapabilityHasNoHealthyProvider() {
+        StatusBar healthy = bar(UNICODE, List.of(
+                CapabilityStatus.available(CapabilityType.RUN, "local", "config", List.of())));
+        StatusBar degraded = bar(UNICODE, List.of(
+                CapabilityStatus.available(CapabilityType.RUN, "local", "config", List.of()),
+                CapabilityStatus.unavailable(CapabilityType.TERMINAL, "pty is missing")));
 
-        StatusBarWidget widget = StatusBar.capabilityWidget(status, 11);
+        assertFalse(ids(healthy.right()).contains(StatusBar.PROVIDERS_ID), ids(healthy.right()).toString());
+        assertEquals(StatusBar.PROVIDERS_ID, degraded.right().get(0).id());
+        assertEquals("⚠ 1 provider degraded", degraded.right().get(0).text());
+        assertEquals("⚠ 1 degraded", degraded.right().get(0).shortText());
+    }
 
-        assertEquals("Terminal: unavailable: pty is missing", widget.text());
-        assertEquals("T:!pty is miss…", widget.compactText());
+    @Test
+    void theIndicatorPluralizesAndUsesAsciiWithoutUnicode() {
+        StatusBar bar = bar(ASCII, List.of(
+                CapabilityStatus.unavailable(CapabilityType.TERMINAL, "pty is missing"),
+                CapabilityStatus.unavailable(CapabilityType.RUN, "no runner")));
+
+        assertEquals("! 2 providers degraded", bar.right().get(0).text());
+    }
+
+    @Test
+    void providerLinesListEveryCapabilityWithItsContributedWidgets() {
+        CapabilityStatus run = CapabilityStatus.available(CapabilityType.RUN, "local", "config", List.of());
+        CapabilityStatus vcs = CapabilityStatus.available(CapabilityType.VERSION_CONTROL, "git", "repo", List.of());
+        FixedStatusRegistry registry = new FixedStatusRegistry(List.of(
+                new CapabilityStatusWidgets(run, List.of()),
+                new CapabilityStatusWidgets(vcs, List.of(new StatusBarWidget("vcs-branch", 7, "Branch: main", "x")))));
+        StatusBar bar = new StatusBar(() -> "Ready", () -> false, registry, null, List.of(), ASCII,
+                () -> StatusBar.Navigation.NONE);
+
+        assertEquals(List.of("Run: local (config)", "VCS: git (repo)", "Branch: main"), bar.providerLines());
+    }
+
+    @Test
+    void theReadOnlyLockUsesTheNerdGlyphOnlyWithTheNerdFace() {
+        assertEquals("", UNICODE.readOnly());
+        assertEquals("Read-only", ASCII.readOnly());
+        assertEquals(" > ", ASCII.divider());
+        assertEquals(" › ", UNICODE.divider());
+    }
+
+    private static StatusBar bar(StatusBar.Glyphs glyphs, List<CapabilityStatus> statuses) {
+        return new StatusBar(() -> "Ready", () -> false, new FixedStatusRegistry(
+                statuses.stream().map(status -> new CapabilityStatusWidgets(status, List.of())).toList()),
+                null, List.of(), glyphs, () -> StatusBar.Navigation.NONE);
     }
 
     private static List<String> labels(List<StatusBar.Breadcrumb> segments) {
         return segments.stream().map(StatusBar.Breadcrumb::label).toList();
+    }
+
+    private static List<String> ids(List<Segment> segments) {
+        return segments.stream().map(Segment::id).toList();
     }
 
     private static NavigationCapability.DocumentSymbol symbol(String name, int kind, int line) {
