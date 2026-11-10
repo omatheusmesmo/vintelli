@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 import io.quarkus.test.junit.QuarkusIntegrationTest;
 import org.junit.jupiter.api.io.TempDir;
@@ -43,6 +44,7 @@ class VintelliTuiStartupIT {
             Sleep 500ms
             Ctrl+C
             """;
+    private static final Pattern NERD_GLYPH = Pattern.compile("[\\uE000-\\uF8FF]|\\\\u[eEfF][0-9a-fA-F]{3}");
     private static final String OSC_SET = "\u001b]11;#";
     private static final String OSC_RESET = "\u001b]111";
     private static final List<String> TERMINAL_ENVIRONMENT = List.of("TERM", "TERM_PROGRAM", "SSH_CONNECTION", "SSH_CLIENT",
@@ -72,6 +74,26 @@ class VintelliTuiStartupIT {
         assertTrue(recorded.exited(), "The TUI did not exit within " + EXIT_TIMEOUT_SECONDS + "s\n" + recorded.report());
         assertEquals(expected, occurrences(recorded.stdout(), OSC_SET), "set sequences for TERM=" + term + "\n" + recorded.report());
         assertEquals(expected, occurrences(recorded.stdout(), OSC_RESET), "reset sequences for TERM=" + term + "\n" + recorded.report());
+    }
+
+    /**
+     * The {@code auto} icon face reads the terminal of the running process. A
+     * native image that evaluated that detection while it was built kept the
+     * environment of the build machine and drew ASCII on every terminal, which
+     * no JVM test can show. A terminal marker the image never saw must switch
+     * the face to Nerd glyphs, and a basic terminal must keep ASCII.
+     */
+    @ParameterizedTest
+    @CsvSource({ "KITTY_WINDOW_ID,1,true", "GHOSTTY_RESOURCES_DIR,/tmp,true", "TERM,dumb,false" })
+    void theIconFaceFollowsTheTerminalOfTheRunningProcess(String variable, String value, boolean nerd) throws Exception {
+        Recorded recorded = record(Map.of(variable, value), false, "icons-" + variable);
+        assertTrue(recorded.exited(), "The TUI did not exit within " + EXIT_TIMEOUT_SECONDS + "s\n" + recorded.report());
+        assertTrue(recorded.cast().contains(TOOL_WINDOW_MARKER), "The TUI never drew its tool windows\n" + recorded.report());
+        assertEquals(nerd, drawsNerdGlyphs(recorded.cast()), "Nerd glyphs with " + variable + "=" + value + "\n" + recorded.report());
+    }
+
+    private static boolean drawsNerdGlyphs(String cast) {
+        return NERD_GLYPH.matcher(cast).find();
     }
 
     private record Recorded(boolean exited, boolean castExists, String cast, String stdout, String report) {
