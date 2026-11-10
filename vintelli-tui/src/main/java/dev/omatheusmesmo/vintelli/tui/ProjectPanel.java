@@ -146,6 +146,25 @@ final class ProjectPanel implements Element {
         return new ProjectHeader(this, themes, focusMark);
     }
 
+    /** The READ_FILE footer row under the list, which the shell places below it. */
+    PaneHeader footer(Supplier<ShellThemes> themes, ReadFileSummary readFile) {
+        return new PaneHeader("project-read-file", context -> false, readFile::title, themes, () -> " ", false);
+    }
+
+    /** Loads the project files in the background and refreshes the tree once they are listed. */
+    void discoverFiles() {
+        lock.lock();
+        try {
+            if (controller.filesLoading()) {
+                host.refreshTree();
+            }
+        } catch (Exception unavailable) {
+            controller.markUnavailable(unavailable.getMessage());
+        } finally {
+            lock.unlock();
+        }
+    }
+
     void headerRendered(Rect row, List<ProjectHeader.Target> targets) {
         headerRow = row;
         headerTargets = List.copyOf(targets);
