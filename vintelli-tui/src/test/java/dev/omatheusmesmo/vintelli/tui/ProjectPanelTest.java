@@ -4,6 +4,7 @@ import dev.omatheusmesmo.vintelli.api.search.ProjectSearch;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
 import dev.omatheusmesmo.vintelli.tui.icons.JavaTypeKind;
 import dev.omatheusmesmo.vintelli.tui.icons.JavaTypeKinds;
+import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
 import dev.tamboui.buffer.Buffer;
 import dev.tamboui.layout.Rect;
@@ -20,9 +21,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -138,6 +141,23 @@ class ProjectPanelTest {
 
     private static String row(FileIcons icons, String name, JavaTypeKind kind) {
         return icons.iconFor(name, kind).symbol(icons.mode()) + " " + name;
+    }
+
+    @Test
+    void aProjectCommandRunsAfterTheOverlaysCloseAndAnUnknownActionIsNotHandled() throws IOException {
+        Files.writeString(root.resolve("First.java"), "class First {}");
+        Files.writeString(root.resolve("Second.java"), "class Second {}");
+        ProjectTreeController controller = controller(new ArrayList<>());
+        ProjectPanel panel = panel(controller);
+        Path before = controller.selectedPath().orElseThrow();
+        AtomicInteger closes = new AtomicInteger();
+
+        assertTrue(panel.handle(KeyActions.MOVE_DOWN, closes::incrementAndGet));
+        assertEquals(1, closes.get());
+        assertFalse(before.equals(controller.selectedPath().orElseThrow()));
+
+        assertFalse(panel.handle(KeyActions.SAVE, closes::incrementAndGet));
+        assertEquals(1, closes.get());
     }
 
     private ProjectTreeController controller(List<Runnable> scans) {

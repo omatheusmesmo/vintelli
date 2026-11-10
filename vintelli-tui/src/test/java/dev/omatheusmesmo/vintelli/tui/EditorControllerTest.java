@@ -2,6 +2,7 @@ package dev.omatheusmesmo.vintelli.tui;
 
 import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability;
 import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
+import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -11,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -104,6 +106,34 @@ class EditorControllerTest {
         controller.focusNavigationBar();
         assertTrue(controller.navigationBarFocused());
         assertEquals(List.of(StatusBarElement.ID), focusTargets);
+    }
+
+    @Test
+    void anEditorActionClosesTheOverlaysBeforeItRuns() {
+        controller.openFile(project.resolve("src/Main.java"), 0);
+        List<Boolean> focusedWhenClosed = new ArrayList<>();
+
+        assertTrue(controller.handle(KeyActions.FOCUS_NAVIGATION_BAR,
+                () -> focusedWhenClosed.add(controller.navigationBarFocused())));
+
+        assertEquals(List.of(false), focusedWhenClosed);
+        assertTrue(controller.navigationBarFocused());
+    }
+
+    @Test
+    void anActionOutsideTheEditorIsNotHandledAndClosesNothing() {
+        AtomicInteger closes = new AtomicInteger();
+
+        assertFalse(controller.handle(KeyActions.VCS_COMMIT, closes::incrementAndGet));
+        assertEquals(0, closes.get());
+    }
+
+    @Test
+    void nextProblemReportsAnActiveFileWithoutProblems() {
+        controller.openFile(project.resolve("src/Main.java"), 0);
+
+        assertTrue(controller.handle(KeyActions.NEXT_PROBLEM, () -> { }));
+        assertEquals("No problems in the active file", lastStatus());
     }
 
     private EditorController.Host host() {

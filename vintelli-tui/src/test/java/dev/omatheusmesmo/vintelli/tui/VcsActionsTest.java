@@ -5,6 +5,7 @@ import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
 import dev.omatheusmesmo.vintelli.tui.VcsActions.PromptKey;
+import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
@@ -31,6 +32,26 @@ class VcsActionsTest {
             diff -> { }, new ProjectTreeController(Path.of(""), new ShellState(), null, null,
                     message -> { }, () -> { }, () -> { }),
             null);
+
+    @Test
+    void aVcsActionClosesTheOverlaysOnceAndOpensItsPrompt() {
+        AtomicInteger closes = new AtomicInteger();
+
+        assertTrue(actions.handle(KeyActions.VCS_COMMIT, closes::incrementAndGet));
+
+        assertEquals(1, closes.get());
+        assertTrue(actions.promptOpen());
+    }
+
+    @Test
+    void anActionOutsideVersionControlIsNotHandledAndClosesNothing() {
+        AtomicInteger closes = new AtomicInteger();
+
+        assertFalse(actions.handle(KeyActions.SAVE, closes::incrementAndGet));
+
+        assertEquals(0, closes.get());
+        assertFalse(actions.promptOpen());
+    }
 
     @Test
     void commitMessageIsConfirmedBeforeTheCommitRuns() throws InterruptedException {

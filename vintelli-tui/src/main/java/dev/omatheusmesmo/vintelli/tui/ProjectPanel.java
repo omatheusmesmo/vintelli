@@ -364,6 +364,53 @@ final class ProjectPanel implements Element {
     }
 
     /**
+     * Runs a project tree command of the global keymap: the new and rename
+     * prompts, the delete request, the refresh and the selection moves. The
+     * overlays close before the command, as every shell command does. Returns
+     * false for every other action.
+     */
+    boolean handle(String actionId, Runnable closeOverlays) {
+        return switch (actionId) {
+            case KeyActions.PROJECT_NEW_FILE -> {
+                closeOverlays.run();
+                host.beginInput(ProjectTreeController.InputMode.CREATE_FILE);
+                yield true;
+            }
+            case KeyActions.PROJECT_NEW_DIRECTORY -> {
+                closeOverlays.run();
+                host.beginInput(ProjectTreeController.InputMode.CREATE_DIRECTORY);
+                yield true;
+            }
+            case KeyActions.PROJECT_RENAME -> {
+                closeOverlays.run();
+                host.beginInput(ProjectTreeController.InputMode.RENAME);
+                yield true;
+            }
+            case KeyActions.PROJECT_DELETE -> {
+                closeOverlays.run();
+                controller.requestDelete();
+                yield true;
+            }
+            case KeyActions.PROJECT_REFRESH -> {
+                closeOverlays.run();
+                host.refreshTree();
+                yield true;
+            }
+            case KeyActions.MOVE_UP -> {
+                closeOverlays.run();
+                controller.moveSelection(-1);
+                yield true;
+            }
+            case KeyActions.MOVE_DOWN -> {
+                closeOverlays.run();
+                controller.moveSelection(1);
+                yield true;
+            }
+            default -> false;
+        };
+    }
+
+    /**
      * The one path a header button, its shortcut and its menu entry take. A
      * menu opens below its button; the entries run the same action ids as the
      * New, Hide and tree shortcuts.

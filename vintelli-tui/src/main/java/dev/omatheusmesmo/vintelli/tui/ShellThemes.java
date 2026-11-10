@@ -210,6 +210,17 @@ public final class ShellThemes {
     }
 
     /**
+     * Activates the stylesheet after the active one, wrapping at the end of the
+     * list, and returns the name that is active now.
+     */
+    public String switchToNextTheme() {
+        List<String> names = availableThemeNames();
+        int index = names.indexOf(activeTheme());
+        switchTheme(names.get(Math.floorMod(index + 1, names.size())));
+        return activeTheme();
+    }
+
+    /**
      * Runs the listener after every switch, on the thread that switched. The
      * listener reads the new tone through {@link #frameTone()}.
      */
