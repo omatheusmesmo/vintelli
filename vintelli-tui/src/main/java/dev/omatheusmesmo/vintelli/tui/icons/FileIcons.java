@@ -107,21 +107,28 @@ public final class FileIcons {
      */
     public static FileIcons resolve() {
         IconMode configured = IconMode.fromConfig(System.getProperty(IconMode.CONFIG_PROPERTY, "auto"));
-        IconMode mode = configured == IconMode.AUTO ? ProcessDetection.FACE : configured;
+        IconMode mode = configured == IconMode.AUTO ? processFace() : configured;
         return of(mode, userMappingFile());
     }
+
+    private static volatile IconMode detectedFace;
 
     /**
      * The face {@code auto} resolves to for this process, detected on first use.
      * The terminal, the environment and the installed fonts do not change while
-     * the process runs, so the detection (and its font walk) runs once; it is
-     * reached only from {@link #resolve()} at run time, never while the native
-     * image is built.
+     * the process runs, so the detection (and its font walk) runs once. It is a
+     * lazily filled field and not a static initializer on purpose: a native image
+     * may run a static initializer while it is built and keep the environment of
+     * the build machine, which made {@code auto} answer ASCII on every terminal.
      */
-    private static final class ProcessDetection {
-
-        static final IconMode FACE = IconMode.AUTO.resolve(IconMode.Surroundings.ofThisProcess(System.getenv(),
-                TerminalCapabilities.getInstance().terminalName()));
+    private static IconMode processFace() {
+        IconMode face = detectedFace;
+        if (face == null) {
+            face = IconMode.AUTO.resolve(IconMode.Surroundings.ofThisProcess(System.getenv(),
+                    TerminalCapabilities.getInstance().terminalName()));
+            detectedFace = face;
+        }
+        return face;
     }
 
     /**
