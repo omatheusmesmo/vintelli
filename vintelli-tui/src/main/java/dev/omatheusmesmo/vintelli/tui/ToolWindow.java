@@ -90,9 +90,11 @@ public interface ToolWindow extends StatusBarWidgetContributor {
     int ordinal();
 
     /**
-     * Single-column glyph of the stripe icon in the Nerd Font icon mode. An
-     * empty value, a glyph wider than one column, or the ASCII icon mode uses
-     * the first letter of {@link #title()} instead.
+     * Single-column glyph of the stripe icon and of the tab row marker in the
+     * Nerd Font icon mode. An empty value or a glyph wider than one column
+     * keeps the shortcut digit in the tab row and uses the first letter of
+     * {@link #title()} on the stripe. The ASCII icon mode uses the same
+     * letter on the stripe and keeps the shortcut digit in the tab row.
      */
     default String icon() {
         return "";

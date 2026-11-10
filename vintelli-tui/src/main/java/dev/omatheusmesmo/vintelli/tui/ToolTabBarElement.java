@@ -15,13 +15,14 @@ import dev.tamboui.toolkit.element.Size;
 import dev.tamboui.toolkit.element.StyledElement;
 
 /**
- * Tab row of a tool window stripe: the shortcut digit and the title of every
- * window on the first row, an accent underline under the selected label on the
- * second. Clicks are answered from the cells this element drew, so
+ * Tab row of a tool window stripe: the marker and the title of every window on
+ * the first row, an accent underline under the selected label on the second.
+ * The marker is the window icon in the Nerd Font face and the shortcut digit
+ * otherwise. Clicks are answered from the cells this element drew, so
  * {@link #tabAt} agrees with what is on screen.
  *
  * <p>The styles come from the {@code ToolTabBarElement-*} rules of the active
- * theme: {@code shortcut} for the digit, {@code tab} and {@code tab:selected}
+ * theme: {@code shortcut} for the marker, {@code tab} and {@code tab:selected}
  * for the title and {@code underline} for the selection row. The label row is
  * underlined in the frame tone of {@code header-rule}.
  */
@@ -32,7 +33,7 @@ final class ToolTabBarElement extends StyledElement<ToolTabBarElement> {
     private static final int LEAD = 1;
     private static final int GAP = 2;
 
-    record Label(String shortcut, String title) {
+    record Label(String marker, String title) {
     }
 
     private record Slot(int index, int start, int end) {
@@ -97,7 +98,7 @@ final class ToolTabBarElement extends StyledElement<ToolTabBarElement> {
             Label label = labels.get(index);
             boolean isSelected = index == selected;
             int start = x;
-            x = draw(buffer, x, limit, labelRow, label.shortcut(), shortcutStyle);
+            x = draw(buffer, x, limit, labelRow, label.marker(), shortcutStyle);
             x = draw(buffer, x, limit, labelRow, " " + label.title(), isSelected ? selectedStyle : tabStyle);
             if (isSelected && rows > 1) {
                 draw(buffer, start, limit, labelRow + 1, underline.repeat(x - start), underlineStyle);

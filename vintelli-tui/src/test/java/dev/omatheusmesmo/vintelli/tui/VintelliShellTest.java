@@ -506,6 +506,83 @@ class VintelliShellTest {
     }
 
     @Test
+    void nerdModeTabRowShowsEachWindowIconInPlaceOfItsDigit() {
+        String previous = useNerdIconFace();
+        try {
+            Buffer buffer = offlineFrame(defaultShell());
+            int tabRow = rowContaining(buffer, RUN_GLYPH + " Run");
+            assertTrue(tabRow >= 0, "the Run tab shows its icon before its title");
+            String text = rowText(buffer, tabRow);
+            assertTrue(text.contains(TERMINAL_GLYPH + " Terminal"), text);
+            assertTrue(text.contains(PROBLEMS_GLYPH + " Problems"), text);
+            assertFalse(text.contains("1 Run") || text.contains("2 Terminal") || text.contains("3 Problems"),
+                    "the Nerd face shows no digit in front of the tabs: " + text);
+        } finally {
+            restoreProperty(IconMode.CONFIG_PROPERTY, previous);
+        }
+    }
+
+    @Test
+    void nerdModeTabRowKeepsTheDigitOfAWindowWithoutAnIcon() {
+        String previous = useNerdIconFace();
+        try {
+            Buffer buffer = offlineFrame(shellWithFakeWindow(threadsWindow("")));
+            assertTrue(rowContaining(buffer, "7 Threads") >= 0, "a window without an icon keeps its digit");
+        } finally {
+            restoreProperty(IconMode.CONFIG_PROPERTY, previous);
+        }
+    }
+
+    @Test
+    void nerdModeTabRowShowsTheIconOfAWindowInPlaceOfItsDigit() {
+        String previous = useNerdIconFace();
+        try {
+            Buffer buffer = offlineFrame(shellWithFakeWindow(threadsWindow(THREADS_GLYPH)));
+            int tabRow = rowContaining(buffer, THREADS_GLYPH + " Threads");
+            assertTrue(tabRow >= 0, "the Threads tab shows its icon before its title");
+            assertFalse(rowText(buffer, tabRow).contains("7 Threads"), rowText(buffer, tabRow));
+        } finally {
+            restoreProperty(IconMode.CONFIG_PROPERTY, previous);
+        }
+    }
+
+    @Test
+    void asciiModeTabRowKeepsTheDigitEvenWhenTheWindowHasAnIcon() {
+        String previous = System.getProperty(IconMode.CONFIG_PROPERTY);
+        System.setProperty(IconMode.CONFIG_PROPERTY, "ascii");
+        try {
+            Buffer buffer = offlineFrame(shellWithFakeWindow(threadsWindow(THREADS_GLYPH)));
+            assertTrue(rowContaining(buffer, "7 Threads") >= 0, "the ASCII face keeps the digit in the tab row");
+            assertEquals(-1, rowContaining(buffer, THREADS_GLYPH), "the ASCII face draws no Nerd Font glyph");
+        } finally {
+            restoreProperty(IconMode.CONFIG_PROPERTY, previous);
+        }
+    }
+
+    @Test
+    void clickingTheIconOfAToolTabSelectsThatWindow() throws Exception {
+        String previous = useNerdIconFace();
+        try {
+            VintelliShell shell = defaultShell();
+            Buffer buffer = offlineFrame(shell);
+            int tabRow = rowContaining(buffer, PROBLEMS_GLYPH + " Problems");
+            int iconX = rowText(buffer, tabRow).indexOf(PROBLEMS_GLYPH + " Problems");
+            assertTrue(tabRow >= 0, "the Problems tab shows its icon");
+            try (ToolkitTestRunner test = runShell(shell)) {
+                Pilot pilot = test.pilot();
+                pilot.pause(STARTUP);
+                pilot.click(iconX, tabRow);
+                settle(pilot);
+                assertEquals(2, shell.toolIndex(), shell.status());
+                assertEquals("Tool window: Problems", shell.status());
+                pressCtrlC(pilot);
+            }
+        } finally {
+            restoreProperty(IconMode.CONFIG_PROPERTY, previous);
+        }
+    }
+
+    @Test
     void asciiModeDrawsEachStripeWithTheFirstLetterOfItsTitle() {
         String previous = System.getProperty(IconMode.CONFIG_PROPERTY);
         System.setProperty(IconMode.CONFIG_PROPERTY, "ascii");
@@ -640,6 +717,24 @@ class VintelliShellTest {
         return test.renderedFrame().lines().skip(size.height() - 1).findFirst().orElse("").stripTrailing();
     }
 
+    private static int rowContaining(Buffer buffer, String text) {
+        for (int row = 0; row < buffer.height(); row++) {
+            if (rowText(buffer, row).contains(text)) {
+                return row;
+            }
+        }
+        return -1;
+    }
+
+    private static FakeToolWindow threadsWindow(String icon) {
+        return new FakeToolWindow("fake.threads", "Threads", '7', 50, "fake thread dump") {
+            @Override
+            public String icon() {
+                return icon;
+            }
+        };
+    }
+
     private static int findRow(Buffer buffer, int x, String symbol) {
         for (int row = 0; row < buffer.height(); row++) {
             if (symbol.equals(buffer.get(x, row).symbol())) {
@@ -674,6 +769,7 @@ class VintelliShellTest {
     private static final String TERMINAL_GLYPH = "";
     private static final String PROBLEMS_GLYPH = "";
     private static final String ACP_GLYPH = "";
+    private static final String THREADS_GLYPH = "";
     private static final String STRUCTURE_GLYPH = "";
     private static final Size SIZE = new Size(VIEWPORT.width(), VIEWPORT.height());
     private static final Size WIDE = new Size(150, 42);

@@ -134,10 +134,19 @@ final class ToolStripes {
      * its title.
      */
     static String glyph(ToolWindow window, IconMode mode) {
+        return nerdIcon(window, mode).orElseGet(() -> titleLetter(window));
+    }
+
+    /** The window icon when the face draws icons and the icon is one cell wide. */
+    static Optional<String> nerdIcon(ToolWindow window, IconMode mode) {
         String icon = window.icon();
         if (mode != IconMode.ASCII && !icon.isEmpty() && CharWidth.of(icon) == 1) {
-            return icon;
+            return Optional.of(icon);
         }
+        return Optional.empty();
+    }
+
+    private static String titleLetter(ToolWindow window) {
         String title = window.title();
         return title.isEmpty() ? "?" : title.substring(0, 1).toUpperCase(Locale.ROOT);
     }
