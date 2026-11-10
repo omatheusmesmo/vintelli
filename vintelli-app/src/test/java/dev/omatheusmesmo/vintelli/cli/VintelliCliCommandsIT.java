@@ -18,6 +18,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -122,6 +123,19 @@ class VintelliCliCommandsIT {
         assertExit(run, 0);
         assertTrue(run.stdout().contains("echo:hello"), run.describe());
         assertTrue(run.stdout().contains("Stop reason: end_turn"), run.describe());
+    }
+
+    @Test
+    void agentsListShowsPresetsAndTheExplicitSelectionUsesTheProductionChatService() throws Exception {
+        CliRun listed = cli("agents", "list");
+        assertExit(listed, 0);
+        assertTrue(listed.stdout().contains("opencode - OpenCode:"), listed.describe());
+        assertTrue(listed.stdout().contains("claude - Claude Code:"), listed.describe());
+        assertTrue(listed.stdout().contains("pi - pi:"), listed.describe());
+        assertTrue(listed.stdout().contains("configured - Configured agent: ready"), listed.describe());
+        CliRun prompted = cli("agents", "prompt", "--agent=configured", "echo:selected");
+        assertExit(prompted, 0);
+        assertTrue(prompted.stdout().contains("echo:selected"), prompted.describe());
     }
 
     @Test
@@ -342,10 +356,18 @@ class VintelliCliCommandsIT {
         return new CliRun(List.of(arguments), process.exitValue(), stdout.get(), stderr.get());
     }
 
-    private static List<String> runner(List<String> options) {
+    private static List<String> runner(List<String> options) throws IOException {
+        Properties artifact = new Properties();
+        try (InputStream metadata = Files.newInputStream(Path.of("target", "quarkus-artifact.properties"))) {
+            artifact.load(metadata);
+        }
+        String artifactType = System.getProperty("quarkus.test.integration-test-artifact-type", artifact.getProperty("type"));
         String nativeRunner = System.getProperty("native.image.path");
         List<String> command = new ArrayList<>();
-        if (nativeRunner != null && Files.isExecutable(Path.of(nativeRunner))) {
+        if ("native".equals(artifactType)) {
+            if (nativeRunner == null || !Files.isExecutable(Path.of(nativeRunner))) {
+                throw new IllegalStateException("The native test artifact is missing: " + nativeRunner);
+            }
             command.add(nativeRunner);
             command.addAll(options);
             return command;

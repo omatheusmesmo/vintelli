@@ -23,9 +23,12 @@ public final class AgentsCommand implements GroupCommand<CommandInvocation> {
     @Inject
     AgentPromptCommand prompt;
 
+    @Inject
+    AgentsListCommand list;
+
     @Override
     public List<Command<CommandInvocation>> getCommands() {
-        return List.of(prompt);
+        return List.of(prompt, list);
     }
 
     @Override

@@ -3,12 +3,9 @@ package dev.omatheusmesmo.vintelli.cli;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
-import com.agentclientprotocol.sdk.client.AcpSyncClient;
-import com.agentclientprotocol.sdk.spec.AcpSchema;
-import dev.omatheusmesmo.vintelli.acp.AcpAgentClientFactory;
+import dev.omatheusmesmo.vintelli.api.acp.AcpChatPort;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import org.aesh.command.Command;
@@ -17,30 +14,40 @@ import org.aesh.command.CommandException;
 import org.aesh.command.CommandResult;
 import org.aesh.command.invocation.CommandInvocation;
 import org.aesh.command.option.Arguments;
+import org.aesh.command.option.Option;
 
 /**
  * AEsh counterpart of the ACP Agents tool window: sends one prompt to the
- * configured stdio agent over the ACP SDK client, exactly the surface the
- * HTTP probe endpoint drives. The client construction and the agent command
- * configuration live in {@link AcpAgentClientFactory}, so this command holds
- * none of it.
+ * selected stdio agent through the same production service as the TUI. The
+ * one-shot command declines permission requests because it has no chooser.
  */
 @CommandDefinition(name = "prompt", description = "Sends one prompt to the configured ACP agent and reports the streamed chunks and the stop reason.",
         stopAtFirstPositional = true)
 @Singleton
 public final class AgentPromptCommand implements Command<CommandInvocation> {
 
+    private final AcpChatPort chat;
+
+    /** Required by the AEsh metadata generator; CDI uses the injected constructor. */
+    public AgentPromptCommand() {
+        this(null);
+    }
+
     @Inject
-    AcpAgentClientFactory agents;
+    public AgentPromptCommand(AcpChatPort chat) {
+        this.chat = chat;
+    }
+
+    @Option(name = "agent", description = "Agent id from agents list")
+    String agent;
 
     @Arguments(description = "Prompt text to send")
     List<String> words;
 
     @Override
     public CommandResult execute(CommandInvocation invocation) throws CommandException, InterruptedException {
-        if (!agents.isConfigured()) {
-            invocation.println("ACP agents are not configured: set vintelli.acp.probe.agent-command"
-                    + " and vintelli.acp.probe.agent-args, and switch vintelli.acp.probe.enabled on");
+        if (agent == null && !chat.isConfigured()) {
+            invocation.println("No ACP agent is ready: use agents list and enable vintelli.acp.enabled");
             return CommandResult.FAILURE;
         }
         if (words == null || words.isEmpty()) {
@@ -48,23 +55,27 @@ public final class AgentPromptCommand implements Command<CommandInvocation> {
             return CommandResult.USAGE_ERROR;
         }
         String promptText = String.join(" ", words);
-        Set<String> streamedSessions = ConcurrentHashMap.newKeySet();
-        List<String> chunkTexts = Collections.synchronizedList(new ArrayList<>());
-        AcpSyncClient client = agents.client(streamedSessions, chunkTexts);
+        return promptSelectedAgent(invocation, promptText);
+    }
+
+    private CommandResult promptSelectedAgent(CommandInvocation invocation, String promptText) {
+        String id = null;
+        List<String> chunks = Collections.synchronizedList(new ArrayList<>());
         try {
-            client.initialize();
-            AcpSchema.NewSessionResponse session = client.newSession(new AcpSchema.NewSessionRequest("."));
-            AcpSchema.PromptResponse stopped = client.prompt(AcpSchema.PromptRequest.text(session.sessionId(), promptText));
-            for (String chunk : chunkTexts) {
-                invocation.println(chunk);
-            }
-            invocation.println("Stop reason: " + stopped.stopReason());
+            Consumer<AcpChatPort.Update> updates = update -> {
+                if (update instanceof AcpChatPort.Message message) chunks.add(message.text());
+            };
+            id = agent == null ? chat.openSession(updates, request -> AcpChatPort.PermissionChoice.cancel())
+                    : chat.openSession(agent, updates, request -> AcpChatPort.PermissionChoice.cancel());
+            String reason = chat.prompt(id, promptText);
+            chunks.forEach(invocation::println);
+            invocation.println("Stop reason: " + reason);
             return CommandResult.SUCCESS;
-        } catch (Exception failure) {
-            invocation.println("Prompt failed: " + failure.getClass().getSimpleName() + ": " + failure.getMessage());
+        } catch (RuntimeException failure) {
+            invocation.println("Prompt failed: " + failure.getMessage());
             return CommandResult.FAILURE;
         } finally {
-            client.close();
+            if (id != null) chat.close(id);
         }
     }
 }

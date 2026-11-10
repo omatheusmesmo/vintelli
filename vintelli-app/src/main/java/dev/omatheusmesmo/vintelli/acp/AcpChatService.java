@@ -36,6 +36,7 @@ public final class AcpChatService implements AcpChatPort, AcpSessionIdsView {
     private static final Duration CLIENT_CLOSE_TIMEOUT = Duration.ofSeconds(12);
 
     private final AcpAgentClientFactory agents;
+    private final AcpAgentCatalog catalog;
     private final Path projectRoot;
     private final Map<String, Session> sessions = new ConcurrentHashMap<>();
     private final Set<AcpSyncClient> clients = ConcurrentHashMap.newKeySet();
@@ -43,15 +44,21 @@ public final class AcpChatService implements AcpChatPort, AcpSessionIdsView {
     private boolean shuttingDown;
 
     @Inject
-    public AcpChatService(AcpAgentClientFactory agents,
+    public AcpChatService(AcpAgentClientFactory agents, AcpAgentCatalog catalog,
             @ConfigProperty(name = "vintelli.local.project-root", defaultValue = ".") String projectRoot) {
         this.agents = agents;
+        this.catalog = catalog;
         this.projectRoot = Path.of(projectRoot).toAbsolutePath().normalize();
     }
 
     @Override
     public boolean isConfigured() {
-        return agents.isConfigured();
+        return catalog.agents().stream().anyMatch(Agent::available);
+    }
+
+    @Override
+    public List<Agent> agents() {
+        return catalog.agents();
     }
 
     @Override
@@ -63,6 +70,13 @@ public final class AcpChatService implements AcpChatPort, AcpSessionIdsView {
 
     @Override
     public String openSession(Consumer<Update> updates, Function<PermissionRequest, PermissionChoice> permissionHandler) {
+        return openSession(catalog.defaultAgent(), updates, permissionHandler);
+    }
+
+    @Override
+    public String openSession(String agentId, Consumer<Update> updates,
+            Function<PermissionRequest, PermissionChoice> permissionHandler) {
+        catalog.require(agentId);
         synchronized (lifecycleLock) {
             if (shuttingDown) {
                 throw new IllegalStateException("ACP chat service is shutting down");
@@ -74,7 +88,7 @@ public final class AcpChatService implements AcpChatPort, AcpSessionIdsView {
         String id = UUID.randomUUID().toString();
         Function<AcpSchema.RequestPermissionRequest, AcpSchema.RequestPermissionResponse> permission =
                 request -> answerPermission(request, permissionHandler);
-        AcpSyncClient client = agents.chatClient(notification -> {
+        AcpSyncClient client = agents.chatClient(agentId, notification -> {
             AcpSchema.SessionUpdate update = notification.update();
             if (update instanceof AcpSchema.AgentMessageChunk chunk
                     && chunk.content() instanceof AcpSchema.TextContent content) {

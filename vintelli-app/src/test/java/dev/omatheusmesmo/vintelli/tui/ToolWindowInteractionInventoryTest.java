@@ -85,7 +85,8 @@ class ToolWindowInteractionInventoryTest {
         entries.put("terminal", gap("Terminal tool window behavior is tracked by #4"));
         entries.put("problems", contracted("dev.omatheusmesmo.vintelli.tui.ProblemsToolWindowInteractionContractTest",
                 "keyboardAndPointerNavigateTheSameProblemAndKeepWindowFocus"));
-        entries.put("acp.agents", passive("Placeholder for future ACP sessions (#7)"));
+        entries.put("acp.agents", contracted("dev.omatheusmesmo.vintelli.tui.AcpAgentPickerInteractionTest",
+                "keyboardAndPointerStartTheSameSelectedAgent"));
         entries.put("structure", gap("Pointer selection and scrolling are tracked by #197"));
         entries.put("maven", contracted("dev.omatheusmesmo.vintelli.tui.MavenToolWindowInteractionContractTest",
                 "keyboardAndPointerRunTheSameMavenPhase"));

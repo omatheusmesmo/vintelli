@@ -14,6 +14,19 @@ public interface AcpChatPort {
     /** Whether the configured ACP stdio agent can be started. */
     boolean isConfigured();
 
+    /** Available agent choices, including a reason for choices that cannot start. */
+    default List<Agent> agents() {
+        return isConfigured() ? List.of(new Agent("configured", "Configured agent", true, "")) : List.of();
+    }
+
+    default String openSession(String agentId, Consumer<Update> updates,
+            Function<PermissionRequest, PermissionChoice> permissionHandler) {
+        if (!"configured".equals(agentId)) throw new IllegalArgumentException("Unknown ACP agent: " + agentId);
+        return openSession(updates, permissionHandler);
+    }
+
+    record Agent(String id, String name, boolean available, String reason) { }
+
     /** Starts and initializes one agent process and opens a remote session. */
     String openSession(Consumer<Update> updates, Function<PermissionRequest, PermissionChoice> permissionHandler);
 

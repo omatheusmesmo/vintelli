@@ -1219,7 +1219,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             }
             return EventResult.HANDLED;
         }
-        if (inputCaptured && key.isKey(KeyCode.ESCAPE)) {
+        if (inputCaptured && key.isKey(KeyCode.ESCAPE)
+                && (capturedWindow == null || !capturedWindow.shouldHandleKeyBeforeShell(key))) {
             releaseCapture();
             return EventResult.HANDLED;
         }
