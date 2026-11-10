@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.function.LongSupplier;
 
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
@@ -43,6 +44,7 @@ public final class MavenToolWindow implements ToolWindow {
 
     private final Provider<ShellThemes> themes;
     private final Path projectRoot;
+    private final LongSupplier nanos;
     private final MavenProjectController controller = new MavenProjectController();
     private final AtomicLong loadSequence = new AtomicLong();
     private volatile Consumer<MavenGoal> runHandler;
@@ -55,8 +57,14 @@ public final class MavenToolWindow implements ToolWindow {
     }
 
     public MavenToolWindow(Provider<ShellThemes> themes, Path projectRoot) {
+        this(themes, projectRoot, System::nanoTime);
+    }
+
+    /** Takes the clock the double click is timed with, so a test does not depend on how fast the frames render. */
+    public MavenToolWindow(Provider<ShellThemes> themes, Path projectRoot, LongSupplier nanos) {
         this.themes = themes;
         this.projectRoot = projectRoot.toAbsolutePath().normalize();
+        this.nanos = nanos;
     }
 
     @PostConstruct
@@ -147,7 +155,7 @@ public final class MavenToolWindow implements ToolWindow {
             return null;
         }
         int index = rowIndex(event);
-        return index >= 0 && controller.registerClick(index, System.nanoTime()) ? KeyActions.MAVEN_ACTIVATE : null;
+        return index >= 0 && controller.registerClick(index, nanos.getAsLong()) ? KeyActions.MAVEN_ACTIVATE : null;
     }
 
     @Override

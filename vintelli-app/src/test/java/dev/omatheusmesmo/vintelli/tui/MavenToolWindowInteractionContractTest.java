@@ -16,8 +16,10 @@ import java.util.List;
 import java.util.stream.Stream;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import java.util.function.LongSupplier;
 
 import dev.omatheusmesmo.vintelli.api.capability.CallHierarchyCapability;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityRegistry;
@@ -156,7 +158,7 @@ class MavenToolWindowInteractionContractTest {
         RunToolWindow run = new RunToolWindow(() -> themes, registry, uiWork, projectRoot.toString());
         run.refreshConfigurations();
         awaitUi(uiWork, () -> provider.listings.get() > 0 && !run.statusMessage().startsWith("Loading"));
-        MavenToolWindow maven = new MavenToolWindow(() -> themes, projectRoot);
+        MavenToolWindow maven = new MavenToolWindow(() -> themes, projectRoot, steppingClock());
         maven.load();
         VintelliShell shell = new VintelliShell(List.of(maven, run), new ShellState(), themes, registry);
         ToolWindowPilotFixture fixture = ToolWindowPilotFixture.open(shell, VIEWPORT);
@@ -256,6 +258,15 @@ class MavenToolWindowInteractionContractTest {
             }
         }
         throw new AssertionError("no rendered row shows " + token + " in:\n" + screen);
+    }
+
+    /**
+     * A clock that moves one millisecond per reading, so two clicks in a row are always inside the double
+     * click window however slowly a runner renders the frames between them.
+     */
+    private static LongSupplier steppingClock() {
+        AtomicLong nanos = new AtomicLong();
+        return () -> nanos.addAndGet(1_000_000L);
     }
 
     private static void awaitUi(UiWorkQueue queue, BooleanSupplier condition) {
