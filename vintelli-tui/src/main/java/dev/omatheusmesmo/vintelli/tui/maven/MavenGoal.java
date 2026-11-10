@@ -2,7 +2,7 @@ package dev.omatheusmesmo.vintelli.tui.maven;
 
 import java.util.List;
 
-import dev.omatheusmesmo.vintelli.api.build.MavenLifecycle;
+import dev.omatheusmesmo.vintelli.api.maven.MavenLifecycle;
 
 /** A lifecycle phase chosen in the tree, and the module it runs in (empty for the root project). */
 public record MavenGoal(String phase, String selector) {

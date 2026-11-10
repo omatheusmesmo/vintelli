@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
-import dev.omatheusmesmo.vintelli.api.build.MavenLifecycle;
+import dev.omatheusmesmo.vintelli.api.maven.MavenLifecycle;
 import dev.omatheusmesmo.vintelli.tui.DoubleClickTracker;
 
 /**

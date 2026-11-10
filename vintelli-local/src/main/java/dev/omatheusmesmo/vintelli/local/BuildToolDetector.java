@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
-import dev.omatheusmesmo.vintelli.api.build.MavenLifecycle;
+import dev.omatheusmesmo.vintelli.api.maven.MavenLifecycle;
 
 /**
  * Detection of the build tool of the {@link LocalProjectRoot}, resolved once

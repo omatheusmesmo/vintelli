@@ -11,7 +11,7 @@ import java.util.function.Predicate;
 
 import org.junit.jupiter.api.Test;
 
-import dev.omatheusmesmo.vintelli.api.build.MavenLifecycle;
+import dev.omatheusmesmo.vintelli.api.maven.MavenLifecycle;
 import dev.omatheusmesmo.vintelli.tui.DoubleClickTracker;
 import dev.omatheusmesmo.vintelli.tui.maven.MavenProjectController.Row;
 import dev.omatheusmesmo.vintelli.tui.maven.MavenProjectController.RowKind;

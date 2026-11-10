@@ -11,7 +11,7 @@ import java.util.function.Consumer;
 
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
-import dev.omatheusmesmo.vintelli.api.build.MavenLifecycle;
+import dev.omatheusmesmo.vintelli.api.maven.MavenLifecycle;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityFailure;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
