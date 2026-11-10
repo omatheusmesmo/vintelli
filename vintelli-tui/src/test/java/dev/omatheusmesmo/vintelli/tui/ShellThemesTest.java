@@ -43,6 +43,15 @@ class ShellThemesTest {
     }
 
     @Test
+    void switchToNextThemeWrapsAroundTheShippedThemes() {
+        ShellThemes themes = new ShellThemes("dark", (Path) null);
+
+        assertEquals("darcula", themes.switchToNextTheme());
+        assertEquals("darcula", themes.activeTheme());
+        assertEquals("dark", themes.switchToNextTheme());
+    }
+
+    @Test
     void switchThemeActivatesAnotherStylesheetWithoutRestart() throws IOException {
         ShellThemes themes = new ShellThemes("dark", (Path) null);
 

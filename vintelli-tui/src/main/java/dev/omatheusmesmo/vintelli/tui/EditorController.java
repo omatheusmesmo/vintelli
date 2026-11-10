@@ -7,6 +7,7 @@ import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Diagnosti
 import dev.omatheusmesmo.vintelli.api.capability.EditorBridge.OpenRequest;
 import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability;
 import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
+import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -55,6 +56,7 @@ final class EditorController {
     private List<StatusBar.Breadcrumb> navigationPaths = List.of();
     private Path navigationSymbolsFile;
     private List<NavigationCapability.DocumentSymbol> navigationSymbols = List.of();
+    private int nextDiagnosticIndex;
 
     EditorController(Path projectRoot, BuiltinEditor editor, ProjectTreeController projects, Host host) {
         this.projectRoot = projectRoot;
@@ -383,5 +385,85 @@ final class EditorController {
             editor.toggleImportFold();
             host.status(editor.status());
         }
+    }
+
+    /**
+     * Runs an editor action of the global keymap. The overlays close before the
+     * action, as every shell command does. Returns false for every other action.
+     */
+    boolean handle(String actionId, Runnable closeOverlays) {
+        return switch (actionId) {
+            case KeyActions.FOCUS_NAVIGATION_BAR -> {
+                closeOverlays.run();
+                focusNavigationBar();
+                yield true;
+            }
+            case KeyActions.OPEN_FILE -> {
+                closeOverlays.run();
+                openSelectedFile();
+                yield true;
+            }
+            case KeyActions.SAVE -> {
+                closeOverlays.run();
+                saveActiveFile();
+                yield true;
+            }
+            case KeyActions.UNDO -> {
+                closeOverlays.run();
+                editorUndo();
+                yield true;
+            }
+            case KeyActions.REDO -> {
+                closeOverlays.run();
+                editorRedo();
+                yield true;
+            }
+            case KeyActions.CLOSE_TAB -> {
+                closeOverlays.run();
+                closeActiveTab();
+                yield true;
+            }
+            case KeyActions.NEXT_TAB -> {
+                closeOverlays.run();
+                selectEditorTab(true);
+                yield true;
+            }
+            case KeyActions.PREVIOUS_TAB -> {
+                closeOverlays.run();
+                selectEditorTab(false);
+                yield true;
+            }
+            case KeyActions.DEFINITION -> {
+                closeOverlays.run();
+                navigateToSymbol(false);
+                yield true;
+            }
+            case KeyActions.USAGES -> {
+                closeOverlays.run();
+                navigateToSymbol(true);
+                yield true;
+            }
+            case KeyActions.TOGGLE_IMPORT_FOLD -> {
+                closeOverlays.run();
+                toggleImportFold();
+                yield true;
+            }
+            case KeyActions.NEXT_PROBLEM -> {
+                closeOverlays.run();
+                nextProblem();
+                yield true;
+            }
+            default -> false;
+        };
+    }
+
+    private void nextProblem() {
+        if (editor == null || editor.diagnostics().isEmpty()) {
+            host.status("No problems in the active file");
+            return;
+        }
+        nextDiagnosticIndex = Math.floorMod(nextDiagnosticIndex, editor.diagnostics().size());
+        editor.jumpToDiagnostic(nextDiagnosticIndex++);
+        host.status(editor.status());
     }
 }

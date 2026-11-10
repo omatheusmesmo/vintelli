@@ -174,7 +174,6 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private Rect shellArea = Rect.ZERO;
     private SplitterDrag splitterDrag;
     private boolean splitterChanged;
-    private int nextDiagnosticIndex;
     private final ReentrantLock frameLock = new ReentrantLock();
     private final AtomicBoolean ideaConnectInProgress = new AtomicBoolean();
     private final Supplier<Keymap> keymapSupplier;
@@ -1493,11 +1492,13 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             parts.stack().closeOverlays();
             return;
         }
+        Runnable closeOverlays = parts.stack()::closeOverlays;
+        if (editorController.handle(actionId, closeOverlays)
+                || vcsActions.handle(actionId, closeOverlays)
+                || projectPanel.handle(actionId, closeOverlays)) {
+            return;
+        }
         switch (actionId) {
-            case KeyActions.FOCUS_NAVIGATION_BAR -> {
-                parts.stack().closeOverlays();
-                editorController.focusNavigationBar();
-            }
             case KeyActions.QUIT -> {
                 parts.stack().closeOverlays();
                 Runnable quit = quitAction;
@@ -1518,22 +1519,6 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 parts.stack().closeOverlays();
                 connectIdeaMcpAsync();
             }
-            case KeyActions.OPEN_FILE -> {
-                parts.stack().closeOverlays();
-                editorController.openSelectedFile();
-            }
-            case KeyActions.SAVE -> {
-                parts.stack().closeOverlays();
-                editorController.saveActiveFile();
-            }
-            case KeyActions.UNDO -> {
-                parts.stack().closeOverlays();
-                editorController.editorUndo();
-            }
-            case KeyActions.REDO -> {
-                parts.stack().closeOverlays();
-                editorController.editorRedo();
-            }
             case KeyActions.FIND, KeyActions.FIND_IN_FILES -> {
                 parts.stack().closeOverlays();
                 openSearch(parts, ProjectSearchModel.Mode.TEXT);
@@ -1541,82 +1526,6 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             case KeyActions.GO_TO_FILE -> {
                 parts.stack().closeOverlays();
                 openSearch(parts, ProjectSearchModel.Mode.FILES);
-            }
-            case KeyActions.CLOSE_TAB -> {
-                parts.stack().closeOverlays();
-                editorController.closeActiveTab();
-            }
-            case KeyActions.NEXT_TAB -> {
-                parts.stack().closeOverlays();
-                editorController.selectEditorTab(true);
-            }
-            case KeyActions.PREVIOUS_TAB -> {
-                parts.stack().closeOverlays();
-                editorController.selectEditorTab(false);
-            }
-            case KeyActions.DEFINITION -> {
-                parts.stack().closeOverlays();
-                editorController.navigateToSymbol(false);
-            }
-            case KeyActions.USAGES -> {
-                parts.stack().closeOverlays();
-                editorController.navigateToSymbol(true);
-            }
-            case KeyActions.TOGGLE_IMPORT_FOLD -> {
-                parts.stack().closeOverlays();
-                editorController.toggleImportFold();
-            }
-            case KeyActions.NEXT_PROBLEM -> {
-                parts.stack().closeOverlays();
-                nextProblem();
-            }
-            case KeyActions.VCS_REFRESH -> {
-                parts.stack().closeOverlays();
-                vcsActions.refreshVcsAsync();
-            }
-            case KeyActions.VCS_SHOW_DIFF -> {
-                parts.stack().closeOverlays();
-                vcsActions.showVcsDiff();
-            }
-            case KeyActions.VCS_DIFF_WORKING_TREE -> {
-                parts.stack().closeOverlays();
-                vcsActions.showVcsWorkingTreeDiff();
-            }
-            case KeyActions.VCS_STAGE -> {
-                parts.stack().closeOverlays();
-                vcsActions.requestStage(false);
-            }
-            case KeyActions.VCS_UNSTAGE -> {
-                parts.stack().closeOverlays();
-                vcsActions.requestStage(true);
-            }
-            case KeyActions.VCS_COMMIT -> {
-                parts.stack().closeOverlays();
-                vcsActions.requestCommit();
-            }
-            case KeyActions.VCS_SWITCH_BRANCH -> {
-                parts.stack().closeOverlays();
-                vcsActions.requestBranchSwitch();
-            }
-            case KeyActions.PROJECT_NEW_FILE -> {
-                parts.stack().closeOverlays();
-                beginProjectInput(InputMode.CREATE_FILE);
-            }
-            case KeyActions.PROJECT_NEW_DIRECTORY -> {
-                parts.stack().closeOverlays();
-                beginProjectInput(InputMode.CREATE_DIRECTORY);
-            }
-            case KeyActions.PROJECT_RENAME -> {
-                parts.stack().closeOverlays();
-                beginProjectInput(InputMode.RENAME);
-            }
-            case KeyActions.PROJECT_DELETE -> {
-                parts.stack().closeOverlays();
-                requestDeleteSelected();
-            }
-            case KeyActions.PROJECT_REFRESH -> {
-                parts.stack().closeOverlays();
-                refreshProjectTree();
             }
             case KeyActions.PROJECT_WIDER -> {
                 parts.stack().closeOverlays();
@@ -1636,23 +1545,12 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             }
             case KeyActions.SWITCH_THEME -> {
                 parts.stack().closeOverlays();
-                List<String> themeNames = themes.availableThemeNames();
-                int themeIndex = themeNames.indexOf(themes.activeTheme());
-                themes.switchTheme(themeNames.get(Math.floorMod(themeIndex + 1, themeNames.size())));
-                status = "Theme: " + themes.activeTheme();
+                status = "Theme: " + themes.switchToNextTheme();
             }
             case KeyActions.SHELL_SETTINGS -> {
                 parts.stack().closeOverlays();
                 parts.commandPalette().openWith("theme");
                 status = "Settings: pick the shell theme (icons: " + fileIcons.mode().name() + ", set with vintelli.icons)";
-            }
-            case KeyActions.MOVE_UP -> {
-                parts.stack().closeOverlays();
-                moveSelection(-1);
-            }
-            case KeyActions.MOVE_DOWN -> {
-                parts.stack().closeOverlays();
-                moveSelection(1);
             }
             default -> {
                 if (actionId.startsWith("Toggle") && actionId.endsWith("ToolWindow")) {
@@ -1700,16 +1598,6 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         inputCaptured = false;
         parts.stack().open(Kind.PROJECT_SEARCH, () -> parts.searchModel().open(mode));
         status = mode == ProjectSearchModel.Mode.FILES ? "Go to File: type to filter" : "Find in Files: type to search";
-    }
-
-    private void nextProblem() {
-        if (editor == null || editor.diagnostics().isEmpty()) {
-            status = "No problems in the active file";
-            return;
-        }
-        nextDiagnosticIndex = Math.floorMod(nextDiagnosticIndex, editor.diagnostics().size());
-        editor.jumpToDiagnostic(nextDiagnosticIndex++);
-        status = editor.status();
     }
 
     private void resizeProject(int delta) {

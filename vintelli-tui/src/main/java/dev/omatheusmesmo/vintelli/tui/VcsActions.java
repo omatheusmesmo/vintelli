@@ -5,6 +5,7 @@ import dev.omatheusmesmo.vintelli.api.capability.CapabilityFailure;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
 import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
+import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -313,6 +314,52 @@ final class VcsActions {
         pendingValue = "";
         prompt = VcsPrompt.BRANCH_NAME;
         statusSink.accept("Local branch name: " + pendingValue + " (Enter to continue, Esc cancels)");
+    }
+
+    /**
+     * Runs a version control action of the global keymap. The overlays close
+     * before the action, as every shell command does. Returns false for every
+     * other action.
+     */
+    boolean handle(String actionId, Runnable closeOverlays) {
+        return switch (actionId) {
+            case KeyActions.VCS_REFRESH -> {
+                closeOverlays.run();
+                refreshVcsAsync();
+                yield true;
+            }
+            case KeyActions.VCS_SHOW_DIFF -> {
+                closeOverlays.run();
+                showVcsDiff();
+                yield true;
+            }
+            case KeyActions.VCS_DIFF_WORKING_TREE -> {
+                closeOverlays.run();
+                showVcsWorkingTreeDiff();
+                yield true;
+            }
+            case KeyActions.VCS_STAGE -> {
+                closeOverlays.run();
+                requestStage(false);
+                yield true;
+            }
+            case KeyActions.VCS_UNSTAGE -> {
+                closeOverlays.run();
+                requestStage(true);
+                yield true;
+            }
+            case KeyActions.VCS_COMMIT -> {
+                closeOverlays.run();
+                requestCommit();
+                yield true;
+            }
+            case KeyActions.VCS_SWITCH_BRANCH -> {
+                closeOverlays.run();
+                requestBranchSwitch();
+                yield true;
+            }
+            default -> false;
+        };
     }
 
     void handleVcsPromptKey(PromptKey key) {
