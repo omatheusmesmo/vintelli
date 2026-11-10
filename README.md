@@ -10,7 +10,7 @@ It runs with open tooling only. IntelliJ IDEA is an optional extra.
 - 🖥️ **Work where you already are.** A full IDE layout in your terminal, with no window to open.
 - ⚡ **Native when you want it.** With a GraalVM or Mandrel toolchain, the installer builds one binary that needs no JVM to run.
 - 🔓 **Open tools by default.** Maven, Gradle, terminal commands and Git (JGit) need no IDE.
-- 🤖 **AI agents in a side panel.** Host OpenCode, Claude Code or pi over ACP (`Alt+4`).
+- 🤖 **AI agents in a side panel.** Host OpenCode, Claude Code or pi over ACP (`Alt+8`).
 - 🔌 **Other agents can drive it.** The MCP server reads the shell state and pushes highlights and diffs into the TUI.
 - 🧠 **Language support over LSP.** Configurable profiles, with jdtls as the first one.
 - ⌨️ **Familiar keys and colors.** The `intellij` keymap is the default, and the themes come from IntelliJ IDEA's color files.

@@ -62,7 +62,7 @@ Scripted, one command per process (`java -jar vintelli-app/target/quarkus-app/qu
 - `problems <file>` lists the problems reported for one file
 - `inspect` prints the shell selection and the capability status rows, the
   same read model as the HTTP `/capabilities` endpoint and the MCP state tool
-- `Alt+4` opens the `ACP Agents` side panel, where Enter starts a persistent
+- `Alt+8` opens the `ACP Agents` side panel, where Enter starts a persistent
   ACP chat session against the configured stdio agent. Type prompts and press Enter to send, use
   Shift+Enter for a line break, Ctrl+N to open a session, and Ctrl+W to close
   the active session. Markdown streams live; tool calls and file diffs appear
@@ -215,8 +215,10 @@ healthy is picked up by the next refresh. These windows and the project tree
 never call the registry while they render. Long lines are clipped to the pane
 width, so the project pane footer, which is 30 columns wide, cuts long reasons.
 
-Keys: `1-4` (or `Alt+1`..`Alt+4`) switch tool windows (Run, Terminal,
-Problems, ACP Agents), arrows and `PageUp`/`PageDown`/`Home`/`End` navigate
+Keys: `Alt+1` shows the Project pane, `Alt+4` Run, `Alt+6` Problems, `Alt+7`
+Structure, `Alt+F12` Terminal (`Alt+2` too), `Alt+8` ACP Agents and `Alt+9`
+Maven switch tool windows (the bare digit works while no input has focus, see
+`docs/keymap.md`), arrows and `PageUp`/`PageDown`/`Home`/`End` navigate
 the live project tree (hjkl in the `vim` profile), and every selection is
 mirrored into shell state and the status line. The tree shows file and folder
 icons without connector lines, indented two columns per level in the IntelliJ New UI

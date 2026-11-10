@@ -60,7 +60,7 @@ class CapabilityStateInteractionContractTest {
         RunToolWindow run = new RunToolWindow(() -> themes, registry, uiWork, ".");
         run.refreshConfigurations();
         try (ToolWindowPilotFixture fixture = open(List.of(run), themes, registry, uiWork)) {
-            fixture.press('1', KeyModifiers.ALT);
+            fixture.press('4', KeyModifiers.ALT);
             assertTrue(fixture.await(() -> fixture.renderedText().contains("Run unavailable: " + NO_PROVIDER),
                     Duration.ofSeconds(3)), fixture.renderedText());
             assertTrue(fixture.renderedText().contains("Read File unavailable"), fixture.renderedText());
@@ -73,7 +73,7 @@ class CapabilityStateInteractionContractTest {
         }
         try (ToolWindowPilotFixture fixture = open(List.of(new ProblemsToolWindow(registry, editor, () -> themes)),
                 themes, registry, uiWork)) {
-            fixture.press('3', KeyModifiers.ALT);
+            fixture.press('6', KeyModifiers.ALT);
             assertTrue(fixture.await(() -> fixture.renderedText().contains("Problems unavailable: " + NO_PROVIDER),
                     Duration.ofSeconds(3)), fixture.renderedText());
         }
@@ -99,13 +99,13 @@ class CapabilityStateInteractionContractTest {
         RunToolWindow run = new RunToolWindow(() -> themes, registry, uiWork, ".");
         run.refreshConfigurations();
         try (ToolWindowPilotFixture fixture = open(List.of(run), themes, registry, uiWork)) {
-            fixture.press('1', KeyModifiers.ALT);
+            fixture.press('4', KeyModifiers.ALT);
             assertTrue(fixture.await(() -> fixture.renderedText().contains("Run: idea (IDEA MCP)"),
                     Duration.ofSeconds(3)), fixture.renderedText());
         }
         try (ToolWindowPilotFixture fixture = open(List.of(new ProblemsToolWindow(registry, editor, () -> themes)),
                 themes, registry, uiWork)) {
-            fixture.press('3', KeyModifiers.ALT);
+            fixture.press('6', KeyModifiers.ALT);
             assertTrue(fixture.await(() -> fixture.renderedText().contains("Problems: jdtls (jdtls over stdio)"),
                     Duration.ofSeconds(3)), fixture.renderedText());
         }
@@ -122,7 +122,7 @@ class CapabilityStateInteractionContractTest {
 
         try (ToolWindowPilotFixture fixture = open(List.of(new ProblemsToolWindow(registry, editor, () -> themes)),
                 themes, registry, uiWork)) {
-            fixture.press('3', KeyModifiers.ALT);
+            fixture.press('6', KeyModifiers.ALT);
             assertTrue(fixture.await(() -> fixture.renderedText().contains("skipped idea: not connected"),
                     Duration.ofSeconds(3)), fixture.renderedText());
             String screen = fixture.renderedText();
@@ -144,7 +144,7 @@ class CapabilityStateInteractionContractTest {
                     Duration.ofSeconds(3)), fixture.renderedText());
 
             registry.diagnostics = new FakeDiagnostics(List.of(broken("broken target")));
-            fixture.press('3', KeyModifiers.ALT);
+            fixture.press('6', KeyModifiers.ALT);
             fixture.press('r');
 
             assertTrue(fixture.await(() -> fixture.renderedText().contains("Problems: jdtls (jdtls over stdio)"),
@@ -162,7 +162,7 @@ class CapabilityStateInteractionContractTest {
 
         try (ToolWindowPilotFixture fixture = open(List.of(new RunToolWindow(() -> themes, registry, uiWork, ".")),
                 themes, registry, uiWork)) {
-            fixture.press('1', KeyModifiers.ALT);
+            fixture.press('4', KeyModifiers.ALT);
             assertTimeoutPreemptively(Duration.ofSeconds(5), () -> {
                 assertTrue(fixture.renderedText().contains("Run: checking provider"), fixture.renderedText());
             });
@@ -190,7 +190,7 @@ class CapabilityStateInteractionContractTest {
 
         try (ToolWindowPilotFixture fixture = open(List.of(new ProblemsToolWindow(registry, editor, () -> themes)),
                 themes, registry, uiWork)) {
-            fixture.press('3', KeyModifiers.ALT);
+            fixture.press('6', KeyModifiers.ALT);
             fixture.resize(80, 16);
             assertTrue(fixture.await(() -> fixture.renderedText().contains("skipped idea: not connected"),
                     Duration.ofSeconds(3)), fixture.renderedText());

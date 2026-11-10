@@ -68,7 +68,7 @@ class ProblemsToolWindowInteractionContractTest {
     void scrollingAndClickingTheVisibleBottomLeftProblemCellWorks() throws Exception {
         try (ToolWindowInteractionAssertions.Session session = newSession(true)) {
             ToolWindowPilotFixture fixture = session.fixture();
-            fixture.press('3', KeyModifiers.ALT);
+            fixture.press('6', KeyModifiers.ALT);
             Rect area = fixture.pilot().findElement("tool-problems");
             int bottomRow = area.y() + area.height() - 1;
             String beforeScroll = fixture.renderedText();
@@ -111,7 +111,7 @@ class ProblemsToolWindowInteractionContractTest {
                 .withCapabilityRegistry(registry));
 
         try (ToolWindowPilotFixture fixture = ToolWindowPilotFixture.open(shell, VIEWPORT)) {
-            fixture.press('3', KeyModifiers.ALT);
+            fixture.press('6', KeyModifiers.ALT);
             assertTrue(await(() -> fixture.renderedText().contains("skipped idea: not connected")),
                     fixture.renderedText());
 
@@ -124,7 +124,7 @@ class ProblemsToolWindowInteractionContractTest {
             assertEquals(2, editor.activeDocument().orElseThrow().line(),
                     "the click navigates to the line of the clicked problem");
 
-            fixture.press('3', KeyModifiers.ALT);
+            fixture.press('6', KeyModifiers.ALT);
             for (int step = 1; step <= 6; step++) {
                 fixture.press(KeyCode.DOWN);
                 assertEquals(2 + step, window.selectedIndex(), "Down moves the selection by one problem");
@@ -183,7 +183,7 @@ class ProblemsToolWindowInteractionContractTest {
 
     private static void navigateWithKeyboard(ToolWindowInteractionAssertions.Session session) {
         ToolWindowPilotFixture fixture = session.fixture();
-        fixture.press('3', KeyModifiers.ALT);
+        fixture.press('6', KeyModifiers.ALT);
         assertEquals("tool-problems", fixture.testRunner().runner().focusManager().focusedId(),
                 "activating Problems transfers TamboUI focus to its tool window");
         fixture.press(KeyCode.DOWN);
@@ -193,7 +193,7 @@ class ProblemsToolWindowInteractionContractTest {
     private static void navigateWithPointer(ToolWindowInteractionAssertions.Session session) {
         ToolWindowPilotFixture fixture = session.fixture();
         var pilot = fixture.pilot();
-        fixture.press('3', KeyModifiers.ALT);
+        fixture.press('6', KeyModifiers.ALT);
         Rect area = pilot.findElement("tool-problems");
         assertTrue(area.height() > 5, "Problems rows are not visible in the test viewport");
         String screen = fixture.renderedText();

@@ -53,7 +53,7 @@ class WebTerminalTest {
     private static final int OVERSIZED_MESSAGE_BYTES = 2 * 1024 * 1024;
     private static final long WAIT_MILLIS = 15_000;
     private static final int RESET_ATTEMPTS = 5;
-    private static final String ALT_ONE = "\u001b1";
+    private static final String ALT_FOUR = "\u001b4";
     private static final List<String> UPGRADE_PATHS = List.of("/tui/ws", "//tui/ws", "/./tui/ws", "/tui/ws/",
             "/%74ui/ws", "/tui//ws", "/tui/ws;x=1", "/tui/x/../ws");
 
@@ -232,7 +232,7 @@ class WebTerminalTest {
         client.sendControl("resize 100000x100000");
         await(client, () -> client.lastContentRow() >= DEFAULT_ROWS, "clamped resize to take effect");
         resetToRunWindow(client);
-        client.sendInput("3");
+        client.sendInput("6");
         awaitScreen(client, screen -> screen.contains("Tool window: Problems"));
 
         for (int[] move : cursorMoves(client.raw())) {
@@ -269,7 +269,7 @@ class WebTerminalTest {
 
     private static void resetToRunWindow(WebTerminalHandshakeClient client) throws InterruptedException {
         for (int attempt = 0; attempt < RESET_ATTEMPTS; attempt++) {
-            client.sendInput(ALT_ONE);
+            client.sendInput(ALT_FOUR);
             if (holdsRunWindow(client)) {
                 return;
             }

@@ -104,7 +104,7 @@ public final class StructureToolWindow implements ToolWindow {
 
     @Override
     public char shortcut() {
-        return '6';
+        return '7';
     }
 
     @Override

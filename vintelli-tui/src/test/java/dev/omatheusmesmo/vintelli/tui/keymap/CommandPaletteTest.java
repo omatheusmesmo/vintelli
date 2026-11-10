@@ -86,7 +86,7 @@ class CommandPaletteTest {
     @Test
     void narrowingTheFilterClampsTheSelectionIntoTheShorterList() {
         palette.open();
-        for (int index = 0; index < 3; index++) {
+        for (int index = 0; index < 6; index++) {
             palette.handleKey(KeyEvent.ofKey(KeyCode.DOWN));
         }
         type("activate");

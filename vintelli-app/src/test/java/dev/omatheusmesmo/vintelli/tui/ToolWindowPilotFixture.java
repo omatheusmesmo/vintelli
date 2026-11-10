@@ -66,6 +66,11 @@ final class ToolWindowPilotFixture implements AutoCloseable {
         pilot().pause(EVENT_WINDOW);
     }
 
+    void press(KeyCode key, KeyModifiers modifiers) {
+        pilot().press(key, modifiers);
+        pilot().pause(EVENT_WINDOW);
+    }
+
     ToolkitTestRunner testRunner() {
         return testRunner;
     }

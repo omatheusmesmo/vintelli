@@ -27,7 +27,7 @@ class WebTerminalActionGateIT {
         client.connect(terminal, WebTerminalHandshakeClient.basicAuth(WebTerminalResource.USER,
                 WebTerminalResource.PASSWORD), WebTerminalResource.TRUSTED_ORIGIN);
 
-        client.sendInput("\u001b1\r");
+        client.sendInput("\u001b4\r");
         client.awaitFrame(1_000);
         assertFalse(client.screen().contains("Starting maven:"), client::screen);
 

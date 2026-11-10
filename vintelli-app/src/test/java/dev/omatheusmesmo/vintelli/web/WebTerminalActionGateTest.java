@@ -58,7 +58,7 @@ class WebTerminalActionGateTest {
                 WebTerminalResource.PASSWORD), WebTerminalResource.TRUSTED_ORIGIN);
         VintelliShell shell = CDI.current().select(VintelliShell.class).get();
 
-        client.sendInput("\u001b1");
+        client.sendInput("\u001b4");
         await(client, () -> shell.status().equals("Tool window: Run"));
         client.sendInput("\r");
         await(client, () -> shell.status().equals("Action disabled for web surface: run.execute"));

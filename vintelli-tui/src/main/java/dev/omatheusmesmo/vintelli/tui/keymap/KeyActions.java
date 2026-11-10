@@ -61,6 +61,7 @@ public final class KeyActions {
     public static final String PROJECT_OPTIONS_MENU = "project_options_menu";
     public static final String PROJECT_SHOW_HIDDEN = "project_show_hidden";
     public static final String PROJECT_HIDE = "project_hide";
+    public static final String ACTIVATE_PROJECT = "ActivateProjectToolWindow";
         public static final String TOGGLE_TOOL_WINDOW = "ToggleToolWindow";
     public static final String VCS_REFRESH = "vcs_refresh";
     public static final String VCS_SHOW_DIFF = "vcs_showDiff";
@@ -115,6 +116,7 @@ public final class KeyActions {
                 new KeyAction(BOTTOM_TALLER, "Grow Tool Window", ""),
                 new KeyAction(BOTTOM_SHORTER, "Shrink Tool Window", ""),
                 new KeyAction(SWITCH_THEME, "Switch Shell Theme", ""),
+                new KeyAction(ACTIVATE_PROJECT, "Activate Project Tool Window", "Alt+1"),
                 new KeyAction(SHELL_SETTINGS, "Open Settings", ""),
                 new KeyAction(IDEA_MCP_CONNECT, "Connect to IntelliJ IDEA", ""),
                 new KeyAction(RUN_EXECUTE, "Run Selected Configuration", ""),

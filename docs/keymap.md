@@ -28,7 +28,7 @@ Key actions in the `intellij` profile:
 
 | Action | Keys (active) | IntelliJ reference |
 |---|---|---|
-| `Activate<Name>ToolWindow` | `Alt+1`..`Alt+4`, or the bare tab shortcut (`1-4`) when no input has focus | `Alt+4` for Run, `Alt+F12` for Terminal |
+| `Activate<Name>ToolWindow` | `Alt+1` Project, `Alt+4` Run, `Alt+6` Problems, `Alt+7` Structure, `Alt+F12` Terminal (`Alt+2` too), `Alt+8` ACP Agents, `Alt+9` Maven. Each tool window also takes its bare digit when no input has focus | `Alt+1` Project, `Alt+4` Run, `Alt+6` Problems, `Alt+7` Structure, `Alt+F12` Terminal; none for ACP Agents and Maven |
 | `SearchEverywhere` | `Ctrl+P` | `Double Shift` |
 | `KeymapHelp` | `F1` | `F1` |
 | `moveUp` / `moveDown` | arrow keys (`j/k` in the `vim` profile) | - |
@@ -62,10 +62,11 @@ Chords a terminal cannot deliver, and their alternatives:
   `Ctrl+P` to open the command palette.
 - **`Ctrl+Shift+A`** (Find Action): `Ctrl+Shift+letter` sends the same bytes
   as `Ctrl+letter` in legacy mode. Use the command palette.
-- **`Alt+F12`** (Terminal tool window in IntelliJ): bound in the profile as
-  `Alt+2`, but `Alt+digit` is intercepted by default in tmux (`M-1`..`M-9`)
-  and ghostty (tab switching). Not the only path: the bare digits still work
-  when no input has focus and the palette reaches every action from anywhere.
+- **Alt+digit in tmux and ghostty**: `Alt+digit` is intercepted by default in
+  tmux (`M-1`..`M-9`) and ghostty (tab switching). The profile binds
+  `Alt+F12` to Terminal, the IntelliJ chord, and keeps `Alt+2` as a second
+  binding for it. Users of the intercepting terminals reach a window through
+  its bare digit when no input has focus, or through the palette from anywhere.
 - **Cmd/Super**: never reaches the application.
 - **`Ctrl+I`, `Ctrl+M`, `Ctrl+J`, `Ctrl+H`, `Ctrl+[`**: the same bytes as Tab,
   Enter, Backspace and Escape; never given their own action.
@@ -91,7 +92,9 @@ compared case-insensitively.
 
 Statuses:
 
-- `same`: the active chords equal IntelliJ's chords for the action.
+- `same`: the active chords equal IntelliJ's chords for the action. The bare
+  digit of a tool window is the shortcut for while no input has focus, not an
+  IntelliJ chord, so it is left out of the comparison.
 - `different`: IntelliJ binds the action to other chords. The reason says why
   the chord stays (or is planned to move, #365 and #364).
 - `not-deliverable`: IntelliJ's chord cannot be sent by a terminal (Double

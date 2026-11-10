@@ -58,7 +58,7 @@ class RunToolWindowTest {
         try (ToolkitTestRunner test = runShell(shell, new Size(100, 30))) {
             Pilot pilot = test.pilot();
             pilot.pause(Duration.ofMillis(100));
-            pilot.press('1');
+            pilot.press('4');
             pilot.pause(Duration.ofMillis(50));
             pilot.press('j');
             pilot.pause(Duration.ofMillis(50));

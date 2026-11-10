@@ -172,9 +172,12 @@ public final class Keymap {
         builder.bind(KeyTrigger.alt('.'), KeyActions.BOTTOM_TALLER);
         builder.bind(KeyTrigger.alt(','), KeyActions.BOTTOM_SHORTER);
         builder.bind(KeyTrigger.ctrl('t'), bindingName(KeyActions.SWITCH_THEME));
+        builder.bind(KeyTrigger.alt('1'), KeyActions.ACTIVATE_PROJECT);
         for (ToolWindow toolWindow : toolWindows) {
-            builder.bind(KeyTrigger.alt(toolWindow.shortcut()), activateToolWindow(toolWindow.id()));
-            builder.bind(KeyTrigger.ch(toolWindow.shortcut()), activateToolWindow(toolWindow.id()));
+            String activation = activateToolWindow(toolWindow.id());
+            builder.bind(KeyTrigger.alt(toolWindow.shortcut()), activation);
+            builder.bind(KeyTrigger.ch(toolWindow.shortcut()), activation);
+            toolWindow.extraChord().ifPresent(chord -> builder.bind(chord, activation));
         }
         return builder.build();
     }
@@ -204,6 +207,8 @@ public final class Keymap {
     private static String intellijShortcutOf(ToolWindow toolWindow) {
         return switch (toolWindow.id()) {
             case "run" -> "Alt+4";
+            case "problems" -> "Alt+6";
+            case "structure" -> "Alt+7";
             case "terminal" -> "Alt+F12";
             default -> "";
         };
