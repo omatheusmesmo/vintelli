@@ -415,6 +415,12 @@ final class ProjectPanel implements Element {
                 host.refreshTree();
                 yield true;
             }
+            case KeyActions.ACTIVATE_PROJECT -> {
+                closeOverlays.run();
+                host.requestFocus();
+                host.focusPanel();
+                yield true;
+            }
             case KeyActions.MOVE_UP -> {
                 closeOverlays.run();
                 controller.moveSelection(-1);

@@ -100,7 +100,7 @@ public final class MavenToolWindow implements ToolWindow {
 
     @Override
     public char shortcut() {
-        return '7';
+        return '9';
     }
 
     @Override

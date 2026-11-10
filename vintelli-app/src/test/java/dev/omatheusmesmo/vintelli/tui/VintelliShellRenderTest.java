@@ -50,8 +50,8 @@ class VintelliShellRenderTest {
         String mainArea = awaitSettledMainArea();
         String[] rows = mainArea.split("\n", -1);
         String footer = rows[rows.length - 1];
-        String tabRow = Arrays.stream(rows).filter(row -> row.contains("1 Run")).findFirst().orElse("");
-        int editorTabColumn = tabRow.indexOf("1 Run");
+        String tabRow = Arrays.stream(rows).filter(row -> row.contains("4 Run")).findFirst().orElse("");
+        int editorTabColumn = tabRow.indexOf("4 Run");
         String footerLeftOfTabs = footer.length() > editorTabColumn ? footer.substring(0, editorTabColumn) : footer;
         assertTrue(editorTabColumn > 0 && footerLeftOfTabs.contains("Read File"),
                 "the project pane footer runs left of the bottom tab row:\n" + mainArea);
@@ -124,7 +124,7 @@ class VintelliShellRenderTest {
                 .then()
                 .statusCode(200)
                 .body("tabRow", containsString("Project"),
-                        "tabRow", not(containsString("4 ACP")),
+                        "tabRow", not(containsString("8 ACP")),
                         "tabRow", endsWith(" A"),
                         "mainAreaTop", not(isEmptyOrNullString()),
                         "mainAreaTop", not(containsString("╭")),
@@ -149,7 +149,8 @@ class VintelliShellRenderTest {
                 .body("source", is("intellij"),
                         "shortcuts.quit", containsString("Ctrl+c"),
                         "shortcuts.SearchEverywhere", equalTo("Ctrl+p"),
-                        "shortcuts.ActivateRunToolWindow", containsString("Alt+1"));
+                        "shortcuts.ActivateRunToolWindow", containsString("Alt+4"),
+                        "shortcuts.ActivateProjectToolWindow", equalTo("Alt+1"));
     }
 
     /**

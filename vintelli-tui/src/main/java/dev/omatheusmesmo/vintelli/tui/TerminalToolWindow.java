@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -20,6 +21,7 @@ import dev.tamboui.layout.Rect;
 import dev.tamboui.style.Style;
 import dev.tamboui.terminal.Frame;
 import dev.tamboui.text.Text;
+import dev.tamboui.tui.bindings.KeyTrigger;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
 import dev.tamboui.widgets.paragraph.Paragraph;
@@ -79,6 +81,11 @@ public final class TerminalToolWindow implements ToolWindow {
     @Override
     public char shortcut() {
         return '2';
+    }
+
+    @Override
+    public Optional<KeyTrigger> extraChord() {
+        return Optional.of(KeyTrigger.key(KeyCode.F12, false, true, false));
     }
 
     @Override

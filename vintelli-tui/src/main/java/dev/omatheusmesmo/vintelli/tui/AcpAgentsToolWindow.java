@@ -105,7 +105,7 @@ public final class AcpAgentsToolWindow implements ToolWindow {
 
     @Override public String id() { return "acp.agents"; }
     @Override public String title() { return "ACP Agents"; }
-    @Override public char shortcut() { return '4'; }
+    @Override public char shortcut() { return '8'; }
     @Override public int ordinal() { return 3; }
     @Override public String icon() { return CHAT_GLYPH; }
     @Override public Anchor anchor() { return Anchor.RIGHT; }

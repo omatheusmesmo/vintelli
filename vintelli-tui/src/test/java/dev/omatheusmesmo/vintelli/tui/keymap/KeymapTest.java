@@ -56,22 +56,66 @@ class KeymapTest {
                 "F1 must open the keymap help overlay");
         assertTrue(keymap.matches(KeyEvent.ofKey(KeyCode.F5), KeyActions.PROJECT_REFRESH),
                 "F5 refreshes the project tree");
-        assertTrue(keymap.matches(actionChord('1'), KeyActions.activateToolWindow("run")));
+        assertTrue(keymap.matches(actionChord('1'), KeyActions.ACTIVATE_PROJECT));
+        assertTrue(keymap.matches(actionChord('4'), KeyActions.activateToolWindow("run")));
         assertTrue(keymap.matches(actionChord('2'), KeyActions.activateToolWindow("terminal")));
-        assertTrue(keymap.matches(actionChord('3'), KeyActions.activateToolWindow("problems")));
-        assertTrue(keymap.matches(actionChord('4'), KeyActions.activateToolWindow("acp.agents")));
+        assertTrue(keymap.matches(actionChord('6'), KeyActions.activateToolWindow("problems")));
+        assertTrue(keymap.matches(actionChord('8'), KeyActions.activateToolWindow("acp.agents")));
         assertTrue(keymap.matches(keypress('c', KeyModifiers.CTRL), QUIT));
+    }
+
+    @Test
+    void terminalOpensWithAltF12AndKeepsAltTwoAsASecondBinding() {
+        Keymap keymap = Keymap.ofProfile(KeymapProfile.DEFAULT, WINDOWS);
+
+        assertTrue(keymap.matches(KeyEvent.ofKey(KeyCode.F12, KeyModifiers.ALT), KeyActions.activateToolWindow("terminal")),
+                "Alt+F12 is the IntelliJ chord of the Terminal tool window");
+        assertTrue(keymap.matchesReserved(KeyEvent.ofKey(KeyCode.F12, KeyModifiers.ALT), KeyActions.activateToolWindow("terminal")),
+                "Alt+F12 survives a capturing terminal, so the shell can switch away from it");
+        assertTrue(keymap.matches(actionChord('2'), KeyActions.activateToolWindow("terminal")),
+                "Alt+2 stays as the second binding of the Terminal window");
+        assertTrue(keymap.matches(KeyEvent.ofKey(KeyCode.F12), KeyActions.DEFINITION),
+                "bare F12 keeps Go to Definition, Alt+F12 is only the Terminal window");
+        assertFalse(keymap.matches(KeyEvent.ofKey(KeyCode.F12, KeyModifiers.ALT), KeyActions.DEFINITION));
+    }
+
+    @Test
+    void oldDigitsNoLongerOpenTheWindowsTheyUsedToOpen() {
+        Keymap keymap = Keymap.ofProfile(KeymapProfile.DEFAULT, WINDOWS);
+
+        assertFalse(keymap.matches(actionChord('1'), KeyActions.activateToolWindow("run")),
+                "Alt+1 is the Project pane in IntelliJ, not Run");
+        assertFalse(keymap.matches(actionChord('3'), KeyActions.activateToolWindow("problems")),
+                "Alt+3 is not the Problems chord any more, Alt+6 is");
+        assertFalse(keymap.matches(actionChord('4'), KeyActions.activateToolWindow("acp.agents")),
+                "Alt+4 is Run, not ACP Agents");
+        assertFalse(keymap.matches(KeyEvent.ofChar('1'), KeyActions.activateToolWindow("run")),
+                "the bare 1 no longer opens Run");
+        assertFalse(keymap.matches(KeyEvent.ofChar('3'), KeyActions.activateToolWindow("problems")),
+                "the bare 3 no longer opens Problems");
+    }
+
+    @Test
+    void paletteShowsTheIntelliJChordOfEachWindowItMirrors() {
+        Keymap keymap = Keymap.ofProfile(KeymapProfile.DEFAULT, WINDOWS);
+
+        assertEquals("Alt+4", actionById(keymap, KeyActions.activateToolWindow("run")).intellijShortcut());
+        assertEquals("Alt+6", actionById(keymap, KeyActions.activateToolWindow("problems")).intellijShortcut());
+        assertEquals("Alt+F12", actionById(keymap, KeyActions.activateToolWindow("terminal")).intellijShortcut());
+        assertEquals("", actionById(keymap, KeyActions.activateToolWindow("acp.agents")).intellijShortcut(),
+                "ACP Agents has no IntelliJ window, so the palette shows no reference");
+        assertEquals("Alt+1", actionById(keymap, KeyActions.ACTIVATE_PROJECT).intellijShortcut());
     }
 
     @Test
     void bareShortcutsSwitchWhileTheShellHasTheKeyboardAndChordsSurviveCapture() {
         Keymap keymap = Keymap.ofProfile(KeymapProfile.DEFAULT, WINDOWS);
 
-        assertTrue(keymap.matches(KeyEvent.ofChar('4'), KeyActions.activateToolWindow("acp.agents")),
+        assertTrue(keymap.matches(KeyEvent.ofChar('8'), KeyActions.activateToolWindow("acp.agents")),
                 "the declared shortcut switches the tab while no input has focus");
-        assertFalse(keymap.matchesReserved(KeyEvent.ofChar('4'), KeyActions.activateToolWindow("acp.agents")),
+        assertFalse(keymap.matchesReserved(KeyEvent.ofChar('8'), KeyActions.activateToolWindow("acp.agents")),
                 "bare printable characters must never survive a capturing window");
-        assertTrue(keymap.matchesReserved(actionChord('4'), KeyActions.activateToolWindow("acp.agents")),
+        assertTrue(keymap.matchesReserved(actionChord('8'), KeyActions.activateToolWindow("acp.agents")),
                 "the alt chord stays reserved and reaches the shell while an input has focus");
         assertTrue(keymap.matchesReserved(keypress('p', KeyModifiers.CTRL), SEARCH_EVERYWHERE),
                 "the palette chord stays reserved and reaches the shell while an input has focus");
@@ -122,8 +166,8 @@ class KeymapTest {
                 "project_delete", "project_refresh", "idea-mcp.connect",
                 "project_view_menu", "project_new_menu", "project_select_opened_file", "project_expand_all",
                 "project_collapse_all", "project_options_menu", "project_show_hidden", "project_hide",
-                "ActivateRunToolWindow", "ActivateTerminalToolWindow", "ActivateProblemsToolWindow",
-                "ActivateAcpAgentsToolWindow");
+                "ActivateProjectToolWindow", "ActivateRunToolWindow", "ActivateTerminalToolWindow",
+                "ActivateProblemsToolWindow", "ActivateAcpAgentsToolWindow");
         assertEquals(expected, ids);
         KeyAction searchEverywhere = actionById(keymap, SEARCH_EVERYWHERE);
         assertEquals("Double Shift", searchEverywhere.intellijShortcut());
@@ -150,7 +194,7 @@ class KeymapTest {
         Keymap keymap = Keymap.load(KeymapProfile.VIM, WINDOWS, userFile);
 
         assertTrue(keymap.matches(KeyEvent.ofKey(KeyCode.F6), KeyActions.activateToolWindow("run")));
-        assertFalse(keymap.matches(actionChord('1'), KeyActions.activateToolWindow("run")),
+        assertFalse(keymap.matches(actionChord('4'), KeyActions.activateToolWindow("run")),
                 "a mentioned action must lose the profile triggers");
         assertTrue(keymap.matches(keypress('p', KeyModifiers.CTRL), SEARCH_EVERYWHERE),
                 "unmentioned actions keep the profile bindings");
@@ -167,7 +211,7 @@ class KeymapTest {
 
         Keymap keymap = Keymap.load(KeymapProfile.DEFAULT, WINDOWS, userFile);
 
-        assertTrue(keymap.matches(actionChord('4'), KeyActions.activateToolWindow("acp.agents")));
+        assertTrue(keymap.matches(actionChord('8'), KeyActions.activateToolWindow("acp.agents")));
         assertEquals("intellij + user file", keymap.source());
     }
 
@@ -176,7 +220,7 @@ class KeymapTest {
         Keymap keymap = Keymap.load(KeymapProfile.DEFAULT, WINDOWS,
                 tempDir.resolve("absent.properties"));
 
-        assertTrue(keymap.matches(actionChord('4'), KeyActions.activateToolWindow("acp.agents")));
+        assertTrue(keymap.matches(actionChord('8'), KeyActions.activateToolWindow("acp.agents")));
         assertEquals("intellij", keymap.source());
     }
 

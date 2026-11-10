@@ -108,7 +108,7 @@ class VintelliShellTest {
         ShellThemes themes = defaultThemes();
         List<ToolWindow> windows = new ArrayList<>(windowsWithAcp());
         windows.add(new FakeToolWindow("side.a", "Side", '7', 100, "", false, ToolWindow.Anchor.RIGHT));
-        windows.add(new FakeToolWindow("side.b", "Other", '8', 200, "", false, ToolWindow.Anchor.RIGHT));
+        windows.add(new FakeToolWindow("side.b", "Other", '9', 200, "", false, ToolWindow.Anchor.RIGHT));
         List<ToolWindow> registered = new ToolWindowRegistry(windows).toolWindows();
         VintelliShell shell = new VintelliShell(ShellConfig.of(registered, new ShellState(), themes));
         Buffer buffer = offlineFrame(shell);
@@ -206,7 +206,7 @@ class VintelliShellTest {
 
     @Test
     void escapeKeepsAHiddenProjectPanelHiddenAndFocusesTheEditor() throws Exception {
-        FakeToolWindow terminalLike = new FakeToolWindow("fake.terminal", "Fake Terminal", '6', 60, "type away", true);
+        FakeToolWindow terminalLike = new FakeToolWindow("fake.terminal", "Fake Terminal", '3', 60, "type away", true);
         VintelliShell shell = shellWithFakeWindow(terminalLike);
         int projectIcon = findRow(offlineFrame(shell), 1, "P");
         try (ToolkitTestRunner test = runShell(shell)) {
@@ -216,7 +216,7 @@ class VintelliShellTest {
             settle(pilot);
             assertEquals("Project panel hidden", shell.status());
 
-            press(pilot, '6');
+            press(pilot, '3');
             assertNotEquals("editor-panel", test.runner().focusManager().focusedId(), "the window took the focus");
             pilot.press(KeyCode.ESCAPE);
             settle(pilot);
@@ -451,7 +451,7 @@ class VintelliShellTest {
         VintelliShell shell = defaultShell();
         Buffer buffer = offlineFrame(shell);
         int tabRow = findBottomTabRow(buffer);
-        int problemsX = rowText(buffer, tabRow).indexOf("3 Problems") + 1;
+        int problemsX = rowText(buffer, tabRow).indexOf("6 Problems") + 1;
         try (ToolkitTestRunner test = runShell(shell)) {
             Pilot pilot = test.pilot();
             pilot.pause(STARTUP);
@@ -526,7 +526,7 @@ class VintelliShellTest {
             String text = rowText(buffer, tabRow);
             assertTrue(text.contains(TERMINAL_GLYPH + " Terminal"), text);
             assertTrue(text.contains(PROBLEMS_GLYPH + " Problems"), text);
-            assertFalse(text.contains("1 Run") || text.contains("2 Terminal") || text.contains("3 Problems"),
+            assertFalse(text.contains("4 Run") || text.contains("2 Terminal") || text.contains("6 Problems"),
                     "the Nerd face shows no digit in front of the tabs: " + text);
         } finally {
             restoreProperty(IconMode.CONFIG_PROPERTY, previous);
@@ -809,7 +809,7 @@ class VintelliShellTest {
             Pilot pilot = test.pilot();
             pilot.pause(STARTUP);
 
-            // Bottom anchor: Run(1), Terminal(2), Problems(3)
+            // Bottom anchor: Run(4), Terminal(2), Problems(6), the IntelliJ numbers
             press(pilot, '2');
             assertEquals(1, shell.toolIndex()); // Terminal is at bottom index 1
             assertEquals("Tool window: Terminal", shell.status());
@@ -819,11 +819,11 @@ class VintelliShellTest {
             // shortcuts can switch windows again.
             pilot.press(KeyCode.ESCAPE);
             settle(pilot);
-            press(pilot, '3');
+            press(pilot, '6');
             assertEquals(2, shell.toolIndex()); // Problems is at bottom index 2
             assertEquals("Tool window: Problems", shell.status());
 
-            press(pilot, '1');
+            press(pilot, '4');
             assertEquals(0, shell.toolIndex()); // Run is at bottom index 0
             assertEquals("Tool window: Run", shell.status());
 
@@ -956,7 +956,7 @@ class VintelliShellTest {
         structure.setSymbols(List.of(new DocumentSymbol("second", 6, 2, 2, 2, 18,
                 2, 7, 2, 13, List.of())));
 
-        assertEquals(EventResult.HANDLED, shell.handle(KeyEvent.ofChar('6', KeyModifiers.ALT)));
+        assertEquals(EventResult.HANDLED, shell.handle(KeyEvent.ofChar('7', KeyModifiers.ALT)));
         assertEquals(EventResult.HANDLED, shell.handle(KeyEvent.ofKey(KeyCode.ENTER)));
         assertEquals(2, editor.activeDocument().orElseThrow().line());
     }
@@ -1204,10 +1204,10 @@ class VintelliShellTest {
 
         assertEquals(0, highlightedCount(buffer, bottomTabRow, tabSelected),
                 "the tab row carries no filled block, the selection is an underline: " + tabRow);
-        assertEquals("1 Run".length(), contiguousForeground(buffer, bottomTabRow + 1, underline),
+        assertEquals("4 Run".length(), contiguousForeground(buffer, bottomTabRow + 1, underline),
                 "exactly the selected label carries the underline: " + rowText(buffer, bottomTabRow + 1));
         assertEquals(EDITOR_HEADER_X + 1, firstForegroundColumn(buffer, bottomTabRow + 1, underline),
-                "the underline starts under the selected label 1 Run, one cell past the editor's left edge: "
+                "the underline starts under the selected label 4 Run, one cell past the editor's left edge: "
                         + rowText(buffer, bottomTabRow + 1));
         assertEquals(PROJECT_ROW_HIGHLIGHT, highlightedCount(buffer, FIRST_PROJECT_ROW, rowSelected),
                 "the selected project row carries the selection color: " + rowText(buffer, FIRST_PROJECT_ROW));
@@ -1218,14 +1218,14 @@ class VintelliShellTest {
     }
 
     @Test
-    void movesHighlightToTab3AndDropsTab1AfterDigitPress() throws Exception {
+    void movesHighlightToTab6AndDropsTab4AfterDigitPress() throws Exception {
         ShellThemes themes = defaultThemes();
         VintelliShell shell = defaultShell(themes);
         Color tabSelected = themes.color("tab-selected-bg");
         try (ToolkitTestRunner test = runShell(shell)) {
             Pilot pilot = test.pilot();
             pilot.pause(STARTUP);
-            press(pilot, '3');
+            press(pilot, '6');
             assertEquals(2, shell.toolIndex());
             pressCtrlC(pilot);
         }
@@ -1233,14 +1233,14 @@ class VintelliShellTest {
         Buffer buffer = offlineFrame(shell);
         int bottomTabRow = findBottomTabRow(buffer);
         String tabRow = rowText(buffer, bottomTabRow);
-        int tab3Start = tabRow.indexOf("3 Problems");
-        assertTrue(tab3Start >= 0, "tab 3 should be present: " + tabRow);
+        int tab6Start = tabRow.indexOf("6 Problems");
+        assertTrue(tab6Start >= 0, "tab 6 should be present: " + tabRow);
         Color underline = themes.color("focus-border");
         assertEquals(0, highlightedCount(buffer, bottomTabRow, tabSelected),
-                "the tab row carries no filled block after switching to tab 3: " + tabRow);
-        assertEquals(tab3Start, firstForegroundColumn(buffer, bottomTabRow + 1, underline),
-                "the underline starts under the selected label 3 Problems: " + tabRow);
-        assertEquals("3 Problems".length(), contiguousForeground(buffer, bottomTabRow + 1, underline),
+                "the tab row carries no filled block after switching to tab 6: " + tabRow);
+        assertEquals(tab6Start, firstForegroundColumn(buffer, bottomTabRow + 1, underline),
+                "the underline starts under the selected label 6 Problems: " + tabRow);
+        assertEquals("6 Problems".length(), contiguousForeground(buffer, bottomTabRow + 1, underline),
                 "the underline covers only the selected label: " + tabRow);
     }
 
@@ -1251,7 +1251,7 @@ class VintelliShellTest {
 
         int bottomTabRow = findBottomTabRow(buffer);
         String tabRow = rowText(buffer, bottomTabRow);
-        assertTrue(tabRow.contains("1 Run"), tabRow);
+        assertTrue(tabRow.contains("4 Run"), tabRow);
         assertTrue(tabRow.contains("7 Threads"), tabRow);
     }
 
@@ -1275,13 +1275,13 @@ class VintelliShellTest {
 
     @Test
     void routesUnclaimedKeysToTheActiveToolWindowBeforeShellShortcuts() throws Exception {
-        FakeToolWindow fake = new FakeToolWindow("fake.notes", "Notes", '6', 60, "fake notes");
+        FakeToolWindow fake = new FakeToolWindow("fake.notes", "Notes", '3', 60, "fake notes");
         VintelliShell shell = shellWithFakeWindow(fake);
         try (ToolkitTestRunner test = runShell(shell)) {
             Pilot pilot = test.pilot();
             pilot.pause(STARTUP);
 
-            press(pilot, '6');
+            press(pilot, '3');
             press(pilot, 'j');
             assertEquals(0, shell.fileIndex(), "the active tool window must consume j before the project panel");
             assertTrue(fake.handledKeys().contains("j"), fake.handledKeys().toString());
@@ -1292,13 +1292,13 @@ class VintelliShellTest {
 
     @Test
     void capturingWindowReceivesEvenTheShellKeys() throws Exception {
-        FakeToolWindow terminalLike = new FakeToolWindow("fake.terminal", "Fake Terminal", '6', 60, "type away", true);
+        FakeToolWindow terminalLike = new FakeToolWindow("fake.terminal", "Fake Terminal", '3', 60, "type away", true);
         VintelliShell shell = shellWithFakeWindow(terminalLike);
         try (ToolkitTestRunner test = runShell(shell)) {
             Pilot pilot = test.pilot();
             pilot.pause(STARTUP);
 
-            press(pilot, '6');
+            press(pilot, '3');
             press(pilot, 'q');
             press(pilot, 'j');
             press(pilot, '1');
@@ -1310,8 +1310,8 @@ class VintelliShellTest {
 
             assertTrue(test.runner().isRunning(), "the capturing window keeps q for text, not quit");
 
-            // Alt+4 activates ACP Agents (right anchor), bottom anchor index stays at 3 (fake window)
-            press(pilot, '4', KeyModifiers.ALT);
+            // Alt+8 activates ACP Agents (right anchor), bottom anchor index stays at 3 (fake window)
+            press(pilot, '8', KeyModifiers.ALT);
             assertEquals(3, shell.toolIndex(), "bottom anchor index unchanged when activating right anchor window");
             assertEquals("Tool window: ACP Agents", shell.status());
 
@@ -1321,23 +1321,23 @@ class VintelliShellTest {
 
     @Test
     void switchesToolWindowsByActionChordWhileAnInputHasFocus() throws Exception {
-        FakeToolWindow terminalLike = new FakeToolWindow("fake.terminal", "Fake Terminal", '6', 60, "type away", true);
+        FakeToolWindow terminalLike = new FakeToolWindow("fake.terminal", "Fake Terminal", '3', 60, "type away", true);
         VintelliShell shell = shellWithFakeWindow(terminalLike);
         try (ToolkitTestRunner test = runShell(shell)) {
             Pilot pilot = test.pilot();
             pilot.pause(STARTUP);
 
-            press(pilot, '6');
+            press(pilot, '3');
             press(pilot, '2');
             assertEquals(3, shell.toolIndex(), "a bare digit belongs to the capturing input");
             assertEquals(0, shell.fileIndex(), "a bare digit must not drive the project list");
             assertTrue(terminalLike.handledKeys().contains("2"), terminalLike.handledKeys().toString());
 
-            press(pilot, '3', KeyModifiers.ALT);
+            press(pilot, '6', KeyModifiers.ALT);
             assertEquals(2, shell.toolIndex(), "the activate action chord must survive captured input");
             assertEquals("Tool window: Problems", shell.status());
 
-            press(pilot, '6', KeyModifiers.ALT);
+            press(pilot, '3', KeyModifiers.ALT);
             assertEquals(3, shell.toolIndex());
 
             pilot.press(KeyCode.ESCAPE);
@@ -1350,13 +1350,13 @@ class VintelliShellTest {
 
     @Test
     void escapeLeavesCapturedInputAndReturnsFocusToShellNavigation() throws Exception {
-        FakeToolWindow terminalLike = new FakeToolWindow("fake.terminal", "Fake Terminal", '6', 60, "type away", true);
+        FakeToolWindow terminalLike = new FakeToolWindow("fake.terminal", "Fake Terminal", '3', 60, "type away", true);
         VintelliShell shell = shellWithFakeWindow(terminalLike);
         try (ToolkitTestRunner test = runShell(shell)) {
             Pilot pilot = test.pilot();
             pilot.pause(STARTUP);
 
-            press(pilot, '6');
+            press(pilot, '3');
             press(pilot, 'j');
             assertEquals(0, shell.fileIndex(), "captured: the window still has the key");
             pilot.press(KeyCode.ESCAPE);
@@ -1378,17 +1378,17 @@ class VintelliShellTest {
 
     @Test
     void selectsTheCapturingWindowAgainThroughItsShortcutAfterEscape() throws Exception {
-        FakeToolWindow terminalLike = new FakeToolWindow("fake.terminal", "Fake Terminal", '6', 60, "type away", true);
+        FakeToolWindow terminalLike = new FakeToolWindow("fake.terminal", "Fake Terminal", '3', 60, "type away", true);
         VintelliShell shell = shellWithFakeWindow(terminalLike);
         try (ToolkitTestRunner test = runShell(shell)) {
             Pilot pilot = test.pilot();
             pilot.pause(STARTUP);
 
-            press(pilot, '6');
+            press(pilot, '3');
             pilot.press(KeyCode.ESCAPE);
             settle(pilot);
             assertEquals("Focus: shell navigation", shell.status());
-            press(pilot, '6');
+            press(pilot, '3');
             press(pilot, 'j');
             assertEquals(0, shell.fileIndex(), "reselecting the window re-enters captured input");
             assertTrue(terminalLike.handledKeys().contains("j"), terminalLike.handledKeys().toString());
@@ -1487,7 +1487,7 @@ class VintelliShellTest {
             Pilot pilot = test.pilot();
             pilot.pause(STARTUP);
 
-            press(pilot, '6');
+            press(pilot, '7');
             assertTrue(shell.isToolWindowVisible("structure"), "the digit opens the Structure window");
             pressCtrlC(pilot);
             assertFalse(test.runner().isRunning(), "Ctrl+C must quit from a list window that only receives keys");
@@ -1502,7 +1502,7 @@ class VintelliShellTest {
             Pilot pilot = test.pilot();
             pilot.pause(STARTUP);
 
-            press(pilot, '7');
+            press(pilot, '9');
             assertTrue(shell.isToolWindowVisible("maven"), "the digit opens the Maven window");
             pressCtrlC(pilot);
             assertFalse(test.runner().isRunning(), "Ctrl+C must quit from a list window that only receives keys");
@@ -1511,13 +1511,13 @@ class VintelliShellTest {
 
     @Test
     void ctrlCQuitsTheShellFromTheShellAndGoesToTheInputWhileCapturing() throws Exception {
-        FakeToolWindow terminalLike = new FakeToolWindow("fake.terminal", "Fake Terminal", '6', 60, "type away", true);
+        FakeToolWindow terminalLike = new FakeToolWindow("fake.terminal", "Fake Terminal", '3', 60, "type away", true);
         VintelliShell shell = shellWithFakeWindow(terminalLike);
         try (ToolkitTestRunner test = runShell(shell)) {
             Pilot pilot = test.pilot();
             pilot.pause(STARTUP);
 
-            press(pilot, '6');
+            press(pilot, '3');
             pressCtrlC(pilot);
             assertTrue(test.runner().isRunning(), "a capturing window keeps Ctrl+C for itself");
             assertFalse(terminalLike.handledKeys().isEmpty(),
@@ -1648,13 +1648,13 @@ class VintelliShellTest {
 
     @Test
     void commandPaletteIsReachableWhileAnInputHasFocusAndRunsActions() throws Exception {
-        FakeToolWindow terminalLike = new FakeToolWindow("fake.terminal", "Fake Terminal", '6', 60, "type away", true);
+        FakeToolWindow terminalLike = new FakeToolWindow("fake.terminal", "Fake Terminal", '3', 60, "type away", true);
         VintelliShell shell = shellWithFakeWindow(terminalLike);
         try (ToolkitTestRunner test = runShell(shell)) {
             Pilot pilot = test.pilot();
             pilot.pause(STARTUP);
 
-            press(pilot, '6');
+            press(pilot, '3');
             // Fake window is at bottom index 3 (Run, Terminal, Problems, then fake)
             assertEquals(3, shell.toolIndex());
 
@@ -2756,11 +2756,11 @@ class VintelliShellTest {
 
     @Test
     void aPressInTheProjectPaneReleasesCapturedToolWindowInput() throws Exception {
-        FakeToolWindow terminalLike = new FakeToolWindow("fake.terminal", "Fake Terminal", '6', 60, "type away", true);
+        FakeToolWindow terminalLike = new FakeToolWindow("fake.terminal", "Fake Terminal", '3', 60, "type away", true);
         VintelliShell shell = shellWithFakeWindow(terminalLike);
         try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
             Pilot pilot = test.pilot();
-            press(pilot, '6');
+            press(pilot, '3');
             Rect list = pilot.findElement("project-panel");
 
             pilot.click(list.x() + 4, list.y() + 2);
@@ -3210,7 +3210,7 @@ class VintelliShellTest {
             assertTrue(bottom.x() > pane.x() + pane.width(), "the bottom windows start right of the project pane");
             assertEquals(editor.x(), bottom.x(), "the bottom windows start at the editor's left edge");
             assertEquals(editor.x() + editor.width(), bottom.x() + bottom.width(), "the bottom windows end at the editor's right edge");
-            assertTrue(rows[bottom.y()].startsWith("1 Run", editor.x() + 1),
+            assertTrue(rows[bottom.y()].startsWith("4 Run", editor.x() + 1),
                     "the tab row starts under the editor: " + rows[bottom.y()]);
         }
     }
@@ -3263,7 +3263,7 @@ class VintelliShellTest {
             assertEquals(VintelliShell.TOOL_STRIP_WIDTH, bottom.x(), "the bottom windows start right after the strip");
             assertEquals(editor.x(), bottom.x(), "the editor and the bottom windows share the left edge");
             assertTrue(test.renderedFrame().split("\n", -1)[bottom.y()]
-                    .startsWith("1 Run", VintelliShell.TOOL_STRIP_WIDTH + 1), "the tab row follows the strip");
+                    .startsWith("4 Run", VintelliShell.TOOL_STRIP_WIDTH + 1), "the tab row follows the strip");
         }
     }
 
@@ -3297,7 +3297,7 @@ class VintelliShellTest {
             settle(pilot);
             assertTrue(shell.isToolWindowVisible("problems"), "the same cell shows the last bottom window again: " + shell.status());
             assertEquals("Tool window: Problems", shell.status());
-            assertTrue(test.renderedFrame().contains("3 Problems"), "the bottom tab row is back");
+            assertTrue(test.renderedFrame().contains("6 Problems"), "the bottom tab row is back");
         }
     }
 
@@ -3314,7 +3314,7 @@ class VintelliShellTest {
             int storedRows = (int) Math.round(ShellLayout.DEFAULT_BOTTOM_RATIO * (WIDE.height() - 1));
             assertEquals(storedRows - 1, pilot.findElement("bottom-stripe").height(),
                     "the saved ratio keeps its pane: the status row now sits outside the bottom windows");
-            assertTrue(test.renderedFrame().contains("3 Problems"), "the restored layout shows the bottom tabs");
+            assertTrue(test.renderedFrame().contains("6 Problems"), "the restored layout shows the bottom tabs");
             assertEquals(ShellLayout.DEFAULT_BOTTOM_RATIO, store.load().bottomRatio(), 0.0001,
                     "restoring the layout does not rewrite the saved ratio");
         }
@@ -5102,7 +5102,7 @@ class VintelliShellTest {
     private static int findBottomTabRow(Buffer buffer) {
         for (int row = 0; row < buffer.height(); row++) {
             String text = rowText(buffer, row);
-            if (text.contains("1 Run") && text.contains("2 Terminal")) {
+            if (text.contains("4 Run") && text.contains("2 Terminal")) {
                 return row;
             }
         }

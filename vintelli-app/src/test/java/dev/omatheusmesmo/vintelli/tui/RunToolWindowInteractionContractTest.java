@@ -79,7 +79,7 @@ class RunToolWindowInteractionContractTest {
     private static void activateWithKeyboard(ToolWindowInteractionAssertions.Session session) {
         ToolWindowPilotFixture fixture = session.fixture();
         RunContext context = session.context(RunContext.class);
-        fixture.press('1');
+        fixture.press('4');
         fixture.press(KeyCode.ENTER);
         awaitUi(context.uiWork(), () -> context.provider().startedConfiguration.get() != null
                 && context.window().statusMessage().startsWith("Running "));
@@ -91,7 +91,7 @@ class RunToolWindowInteractionContractTest {
     private static void activateWithPointer(ToolWindowInteractionAssertions.Session session) {
         ToolWindowPilotFixture fixture = session.fixture();
         RunContext context = session.context(RunContext.class);
-        fixture.press('1');
+        fixture.press('4');
         Rect area = fixture.pilot().findElement("tool-run");
         List<String> rows = fixture.renderedText().lines().toList();
         int runRow = -1;

@@ -210,7 +210,7 @@ class MavenToolWindowInteractionContractTest {
     }
 
     private static void openMaven(ToolWindowPilotFixture fixture, String expectedText) {
-        fixture.press('7', KeyModifiers.ALT);
+        fixture.press('9', KeyModifiers.ALT);
         assertEquals("tool-maven", fixture.testRunner().runner().focusManager().focusedId(),
                 "activating Maven transfers TamboUI focus to its tool window");
         assertTrue(awaitRendered(fixture, expectedText), fixture.renderedText());

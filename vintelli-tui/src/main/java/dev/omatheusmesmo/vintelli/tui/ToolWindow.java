@@ -2,6 +2,7 @@ package dev.omatheusmesmo.vintelli.tui;
 
 import dev.tamboui.layout.Rect;
 import dev.tamboui.terminal.Frame;
+import dev.tamboui.tui.bindings.KeyTrigger;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
 import dev.tamboui.tui.event.MouseEvent;
@@ -10,6 +11,7 @@ import dev.omatheusmesmo.vintelli.api.statusbar.StatusBarWidget;
 import dev.omatheusmesmo.vintelli.api.statusbar.StatusBarWidgetContributor;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * SPI for one tool window in the TUI shell, such as Run, Terminal or Problems.
@@ -80,9 +82,19 @@ public interface ToolWindow extends StatusBarWidgetContributor {
     String title();
 
     /**
-     * Character that selects this tool window directly, for example {@code '1'}.
+     * Character that selects this tool window directly, for example {@code '4'}.
+     * The keymap binds it as {@code Alt+<char>} and as the bare character.
      */
     char shortcut();
+
+    /**
+     * Second chord that activates this window besides {@code Alt+<shortcut>},
+     * for example {@code Alt+F12} for Terminal, the IntelliJ chord a terminal
+     * can deliver. Empty by default.
+     */
+    default Optional<KeyTrigger> extraChord() {
+        return Optional.empty();
+    }
 
     /**
      * Declarative tab position; lower values come first. Ties break by {@link #id()}.

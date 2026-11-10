@@ -62,7 +62,7 @@ class AcpAgentsToolWindowTest {
         Size size = new Size(120, 42);
         try (ToolkitTestRunner test = runShell(shell, size)) {
             Pilot pilot = test.pilot();
-            pilot.press('4', KeyModifiers.ALT);
+            pilot.press('8', KeyModifiers.ALT);
             assertEquals("tool-acp.agents", test.runner().focusManager().focusedId());
             pilot.press(KeyCode.ENTER);
             assertTrue(chat.opened.await(5, TimeUnit.SECONDS));
@@ -112,7 +112,7 @@ class AcpAgentsToolWindowTest {
         Size size = new Size(120, 21);
         try (ToolkitTestRunner test = runShell(shell, size)) {
             Pilot pilot = test.pilot();
-            pilot.press('4', KeyModifiers.ALT);
+            pilot.press('8', KeyModifiers.ALT);
             pilot.press(KeyCode.ENTER);
             assertTrue(chat.opened.await(5, TimeUnit.SECONDS));
             pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("ACP session ready"));
@@ -162,7 +162,7 @@ class AcpAgentsToolWindowTest {
         Size size = new Size(120, 21);
         try (ToolkitTestRunner test = runShell(shell, size)) {
             Pilot pilot = test.pilot();
-            pilot.press('4', KeyModifiers.ALT);
+            pilot.press('8', KeyModifiers.ALT);
             pilot.press(KeyCode.ENTER);
             assertTrue(chat.opened.await(5, TimeUnit.SECONDS));
             pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("ACP session ready"));
@@ -215,7 +215,7 @@ class AcpAgentsToolWindowTest {
         Size size = new Size(120, 24);
         try (ToolkitTestRunner test = runShell(shell, size)) {
             Pilot pilot = test.pilot();
-            pilot.press('4', KeyModifiers.ALT);
+            pilot.press('8', KeyModifiers.ALT);
             pilot.press(KeyCode.ENTER);
             assertTrue(chat.opening.await(5, TimeUnit.SECONDS));
             window.shutdown();
@@ -240,7 +240,7 @@ class AcpAgentsToolWindowTest {
         Size size = new Size(120, 24);
         try (ToolkitTestRunner test = runShell(shell, size)) {
             Pilot pilot = test.pilot();
-            pilot.press('4', KeyModifiers.ALT);
+            pilot.press('8', KeyModifiers.ALT);
             pilot.press(KeyCode.ENTER);
             assertTrue(chat.opening.await(5, TimeUnit.SECONDS));
             pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("Chat 1"));
@@ -262,7 +262,7 @@ class AcpAgentsToolWindowTest {
         Size size = new Size(120, 30);
         try (ToolkitTestRunner test = runShell(shell, size)) {
             Pilot pilot = test.pilot();
-            pilot.press('4', KeyModifiers.ALT);
+            pilot.press('8', KeyModifiers.ALT);
             pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("+ New"));
 
             String visible = screen(rendered);
@@ -289,7 +289,7 @@ class AcpAgentsToolWindowTest {
         Size size = new Size(120, 42);
         try (ToolkitTestRunner test = runShell(shell, size)) {
             Pilot pilot = test.pilot();
-            pilot.press('4', KeyModifiers.ALT);
+            pilot.press('8', KeyModifiers.ALT);
             pilot.press(KeyCode.ENTER);
             assertTrue(chat.opened.await(5, TimeUnit.SECONDS));
             pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("ACP session ready"));
@@ -320,7 +320,7 @@ class AcpAgentsToolWindowTest {
         Size size = new Size(120, 42);
         try (ToolkitTestRunner test = runShell(shell, size)) {
             Pilot pilot = test.pilot();
-            pilot.press('4', KeyModifiers.ALT);
+            pilot.press('8', KeyModifiers.ALT);
             pilot.press(KeyCode.ENTER);
             assertTrue(chat.opened.await(5, TimeUnit.SECONDS));
             pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("ACP session ready"));
@@ -351,7 +351,7 @@ class AcpAgentsToolWindowTest {
         Size size = new Size(120, 42);
         try (ToolkitTestRunner test = runShell(shell, size)) {
             Pilot pilot = test.pilot();
-            pilot.press('4', KeyModifiers.ALT);
+            pilot.press('8', KeyModifiers.ALT);
             pilot.press(KeyCode.ENTER);
             pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("ACP session ready"));
             pilot.press("go");
@@ -382,7 +382,7 @@ class AcpAgentsToolWindowTest {
         Size size = new Size(120, 42);
         try (ToolkitTestRunner test = runShell(shell, size)) {
             Pilot pilot = test.pilot();
-            pilot.press('4', KeyModifiers.ALT);
+            pilot.press('8', KeyModifiers.ALT);
             pilot.press(KeyCode.ENTER);
             pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("ACP session ready"));
             pilot.press("go");
@@ -413,7 +413,7 @@ class AcpAgentsToolWindowTest {
         Size size = new Size(120, 42);
         try (ToolkitTestRunner test = runShell(shell, size)) {
             Pilot pilot = test.pilot();
-            pilot.press('4', KeyModifiers.ALT);
+            pilot.press('8', KeyModifiers.ALT);
             pilot.press(KeyCode.ENTER);
             pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("ACP session ready"));
             pilot.press("go");
@@ -442,7 +442,7 @@ class AcpAgentsToolWindowTest {
         Size size = new Size(120, 42);
         try (ToolkitTestRunner test = runShell(shell, size)) {
             Pilot pilot = test.pilot();
-            pilot.press('4', KeyModifiers.ALT);
+            pilot.press('8', KeyModifiers.ALT);
             pilot.press(KeyCode.ENTER);
             pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("ACP session ready"));
             pilot.press("go");

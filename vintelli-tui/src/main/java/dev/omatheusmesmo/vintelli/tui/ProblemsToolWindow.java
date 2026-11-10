@@ -85,7 +85,7 @@ public final class ProblemsToolWindow implements ToolWindow {
 
     @Override public String id() { return "problems"; }
     @Override public String title() { return "Problems"; }
-    @Override public char shortcut() { return '3'; }
+    @Override public char shortcut() { return '6'; }
     @Override public int ordinal() { return 2; }
     @Override public String icon() { return PROBLEMS_GLYPH; }
 

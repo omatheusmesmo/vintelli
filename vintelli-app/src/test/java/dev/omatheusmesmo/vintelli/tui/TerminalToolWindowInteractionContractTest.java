@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 
 import dev.omatheusmesmo.vintelli.api.capability.CallHierarchyCapability;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityFailure;
@@ -66,6 +67,15 @@ class TerminalToolWindowInteractionContractTest {
     }
 
     @Test
+    void altF12OpensTheTerminalWindowAndStartsItsSession() throws Exception {
+        FakeSession session = new FakeSession();
+        try (ToolWindowPilotFixture fixture = openStartedWindow(session,
+                opened -> opened.press(KeyCode.F12, KeyModifiers.ALT))) {
+            assertTrue(session.started(), "Alt+F12 opens the Terminal window, the IntelliJ chord");
+        }
+    }
+
+    @Test
     void typingClearOnItsOwnClearsTheOutputWithoutSendingItToTheShell() throws Exception {
         FakeSession session = new FakeSession();
         try (ToolWindowPilotFixture fixture = openStartedWindow(session)) {
@@ -117,6 +127,11 @@ class TerminalToolWindowInteractionContractTest {
     }
 
     private static ToolWindowPilotFixture openStartedWindow(FakeSession session) throws Exception {
+        return openStartedWindow(session, opened -> opened.press('2', KeyModifiers.ALT));
+    }
+
+    private static ToolWindowPilotFixture openStartedWindow(FakeSession session,
+            Consumer<ToolWindowPilotFixture> activation) throws Exception {
         ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
         UiWorkQueue uiWork = new UiWorkQueue();
         FakeRegistry registry = new FakeRegistry(new FakeTerminal(session));
@@ -126,7 +141,7 @@ class TerminalToolWindowInteractionContractTest {
         shell.useUiWorkQueue(uiWork);
         ToolWindowPilotFixture fixture = ToolWindowPilotFixture.open(shell, VIEWPORT);
         try {
-            fixture.press('2', KeyModifiers.ALT);
+            activation.accept(fixture);
             fixture.press(KeyCode.ENTER);
             assertTrue(fixture.await(session::started, AWAIT), () -> fixture.renderedText());
             return fixture;

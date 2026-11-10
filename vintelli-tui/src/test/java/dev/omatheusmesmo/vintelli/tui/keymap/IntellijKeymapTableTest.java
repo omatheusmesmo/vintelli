@@ -10,6 +10,9 @@ import dev.omatheusmesmo.vintelli.tui.TerminalToolWindow;
 import dev.omatheusmesmo.vintelli.tui.ToolWindow;
 import dev.tamboui.tui.bindings.DefaultBindings;
 import dev.tamboui.tui.bindings.InputTrigger;
+import dev.tamboui.tui.event.KeyCode;
+import dev.tamboui.tui.event.KeyEvent;
+import dev.tamboui.tui.event.KeyModifiers;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
@@ -26,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class IntellijKeymapTableTest {
 
@@ -72,9 +76,9 @@ class IntellijKeymapTableTest {
         for (KeymapTable.Row row : TABLE.rows()) {
             if (row.status() == KeymapTable.Status.SAME) {
                 assertFalse(row.intellijChords().isEmpty(), "row '" + row.actionId() + "' is same but has no IntelliJ chord");
-                assertEquals(normalized(row.intellijChords()), normalized(row.activeChords()), "row '" + row.actionId()
-                        + "' says same but the active chord " + row.activeChords() + " differs from IntelliJ's "
-                        + row.intellijChords());
+                assertEquals(normalized(row.intellijChords()), withoutBareDigits(row.activeChords()), "row '"
+                        + row.actionId() + "' says same but the active chord " + row.activeChords()
+                        + " differs from IntelliJ's " + row.intellijChords());
             } else if (row.status() == KeymapTable.Status.DIFFERENT) {
                 assertFalse(row.intellijChords().isEmpty(), "row '" + row.actionId() + "' is different but has no IntelliJ chord");
                 assertNotEquals(normalized(row.intellijChords()), normalized(row.activeChords()),
@@ -115,9 +119,38 @@ class IntellijKeymapTableTest {
             assertFalse(bound.isEmpty(), actionId + " binds no chord");
             assertEquals(normalized(bound), normalized(row.activeChords()), "row '" + actionId + "' lists "
                     + row.activeChords() + " but Keymap binds " + bound);
-            assertEquals(normalized(Set.of("Alt+" + window.shortcut(), String.valueOf(window.shortcut()))),
-                    normalized(bound), actionId + " must bind Alt+<shortcut> and the bare shortcut");
+            Set<String> expected = new TreeSet<>(Set.of("Alt+" + window.shortcut(), String.valueOf(window.shortcut())));
+            window.extraChord().ifPresent(chord -> expected.add(chord.describe()));
+            assertEquals(normalized(expected), normalized(bound),
+                    actionId + " must bind Alt+<shortcut>, the bare shortcut and its extra chord");
         }
+    }
+
+    @Test
+    void eachWindowOpensWithItsIntelliJChordInTheDefaultProfile() {
+        assertTrue(KEYMAP.matches(KeyEvent.ofChar('1', KeyModifiers.ALT), KeyActions.ACTIVATE_PROJECT),
+                "Alt+1 shows the Project pane");
+        assertTrue(KEYMAP.matches(KeyEvent.ofChar('4', KeyModifiers.ALT), KeyActions.activateToolWindow("run")),
+                "Alt+4 opens Run");
+        assertTrue(KEYMAP.matches(KeyEvent.ofChar('6', KeyModifiers.ALT), KeyActions.activateToolWindow("problems")),
+                "Alt+6 opens Problems");
+        assertTrue(KEYMAP.matches(KeyEvent.ofChar('7', KeyModifiers.ALT), KeyActions.activateToolWindow("structure")),
+                "Alt+7 opens Structure");
+        assertTrue(KEYMAP.matches(KeyEvent.ofKey(KeyCode.F12, KeyModifiers.ALT), KeyActions.activateToolWindow("terminal")),
+                "Alt+F12 opens Terminal");
+        assertTrue(KEYMAP.matches(KeyEvent.ofChar('8', KeyModifiers.ALT), KeyActions.activateToolWindow("acp.agents")),
+                "ACP Agents takes the number 8, a number IntelliJ does not give a window we ship");
+        assertTrue(KEYMAP.matches(KeyEvent.ofChar('9', KeyModifiers.ALT), KeyActions.activateToolWindow("maven")),
+                "Maven takes the number 9, a number IntelliJ does not give a window we ship");
+    }
+
+    /**
+     * The bare digit of a tool window is the Vintelli shortcut for while no
+     * input has focus, not an IntelliJ chord, so a same row compares the other
+     * active chords with IntelliJ's.
+     */
+    private static Set<String> withoutBareDigits(Collection<String> chords) {
+        return normalized(chords.stream().filter(chord -> !chord.matches("[0-9]")).toList());
     }
 
     private static Map<String, Set<String>> boundChordsByAction() {

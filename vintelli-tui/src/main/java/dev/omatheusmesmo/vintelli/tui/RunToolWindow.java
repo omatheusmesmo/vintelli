@@ -97,7 +97,7 @@ public final class RunToolWindow implements ToolWindow {
 
     @Override
     public char shortcut() {
-        return '1';
+        return '4';
     }
 
     @Override
