@@ -583,7 +583,7 @@ final class ProjectPanel implements Element {
         return skipped > columns ? " ".repeat(skipped - columns) + rest : rest;
     }
 
-    private static String clipEnd(String label, int columns) {
+    static String clipEnd(String label, int columns) {
         if (CharWidth.of(label) <= columns) {
             return label;
         }
