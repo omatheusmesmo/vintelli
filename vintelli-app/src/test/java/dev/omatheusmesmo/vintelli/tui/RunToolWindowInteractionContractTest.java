@@ -59,7 +59,8 @@ class RunToolWindowInteractionContractTest {
         // The compact shell stripe does not have enough vertical room to show
         // configurations; select the second item as a fixed precondition.
         assertTrue(window.performAction(KeyActions.RUN_SELECT_NEXT));
-        VintelliShell shell = new VintelliShell(List.of(window), new ShellState(), themes, capabilities);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window), new ShellState(), themes)
+                .withCapabilityRegistry(capabilities));
         ToolWindowPilotFixture fixture = ToolWindowPilotFixture.open(shell, VIEWPORT);
         RunContext context = new RunContext(window, provider, uiWork);
         return new ToolWindowInteractionAssertions.Session(fixture, () -> {

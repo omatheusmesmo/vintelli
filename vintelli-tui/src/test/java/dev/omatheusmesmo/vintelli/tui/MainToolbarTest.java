@@ -399,8 +399,11 @@ class MainToolbarTest {
             CapabilityRegistry registry = new FakeRegistry(provider);
             RunToolWindow run = new RunToolWindow(() -> themes, registry, uiWork, ".");
             List<ToolWindow> windows = List.of(run);
-            VintelliShell shell = new VintelliShell(windows, new ShellState(), () -> Keymap.defaultKeymap(windows),
-                    themes, null, List.of(), registry);
+            VintelliShell shell = new VintelliShell(ShellConfig.of(windows, new ShellState(), themes)
+                    .withKeymapSupplier(() -> Keymap.defaultKeymap(windows))
+                    .withProjectSearch(null)
+                    .withNavigationProviders(List.of())
+                    .withCapabilityRegistry(registry));
             shell.useUiWorkQueue(uiWork);
             run.refreshConfigurations();
             TestBackend backend = new TestBackend(width, 24);

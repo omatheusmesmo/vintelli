@@ -56,11 +56,9 @@ import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
 import dev.tamboui.tui.event.MouseEvent;
 import dev.tamboui.tui.event.MouseEventKind;
-import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
-import io.quarkus.arc.All;
 import java.nio.file.Path;
 import java.nio.file.Files;
 import java.io.IOException;
@@ -194,20 +192,6 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private volatile ToolWindow capturedWindow;
     private volatile int toolIndex;
 
-    @Inject
-    public VintelliShell(ToolWindowRegistry registry, ShellState state, KeymapRegistry keymapRegistry,
-            Instance<ShellThemes> themes, ProjectSearch projectSearch,
-            @All List<NavigationCapability> navigationProviders, CapabilityRegistry capabilityRegistry,
-            @All List<StatusBarWidgetContributor> statusBarContributors,
-            @All List<VersionControlCapability> vcsProviders, @All List<ProjectFileOperations> fileOperations,
-            Instance<IdeaMcpConnection> ideaMcpConnections, UiWorkQueue uiWorkQueue) {
-        this(registry.toolWindows(), state, keymapRegistry::get, themes.get(), projectSearch, navigationProviders,
-                capabilityRegistry, vcsProviders, true, statusBarContributors,
-                fileOperations.isEmpty() ? null : fileOperations.getFirst(),
-                ideaMcpConnections.isResolvable() ? ideaMcpConnections.get() : null);
-        this.uiWorkQueue = uiWorkQueue;
-    }
-
     void useUiWorkQueue(UiWorkQueue uiWorkQueue) {
         this.uiWorkQueue = uiWorkQueue;
     }
@@ -220,97 +204,21 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         projectPanel.useUnicodeTree(unicode);
     }
 
-    public VintelliShell(List<ToolWindow> toolWindows, ShellState state, ShellThemes themes) {
-        this(toolWindows, state, () -> Keymap.defaultKeymap(toolWindows), themes, null, List.of(), null, List.of(),
-                false, toolWindows, null);
-    }
-
-    VintelliShell(List<ToolWindow> toolWindows, ShellState state, ShellThemes themes, ShellLayoutStore layoutStore) {
-        this(toolWindows, state, () -> Keymap.defaultKeymap(toolWindows), themes, null, List.of(), null, List.of(),
-                false, toolWindows, null, layoutStore);
-    }
-
-    public VintelliShell(List<ToolWindow> toolWindows, ShellState state, ShellThemes themes,
-            CapabilityRegistry capabilityRegistry) {
-        this(toolWindows, state, () -> Keymap.defaultKeymap(toolWindows), themes, null, List.of(), capabilityRegistry,
-                List.of(), false, toolWindows, null);
-    }
-
-    public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Keymap keymap, ShellThemes themes) {
-        this(toolWindows, state, () -> keymap, themes, null, List.of(), null, List.of(), false, toolWindows, null);
-    }
-
-    public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
-            ShellThemes themes) {
-        this(toolWindows, state, keymapSupplier, themes, null, List.of(), null, List.of(), false, toolWindows, null);
-    }
-
-    public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
-            ShellThemes themes, ProjectSearch projectSearch) {
-        this(toolWindows, state, keymapSupplier, themes, projectSearch, List.of(), null, List.of(), false, toolWindows,
-                null);
-    }
-
-    public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
-            ShellThemes themes, ProjectSearch projectSearch, List<NavigationCapability> navigationProviders,
-            CapabilityRegistry capabilityRegistry) {
-        this(toolWindows, state, keymapSupplier, themes, projectSearch, navigationProviders, capabilityRegistry,
-                List.of(), false, toolWindows, null);
-    }
-
-    public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
-            ShellThemes themes, ProjectSearch projectSearch, List<NavigationCapability> navigationProviders,
-            List<VersionControlCapability> vcsProviders) {
-        this(toolWindows, state, keymapSupplier, themes, projectSearch, navigationProviders, null, vcsProviders, false,
-                toolWindows, null);
-    }
-
-    public VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
-            ShellThemes themes, ProjectSearch projectSearch, ProjectFileOperations fileOperations) {
-        this(toolWindows, state, keymapSupplier, themes, projectSearch, List.of(), null, List.of(), false, toolWindows,
-                fileOperations);
-    }
-
-    private VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
-            ShellThemes themes, ProjectSearch projectSearch, List<NavigationCapability> navigationProviders,
-            CapabilityRegistry capabilityRegistry, List<VersionControlCapability> vcsProviders,
-            boolean persistLayout, List<? extends StatusBarWidgetContributor> statusBarContributors,
-            ProjectFileOperations fileOperations) {
-        this(toolWindows, state, keymapSupplier, themes, projectSearch, navigationProviders, capabilityRegistry,
-                vcsProviders, persistLayout, statusBarContributors, fileOperations, (IdeaMcpConnection) null);
-    }
-
-    VintelliShell(List<ToolWindow> toolWindows, ShellState state, ShellThemes themes,
-            IdeaMcpConnection ideaMcpConnection) {
-        this(toolWindows, state, () -> Keymap.defaultKeymap(toolWindows), themes, null, List.of(), null, List.of(),
-                false, toolWindows, null, ideaMcpConnection, null);
-    }
-
-    private VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
-            ShellThemes themes, ProjectSearch projectSearch, List<NavigationCapability> navigationProviders,
-            CapabilityRegistry capabilityRegistry, List<VersionControlCapability> vcsProviders,
-            boolean persistLayout, List<? extends StatusBarWidgetContributor> statusBarContributors,
-            ProjectFileOperations fileOperations, ShellLayoutStore layoutStoreOverride) {
-        this(toolWindows, state, keymapSupplier, themes, projectSearch, navigationProviders, capabilityRegistry,
-                vcsProviders, persistLayout, statusBarContributors, fileOperations, (IdeaMcpConnection) null,
-                layoutStoreOverride);
-    }
-
-    private VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
-            ShellThemes themes, ProjectSearch projectSearch, List<NavigationCapability> navigationProviders,
-            CapabilityRegistry capabilityRegistry, List<VersionControlCapability> vcsProviders,
-            boolean persistLayout, List<? extends StatusBarWidgetContributor> statusBarContributors,
-            ProjectFileOperations fileOperations, IdeaMcpConnection ideaMcpConnection) {
-        this(toolWindows, state, keymapSupplier, themes, projectSearch, navigationProviders, capabilityRegistry,
-                vcsProviders, persistLayout, statusBarContributors, fileOperations, ideaMcpConnection, null);
-    }
-
-    private VintelliShell(List<ToolWindow> toolWindows, ShellState state, Supplier<Keymap> keymapSupplier,
-            ShellThemes themes, ProjectSearch projectSearch, List<NavigationCapability> navigationProviders,
-            CapabilityRegistry capabilityRegistry, List<VersionControlCapability> vcsProviders,
-            boolean persistLayout, List<? extends StatusBarWidgetContributor> statusBarContributors,
-            ProjectFileOperations fileOperations, IdeaMcpConnection ideaMcpConnection,
-            ShellLayoutStore layoutStoreOverride) {
+    @Inject
+    public VintelliShell(ShellConfig config) {
+        List<ToolWindow> toolWindows = config.toolWindows();
+        ShellState state = config.state();
+        Supplier<Keymap> keymapSupplier = config.keymapSupplier();
+        ShellThemes themes = config.themes();
+        ProjectSearch projectSearch = config.projectSearch();
+        List<NavigationCapability> navigationProviders = config.navigationProviders();
+        CapabilityRegistry capabilityRegistry = config.capabilityRegistry();
+        List<VersionControlCapability> vcsProviders = config.vcsProviders();
+        boolean persistLayout = config.persistLayout();
+        List<? extends StatusBarWidgetContributor> statusBarContributors = config.statusBarContributors();
+        ProjectFileOperations fileOperations = config.fileOperations();
+        IdeaMcpConnection ideaMcpConnection = config.ideaMcpConnection();
+        ShellLayoutStore layoutStoreOverride = config.layoutStore();
         this.themes = themes;
         this.state = state;
         this.projectSearch = projectSearch;

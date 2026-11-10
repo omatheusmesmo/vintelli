@@ -54,7 +54,7 @@ class RunToolWindowTest {
         window.refreshConfigurations();
         assertTrue(provider.listed.await(5, TimeUnit.SECONDS));
         awaitUi(uiWork, () -> window.configurations().size() == 2);
-        VintelliShell shell = new VintelliShell(List.of(window), new ShellState(), themes);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window), new ShellState(), themes));
         try (ToolkitTestRunner test = runShell(shell, new Size(100, 30))) {
             Pilot pilot = test.pilot();
             pilot.pause(Duration.ofMillis(100));

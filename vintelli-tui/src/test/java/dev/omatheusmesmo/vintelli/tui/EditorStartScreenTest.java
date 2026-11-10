@@ -94,7 +94,8 @@ class EditorStartScreenTest {
         Path userFile = tempDir.resolve("keymap.properties");
         Files.writeString(userFile, "navigation_goToFile = Ctrl+g\n");
         Keymap keymap = Keymap.load(KeymapProfile.DEFAULT, List.of(), userFile);
-        VintelliShell shell = new VintelliShell(List.of(), new ShellState(), () -> keymap, themes());
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(), new ShellState(), themes())
+                .withKeymapSupplier(() -> keymap));
 
         Buffer buffer = renderShell(shell, SMALL);
         String frame = text(buffer);

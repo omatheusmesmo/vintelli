@@ -172,7 +172,7 @@ class ToolWindowInteractionAssertionsTest {
     private static ToolWindowInteractionAssertions.Session newSession(boolean omitMouseSelection) throws Exception {
         ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
         ContractProbeWindow window = new ContractProbeWindow(omitMouseSelection);
-        VintelliShell shell = new VintelliShell(List.of(window), new ShellState(), themes);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window), new ShellState(), themes));
         ToolWindowPilotFixture fixture = ToolWindowPilotFixture.open(shell, VIEWPORT);
         fixture.pilot().pause(Duration.ofMillis(100));
         return new ToolWindowInteractionAssertions.Session(fixture, () -> {
@@ -187,7 +187,7 @@ class ToolWindowInteractionAssertionsTest {
     private static ToolWindowInteractionAssertions.Session newScrollSession() throws Exception {
         ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
         ScrollProbeWindow window = new ScrollProbeWindow();
-        VintelliShell shell = new VintelliShell(List.of(window), new ShellState(), themes);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window), new ShellState(), themes));
         ToolWindowPilotFixture fixture = ToolWindowPilotFixture.open(shell, VIEWPORT);
         fixture.pilot().pause(Duration.ofMillis(100));
         return new ToolWindowInteractionAssertions.Session(fixture, () -> {

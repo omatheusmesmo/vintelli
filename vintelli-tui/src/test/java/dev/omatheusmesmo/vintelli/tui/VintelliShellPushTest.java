@@ -172,7 +172,7 @@ class VintelliShellPushTest {
     @Test
     void keyRoutingWaitsForAFrameThatIsBeingDrawn() throws Exception {
         GatedToolWindow window = new GatedToolWindow();
-        VintelliShell shell = new VintelliShell(List.of(window), new ShellState(), themes());
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window), new ShellState(), themes()));
 
         assertSerialised(window.renderGate, () -> offlineFrame(shell),
                 () -> shell.handle(KeyEvent.ofChar('x')), window.keyGate);
@@ -181,7 +181,7 @@ class VintelliShellPushTest {
     @Test
     void framesWaitForKeyRoutingThatIsInProgress() throws Exception {
         GatedToolWindow window = new GatedToolWindow();
-        VintelliShell shell = new VintelliShell(List.of(window), new ShellState(), themes());
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window), new ShellState(), themes()));
 
         assertSerialised(window.keyGate, () -> shell.handle(KeyEvent.ofChar('x')),
                 () -> offlineFrame(shell), window.renderGate);
@@ -190,7 +190,7 @@ class VintelliShellPushTest {
     @Test
     void twoFramesAreNeverDrawnAtTheSameTime() throws Exception {
         GatedToolWindow window = new GatedToolWindow();
-        VintelliShell shell = new VintelliShell(List.of(window), new ShellState(), themes());
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window), new ShellState(), themes()));
 
         assertSerialised(window.renderGate, () -> offlineFrame(shell),
                 () -> offlineFrame(shell), window.renderGate);
@@ -232,7 +232,7 @@ class VintelliShellPushTest {
         ToolWindowRegistry registry = new ToolWindowRegistry(List.of(
                 new RunToolWindow(() -> themes), new TerminalToolWindow(() -> themes),
                 new ProblemsToolWindow(() -> themes)));
-        return new VintelliShell(registry.toolWindows(), new ShellState(), themes);
+        return new VintelliShell(ShellConfig.of(registry.toolWindows(), new ShellState(), themes));
     }
 
     static ShellThemes themes() {
