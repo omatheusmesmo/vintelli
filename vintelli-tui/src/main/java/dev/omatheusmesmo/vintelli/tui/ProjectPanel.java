@@ -491,22 +491,12 @@ final class ProjectPanel implements Element {
 
     private String vcsSlot(String relative) {
         VersionControlCapability.State state = controller.vcsState(relative);
-        return state == null ? "  " : vcsMarker(state) + " ";
+        return state == null ? "  " : VcsMarkers.of(state) + " ";
     }
 
     private String vcsDecorated(String relative, String label) {
         VersionControlCapability.State state = controller.vcsState(relative);
-        return state == null ? label : vcsMarker(state) + " " + label;
-    }
-
-    private static String vcsMarker(VersionControlCapability.State state) {
-        return switch (state) {
-            case ADDED -> "A";
-            case DELETED -> "D";
-            case MODIFIED -> "M";
-            case UNTRACKED -> "?";
-            case UNMERGED -> "!";
-        };
+        return state == null ? label : VcsMarkers.of(state) + " " + label;
     }
 
     /**

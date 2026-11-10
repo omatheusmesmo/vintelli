@@ -60,6 +60,30 @@ shift the columns of a tree. The glyph width was not verified on any terminal:
 a consumer must reserve `FileIcon.symbolWidth(mode)` cells plus one separator
 cell after the icon.
 
+## ASCII markers and VCS letters
+
+The project tree draws the Git state of a file as one letter in front of its
+icon: `A` added, `D` deleted, `M` modified, `?` untracked and `!` unmerged. The
+letters come from `VcsMarkers.LETTERS` in `vintelli-tui`, which is derived from
+the state of the VCS capability, so they are defined in one place.
+
+No built-in ASCII marker is one of those letters, so a clean checkout does not
+show a file as changed (before this rule, `M` marked both Markdown files and
+the modified state). The built-in markers that avoid them are:
+
+| Files | ASCII marker |
+|---|---|
+| `pom.xml`, `Makefile` | `B` (build) |
+| Markdown (`.md`, `.markdown`) | `#` |
+| `Dockerfile`, `.dockerignore`, `docker-compose.yml` | `W` (whale) |
+| Dart (`.dart`) | `U` |
+
+The Java kind markers `C`, `I`, `E`, `R` and `@` do not collide either. A test
+(`FileIconsTest.noBuiltInAsciiMarkerReadsAsAVcsState`) fails when a built-in
+entry, a folder, the default icons or a kind marker equals a VCS letter. A user
+mapping file is not checked this way: an `ascii` value such as `M` there is
+accepted and shows next to the Git state.
+
 ## Java source kinds
 
 A `.java` file shows the icon of the kind of its first top-level type: class,

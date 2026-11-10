@@ -1,7 +1,7 @@
 package dev.omatheusmesmo.vintelli.tui.editor;
 
 import dev.omatheusmesmo.vintelli.api.ShellEditorPalette;
-import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
+import dev.omatheusmesmo.vintelli.tui.VcsMarkers;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcon;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
 import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
@@ -77,7 +77,7 @@ final class EditorElement implements Element {
         for (int index = 0; index < tabs.size(); index++) {
             BuiltinEditor.TabView tab = tabs.get(index);
             String name = fileName(tab.file());
-            String vcs = editor.vcsState(tab.file()).map(state -> " " + vcsMarker(state)).orElse("");
+            String vcs = editor.vcsState(tab.file()).map(state -> " " + VcsMarkers.of(state)).orElse("");
             String dirty = tab.dirty() ? " " + (ascii ? DIRTY_MARK_ASCII : DIRTY_MARK) : "";
             FileIcon icon = icons.iconFor(name);
             labels.add(new EditorTabBarElement.Label(icon.span(icons.mode()), name + vcs + dirty));
@@ -273,16 +273,6 @@ final class EditorElement implements Element {
     private static String fileName(String file) {
         String normalized = file.replace('\\', '/');
         return normalized.substring(normalized.lastIndexOf('/') + 1);
-    }
-
-    private static String vcsMarker(VersionControlCapability.State state) {
-        return switch (state) {
-            case ADDED -> "A";
-            case DELETED -> "D";
-            case MODIFIED -> "M";
-            case UNTRACKED -> "?";
-            case UNMERGED -> "!";
-        };
     }
 
     private static String language(String file) {

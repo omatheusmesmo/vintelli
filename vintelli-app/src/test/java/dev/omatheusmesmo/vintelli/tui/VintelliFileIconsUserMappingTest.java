@@ -45,7 +45,7 @@ class VintelliFileIconsUserMappingTest {
                 .then()
                 .statusCode(200)
                 .body("files.'pom.xml'.glyph", is(""))
-                .body("files.'pom.xml'.ascii", is("M"))
+                .body("files.'pom.xml'.ascii", is("B"))
                 .body("files.'POM.XML'.glyph", is(""))
                 .body("files.'Foo.java'.glyph", is(""));
     }

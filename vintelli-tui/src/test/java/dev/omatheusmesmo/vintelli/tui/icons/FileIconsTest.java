@@ -1,5 +1,6 @@
 package dev.omatheusmesmo.vintelli.tui.icons;
 
+import dev.omatheusmesmo.vintelli.tui.VcsMarkers;
 import dev.tamboui.style.Color;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -12,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -21,7 +23,7 @@ class FileIconsTest {
 
     private static final FileIcon DEFAULT_FILE = new FileIcon("\uF15B", "*", Color.hex("#8C8C8C"));
     private static final FileIcon DEFAULT_FOLDER = new FileIcon("\uE5FF", "/", Color.hex("#7FA3CC"));
-    private static final FileIcon POM = new FileIcon("\uE82C", "M", Color.hex("#C71A36"));
+    private static final FileIcon POM = new FileIcon("\uE82C", "B", Color.hex("#C71A36"));
     private static final FileIcon JAVA = new FileIcon("\uE738", "J", Color.hex("#E76F00"));
     private static final FileIcon GIT_FOLDER = new FileIcon("\uE5FB", "/", Color.hex("#F05033"));
 
@@ -210,6 +212,22 @@ class FileIconsTest {
 
         for (FileIcon icon : everyIcon) {
             assertInstanceOf(Color.Rgb.class, icon.color());
+        }
+    }
+
+    @Test
+    void noBuiltInAsciiMarkerReadsAsAVcsState() {
+        FileIcons icons = FileIcons.of("ascii", Map.of(), null);
+        List<FileIcon> everyIcon = new ArrayList<>();
+        everyIcon.add(icons.iconFor("notes.unknownext"));
+        everyIcon.add(icons.folderIconFor("src"));
+        everyIcon.addAll(icons.nameEntries().values());
+        everyIcon.addAll(icons.extensionEntries().values());
+        everyIcon.addAll(icons.typeEntries().values());
+
+        for (FileIcon icon : everyIcon) {
+            assertFalse(VcsMarkers.LETTERS.contains(icon.ascii()),
+                    () -> "ASCII marker '" + icon.ascii() + "' reads as a VCS state, VCS letters are " + VcsMarkers.LETTERS);
         }
     }
 
