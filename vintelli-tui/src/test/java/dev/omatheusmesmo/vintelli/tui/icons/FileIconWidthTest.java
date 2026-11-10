@@ -32,6 +32,15 @@ class FileIconWidthTest {
         assertEquals(1, wide.symbolWidth(IconMode.ASCII));
     }
 
+    @Test
+    void everyJavaKindReservesTheSameCellWidthInBothFaces() {
+        FileIcons icons = FileIcons.of("nerd", Map.of(), null);
+
+        icons.typeEntries().values().forEach(this::assertSameWidthInBothFaces);
+        icons.typeEntries().values().forEach(icon ->
+                assertEquals(1, icon.symbolWidth(IconMode.ASCII), icon.ascii()));
+    }
+
     private void assertSameWidthInBothFaces(FileIcon icon) {
         assertEquals(icon.symbolWidth(IconMode.ASCII), icon.symbolWidth(IconMode.NERD), icon.glyph());
     }

@@ -1,6 +1,7 @@
 package dev.omatheusmesmo.vintelli.tui;
 
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
+import dev.omatheusmesmo.vintelli.tui.icons.FileIcon;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
 import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
 import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
@@ -91,6 +92,7 @@ final class ProjectPanel implements Element {
     private final ProjectMenus menus;
     private boolean unicodeTree;
     private long pushedRevision = -1;
+    private long pushedJavaKinds = -1;
     private boolean pushedUnicode;
     private int pushedLeft;
     private volatile Rect headerRow = Rect.ZERO;
@@ -121,8 +123,10 @@ final class ProjectPanel implements Element {
     void useUnicodeTree(boolean unicode) {
         this.unicodeTree = unicode;
         if (controller.fileCount() > 0) {
+            long kinds = controller.javaKindVersion();
             list.items(rows());
             pushedRevision = controller.revision();
+            pushedJavaKinds = kinds;
             pushedUnicode = unicode;
         }
     }
@@ -417,9 +421,11 @@ final class ProjectPanel implements Element {
 
     private void pushSelection() {
         if (pushedRevision != controller.revision() || pushedUnicode != unicodeTree
-                || pushedLeft != controller.leftColumn()) {
+                || pushedLeft != controller.leftColumn() || pushedJavaKinds != controller.javaKindVersion()) {
+            long kinds = controller.javaKindVersion();
             list.items(rows());
             pushedRevision = controller.revision();
+            pushedJavaKinds = kinds;
             pushedUnicode = unicodeTree;
             pushedLeft = controller.leftColumn();
         }
@@ -456,8 +462,9 @@ final class ProjectPanel implements Element {
         } else {
             label.append(vcsSlot(node.relative.toString()));
         }
-        return label.append((node.directory ? fileIcons.folderIconFor(node.name) : fileIcons.iconFor(node.name))
-                .symbol(fileIcons.mode())).append(' ').append(node.compactName()).toString();
+        FileIcon icon = node.directory ? fileIcons.folderIconFor(node.name)
+                : fileIcons.iconFor(node.name, controller.javaKind(node));
+        return label.append(icon.symbol(fileIcons.mode())).append(' ').append(node.compactName()).toString();
     }
 
     private int selectedLabelWidth() {

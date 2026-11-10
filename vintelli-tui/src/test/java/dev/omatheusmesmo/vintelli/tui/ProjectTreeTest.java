@@ -8,13 +8,13 @@ import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
 import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
 import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
+import dev.omatheusmesmo.vintelli.tui.icons.JavaTypeKind;
 import dev.tamboui.buffer.Buffer;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.layout.Size;
 import dev.tamboui.terminal.Frame;
 import dev.tamboui.toolkit.app.ToolkitTestRunner;
 import dev.tamboui.toolkit.element.DefaultRenderContext;
-import dev.tamboui.toolkit.element.Element;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.pilot.Pilot;
 import org.junit.jupiter.api.Test;
@@ -219,12 +219,59 @@ class ProjectTreeTest {
         shell.selectPath("src/main");
         shell.expandSelected();
 
+        FileIcons icons = FileIcons.resolve();
+        String expanded = disclosureGlyph(icons, ProjectTreeGlyphs.supportsUnicode(), true);
+        String folderIcon = icons.folderIconFor("src").symbol(icons.mode());
+        String fileIcon = icons.iconFor("A.java", JavaTypeKind.CLASS).symbol(icons.mode());
+        String mainIcon = icons.folderIconFor("main").symbol(icons.mode());
+        String rendered = renderUntil(shell, "    " + fileIcon + " A.java");
+        assertTrue(rendered.contains(expanded + " " + mainIcon + " src/main"), rendered);
+        assertTrue(rendered.contains("    " + fileIcon + " A.java"), rendered);
+        assertFalse(rendered.contains("├") || rendered.contains("└")
+                || rendered.contains("|--") || rendered.contains("\\--"), rendered);
+    }
+
+    @Test
+    void theTreeShowsTheKindOfEachJavaFileWhenItIsKnown() throws Exception {
+        Files.writeString(project.resolve("Shape.java"), "public sealed interface Shape permits Point {}");
+        Files.writeString(project.resolve("Point.java"), "public record Point(int x) {}");
+        VintelliShell shell = shellWithProject(project);
+        shell.refreshProjectTree();
+
+        FileIcons icons = FileIcons.resolve();
+        String shape = icons.iconFor("Shape.java", JavaTypeKind.INTERFACE).symbol(icons.mode()) + " Shape.java";
+        String point = icons.iconFor("Point.java", JavaTypeKind.RECORD).symbol(icons.mode()) + " Point.java";
+        String rendered = renderUntil(shell, shape, point);
+
+        assertTrue(rendered.contains(shape), rendered);
+        assertTrue(rendered.contains(point), rendered);
+    }
+
+    private static String renderUntil(VintelliShell shell, String... expected) throws InterruptedException {
+        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        String rendered = renderText(shell);
+        while (!containsAll(rendered, expected) && System.nanoTime() < deadline) {
+            Thread.sleep(10);
+            rendered = renderText(shell);
+        }
+        return rendered;
+    }
+
+    private static boolean containsAll(String text, String... expected) {
+        for (String part : expected) {
+            if (!text.contains(part)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static String renderText(VintelliShell shell) {
         Rect area = new Rect(0, 0, 100, 30);
         Buffer buffer = Buffer.empty(area);
         DefaultRenderContext context = DefaultRenderContext.createEmpty();
         context.setStyleEngine(shell.themes().engine());
-        Element root = shell.root();
-        root.render(Frame.forTesting(buffer), area, context);
+        shell.root().render(Frame.forTesting(buffer), area, context);
         StringBuilder text = new StringBuilder();
         for (int y = 0; y < buffer.height(); y++) {
             for (int x = 0; x < buffer.width(); x++) {
@@ -232,16 +279,7 @@ class ProjectTreeTest {
             }
             text.append('\n');
         }
-
-        FileIcons icons = FileIcons.resolve();
-        String expanded = disclosureGlyph(icons, ProjectTreeGlyphs.supportsUnicode(), true);
-        String folderIcon = icons.folderIconFor("src").symbol(icons.mode());
-        String fileIcon = icons.iconFor("A.java").symbol(icons.mode());
-        String mainIcon = icons.folderIconFor("main").symbol(icons.mode());
-        assertTrue(text.toString().contains(expanded + " " + mainIcon + " src/main"), text.toString());
-        assertTrue(text.toString().contains("    " + fileIcon + " A.java"), text.toString());
-        assertFalse(text.toString().contains("├") || text.toString().contains("└")
-                || text.toString().contains("|--") || text.toString().contains("\\--"), text.toString());
+        return text.toString();
     }
 
     static String disclosureGlyph(FileIcons icons, boolean unicodeTree, boolean expanded) {

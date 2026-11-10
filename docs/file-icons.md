@@ -60,6 +60,50 @@ shift the columns of a tree. The glyph width was not verified on any terminal:
 a consumer must reserve `FileIcon.symbolWidth(mode)` cells plus one separator
 cell after the icon.
 
+## Java source kinds
+
+A `.java` file shows the icon of the kind of its first top-level type: class,
+interface, enum, record or annotation (`@interface`). An abstract or sealed
+class is a class; the modifiers are not icons of their own. The built-in
+entries are the `type.class.*`, `type.interface.*`, `type.enum.*`,
+`type.record.*` and `type.annotation.*` keys of the mapping resource.
+
+| Kind | Nerd glyph (codicon) | Code point | ASCII marker | Colour |
+|---|---|---|---|---|
+| class | `nf-cod-symbol_class` | U+EB5B | `C` | `#4A9FE0` |
+| interface | `nf-cod-symbol_interface` | U+EB61 | `I` | `#6CBF6C` |
+| enum | `nf-cod-symbol_enum` | U+EA95 | `E` | `#E8873A` |
+| record | `nf-cod-symbol_structure` | U+EA91 | `R` | `#3CB8A8` |
+| annotation | `nf-cod-mention` | U+EB1F | `@` | `#D6B24A` |
+
+The glyphs are Nerd Fonts codicons in the Basic Multilingual Plane private use
+area, as the other built-in glyphs are, so every kind takes one cell like the
+ASCII marker. The Material Design icons were not used: they live outside the
+BMP, where a Java string holds them as a surrogate pair and the cell width
+depends on the terminal. The code points were checked against the glyph names
+of a Nerd Font v3 file (JetBrainsMono Nerd Font), and `nf-dev-java` (U+E738) was
+checked the same way to confirm the lookup.
+
+The kind is read from the file itself, not from the name: the scan skips the
+package, the imports, comments, string and character literals, annotations with
+their arguments and the modifiers, and the first declaration keyword decides.
+The scan reads at most the first 8192 bytes of a file, so a declaration after
+a very long header is not found. A file with no type (or text that is not a
+declaration, such as a field before the type) and an unreadable file keep the
+extension icon.
+
+The tree never reads a file while it draws. A row whose kind is not known yet
+draws the extension icon and asks for a scan on a background thread; when the
+answer arrives, the tree redraws on the next frame. Each file is read at most
+once per modification time, and a tree refresh (for example `F5` or a file
+operation) checks the modification time again and reads the file only when it
+changed. A user `ext.java` entry in the user mapping file replaces the kind
+icons for every Java file, so a user who wants the extension icon keeps it by
+choosing it there.
+
+The kind icons are chosen by the tree only. The editor tabs and the search
+overlay still show the extension icon.
+
 A user file `vintelli/file-icons.properties` inside the config directory
 (the shared `vintelli.config.dir` override first, then `XDG_CONFIG_HOME`,
 then `APPDATA`, then `$HOME/.config`) is layered on top
