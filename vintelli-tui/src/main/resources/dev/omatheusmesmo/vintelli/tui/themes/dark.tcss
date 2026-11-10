@@ -92,6 +92,10 @@ ToolTabBarElement-underline {
   color: $focus-border;
 }
 
+ToolTabBarElement-overflow {
+  color: $soft;
+}
+
 ToolStripElement {
   background: $panel;
 }

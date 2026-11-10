@@ -584,6 +584,56 @@ class VintelliShellTest {
     }
 
     @Test
+    void aTabRowTooNarrowForAllTabsKeepsTheSelectedTabWholeAndMarksTheTabsThatFollow() {
+        List<String> rows = renderTabBar(rightTabBar(1, NERD_TAB_GLYPHS), 20);
+
+        assertEquals(" 4 Alpha  6 Bravo  »", rows.get(0), "the selected tab is whole and the right mark shows");
+        assertEquals(" ".repeat(10) + "━".repeat(7), rows.get(1).stripTrailing(), "the underline sits under the selected tab");
+    }
+
+    @Test
+    void aTabRowScrollsLeftToTheSelectedTabAndMarksTheEdgeOfTheTabsScrolledAway() {
+        List<String> rows = renderTabBar(rightTabBar(3, NERD_TAB_GLYPHS), 20);
+
+        assertEquals("« 7 Charlie  8 Delta", rows.get(0), "the window scrolled so the last tab is whole with its left mark");
+        assertFalse(rows.get(0).contains("Alpha"), "the tabs scrolled away are not drawn: " + rows.get(0));
+    }
+
+    @Test
+    void aTabRowThatFitsDrawsNoOverflowMark() {
+        List<String> rows = renderTabBar(rightTabBar(1, NERD_TAB_GLYPHS), 40);
+
+        assertEquals(" 4 Alpha  6 Bravo  7 Charlie  8 Delta", rows.get(0).stripTrailing(),
+                "every tab is whole and no mark is drawn");
+    }
+
+    @Test
+    void theAsciiTabRowDrawsOnlyAsciiGlyphsInItsMarksAndUnderline() {
+        ToolTabBarElement.Glyphs ascii = new ToolTabBarElement.Glyphs("-", "<", ">");
+        List<String> rows = renderTabBar(rightTabBar(1, ascii), 20);
+
+        assertEquals(" 4 Alpha  6 Bravo  >", rows.get(0));
+        assertTrue(rows.get(0).chars().allMatch(character -> character < 128), rows.get(0));
+        assertEquals(" ".repeat(10) + "-".repeat(7), rows.get(1).stripTrailing());
+    }
+
+    @Test
+    void aClickOnAMarkSelectsNoTabAndAClickOnAWholeTabSelectsIt() {
+        ToolTabBarElement bar = rightTabBar(1, NERD_TAB_GLYPHS);
+        renderTabBar(bar, 20);
+
+        assertEquals(-1, bar.tabAt(19, 0), "the right mark is no tab");
+        assertEquals(-1, bar.tabAt(0, 0), "the blank lead column is no tab");
+        assertEquals(0, bar.tabAt(2, 0), "a click on the first tab selects it");
+        assertEquals(1, bar.tabAt(12, 0), "a click on the selected tab selects it");
+
+        ToolTabBarElement scrolled = rightTabBar(3, NERD_TAB_GLYPHS);
+        renderTabBar(scrolled, 20);
+        assertEquals(-1, scrolled.tabAt(0, 0), "the left mark is no tab");
+        assertEquals(2, scrolled.tabAt(2, 0), "the first visible tab is selected by a click on it");
+    }
+
+    @Test
     void asciiModeDrawsEachStripeWithTheFirstLetterOfItsTitle() {
         String previous = System.getProperty(IconMode.CONFIG_PROPERTY);
         System.setProperty(IconMode.CONFIG_PROPERTY, "ascii");
@@ -4835,6 +4885,34 @@ class VintelliShellTest {
         List<ToolWindow> windows = new ArrayList<>(registry.toolWindows());
         windows.add(fake);
         return new VintelliShell(new ToolWindowRegistry(windows).toolWindows(), new ShellState(), themes);
+    }
+
+    private static final ToolTabBarElement.Glyphs NERD_TAB_GLYPHS = new ToolTabBarElement.Glyphs("━", "«", "»");
+
+    private static ToolTabBarElement rightTabBar(int selected, ToolTabBarElement.Glyphs glyphs) {
+        List<ToolTabBarElement.Label> labels = List.of(
+                new ToolTabBarElement.Label("4", "Alpha"),
+                new ToolTabBarElement.Label("6", "Bravo"),
+                new ToolTabBarElement.Label("7", "Charlie"),
+                new ToolTabBarElement.Label("8", "Delta"));
+        return new ToolTabBarElement("tool-tabs-right", labels, selected, glyphs);
+    }
+
+    private static List<String> renderTabBar(ToolTabBarElement bar, int width) {
+        Rect area = new Rect(0, 0, width, ToolTabBarElement.ROWS);
+        Buffer buffer = Buffer.empty(area);
+        DefaultRenderContext context = DefaultRenderContext.createEmpty();
+        context.setStyleEngine(defaultThemes().engine());
+        bar.render(Frame.forTesting(buffer), area, context);
+        List<String> rows = new ArrayList<>();
+        for (int y = 0; y < ToolTabBarElement.ROWS; y++) {
+            StringBuilder text = new StringBuilder();
+            for (int x = 0; x < width; x++) {
+                text.append(buffer.get(x, y).symbol());
+            }
+            rows.add(text.toString());
+        }
+        return rows;
     }
 
     /**
