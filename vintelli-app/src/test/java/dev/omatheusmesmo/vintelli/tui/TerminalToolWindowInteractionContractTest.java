@@ -121,7 +121,8 @@ class TerminalToolWindowInteractionContractTest {
         UiWorkQueue uiWork = new UiWorkQueue();
         FakeRegistry registry = new FakeRegistry(new FakeTerminal(session));
         TerminalToolWindow window = new TerminalToolWindow(() -> themes, registry);
-        VintelliShell shell = new VintelliShell(List.of(window), new ShellState(), themes, registry);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window), new ShellState(), themes)
+                .withCapabilityRegistry(registry));
         shell.useUiWorkQueue(uiWork);
         ToolWindowPilotFixture fixture = ToolWindowPilotFixture.open(shell, VIEWPORT);
         try {

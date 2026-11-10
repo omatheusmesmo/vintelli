@@ -203,7 +203,8 @@ class CapabilityStateInteractionContractTest {
 
     private static ToolWindowPilotFixture open(List<ToolWindow> windows, ShellThemes themes, CapabilityRegistry registry,
             UiWorkQueue uiWork) throws Exception {
-        VintelliShell shell = new VintelliShell(windows, new ShellState(), themes, registry);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(windows, new ShellState(), themes)
+                .withCapabilityRegistry(registry));
         shell.useUiWorkQueue(uiWork);
         return ToolWindowPilotFixture.open(shell, VIEWPORT);
     }

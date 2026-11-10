@@ -160,7 +160,8 @@ class MavenToolWindowInteractionContractTest {
         awaitUi(uiWork, () -> provider.listings.get() > 0 && !run.statusMessage().startsWith("Loading"));
         MavenToolWindow maven = new MavenToolWindow(() -> themes, projectRoot, steppingClock());
         maven.load();
-        VintelliShell shell = new VintelliShell(List.of(maven, run), new ShellState(), themes, registry);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(maven, run), new ShellState(), themes)
+                .withCapabilityRegistry(registry));
         ToolWindowPilotFixture fixture = ToolWindowPilotFixture.open(shell, VIEWPORT);
         return new ToolWindowInteractionAssertions.Session(fixture,
                 () -> observe(fixture, provider, uiWork),

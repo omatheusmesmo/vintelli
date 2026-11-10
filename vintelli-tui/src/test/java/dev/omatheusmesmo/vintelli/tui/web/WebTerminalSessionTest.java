@@ -18,6 +18,7 @@ import java.util.function.LongSupplier;
 
 import dev.omatheusmesmo.vintelli.tui.ProblemsToolWindow;
 import dev.omatheusmesmo.vintelli.tui.RunToolWindow;
+import dev.omatheusmesmo.vintelli.tui.ShellConfig;
 import dev.omatheusmesmo.vintelli.tui.ShellState;
 import dev.omatheusmesmo.vintelli.tui.ShellThemes;
 import dev.omatheusmesmo.vintelli.tui.TerminalToolWindow;
@@ -43,7 +44,7 @@ class WebTerminalSessionTest {
     }
 
     private static VintelliShell newShell() {
-        return new VintelliShell(defaultRegistry().toolWindows(), new ShellState(), defaultThemes());
+        return new VintelliShell(ShellConfig.of(defaultRegistry().toolWindows(), new ShellState(), defaultThemes()));
     }
 
     @Test

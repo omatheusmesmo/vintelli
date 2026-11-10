@@ -107,7 +107,8 @@ class ProblemsToolWindowInteractionContractTest {
         ProblemsToolWindow window = new ProblemsToolWindow(registry, editor, () -> themes);
         window.refresh();
         assertTrue(await(() -> window.problems().size() == diagnostics.size()), "diagnostics did not load");
-        VintelliShell shell = new VintelliShell(List.of(window, editor), new ShellState(), themes, registry);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window, editor), new ShellState(), themes)
+                .withCapabilityRegistry(registry));
 
         try (ToolWindowPilotFixture fixture = ToolWindowPilotFixture.open(shell, VIEWPORT)) {
             fixture.press('3', KeyModifiers.ALT);
@@ -171,7 +172,8 @@ class ProblemsToolWindowInteractionContractTest {
         assertTrue(await(() -> window.problems().size() == diagnostics.size()), "diagnostics did not load");
 
         ShellState state = new ShellState();
-        VintelliShell shell = new VintelliShell(List.of(window, editor), state, themes, registry);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window, editor), state, themes)
+                .withCapabilityRegistry(registry));
         ToolWindowPilotFixture fixture = ToolWindowPilotFixture.open(shell, VIEWPORT);
         ToolWindowInteractionAssertions.Session session = new ToolWindowInteractionAssertions.Session(fixture,
                 () -> observe(window, editor, state, fixture), new ProblemsContext(window, editor));

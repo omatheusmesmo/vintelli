@@ -36,7 +36,7 @@ class EditorTypingRouteTest {
                 new RunToolWindow(() -> themes), new TerminalToolWindow(() -> themes),
                 new ProblemsToolWindow(() -> themes))).toolWindows());
         windows.add(editor);
-        VintelliShell shell = new VintelliShell(new ToolWindowRegistry(windows).toolWindows(), new ShellState(), themes);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(new ToolWindowRegistry(windows).toolWindows(), new ShellState(), themes));
         ToolkitTestRunner test = ToolkitTestRunner.runTest(shell::root, SIZE);
         try {
             test.runner().styleEngine(shell.themes().engine());

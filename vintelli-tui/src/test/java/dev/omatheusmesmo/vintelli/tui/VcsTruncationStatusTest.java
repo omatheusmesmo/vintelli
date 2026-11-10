@@ -78,8 +78,11 @@ class VcsTruncationStatusTest {
             }
         };
         ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
-        VintelliShell shell = new VintelliShell(windows, new ShellState(), () -> Keymap.defaultKeymap(windows),
-                themes, null, List.of(), List.of(provider));
+        VintelliShell shell = new VintelliShell(ShellConfig.of(windows, new ShellState(), themes)
+                .withKeymapSupplier(() -> Keymap.defaultKeymap(windows))
+                .withProjectSearch(null)
+                .withNavigationProviders(List.of())
+                .withVcsProviders(List.of(provider)));
         shell.refreshVcs();
         return shell;
     }

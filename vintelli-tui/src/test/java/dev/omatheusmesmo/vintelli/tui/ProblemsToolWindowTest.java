@@ -64,8 +64,8 @@ class ProblemsToolWindowTest {
                         DiagnosticsCapability.Severity.WARNING, "jdtls", "other issue"))).toList();
         DiagnosticsCapability provider = new TestDiagnostics(diagnostics);
         ProblemsToolWindow window = new ProblemsToolWindow(new TestRegistry(provider), editor, () -> themes);
-        VintelliShell shell = new VintelliShell(List.of(window, editor), new ShellState(), themes,
-                new TestRegistry(provider));
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window, editor), new ShellState(), themes)
+                .withCapabilityRegistry(new TestRegistry(provider)));
 
         window.refresh();
         awaitProblems(window);

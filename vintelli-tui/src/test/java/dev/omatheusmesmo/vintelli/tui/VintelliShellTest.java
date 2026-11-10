@@ -89,7 +89,7 @@ class VintelliShellTest {
             }
         };
         ShellThemes themes = defaultThemes();
-        VintelliShell shell = new VintelliShell(List.of(right), new ShellState(), themes);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(right), new ShellState(), themes));
         try (ToolkitTestRunner test = runShell(shell)) {
             Pilot pilot = test.pilot();
             pilot.pause(STARTUP);
@@ -110,7 +110,7 @@ class VintelliShellTest {
         windows.add(new FakeToolWindow("side.a", "Side", '7', 100, "", false, ToolWindow.Anchor.RIGHT));
         windows.add(new FakeToolWindow("side.b", "Other", '8', 200, "", false, ToolWindow.Anchor.RIGHT));
         List<ToolWindow> registered = new ToolWindowRegistry(windows).toolWindows();
-        VintelliShell shell = new VintelliShell(registered, new ShellState(), themes);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(registered, new ShellState(), themes));
         Buffer buffer = offlineFrame(shell);
 
         StringBuilder expectedRight = new StringBuilder();
@@ -151,7 +151,7 @@ class VintelliShellTest {
 
     @Test
     void aFreshLayoutHidesTheRightWindowsAndKeepsTheirStripeIcons() {
-        VintelliShell shell = new VintelliShell(windowsWithAcp(), new ShellState(), defaultThemes());
+        VintelliShell shell = new VintelliShell(ShellConfig.of(windowsWithAcp(), new ShellState(), defaultThemes()));
         Buffer buffer = offlineFrame(shell);
         assertFalse(shell.isToolWindowVisible("acp.agents"), "a fresh layout starts with the right windows hidden");
         assertTrue(shell.isToolWindowVisible("run"), "the bottom windows start visible");
@@ -160,7 +160,7 @@ class VintelliShellTest {
 
     @Test
     void clickingTheIconOfAHiddenRightWindowShowsItsPane() throws Exception {
-        VintelliShell shell = new VintelliShell(windowsWithAcp(), new ShellState(), defaultThemes());
+        VintelliShell shell = new VintelliShell(ShellConfig.of(windowsWithAcp(), new ShellState(), defaultThemes()));
         int iconRow = findRow(offlineFrame(shell), VIEWPORT.width() - 1, "A");
         try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
             Pilot pilot = test.pilot();
@@ -180,7 +180,7 @@ class VintelliShellTest {
 
     @Test
     void aHiddenSideWindowFreesItsSpaceAndItsStripeIconStaysInPlace() throws Exception {
-        VintelliShell shell = new VintelliShell(windowsWithAcp(), new ShellState(), defaultThemes());
+        VintelliShell shell = new VintelliShell(ShellConfig.of(windowsWithAcp(), new ShellState(), defaultThemes()));
         int iconRow = findRow(offlineFrame(shell), VIEWPORT.width() - 1, "A");
         try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
             Pilot pilot = test.pilot();
@@ -230,7 +230,8 @@ class VintelliShellTest {
     @Test
     void theSeparatorOfAHiddenProjectPanelDoesNotResizeIt() throws Exception {
         ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
-        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(defaultWindows(), new ShellState(), defaultThemes())
+                .withLayoutStore(store));
         int projectIcon = findRow(offlineFrame(shell), 1, "P");
         try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
             Pilot pilot = test.pilot();
@@ -251,7 +252,8 @@ class VintelliShellTest {
     @Test
     void theBottomPaneDoesNotResizeWhileEveryBottomWindowIsHidden() throws Exception {
         ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
-        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(defaultWindows(), new ShellState(), defaultThemes())
+                .withLayoutStore(store));
         defaultWindows().stream().filter(window -> window.anchor() == ToolWindow.Anchor.BOTTOM)
                 .filter(window -> shell.isToolWindowVisible(window.id()))
                 .forEach(window -> shell.toggleToolWindow(window.id()));
@@ -270,7 +272,8 @@ class VintelliShellTest {
     @Test
     void theFirstToggleKeepsTheProjectWidthAndTheBottomHeight() throws Exception {
         ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
-        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(defaultWindows(), new ShellState(), defaultThemes())
+                .withLayoutStore(store));
         try (MouseShellRunner test = runMouseShell(shell, WIDE)) {
             Pilot pilot = test.pilot();
             int projectBefore = pilot.findElement("project-panel").width();
@@ -290,7 +293,8 @@ class VintelliShellTest {
     @Test
     void theFirstBottomDragKeepsTheProjectWidth() throws Exception {
         ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
-        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(defaultWindows(), new ShellState(), defaultThemes())
+                .withLayoutStore(store));
         try (MouseShellRunner test = runMouseShell(shell, WIDE)) {
             Pilot pilot = test.pilot();
             int projectBefore = pilot.findElement("project-panel").width();
@@ -312,7 +316,8 @@ class VintelliShellTest {
     @Test
     void theFirstProjectDragKeepsTheBottomHeight() throws Exception {
         ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
-        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(defaultWindows(), new ShellState(), defaultThemes())
+                .withLayoutStore(store));
         try (MouseShellRunner test = runMouseShell(shell, WIDE)) {
             Pilot pilot = test.pilot();
             int projectBefore = pilot.findElement("project-panel").width();
@@ -334,7 +339,8 @@ class VintelliShellTest {
     void hidingARightWindowGivesItsColumnsOnlyToTheEditor() throws Exception {
         ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
         store.save(customizedLayout(0.3, ShellLayout.DEFAULT_BOTTOM_RATIO, windowsWithAcp()));
-        VintelliShell shell = new VintelliShell(windowsWithAcp(), new ShellState(), defaultThemes(), store);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(windowsWithAcp(), new ShellState(), defaultThemes())
+                .withLayoutStore(store));
         try (MouseShellRunner test = runMouseShell(shell, WIDE)) {
             Pilot pilot = test.pilot();
             int projectBefore = pilot.findElement("project-panel").width();
@@ -366,7 +372,8 @@ class VintelliShellTest {
     void aCustomizedProjectYieldsToTheMinimumEditorWidthWhileARightWindowIsOpen() throws Exception {
         ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
         store.save(customizedLayout(0.6, ShellLayout.DEFAULT_BOTTOM_RATIO, windowsWithAcp()));
-        VintelliShell shell = new VintelliShell(windowsWithAcp(), new ShellState(), defaultThemes(), store);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(windowsWithAcp(), new ShellState(), defaultThemes())
+                .withLayoutStore(store));
         try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
             Pilot pilot = test.pilot();
             int uncapped = (int) Math.round(0.6 * (SIZE.width() - VintelliShell.TOOL_STRIP_WIDTH));
@@ -386,7 +393,8 @@ class VintelliShellTest {
     @Test
     void aBottomWindowIconStaysOnItsRowWhileItsPaneIsHiddenAndShown() throws Exception {
         ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
-        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(defaultWindows(), new ShellState(), defaultThemes())
+                .withLayoutStore(store));
         try (MouseShellRunner test = runMouseShell(shell, WIDE)) {
             Pilot pilot = test.pilot();
             int runRow = frameRowOf(test.renderedFrame(), 1, "R");
@@ -408,7 +416,8 @@ class VintelliShellTest {
         ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
         int projectWidth;
         int bottomHeight;
-        VintelliShell first = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+        VintelliShell first = new VintelliShell(ShellConfig.of(defaultWindows(), new ShellState(), defaultThemes())
+                .withLayoutStore(store));
         try (MouseShellRunner test = runMouseShell(first, WIDE)) {
             Pilot pilot = test.pilot();
             Rect separator = pilot.findElement("pane-separator-vertical");
@@ -425,7 +434,8 @@ class VintelliShellTest {
             bottomHeight = pilot.findElement("bottom-stripe").height();
         }
 
-        VintelliShell restarted = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+        VintelliShell restarted = new VintelliShell(ShellConfig.of(defaultWindows(), new ShellState(), defaultThemes())
+                .withLayoutStore(store));
         try (MouseShellRunner test = runMouseShell(restarted, WIDE)) {
             Pilot pilot = test.pilot();
             assertFalse(restarted.isToolWindowVisible("run"), "the hidden window stays hidden after a restart");
@@ -458,7 +468,7 @@ class VintelliShellTest {
         String previous = System.getProperty(IconMode.CONFIG_PROPERTY);
         System.setProperty(IconMode.CONFIG_PROPERTY, "ascii");
         try {
-            VintelliShell shell = new VintelliShell(windowsWithAcp(), new ShellState(), defaultThemes());
+            VintelliShell shell = new VintelliShell(ShellConfig.of(windowsWithAcp(), new ShellState(), defaultThemes()));
             Set<Integer> gapColumns = new HashSet<>();
             try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
                 Pilot pilot = test.pilot();
@@ -604,7 +614,7 @@ class VintelliShellTest {
     void theActiveStripeIconUsesTheSelectedStyleOfEachShippedTheme() {
         for (String theme : List.of("dark", "darcula")) {
             ShellThemes themes = new ShellThemes(theme, (Path) null);
-            VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), themes);
+            VintelliShell shell = new VintelliShell(ShellConfig.of(defaultWindows(), new ShellState(), themes));
             Buffer buffer = offlineFrame(shell);
             int runIcon = findRow(buffer, 1, "R");
             int terminalIcon = findRow(buffer, 1, "T");
@@ -711,7 +721,8 @@ class VintelliShellTest {
     }
 
     private VintelliShell shellWithRegistry(FixedStatusRegistry registry) {
-        return new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), registry);
+        return new VintelliShell(ShellConfig.of(defaultWindows(), new ShellState(), defaultThemes())
+                .withCapabilityRegistry(registry));
     }
 
     private static String statusRow(MouseShellRunner test, Size size) {
@@ -940,7 +951,7 @@ class VintelliShellTest {
         ShellThemes themes = defaultThemes();
         BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
         StructureToolWindow structure = new StructureToolWindow(themes);
-        VintelliShell shell = new VintelliShell(List.of(editor, structure), new ShellState(), themes);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(editor, structure), new ShellState(), themes));
         editor.open(new OpenRequest(file, 0));
         structure.setSymbols(List.of(new DocumentSymbol("second", 6, 2, 2, 2, 18,
                 2, 7, 2, 13, List.of())));
@@ -981,8 +992,11 @@ class VintelliShellTest {
             @Override public ProviderHealth health() { return ProviderHealth.available(); }
             @Override public String provenance() { return "temporary menu test provider"; }
         };
-        VintelliShell shell = new VintelliShell(new ToolWindowRegistry(windows).toolWindows(),
-                new ShellState(), () -> Keymap.defaultKeymap(windows), themes, null, List.of(), List.of(vcs));
+        VintelliShell shell = new VintelliShell(ShellConfig.of(new ToolWindowRegistry(windows).toolWindows(), new ShellState(), themes)
+                .withKeymapSupplier(() -> Keymap.defaultKeymap(windows))
+                .withProjectSearch(null)
+                .withNavigationProviders(List.of())
+                .withVcsProviders(List.of(vcs)));
 
         try (ToolkitTestRunner test = runShell(shell)) {
             Pilot pilot = test.pilot();
@@ -1021,8 +1035,7 @@ class VintelliShellTest {
         BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
         List<ToolWindow> windows = new ArrayList<>(defaultWindows());
         windows.add(editor);
-        VintelliShell shell = new VintelliShell(new ToolWindowRegistry(windows).toolWindows(),
-                new ShellState(), themes);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(new ToolWindowRegistry(windows).toolWindows(), new ShellState(), themes));
 
         assertEquals(EventResult.HANDLED, shell.handle(KeyEvent.ofKey(KeyCode.ENTER)));
         assertEquals(file.toRealPath().toString(), editor.activeDocument().orElseThrow().file());
@@ -1068,8 +1081,11 @@ class VintelliShellTest {
             @Override public ProviderHealth health() { return ProviderHealth.available(); }
             @Override public String provenance() { return "temporary test provider"; }
         };
-        VintelliShell shell = new VintelliShell(new ToolWindowRegistry(windows).toolWindows(),
-                new ShellState(), () -> Keymap.defaultKeymap(windows), themes, null, List.of(), List.of(vcs));
+        VintelliShell shell = new VintelliShell(ShellConfig.of(new ToolWindowRegistry(windows).toolWindows(), new ShellState(), themes)
+                .withKeymapSupplier(() -> Keymap.defaultKeymap(windows))
+                .withProjectSearch(null)
+                .withNavigationProviders(List.of())
+                .withVcsProviders(List.of(vcs)));
 
         shell.handle(KeyEvent.ofKey(KeyCode.ENTER));
         shell.refreshVcs();
@@ -1138,9 +1154,11 @@ class VintelliShellTest {
         List<ToolWindow> windows = new ArrayList<>(defaultWindows());
         windows.add(new BuiltinEditor(root, null, () -> null));
         ToolWindowRegistry registry = new ToolWindowRegistry(windows);
-        return new VintelliShell(registry.toolWindows(), new ShellState(),
-                () -> Keymap.defaultKeymap(registry.toolWindows()), themes,
-                ProjectTreeTest.fakeSearch(root), List.of(), List.of(vcs));
+        return new VintelliShell(ShellConfig.of(registry.toolWindows(), new ShellState(), themes)
+                .withKeymapSupplier(() -> Keymap.defaultKeymap(registry.toolWindows()))
+                .withProjectSearch(ProjectTreeTest.fakeSearch(root))
+                .withNavigationProviders(List.of())
+                .withVcsProviders(List.of(vcs)));
     }
 
     private static VersionControlCapability modifiedVcs(String changedPath) {
@@ -1403,7 +1421,7 @@ class VintelliShellTest {
 
     @Test
     void rendersTheFallbackTextWhenNoToolWindowIsRegistered() {
-        VintelliShell shell = new VintelliShell(List.of(), new ShellState(), defaultThemes());
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(), new ShellState(), defaultThemes()));
         Buffer buffer = offlineFrame(shell);
 
         // Find the row with the fallback text in the bottom stripe
@@ -1421,10 +1439,8 @@ class VintelliShellTest {
     @Test
     void theKeymapIsBuiltOnFirstRenderNotWhenTheShellIsConstructedOrRead() {
         AtomicInteger builds = new AtomicInteger();
-        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), () -> {
-            builds.incrementAndGet();
-            return Keymap.ofProfile(KeymapProfile.DEFAULT, defaultWindows());
-        }, defaultThemes());
+        VintelliShell shell = new VintelliShell(ShellConfig.of(defaultWindows(), new ShellState(), defaultThemes())
+                .withKeymapSupplier(() -> { builds.incrementAndGet(); return Keymap.ofProfile(KeymapProfile.DEFAULT, defaultWindows()); }));
 
         shell.status();
         shell.state();
@@ -1439,9 +1455,8 @@ class VintelliShellTest {
 
     @Test
     void aFailingKeymapOnlySurfacesWhenTheTuiSessionUsesTheShell() {
-        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), () -> {
-            throw new IllegalStateException("bad keymap");
-        }, defaultThemes());
+        VintelliShell shell = new VintelliShell(ShellConfig.of(defaultWindows(), new ShellState(), defaultThemes())
+                .withKeymapSupplier(() -> { throw new IllegalStateException("bad keymap"); }));
 
         assertEquals(0, shell.fileIndex());
         assertThrows(IllegalStateException.class, () -> offlineFrame(shell));
@@ -1569,8 +1584,8 @@ class VintelliShellTest {
     @Test
     void vimProfileNavigatesTheProjectPanelWithJAndK() throws Exception {
         ShellThemes themes = defaultThemes();
-        VintelliShell vimShell = new VintelliShell(defaultWindows(), new ShellState(),
-                Keymap.ofProfile(KeymapProfile.VIM, defaultWindows()), themes);
+        VintelliShell vimShell = new VintelliShell(ShellConfig.of(defaultWindows(), new ShellState(), themes)
+                .withKeymap(Keymap.ofProfile(KeymapProfile.VIM, defaultWindows())));
         try (ToolkitTestRunner test = runShell(vimShell)) {
             Pilot pilot = test.pilot();
             pilot.pause(STARTUP);
@@ -1684,7 +1699,8 @@ class VintelliShellTest {
                 return new Snapshot("CONNECTED", "IntelliJ IDEA MCP server reachable");
             }
         };
-        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), connection);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(defaultWindows(), new ShellState(), defaultThemes())
+                .withIdeaMcpConnection(connection));
 
         try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
             Pilot pilot = test.pilot();
@@ -1741,7 +1757,8 @@ class VintelliShellTest {
                 return new Snapshot("CONNECTED", "IntelliJ IDEA MCP server reachable");
             }
         };
-        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), connection);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(defaultWindows(), new ShellState(), defaultThemes())
+                .withIdeaMcpConnection(connection));
 
         try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
             Pilot pilot = test.pilot();
@@ -1831,7 +1848,7 @@ class VintelliShellTest {
         };
         List<ToolWindow> windows = new ArrayList<>(defaultWindows());
         windows.add(broken);
-        VintelliShell shell = new VintelliShell(new ToolWindowRegistry(windows).toolWindows(), new ShellState(), themes);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(new ToolWindowRegistry(windows).toolWindows(), new ShellState(), themes));
 
         shell.handle(KeyEvent.ofChar('5'));
 
@@ -1872,7 +1889,8 @@ class VintelliShellTest {
     @Test
     void pilotDragsTheProjectSplitterAndPersistsTheRenderedRatio() throws Exception {
         ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
-        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(defaultWindows(), new ShellState(), defaultThemes())
+                .withLayoutStore(store));
         try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
             Pilot pilot = test.pilot();
             Rect projectBefore = pilot.findElement("project-panel");
@@ -3077,7 +3095,8 @@ class VintelliShellTest {
     @Test
     void projectSplitterKeepsTheMinimumEditorWidthBesideTheRightToolStripe() throws Exception {
         ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
-        VintelliShell shell = new VintelliShell(windowsWithAcp(), new ShellState(), defaultThemes(), store);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(windowsWithAcp(), new ShellState(), defaultThemes())
+                .withLayoutStore(store));
         if (!shell.isToolWindowVisible("acp.agents")) {
             shell.toggleToolWindow("acp.agents");
         }
@@ -3108,7 +3127,8 @@ class VintelliShellTest {
     @Test
     void pilotDragsTheBottomSplitterAndHandlesResizeAndTinyCoordinates() throws Exception {
         ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
-        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(defaultWindows(), new ShellState(), defaultThemes())
+                .withLayoutStore(store));
         try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
             Pilot pilot = test.pilot();
             Rect editorBefore = pilot.findElement("editor-panel");
@@ -3178,7 +3198,8 @@ class VintelliShellTest {
     @Test
     void theBottomToolWindowsStartRightOfTheProjectPaneAndTheirTabRowLinesUpWithTheEditor() throws Exception {
         ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
-        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(defaultWindows(), new ShellState(), defaultThemes())
+                .withLayoutStore(store));
         try (MouseShellRunner test = runMouseShell(shell, WIDE)) {
             Pilot pilot = test.pilot();
             Rect pane = pilot.findElement("project-pane");
@@ -3197,7 +3218,8 @@ class VintelliShellTest {
     @Test
     void theProjectSplitterDragsBesideTheBottomPaneAndTheBottomSplitterIgnoresTheProjectColumn() throws Exception {
         ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
-        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(defaultWindows(), new ShellState(), defaultThemes())
+                .withLayoutStore(store));
         try (MouseShellRunner test = runMouseShell(shell, WIDE)) {
             Pilot pilot = test.pilot();
             int projectBefore = pilot.findElement("project-panel").width();
@@ -3228,7 +3250,8 @@ class VintelliShellTest {
     @Test
     void withTheProjectPaneHiddenTheBottomWindowsStartRightAfterTheStrip() throws Exception {
         ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
-        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(defaultWindows(), new ShellState(), defaultThemes())
+                .withLayoutStore(store));
         try (MouseShellRunner test = runMouseShell(shell, WIDE)) {
             Pilot pilot = test.pilot();
             pilot.click(1, frameRowOf(test.renderedFrame(), 1, "P"));
@@ -3247,7 +3270,8 @@ class VintelliShellTest {
     @Test
     void hidingTheLastVisibleBottomWindowAndClickingItsCellShowsItAgain() throws Exception {
         ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
-        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(defaultWindows(), new ShellState(), defaultThemes())
+                .withLayoutStore(store));
         try (MouseShellRunner test = runMouseShell(shell, WIDE)) {
             Pilot pilot = test.pilot();
             String frame = test.renderedFrame();
@@ -3283,7 +3307,8 @@ class VintelliShellTest {
         Files.createDirectories(store.file().getParent());
         Files.writeString(store.file(), "project.ratio=0.2833333333333333\nbottom.ratio=0.225\n"
                 + "visible.windows=run,terminal,problems\nproject.visible=true\nsize.customized=true\n");
-        VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(defaultWindows(), new ShellState(), defaultThemes())
+                .withLayoutStore(store));
         try (MouseShellRunner test = runMouseShell(shell, WIDE)) {
             Pilot pilot = test.pilot();
             int storedRows = (int) Math.round(ShellLayout.DEFAULT_BOTTOM_RATIO * (WIDE.height() - 1));
@@ -3366,8 +3391,7 @@ class VintelliShellTest {
         BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
         List<ToolWindow> windows = new ArrayList<>(defaultWindows());
         windows.add(editor);
-        VintelliShell shell = new VintelliShell(new ToolWindowRegistry(windows).toolWindows(),
-                new ShellState(), themes);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(new ToolWindowRegistry(windows).toolWindows(), new ShellState(), themes));
         assertEquals(EventResult.HANDLED, shell.handle(KeyEvent.ofKey(KeyCode.ENTER)));
 
         String header = rowText(offlineFrame(shell), HEADER_ROW);
@@ -3647,7 +3671,7 @@ class VintelliShellTest {
     private static VintelliShell editorShell(ShellThemes themes, BuiltinEditor editor) {
         List<ToolWindow> windows = new ArrayList<>(defaultWindows());
         windows.add(editor);
-        return new VintelliShell(new ToolWindowRegistry(windows).toolWindows(), new ShellState(), themes);
+        return new VintelliShell(ShellConfig.of(new ToolWindowRegistry(windows).toolWindows(), new ShellState(), themes));
     }
 
     private static String overflowGlyph() {
@@ -3813,7 +3837,7 @@ class VintelliShellTest {
     @Test
     void theRightToolWindowBodyIsAnIslandOfTheEditorTone() throws Exception {
         ShellThemes themes = defaultThemes();
-        VintelliShell shell = new VintelliShell(windowsWithAcp(), new ShellState(), themes);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(windowsWithAcp(), new ShellState(), themes));
         if (!shell.isToolWindowVisible("acp.agents")) {
             shell.toggleToolWindow("acp.agents");
         }
@@ -3878,7 +3902,8 @@ class VintelliShellTest {
     void theGapCellsDragBothSplittersAtBothSizesAndAfterAResize() throws Exception {
         for (Size size : List.of(SIZE, WIDE)) {
             ShellLayoutStore store = new ShellLayoutStore(project.resolve("gap-" + size.width()), project);
-            VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+            VintelliShell shell = new VintelliShell(ShellConfig.of(defaultWindows(), new ShellState(), defaultThemes())
+                    .withLayoutStore(store));
             try (MouseShellRunner test = runMouseShell(shell, size)) {
                 Pilot pilot = test.pilot();
                 settle(pilot);
@@ -3921,7 +3946,8 @@ class VintelliShellTest {
         String previous = useNerdIconFace();
         try {
             ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
-            VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+            VintelliShell shell = new VintelliShell(ShellConfig.of(defaultWindows(), new ShellState(), defaultThemes())
+                    .withLayoutStore(store));
             int projectIcon = findRow(offlineFrame(shell), 1, PROJECT_GLYPH);
             try (MouseShellRunner test = runMouseShell(shell, WIDE)) {
                 Pilot pilot = test.pilot();
@@ -3949,7 +3975,8 @@ class VintelliShellTest {
         String previous = useNerdIconFace();
         try {
             ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
-            VintelliShell shell = new VintelliShell(defaultWindows(), new ShellState(), defaultThemes(), store);
+            VintelliShell shell = new VintelliShell(ShellConfig.of(defaultWindows(), new ShellState(), defaultThemes())
+                    .withLayoutStore(store));
             defaultWindows().forEach(window -> shell.hideToolWindow(window.id()));
             Rect editor;
             String frame;
@@ -4289,8 +4316,9 @@ class VintelliShellTest {
     private static VintelliShell shellWithProjectSearch() {
         ShellThemes themes = defaultThemes();
         List<ToolWindow> windows = defaultWindows();
-        return new VintelliShell(windows, new ShellState(), () -> Keymap.defaultKeymap(windows), themes,
-                new IdleProjectSearch());
+        return new VintelliShell(ShellConfig.of(windows, new ShellState(), themes)
+                .withKeymapSupplier(() -> Keymap.defaultKeymap(windows))
+                .withProjectSearch(new IdleProjectSearch()));
     }
 
     private static void napMillis(long millis) {
@@ -4367,8 +4395,11 @@ class VintelliShellTest {
     private static VintelliShell shellWithVcs(VersionControlCapability vcs) {
         ShellThemes themes = defaultThemes();
         List<ToolWindow> windows = defaultWindows();
-        return new VintelliShell(windows, new ShellState(), () -> Keymap.defaultKeymap(windows), themes,
-                null, List.of(), List.of(vcs));
+        return new VintelliShell(ShellConfig.of(windows, new ShellState(), themes)
+                .withKeymapSupplier(() -> Keymap.defaultKeymap(windows))
+                .withProjectSearch(null)
+                .withNavigationProviders(List.of())
+                .withVcsProviders(List.of(vcs)));
     }
 
     private static String awaitToolbarRow(VintelliShell shell, String text) {
@@ -4449,7 +4480,7 @@ class VintelliShellTest {
         assertFalse(editor.open(new OpenRequest(file, row)).isFailure());
         List<ToolWindow> windows = new ArrayList<>(defaultWindows());
         windows.add(editor);
-        VintelliShell shell = new VintelliShell(new ToolWindowRegistry(windows).toolWindows(), new ShellState(), themes);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(new ToolWindowRegistry(windows).toolWindows(), new ShellState(), themes));
         return new EditorShell(shell, editor);
     }
 
@@ -4625,8 +4656,10 @@ class VintelliShellTest {
         }
         List<ToolWindow> registered = new ToolWindowRegistry(windows).toolWindows();
         ProjectSearch search = new FixedProjectSearch(files, directories);
-        return new VintelliShell(registered, new ShellState(), () -> Keymap.defaultKeymap(registered), themes,
-                search, operations);
+        return new VintelliShell(ShellConfig.of(registered, new ShellState(), themes)
+                .withKeymapSupplier(() -> Keymap.defaultKeymap(registered))
+                .withProjectSearch(search)
+                .withFileOperations(operations));
     }
 
     private void awaitProjectTree(VintelliShell shell) {
@@ -4792,7 +4825,7 @@ class VintelliShellTest {
     }
 
     private static VintelliShell defaultShell(ShellThemes themes) {
-        return new VintelliShell(defaultWindows(), new ShellState(), themes);
+        return new VintelliShell(ShellConfig.of(defaultWindows(), new ShellState(), themes));
     }
 
     private static List<ToolWindow> defaultWindows() {
@@ -4814,7 +4847,7 @@ class VintelliShellTest {
         ShellThemes themes = defaultThemes();
         List<ToolWindow> windows = new ArrayList<>(windowsWithAcp());
         windows.add(new StructureToolWindow(() -> themes));
-        return new VintelliShell(new ToolWindowRegistry(windows).toolWindows(), new ShellState(), themes);
+        return new VintelliShell(ShellConfig.of(new ToolWindowRegistry(windows).toolWindows(), new ShellState(), themes));
     }
 
     private static VintelliShell shellWithWindow(ToolWindow window) {
@@ -4824,7 +4857,7 @@ class VintelliShellTest {
                 new AcpAgentsToolWindow(() -> themes)));
         List<ToolWindow> windows = new ArrayList<>(registry.toolWindows());
         windows.add(window);
-        return new VintelliShell(new ToolWindowRegistry(windows).toolWindows(), new ShellState(), themes);
+        return new VintelliShell(ShellConfig.of(new ToolWindowRegistry(windows).toolWindows(), new ShellState(), themes));
     }
 
     private static VintelliShell shellWithFakeWindow(FakeToolWindow fake) {
@@ -4834,7 +4867,7 @@ class VintelliShellTest {
                 new AcpAgentsToolWindow(() -> themes)));
         List<ToolWindow> windows = new ArrayList<>(registry.toolWindows());
         windows.add(fake);
-        return new VintelliShell(new ToolWindowRegistry(windows).toolWindows(), new ShellState(), themes);
+        return new VintelliShell(ShellConfig.of(new ToolWindowRegistry(windows).toolWindows(), new ShellState(), themes));
     }
 
     /**

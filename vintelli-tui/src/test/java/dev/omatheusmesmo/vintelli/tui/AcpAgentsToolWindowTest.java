@@ -42,7 +42,7 @@ class AcpAgentsToolWindowTest {
         ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
         FakeChat chat = new FakeChat();
         AcpAgentsToolWindow window = new AcpAgentsToolWindow(() -> themes, chat, new UiWorkQueue());
-        VintelliShell shell = new VintelliShell(List.of(window), new ShellState(), themes);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window), new ShellState(), themes));
 
         shell.handle(KeyEvent.ofKey(KeyCode.ENTER), ActionSurface.WEB);
 
@@ -57,7 +57,7 @@ class AcpAgentsToolWindowTest {
         AcpAgentsToolWindow window = new AcpAgentsToolWindow(() -> themes, chat, uiWork);
         AtomicReference<Buffer> rendered = new AtomicReference<>();
         window.observeRenderedBuffer(buffer -> rendered.set(buffer.copy()));
-        VintelliShell shell = new VintelliShell(List.of(window), new ShellState(), themes);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window), new ShellState(), themes));
         shell.useUiWorkQueue(uiWork);
         Size size = new Size(120, 42);
         try (ToolkitTestRunner test = runShell(shell, size)) {
@@ -107,7 +107,7 @@ class AcpAgentsToolWindowTest {
         AcpAgentsToolWindow window = new AcpAgentsToolWindow(() -> themes, chat, uiWork);
         AtomicReference<Buffer> rendered = new AtomicReference<>();
         window.observeRenderedBuffer(buffer -> rendered.set(buffer.copy()));
-        VintelliShell shell = new VintelliShell(List.of(window), new ShellState(), themes);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window), new ShellState(), themes));
         shell.useUiWorkQueue(uiWork);
         Size size = new Size(120, 21);
         try (ToolkitTestRunner test = runShell(shell, size)) {
@@ -157,7 +157,7 @@ class AcpAgentsToolWindowTest {
         AcpAgentsToolWindow window = new AcpAgentsToolWindow(() -> themes, chat, uiWork);
         AtomicReference<Buffer> rendered = new AtomicReference<>();
         window.observeRenderedBuffer(buffer -> rendered.set(buffer.copy()));
-        VintelliShell shell = new VintelliShell(List.of(window), new ShellState(), themes);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window), new ShellState(), themes));
         shell.useUiWorkQueue(uiWork);
         Size size = new Size(120, 21);
         try (ToolkitTestRunner test = runShell(shell, size)) {
@@ -210,7 +210,7 @@ class AcpAgentsToolWindowTest {
             rendered.set(buffer.copy());
             renderThread.compareAndSet(null, Thread.currentThread());
         });
-        VintelliShell shell = new VintelliShell(List.of(window), new ShellState(), themes);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window), new ShellState(), themes));
         shell.useUiWorkQueue(uiWork);
         Size size = new Size(120, 24);
         try (ToolkitTestRunner test = runShell(shell, size)) {
@@ -235,7 +235,7 @@ class AcpAgentsToolWindowTest {
         AcpAgentsToolWindow window = new AcpAgentsToolWindow(() -> themes, chat, uiWork);
         AtomicReference<Buffer> rendered = new AtomicReference<>();
         window.observeRenderedBuffer(buffer -> rendered.set(buffer.copy()));
-        VintelliShell shell = new VintelliShell(List.of(window), new ShellState(), themes);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window), new ShellState(), themes));
         shell.useUiWorkQueue(uiWork);
         Size size = new Size(120, 24);
         try (ToolkitTestRunner test = runShell(shell, size)) {
@@ -257,7 +257,7 @@ class AcpAgentsToolWindowTest {
         AcpAgentsToolWindow window = new AcpAgentsToolWindow(() -> themes, new FakeChat(), uiWork);
         AtomicReference<Buffer> rendered = new AtomicReference<>();
         window.observeRenderedBuffer(buffer -> rendered.set(buffer.copy()));
-        VintelliShell shell = new VintelliShell(List.of(window), new ShellState(), themes);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window), new ShellState(), themes));
         shell.useUiWorkQueue(uiWork);
         Size size = new Size(120, 30);
         try (ToolkitTestRunner test = runShell(shell, size)) {
@@ -284,7 +284,7 @@ class AcpAgentsToolWindowTest {
         AcpAgentsToolWindow window = new AcpAgentsToolWindow(() -> themes, chat, uiWork);
         AtomicReference<Buffer> rendered = new AtomicReference<>();
         window.observeRenderedBuffer(buffer -> rendered.set(buffer.copy()));
-        VintelliShell shell = new VintelliShell(List.of(window), new ShellState(), themes);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window), new ShellState(), themes));
         shell.useUiWorkQueue(uiWork);
         Size size = new Size(120, 42);
         try (ToolkitTestRunner test = runShell(shell, size)) {
@@ -315,7 +315,7 @@ class AcpAgentsToolWindowTest {
         AcpAgentsToolWindow window = new AcpAgentsToolWindow(() -> themes, chat, uiWork);
         AtomicReference<Buffer> rendered = new AtomicReference<>();
         window.observeRenderedBuffer(buffer -> rendered.set(buffer.copy()));
-        VintelliShell shell = new VintelliShell(List.of(window), new ShellState(), themes);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window), new ShellState(), themes));
         shell.useUiWorkQueue(uiWork);
         Size size = new Size(120, 42);
         try (ToolkitTestRunner test = runShell(shell, size)) {
@@ -346,7 +346,7 @@ class AcpAgentsToolWindowTest {
         AcpAgentsToolWindow window = new AcpAgentsToolWindow(() -> themes, chat, uiWork);
         AtomicReference<Buffer> rendered = new AtomicReference<>();
         window.observeRenderedBuffer(buffer -> rendered.set(buffer.copy()));
-        VintelliShell shell = new VintelliShell(List.of(window), new ShellState(), themes);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window), new ShellState(), themes));
         shell.useUiWorkQueue(uiWork);
         Size size = new Size(120, 42);
         try (ToolkitTestRunner test = runShell(shell, size)) {
@@ -377,7 +377,7 @@ class AcpAgentsToolWindowTest {
         AcpAgentsToolWindow window = new AcpAgentsToolWindow(() -> themes, chat, uiWork);
         AtomicReference<Buffer> rendered = new AtomicReference<>();
         window.observeRenderedBuffer(buffer -> rendered.set(buffer.copy()));
-        VintelliShell shell = new VintelliShell(List.of(window), new ShellState(), themes);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window), new ShellState(), themes));
         shell.useUiWorkQueue(uiWork);
         Size size = new Size(120, 42);
         try (ToolkitTestRunner test = runShell(shell, size)) {
@@ -408,7 +408,7 @@ class AcpAgentsToolWindowTest {
         window.permissionTimeout(Duration.ofMillis(300));
         AtomicReference<Buffer> rendered = new AtomicReference<>();
         window.observeRenderedBuffer(buffer -> rendered.set(buffer.copy()));
-        VintelliShell shell = new VintelliShell(List.of(window), new ShellState(), themes);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window), new ShellState(), themes));
         shell.useUiWorkQueue(uiWork);
         Size size = new Size(120, 42);
         try (ToolkitTestRunner test = runShell(shell, size)) {
@@ -437,7 +437,7 @@ class AcpAgentsToolWindowTest {
         AcpAgentsToolWindow window = new AcpAgentsToolWindow(() -> themes, chat, uiWork);
         AtomicReference<Buffer> rendered = new AtomicReference<>();
         window.observeRenderedBuffer(buffer -> rendered.set(buffer.copy()));
-        VintelliShell shell = new VintelliShell(List.of(window), new ShellState(), themes);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window), new ShellState(), themes));
         shell.useUiWorkQueue(uiWork);
         Size size = new Size(120, 42);
         try (ToolkitTestRunner test = runShell(shell, size)) {

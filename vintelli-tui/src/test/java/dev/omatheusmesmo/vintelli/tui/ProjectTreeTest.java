@@ -51,8 +51,10 @@ class ProjectTreeTest {
         List<ToolWindow> windows = new ArrayList<>(defaultWindows());
         windows.add(editor);
         ToolWindowRegistry registry = new ToolWindowRegistry(windows);
-        return new VintelliShell(registry.toolWindows(), new ShellState(),
-                () -> Keymap.defaultKeymap(registry.toolWindows()), themes, search, testFileOperations(root));
+        return new VintelliShell(ShellConfig.of(registry.toolWindows(), new ShellState(), themes)
+                .withKeymapSupplier(() -> Keymap.defaultKeymap(registry.toolWindows()))
+                .withProjectSearch(search)
+                .withFileOperations(testFileOperations(root)));
     }
 
     private static ProjectFileOperations testFileOperations(Path root) {
@@ -329,8 +331,9 @@ class ProjectTreeTest {
         List<ToolWindow> windows = new ArrayList<>(defaultWindows());
         windows.add(editor);
         ToolWindowRegistry registry = new ToolWindowRegistry(windows);
-        VintelliShell shell = new VintelliShell(registry.toolWindows(), new ShellState(),
-                () -> Keymap.defaultKeymap(registry.toolWindows()), themes, search);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(registry.toolWindows(), new ShellState(), themes)
+                .withKeymapSupplier(() -> Keymap.defaultKeymap(registry.toolWindows()))
+                .withProjectSearch(search));
         shell.refreshProjectTree();
         assertTrue(shell.projectFiles().isEmpty() || shell.projectFiles().stream().allMatch(s -> s.contains("No project")),
                 "empty project should show empty state");
