@@ -32,7 +32,6 @@ import dev.omatheusmesmo.vintelli.api.capability.ProjectFileOperations;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityStatus;
-import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Diagnostic;
 import dev.omatheusmesmo.vintelli.api.statusbar.StatusBarWidgetContributor;
 import dev.tamboui.layout.Constraint;
@@ -67,13 +66,10 @@ import java.nio.file.Files;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
@@ -154,12 +150,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private final ProjectSearch projectSearch;
     private final List<NavigationCapability> navigationProviders;
     private final CapabilityRegistry capabilityRegistry;
-    private final AtomicLong readFileSequence = new AtomicLong();
-    private volatile CapabilityStateLine.Summary readFileSummary;
+    private final ReadFileSummary readFileSummary;
     private final MainToolbar mainToolbar;
     private final ToolbarController toolbar;
     private final RunToolWindow runWindow;
-    private final IdeaMcpConnection ideaMcpConnection;
+    private final IdeaConnection ideaConnection;
     private final ToolStripes toolStripes;
     private final StatusBar statusBar;
     private final StatusBarElement statusBarElement;
@@ -175,7 +170,6 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private SplitterDrag splitterDrag;
     private boolean splitterChanged;
     private final ReentrantLock frameLock = new ReentrantLock();
-    private final AtomicBoolean ideaConnectInProgress = new AtomicBoolean();
     private final Supplier<Keymap> keymapSupplier;
     private final StackElement rootBase;
     private final Element lockedRoot;
@@ -330,10 +324,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         this.fileOperations = fileOperations;
         this.navigationProviders = List.copyOf(navigationProviders);
         this.capabilityRegistry = capabilityRegistry;
-        this.readFileSummary = capabilityRegistry == null
-                ? CapabilityStateLine.notConfigured(CapabilityType.READ_FILE)
-                : CapabilityStateLine.checking(CapabilityType.READ_FILE);
-        this.ideaMcpConnection = ideaMcpConnection;
+        this.readFileSummary = new ReadFileSummary(capabilityRegistry);
+        this.ideaConnection = new IdeaConnection(ideaMcpConnection, ideaHost());
         this.editor = toolWindows.stream().filter(BuiltinEditor.class::isInstance)
                 .map(BuiltinEditor.class::cast).findFirst().orElse(null);
         this.toolWindows = toolWindows.stream().filter(window -> !(window instanceof BuiltinEditor)).toList();
@@ -397,9 +389,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         this.rootBase = buildRootContent();
         this.lockedRoot = new LockedElement(rootBase, frameLock, this, true);
         if (projectSearch != null) {
-            Thread.ofVirtual().start(this::discoverProjectFiles);
+            Thread.ofVirtual().start(projectPanel::discoverFiles);
         }
-        refreshReadFileSummary();
+        readFileSummary.refresh();
         vcsActions.refreshToolbarVcs();
     }
 
@@ -497,7 +489,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
             @Override
             public boolean ideaConnectInProgress() {
-                return ideaConnectInProgress.get();
+                return ideaConnection.inProgress();
             }
 
             @Override
@@ -794,32 +786,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         Column pane = Toolkit.column().id("project-pane");
         pane.add(projectPanel.header(() -> themes, this::focusMark));
         pane.add(projectPanel);
-        pane.add(new PaneHeader("project-read-file", context -> false, this::readFileTitle, () -> themes, () -> " ",
-                false));
+        pane.add(projectPanel.footer(() -> themes, readFileSummary));
         pane.fill();
         return pane;
-    }
-
-    private String readFileTitle() {
-        CapabilityStateLine.Summary summary = readFileSummary;
-        if (summary == null) {
-            return "";
-        }
-        String skipped = summary.skipped().isEmpty() ? "" : "  " + String.join("  ·  ", summary.skipped());
-        return summary.headline() + skipped;
-    }
-
-    private void refreshReadFileSummary() {
-        if (capabilityRegistry == null) {
-            return;
-        }
-        long sequence = readFileSequence.incrementAndGet();
-        Thread.ofVirtual().name("vintelli-read-file-state").start(() -> {
-            CapabilityStateLine.Summary summary = CapabilityStateLine.read(capabilityRegistry, CapabilityType.READ_FILE);
-            if (sequence == readFileSequence.get()) {
-                readFileSummary = summary;
-            }
-        });
     }
 
     private ProjectPanel.Host projectHost() {
@@ -959,21 +928,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         editorController.openDiagnostic(problem);
     }
 
-    private void discoverProjectFiles() {
-        frameLock.lock();
-        try {
-            if (projects.filesLoading()) {
-                refreshProjectTree();
-            }
-        } catch (Exception unavailable) {
-            projects.markUnavailable(unavailable.getMessage());
-        } finally {
-            frameLock.unlock();
-        }
-    }
-
     public void refreshProjectTree() {
-        refreshReadFileSummary();
+        readFileSummary.refresh();
         frameLock.lock();
         try {
             projects.refresh(true);
@@ -1519,7 +1475,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             }
             case KeyActions.IDEA_MCP_CONNECT -> {
                 parts.stack().closeOverlays();
-                connectIdeaMcpAsync();
+                ideaConnection.connect();
             }
             case KeyActions.FIND, KeyActions.FIND_IN_FILES -> {
                 parts.stack().closeOverlays();
@@ -1788,48 +1744,32 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         vcsActions.showVcsWorkingTreeDiff();
     }
 
-    private void connectIdeaMcpAsync() {
-        if (ideaMcpConnection == null) {
-            status = "IDEA MCP connection control is unavailable";
-            return;
-        }
-        if (!ideaConnectInProgress.compareAndSet(false, true)) {
-            status = "IDEA MCP connection is already in progress";
-            return;
-        }
-        status = "IDEA MCP: connecting…";
-        Thread.ofVirtual().start(() -> {
-            IdeaMcpConnection.Snapshot result;
-            try {
-                result = ideaMcpConnection.reconnectFromUserAction();
-            } catch (RuntimeException failure) {
-                result = new IdeaMcpConnection.Snapshot("ERROR",
-                        "connection failed; check the configured HTTP Stream Config and retry");
+    private IdeaConnection.Host ideaHost() {
+        return new IdeaConnection.Host() {
+            @Override
+            public void status(String message) {
+                status = message;
             }
-            IdeaMcpConnection.Snapshot completed = result;
-            Runnable update = () -> {
-                ideaConnectInProgress.set(false);
-                status = "IDEA MCP: " + completed.state().toLowerCase(Locale.ROOT).replace('_', ' ')
-                        + (completed.detail().isBlank() ? "" : " — " + completed.detail());
-                for (ToolWindow window : toolWindows) {
-                    if ("run".equals(window.id())) {
-                        window.performAction(KeyActions.RUN_REFRESH);
-                    } else if ("problems".equals(window.id())) {
-                        window.performAction(KeyActions.PROBLEMS_REFRESH);
+
+            @Override
+            public void runOnUi(Runnable update) {
+                if (uiWorkQueue != null) {
+                    uiWorkQueue.execute(update);
+                } else {
+                    frameLock.lock();
+                    try {
+                        update.run();
+                    } finally {
+                        frameLock.unlock();
                     }
                 }
-            };
-            if (uiWorkQueue != null) {
-                uiWorkQueue.execute(update);
-            } else {
-                frameLock.lock();
-                try {
-                    update.run();
-                } finally {
-                    frameLock.unlock();
-                }
             }
-        });
+
+            @Override
+            public List<ToolWindow> toolWindows() {
+                return toolWindows;
+            }
+        };
     }
 
     private void openMenu(KeymapParts parts, int index) {
