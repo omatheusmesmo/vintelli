@@ -6,6 +6,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -44,6 +45,10 @@ public final class RunToolWindow implements ToolWindow {
     private final UiWorkQueue uiWork;
     private final Path workingDirectory;
     private final RunSelectionStore selectionStore;
+    private final int debugPort;
+    private volatile boolean debugging;
+    private volatile RunCapability.DebugSupport debugSupport = new RunCapability.DebugSupport(false,
+            "Select an available run configuration first");
     private String preferredConfiguration;
     private final ArrayDeque<String> output = new ArrayDeque<>();
     private final AtomicLong listingSequence = new AtomicLong();
@@ -71,6 +76,7 @@ public final class RunToolWindow implements ToolWindow {
         this.uiWork = new UiWorkQueue();
         this.workingDirectory = Path.of(".").toAbsolutePath().normalize();
         this.selectionStore = null;
+        this.debugPort = 5005;
         this.status = "Run provider unavailable";
         this.capabilitySummary = CapabilityStateLine.notConfigured(CapabilityType.RUN);
     }
@@ -80,10 +86,18 @@ public final class RunToolWindow implements ToolWindow {
         this(themes, capabilities, uiWork, workingDirectory, null);
     }
 
-    @Inject
     public RunToolWindow(Provider<ShellThemes> themes, CapabilityRegistry capabilities, UiWorkQueue uiWork,
             @ConfigProperty(name = "vintelli.local.project-root", defaultValue = ".") String workingDirectory,
             RunSelectionStore selectionStore) {
+        this(themes, capabilities, uiWork, workingDirectory, selectionStore, 5005);
+    }
+
+    @Inject
+    public RunToolWindow(Provider<ShellThemes> themes, CapabilityRegistry capabilities, UiWorkQueue uiWork,
+            @ConfigProperty(name = "vintelli.local.project-root", defaultValue = ".") String workingDirectory,
+            RunSelectionStore selectionStore,
+            @ConfigProperty(name = "vintelli.debug.port", defaultValue = "5005") int debugPort) {
+        this.debugPort = debugPort;
         this.themes = themes;
         this.capabilities = capabilities;
         this.uiWork = uiWork;
@@ -196,8 +210,12 @@ public final class RunToolWindow implements ToolWindow {
 
     @Override
     public boolean performAction(String actionId, KeyEvent event) {
+        if (KeyActions.RUN_DEBUG.equals(actionId)) {
+            startSelected(true);
+            return true;
+        }
         if (KeyActions.RUN_EXECUTE.equals(actionId)) {
-            startSelected();
+            startSelected(false);
             return true;
         }
         if (KeyActions.RUN_REFRESH.equals(actionId)) {
@@ -233,6 +251,7 @@ public final class RunToolWindow implements ToolWindow {
                 + (handle == null || !handle.supportsCancellation()
                         ? "Stop unavailable" : "■ Stop"));
         lines.add(status);
+        if (!debugSupport.available()) lines.add("Debug unavailable: " + debugSupport.reason());
         lines.addAll(capabilitySummary.skipped());
 
         int innerRows = Math.max(0, area.height());
@@ -345,6 +364,7 @@ public final class RunToolWindow implements ToolWindow {
     private void selectIndex(int index) {
         if (index < 0 || index >= configurations.size()) return;
         selectedIndex = index;
+        refreshDebugSupport();
         preferredConfiguration = configurations.get(index).identifier();
         if (selectionStore != null) {
             try {
@@ -353,6 +373,21 @@ public final class RunToolWindow implements ToolWindow {
                 append("Cannot save run selection: " + message(failure));
             }
         }
+    }
+
+    boolean debugAvailable() {
+        return debugSupport.available() && !starting && !running;
+    }
+
+    boolean debugging() {
+        return debugging && (starting || running);
+    }
+
+    private void refreshDebugSupport() {
+        RunCapability current = provider;
+        debugSupport = current == null || configurations.isEmpty() || selectedIndex >= configurations.size()
+                ? new RunCapability.DebugSupport(false, "Select an available run configuration first")
+                : current.debugSupport(configurations.get(selectedIndex).identifier());
     }
 
     /** True while a configuration runs; the main toolbar shows Stop in its Run slot then. */
@@ -427,6 +462,7 @@ public final class RunToolWindow implements ToolWindow {
                     for (int index = 0; index < configurations.size(); index++) {
                         if (configurations.get(index).identifier().equals(preferredConfiguration)) selectedIndex = index;
                     }
+                    refreshDebugSupport();
                     status = configurations.isEmpty() ? "No configurations found" : "Ready";
                 }
             });
@@ -456,7 +492,7 @@ public final class RunToolWindow implements ToolWindow {
         append(failure);
     }
 
-    private void startSelected() {
+    private void startSelected(boolean debug) {
         if (capabilities == null) {
             status = "Run provider unavailable";
             return;
@@ -468,7 +504,12 @@ public final class RunToolWindow implements ToolWindow {
             status = "Select an available run configuration first";
             return;
         }
-        startRun(configurations.get(selectedIndex).identifier(), List.of());
+        if (debug && !debugSupport.available()) {
+            status = "Debug unavailable: " + debugSupport.reason();
+            append(status);
+            return;
+        }
+        startRun(configurations.get(selectedIndex).identifier(), List.of(), debug);
     }
 
     /**
@@ -485,10 +526,10 @@ public final class RunToolWindow implements ToolWindow {
             status = "A run is already active; stop it first";
             return;
         }
-        startRun(identifier, arguments);
+        startRun(identifier, arguments, false);
     }
 
-    private void startRun(String identifier, List<String> arguments) {
+    private void startRun(String identifier, List<String> arguments, boolean debug) {
         RunCapability selected = provider;
         if (selected == null) {
             status = "Run provider unavailable; refresh configurations";
@@ -496,6 +537,7 @@ public final class RunToolWindow implements ToolWindow {
         }
         long sequence = runSequence.incrementAndGet();
         starting = true;
+        debugging = debug;
         running = true;
         handle = null;
         status = "Starting " + identifier;
@@ -540,17 +582,18 @@ public final class RunToolWindow implements ToolWindow {
             }
             CapabilityResult<RunCapability.RunHandle> result;
             try {
-                result = selected.start(
-                        new RunCapability.RunRequest(identifier, workingDirectory, Map.of(), arguments),
-                        line -> uiWork.execute(() -> {
-                            if (sequence == runSequence.get()) {
-                                append(line);
-                            }
-                        }),
-                        ended -> {
-                            completion.set(ended);
-                            uiWork.execute(() -> completeRun(sequence, ended));
-                        });
+                var request = new RunCapability.RunRequest(identifier, workingDirectory, Map.of(), arguments);
+                Consumer<String> outputLines = line -> uiWork.execute(() -> {
+                    if (sequence == runSequence.get()) {
+                        append(line);
+                    }
+                });
+                Consumer<RunCapability.RunCompletion> ended = value -> {
+                    completion.set(value);
+                    uiWork.execute(() -> completeRun(sequence, value));
+                };
+                result = debug ? selected.startDebug(request, debugPort, outputLines, ended)
+                        : selected.start(request, outputLines, ended);
             } catch (RuntimeException failure) {
                 uiWork.execute(() -> {
                     if (sequence == runSequence.get()) {
@@ -574,7 +617,7 @@ public final class RunToolWindow implements ToolWindow {
                 } else {
                     handle = ((CapabilityResult.Ok<RunCapability.RunHandle>) result).value();
                     running = true;
-                    status = "Running " + identifier;
+                    status = (debug ? "Debug 127.0.0.1:" + debugPort + " · " : "Running ") + identifier;
                 }
             });
         });
@@ -603,6 +646,7 @@ public final class RunToolWindow implements ToolWindow {
     private void failRun(String failure) {
         starting = false;
         running = false;
+        debugging = false;
         handle = null;
         status = failure;
         append(failure);
@@ -619,6 +663,7 @@ public final class RunToolWindow implements ToolWindow {
         }
         starting = false;
         running = false;
+        debugging = false;
         handle = null;
         status = completion.summary();
     }

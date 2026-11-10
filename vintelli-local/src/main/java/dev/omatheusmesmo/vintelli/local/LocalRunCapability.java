@@ -1,5 +1,6 @@
 package dev.omatheusmesmo.vintelli.local;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -115,6 +116,27 @@ public final class LocalRunCapability implements RunCapability {
     @Override
     public CapabilityResult<RunHandle> start(RunRequest request, Consumer<String> outputLines,
             Consumer<RunCompletion> completion) {
+        return start(request, outputLines, completion, null);
+    }
+
+    @Override
+    public DebugSupport debugSupport(String configurationName) {
+        if (detector.specification(configurationName, List.of()).isEmpty()) {
+            return new DebugSupport(false, "Unknown run configuration '" + configurationName + "'");
+        }
+        return DebugLaunch.support(configurationName);
+    }
+
+    @Override
+    public CapabilityResult<RunHandle> startDebug(RunRequest request, int port, Consumer<String> outputLines,
+            Consumer<RunCompletion> completion) {
+        DebugSupport support = debugSupport(request.configurationName());
+        if (!support.available()) return CapabilityResult.failed(new CapabilityFailure(support.reason(), ""));
+        return start(request, outputLines, completion, port);
+    }
+
+    private CapabilityResult<RunHandle> start(RunRequest request, Consumer<String> outputLines,
+            Consumer<RunCompletion> completion, Integer debugPort) {
         Objects.requireNonNull(completion, "completion");
         Path confined = projectRoot.confine(request.workingDirectory());
         if (confined == null) {
@@ -134,7 +156,22 @@ public final class LocalRunCapability implements RunCapability {
         Optional<BuildToolDetector.RunConfigurationSpecification> specification =
                 detector.specification(request.configurationName(), request.arguments());
         if (specification.isPresent()) {
-            return run(specification.get(), request, outputLines, completion, confined);
+            var plan = specification.get();
+            if (debugPort != null) {
+                try {
+                    DebugLaunch.checkPort(debugPort);
+                } catch (IllegalArgumentException failure) {
+                    return CapabilityResult.failed(new CapabilityFailure(failure.getMessage(), ""));
+                } catch (IOException failure) {
+                    return CapabilityResult.failed(new CapabilityFailure("Debug port 127.0.0.1:" + debugPort
+                            + " is busy or unavailable", failure.getMessage()));
+                }
+                List<String> command = new ArrayList<>(plan.command());
+                command.addAll(DebugLaunch.arguments(request.configurationName(), debugPort));
+                plan = new BuildToolDetector.RunConfigurationSpecification(plan.identifier(), command);
+                outputLines.accept("Debug: attach to 127.0.0.1:" + debugPort + " (waiting for a debugger)");
+            }
+            return run(plan, request, outputLines, completion, confined);
         }
         return CapabilityResult.failed(new CapabilityFailure(
                 "Unknown run configuration '" + request.configurationName() + "'",

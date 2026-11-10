@@ -23,7 +23,7 @@ import dev.tamboui.widgets.paragraph.Paragraph;
  * The one-row main toolbar of the shell, laid out like the IntelliJ New UI
  * toolbar. The left group holds the menu button, the project and the branch
  * widgets. The right group, right-aligned, holds the run configuration, the
- * Run slot (Run while idle, Stop while a configuration runs), the disabled
+ * Run slot (Run while idle, Stop while a configuration runs), the
  * Debug button, the more button, Search and Settings. Buttons are separated by
  * one blank column and the right group keeps two blank columns from the left
  * group. The widgets are laid out by {@link #layout} from a {@link Model}
@@ -84,7 +84,11 @@ final class MainToolbar extends StyledElement<MainToolbar> {
      * Stop, and {@code activeMenu} is the highlighted label while the popup is
      * open.
      */
-    record Model(String project, String branch, String run, boolean running, boolean menuOpen, int activeMenu) {
+    record Model(String project, String branch, String run, boolean running, boolean menuOpen, int activeMenu,
+            boolean debugAvailable) {
+        Model(String project, String branch, String run, boolean running, boolean menuOpen, int activeMenu) {
+            this(project, branch, run, running, menuOpen, activeMenu, false);
+        }
     }
 
     /** One drawn piece of the toolbar at a column of its row. */
@@ -259,7 +263,7 @@ final class MainToolbar extends StyledElement<MainToolbar> {
                 String role = segment.menuIndex() == current.activeMenu() ? "menu-entry-active" : "menu-entry";
                 yield theme.resolver(role).toStyle();
             }
-            case DEBUG -> base.dim();
+            case DEBUG -> current.debugAvailable() ? base : base.dim();
             default -> base;
         };
     }

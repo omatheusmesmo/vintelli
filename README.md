@@ -152,3 +152,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for how to set up, propose changes, and m
 ## License
 
 Vintelli is licensed under the [Apache License, Version 2.0](LICENSE).
+
+Debug supported Maven applications and tests from the toolbar, with a suspended
+loopback JDWP port and process-tree Stop: [debug launch](docs/debug-launch.md).

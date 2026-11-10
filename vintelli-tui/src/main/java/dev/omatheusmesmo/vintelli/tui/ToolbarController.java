@@ -9,7 +9,7 @@ import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
  * label, the branch read from the shell, and the run configuration and the Run
  * slot of the Run window. Every button that has a keyboard route dispatches the
  * same named action as that route, so a click and a shortcut reach the same
- * behaviour. The Debug button is drawn disabled and dispatches nothing. The
+ * behaviour. The Debug button uses the selected configuration support. The
  * menu popup, the Run window focus and the action dispatch stay in the shell,
  * reached through {@link Host}. It holds no TamboUI type: the
  * {@link MainToolbar} view draws the model this controller builds.
@@ -50,7 +50,7 @@ final class ToolbarController {
         boolean menuOpen = host.menuOpen();
         return new MainToolbar.Model(project, branch.get(),
                 run == null ? null : run.selectedConfigurationLabel(), run != null && run.running(),
-                menuOpen, menuOpen ? host.menuIndex() : -1);
+                menuOpen, menuOpen ? host.menuIndex() : -1, run != null && run.debugAvailable());
     }
 
     /**
@@ -90,7 +90,8 @@ final class ToolbarController {
             case MORE -> host.dispatch(KeyActions.MENU);
             case SEARCH -> host.dispatch(KeyActions.FIND_IN_FILES);
             case SETTINGS -> host.dispatch(KeyActions.SHELL_SETTINGS);
-            case PROJECT, DEBUG -> {
+            case DEBUG -> dispatchRunAction(KeyActions.RUN_DEBUG);
+            case PROJECT -> {
             }
         }
         return true;

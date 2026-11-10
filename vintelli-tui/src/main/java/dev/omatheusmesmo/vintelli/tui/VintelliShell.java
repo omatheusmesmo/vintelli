@@ -283,7 +283,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         this.toolWindowPanel = new ToolWindowPanel(toolWindowHost, fileIcons.mode(), () -> themes, this::focusMark,
                 toolWindowElementHost());
         this.toolStripes = new ToolStripes(toolWindowHost.windowsByAnchor(), fileIcons.mode(), stripHost());
-        this.statusBar = new StatusBar(() -> status, () -> projects.inputActive() || vcsActions.promptOpen()
+        this.statusBar = new StatusBar(() -> runWindow != null && runWindow.debugging() ? "Debug | " + status : status, () -> projects.inputActive() || vcsActions.promptOpen()
                 || projects.deletePending(), capabilityRegistry, editor, statusBarContributors,
                 new StatusBar.Glyphs(ProjectTreeGlyphs.supportsUnicode(), fileIcons.mode()),
                 editorController::statusNavigation);
@@ -1711,7 +1711,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     private static boolean isCommandAction(String actionId) {
-        return KeyActions.RUN_EXECUTE.equals(actionId) || KeyActions.RUN_STOP.equals(actionId)
+        return KeyActions.RUN_DEBUG.equals(actionId) || KeyActions.RUN_EXECUTE.equals(actionId) || KeyActions.RUN_STOP.equals(actionId)
                 || KeyActions.MAVEN_ACTIVATE.equals(actionId) || KeyActions.TERMINAL_EXECUTE.equals(actionId)
                 || KeyActions.ACP_CHAT_NEW.equals(actionId) || KeyActions.ACP_CHAT_SEND.equals(actionId)
                 || KeyActions.ACP_CHAT_CANCEL.equals(actionId) || KeyActions.ACP_CHAT_PERMISSION.equals(actionId)

@@ -362,3 +362,9 @@ text are also restored from the user config directory. Theme switching is
 exposed through the named action `shell.theme.switch`
 (`SwitchShellThemeAction`), for the keymap work to bind a key to; the switch
 applies on the next frame without a restart.
+
+### Debug launch
+
+Choose a supported Maven run configuration, then click Debug or invoke **Debug
+Selected Configuration** in the palette. Attach to `127.0.0.1:5005`; Stop ends the
+debuggee and build. See [debug launch](debug-launch.md) for supported goals and configuration.
