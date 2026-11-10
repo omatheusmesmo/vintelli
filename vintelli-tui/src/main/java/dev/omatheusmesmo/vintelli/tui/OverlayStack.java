@@ -22,6 +22,7 @@ final class OverlayStack {
         COMMAND_PALETTE(false),
         KEYMAP_HELP(false),
         MENU(false),
+        RUN_CONFIGURATION(false),
         PROJECT_SEARCH(false),
         PROJECT_DELETE(true),
         EDITOR_CLOSE(true),

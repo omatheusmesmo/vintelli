@@ -1,6 +1,7 @@
 package dev.omatheusmesmo.vintelli.tui;
 
 import java.nio.file.Path;
+import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
@@ -42,6 +43,8 @@ public final class RunToolWindow implements ToolWindow {
     private final CapabilityRegistry capabilities;
     private final UiWorkQueue uiWork;
     private final Path workingDirectory;
+    private final RunSelectionStore selectionStore;
+    private String preferredConfiguration;
     private final ArrayDeque<String> output = new ArrayDeque<>();
     private final AtomicLong listingSequence = new AtomicLong();
     private final AtomicLong runSequence = new AtomicLong();
@@ -67,17 +70,26 @@ public final class RunToolWindow implements ToolWindow {
         this.capabilities = null;
         this.uiWork = new UiWorkQueue();
         this.workingDirectory = Path.of(".").toAbsolutePath().normalize();
+        this.selectionStore = null;
         this.status = "Run provider unavailable";
         this.capabilitySummary = CapabilityStateLine.notConfigured(CapabilityType.RUN);
     }
 
+    public RunToolWindow(Provider<ShellThemes> themes, CapabilityRegistry capabilities, UiWorkQueue uiWork,
+            String workingDirectory) {
+        this(themes, capabilities, uiWork, workingDirectory, null);
+    }
+
     @Inject
     public RunToolWindow(Provider<ShellThemes> themes, CapabilityRegistry capabilities, UiWorkQueue uiWork,
-            @ConfigProperty(name = "vintelli.local.project-root", defaultValue = ".") String workingDirectory) {
+            @ConfigProperty(name = "vintelli.local.project-root", defaultValue = ".") String workingDirectory,
+            RunSelectionStore selectionStore) {
         this.themes = themes;
         this.capabilities = capabilities;
         this.uiWork = uiWork;
         this.workingDirectory = Path.of(workingDirectory).toAbsolutePath().normalize();
+        this.selectionStore = selectionStore;
+        this.preferredConfiguration = selectionStore == null ? null : selectionStore.load().orElse(null);
     }
 
     @PostConstruct
@@ -166,7 +178,7 @@ public final class RunToolWindow implements ToolWindow {
         if (configurationRowsStart >= 0 && row >= configurationRowsStart
                 && row < configurationRowsStart + visibleConfigurationCount
                 && index >= 0 && index < configurations.size()) {
-            selectedIndex = index;
+            selectConfiguration(configurations.get(index).identifier());
             return true;
         }
         return false;
@@ -193,11 +205,11 @@ public final class RunToolWindow implements ToolWindow {
             return true;
         }
         if (KeyActions.RUN_SELECT_NEXT.equals(actionId)) {
-            selectedIndex = Math.min(Math.max(0, configurations.size() - 1), selectedIndex + 1);
+            selectIndex(Math.min(Math.max(0, configurations.size() - 1), selectedIndex + 1));
             return true;
         }
         if (KeyActions.RUN_SELECT_PREVIOUS.equals(actionId)) {
-            selectedIndex = Math.max(0, selectedIndex - 1);
+            selectIndex(Math.max(0, selectedIndex - 1));
             return true;
         }
         if (KeyActions.RUN_STOP.equals(actionId)) {
@@ -320,6 +332,29 @@ public final class RunToolWindow implements ToolWindow {
         return index < 0 || index >= listed.size() ? "Run" : listed.get(index).identifier();
     }
 
+    boolean selectConfiguration(String identifier) {
+        for (int index = 0; index < configurations.size(); index++) {
+            if (configurations.get(index).identifier().equals(identifier)) {
+                selectIndex(index);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void selectIndex(int index) {
+        if (index < 0 || index >= configurations.size()) return;
+        selectedIndex = index;
+        preferredConfiguration = configurations.get(index).identifier();
+        if (selectionStore != null) {
+            try {
+                selectionStore.save(preferredConfiguration);
+            } catch (IOException failure) {
+                append("Cannot save run selection: " + message(failure));
+            }
+        }
+    }
+
     /** True while a configuration runs; the main toolbar shows Stop in its Run slot then. */
     boolean running() {
         return handle != null;
@@ -388,7 +423,10 @@ public final class RunToolWindow implements ToolWindow {
                     append(status);
                 } else {
                     configurations = ((CapabilityResult.Ok<List<RunCapability.RunConfiguration>>) result).value();
-                    selectedIndex = Math.min(selectedIndex, Math.max(0, configurations.size() - 1));
+                    selectedIndex = 0;
+                    for (int index = 0; index < configurations.size(); index++) {
+                        if (configurations.get(index).identifier().equals(preferredConfiguration)) selectedIndex = index;
+                    }
                     status = configurations.isEmpty() ? "No configurations found" : "Ready";
                 }
             });
@@ -601,7 +639,7 @@ public final class RunToolWindow implements ToolWindow {
         }
     }
 
-    private static String message(RuntimeException failure) {
+    private static String message(Exception failure) {
         return failure.getMessage() == null ? failure.getClass().getSimpleName() : failure.getMessage();
     }
 

@@ -105,6 +105,11 @@ final class MainToolbar extends StyledElement<MainToolbar> {
     private volatile Rect lastArea = Rect.ZERO;
     private volatile List<Segment> lastSegments = List.of();
 
+    int configurationColumn() {
+        return lastSegments.stream().filter(segment -> segment.kind() == Kind.CONFIGURATION)
+                .mapToInt(Segment::x).findFirst().orElse(0);
+    }
+
     MainToolbar(Supplier<Model> model, List<String> menus, IconMode mode, Supplier<ShellThemes> themes) {
         this(model, menus, Glyphs.of(mode, ProjectTreeGlyphs.supportsUnicode()), themes);
     }

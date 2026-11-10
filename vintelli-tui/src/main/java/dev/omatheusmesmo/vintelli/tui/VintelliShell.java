@@ -133,7 +133,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
      */
     private record KeymapParts(Keymap keymap, CommandPalette commandPalette, KeymapHelpOverlay keymapHelp,
             MenuPopup menuPopup, ProjectSearchModel searchModel, ProjectSearchOverlay searchOverlay,
-            OverlayStack stack) {
+            OverlayStack stack, RunConfigurationChooser runConfigurations) {
     }
 
     private final ShellThemes themes;
@@ -331,11 +331,14 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 MainToolbar.MENU_ORIGIN);
         ProjectSearchOverlay searchOverlay = searchModel == null ? null : new ProjectSearchOverlay(searchModel);
         OverlayStack stack = new OverlayStack();
+        RunConfigurationChooser runConfigurations = new RunConfigurationChooser(
+                () -> runWindow == null ? List.of() : runWindow.configurations());
         KeymapParts built = new KeymapParts(keymap, commandPalette, keymapHelp, menuPopup, searchModel,
-                searchOverlay, stack);
+                searchOverlay, stack, runConfigurations);
         stack.registerOverlay(Kind.COMMAND_PALETTE, commandPalette::isOpen, commandPalette::close);
         stack.registerOverlay(Kind.KEYMAP_HELP, keymapHelp::isOpen, keymapHelp::close);
         stack.registerOverlay(Kind.MENU, menuPopup::isOpen, () -> closeMenu(built));
+        stack.registerOverlay(Kind.RUN_CONFIGURATION, runConfigurations::isOpen, runConfigurations::close);
         if (searchModel != null) {
             stack.registerOverlay(Kind.PROJECT_SEARCH, searchModel::isOpen, searchModel::close);
         }
@@ -1000,11 +1003,13 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         return layers;
     }
 
-    private static Element overlayElement(KeymapParts parts, Kind kind) {
+    private Element overlayElement(KeymapParts parts, Kind kind) {
         return switch (kind) {
             case COMMAND_PALETTE -> new OverlayElement("command-palette", parts.commandPalette()::render);
             case KEYMAP_HELP -> new OverlayElement("keymap-help", parts.keymapHelp()::render);
             case MENU -> new OverlayElement("menu-popup", parts.menuPopup()::render);
+            case RUN_CONFIGURATION -> new OverlayElement(RunConfigurationChooser.ID,
+                    (frame, area) -> parts.runConfigurations().render(frame, area, mainToolbar.configurationColumn()));
             case PROJECT_SEARCH -> new OverlayElement("project-search", parts.searchOverlay()::render);
             default -> throw new IllegalStateException("Not a drawn overlay: " + kind);
         };
@@ -1049,6 +1054,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             if (mouse.isClick()) {
                 parts.stack().close(Kind.KEYMAP_HELP);
             }
+            return EventResult.HANDLED;
+        }
+        if (top == Kind.RUN_CONFIGURATION) {
+            if (mouse.isClick()) parts.runConfigurations().click(mouse.x(), mouse.y())
+                    .ifPresent(identifier -> selectRunConfiguration(parts, identifier));
             return EventResult.HANDLED;
         }
         if (mouse.isClick() && mouse.y() == 0 && toolbarClicked(mouse)) {
@@ -1186,6 +1196,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 syncEditorMenuNavigation(parts);
                 action.ifPresent(value -> dispatch(parts, value));
             }
+            case RUN_CONFIGURATION -> parts.runConfigurations().handleKey(key)
+                    .ifPresent(identifier -> selectRunConfiguration(parts, identifier));
             case PROJECT_SEARCH -> parts.searchOverlay().handleKey(key)
                     .ifPresent(target -> editorController.openRevealed(target.file(), target.line()));
             default -> throw new IllegalStateException("Not a drawn overlay: " + overlay);
@@ -1363,6 +1375,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         dispatch(parts, actionId, null);
     }
 
+    private void selectRunConfiguration(KeymapParts parts, String identifier) {
+        if (runWindow != null && runWindow.selectConfiguration(identifier)) status = "Run configuration: " + identifier;
+        parts.stack().close(Kind.RUN_CONFIGURATION);
+    }
+
     private void dispatch(KeymapParts parts, String actionId, KeyEvent sourceKey) {
         if (isCommandAction(actionId) && !actionAllowed(actionSurface.get(), actionId)) {
             parts.stack().closeOverlays();
@@ -1398,6 +1415,13 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 status = "Command palette: type to filter, Enter runs the action, Escape closes";
             }
             case KeyActions.KEYMAP_HELP -> openKeymapHelp(parts);
+            case KeyActions.RUN_CHOOSE_CONFIGURATION -> {
+                if (runWindow != null) {
+                    parts.stack().open(Kind.RUN_CONFIGURATION,
+                            () -> parts.runConfigurations().open(runWindow.selectedConfigurationLabel(), focusManager));
+                    inputCaptured = false;
+                }
+            }
             case KeyActions.MENU -> {
                 parts.stack().open(Kind.MENU, () -> openMenu(parts, 0));
                 inputCaptured = false;
@@ -1953,6 +1977,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
      * renders it as the last stacked child, so it covers the base layout.
      */
     private record OverlayElement(String id, RenderCall render) implements Element {
+
+        @Override
+        public boolean isFocusable() {
+            return RunConfigurationChooser.ID.equals(id);
+        }
 
         @Override
         public void render(Frame frame, Rect area, RenderContext context) {

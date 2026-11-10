@@ -97,6 +97,11 @@ public final class LocalRunCapability implements RunCapability {
         return CapabilityResult.ok(List.copyOf(configurations));
     }
 
+    @Override
+    public boolean reportsCompletion() {
+        return true;
+    }
+
     private String summary(BuildToolDetector.RunConfigurationSpecification specification) {
         String goal = specification.identifier().split(":", 2)[1];
         return "Runs " + goal + " with " + detector.programLabel();

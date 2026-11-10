@@ -34,6 +34,7 @@ final class BuildToolDetector {
     private final BuildTool tool;
     private final boolean usesWrapper;
     private final List<String> effectiveCommand;
+    private final List<RunConfigurationSpecification> applicationConfigurations;
 
     BuildToolDetector(LocalProjectRoot projectRoot) {
         this(projectRoot, isWindowsHost());
@@ -63,6 +64,7 @@ final class BuildToolDetector {
         this.tool = detected;
         this.usesWrapper = wrapper;
         this.effectiveCommand = command;
+        this.applicationConfigurations = ApplicationRunDetector.detect(root, detected, command);
     }
 
     BuildTool detectedTool() {
@@ -100,11 +102,13 @@ final class BuildToolDetector {
      * {@code maven:clean}.
      */
     List<RunConfigurationSpecification> specifications() {
-        return switch (tool) {
+        List<RunConfigurationSpecification> configurations = new ArrayList<>(applicationConfigurations);
+        configurations.addAll(switch (tool) {
             case MAVEN -> lifecycle("maven", List.of("clean", "compile", "test", "package", "verify", "install"));
             case GRADLE -> lifecycle("gradle", List.of("clean", "build", "check", "test", "assemble"));
             case NONE -> List.of();
-        };
+        });
+        return List.copyOf(configurations);
     }
 
     record RunConfigurationSpecification(String identifier, List<String> command) {

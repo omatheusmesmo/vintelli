@@ -22,6 +22,11 @@ public interface RunCapability extends ProviderDescriptor {
      */
     CapabilityResult<List<RunConfiguration>> listConfigurations();
 
+    /** Whether starts deliver the completion callback after their final output line. */
+    default boolean reportsCompletion() {
+        return false;
+    }
+
     /**
      * Starts the run described by the request. Output lines stream into the
      * consumer while the run executes.

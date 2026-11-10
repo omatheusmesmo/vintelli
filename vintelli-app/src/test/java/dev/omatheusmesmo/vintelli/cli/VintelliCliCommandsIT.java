@@ -329,7 +329,7 @@ class VintelliCliCommandsIT {
                 + "; process alive: " + process.isAlive());
     }
 
-    private static CliRun run(Map<String, String> agentProperties, String stdin, String... arguments)
+    static CliRun run(Map<String, String> agentProperties, String stdin, String... arguments)
             throws Exception {
         List<String> options = new ArrayList<>();
         for (Map.Entry<String, String> property : agentProperties.entrySet()) {
@@ -389,7 +389,7 @@ class VintelliCliCommandsIT {
         });
     }
 
-    private record CliRun(List<String> arguments, int exitCode, String stdout, String stderr) {
+    record CliRun(List<String> arguments, int exitCode, String stdout, String stderr) {
 
         String describe() {
             return "exit " + exitCode + " for " + arguments + "\n--- stdout ---\n" + stdout

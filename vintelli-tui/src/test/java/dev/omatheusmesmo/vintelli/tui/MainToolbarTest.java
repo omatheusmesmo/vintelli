@@ -219,12 +219,19 @@ class MainToolbarTest {
     }
 
     @Test
-    void configurationButtonSelectsTheNextConfigurationInTheRunWindow() throws Exception {
+    void configurationButtonOpensTheChooserBeforeChangingTheSelection() throws Exception {
         FakeRunProvider provider = new FakeRunProvider(true);
         try (Fixture fixture = new Fixture(provider, WIDTH)) {
             Pilot pilot = fixture.pilot();
             String row = fixture.awaitRow("idea:First");
             pilot.click(row.indexOf("idea:First") + 2, 0);
+            pilot.pause(Duration.ofMillis(60));
+            pilot.findElement("run-configuration-picker");
+            assertTrue(fixture.rendered.get().contains("idea:First"), fixture.rendered.get());
+            pilot.press(KeyCode.DOWN);
+            pilot.press(KeyCode.ENTER);
+            pilot.pause(Duration.ofMillis(100));
+            assertEquals("idea:Second", fixture.run.selectedConfigurationLabel(), fixture.screen());
             fixture.awaitRow("idea:Second");
             assertEquals(1L, provider.started.getCount(), "selecting a configuration never starts a run");
         }
@@ -389,6 +396,8 @@ class MainToolbarTest {
         private final Pilot pilot;
         private final Thread renderThread;
         private final AtomicReference<String> rendered = new AtomicReference<>("");
+        private final AtomicReference<Buffer> captured = new AtomicReference<>();
+        private final RunToolWindow run;
         private final AtomicReference<Throwable> failure = new AtomicReference<>();
         private final int width;
 
@@ -397,7 +406,7 @@ class MainToolbarTest {
             ShellThemes themes = themes();
             UiWorkQueue uiWork = new UiWorkQueue();
             CapabilityRegistry registry = new FakeRegistry(provider);
-            RunToolWindow run = new RunToolWindow(() -> themes, registry, uiWork, ".");
+            run = new RunToolWindow(() -> themes, registry, uiWork, ".");
             List<ToolWindow> windows = List.of(run);
             VintelliShell shell = new VintelliShell(ShellConfig.of(windows, new ShellState(), themes)
                     .withKeymapSupplier(() -> Keymap.defaultKeymap(windows))
@@ -420,8 +429,10 @@ class MainToolbarTest {
             runner = ToolkitRunner.builder()
                     .config(config)
                     .styleEngine(themes.engine())
-                    .postRenderProcessor((frame, elements, styles, focus, elapsed) ->
-                            rendered.set(rowOf(frame.buffer(), width)))
+                    .postRenderProcessor((frame, elements, styles, focus, elapsed) -> {
+                        rendered.set(rowOf(frame.buffer(), width));
+                        captured.set(frame.buffer().copy());
+                    })
                     .build();
             runner.eventRouter().addGlobalHandler(shell);
             shell.bindQuit(runner::quit);
@@ -439,6 +450,17 @@ class MainToolbarTest {
 
         private Pilot pilot() {
             return pilot;
+        }
+
+        private String screen() {
+            Buffer buffer = captured.get();
+            if (buffer == null) return "No frame captured";
+            StringBuilder text = new StringBuilder();
+            for (int row = 0; row < buffer.height(); row++) {
+                for (int column = 0; column < buffer.width(); column++) text.append(buffer.get(column, row).symbol());
+                text.append('\n');
+            }
+            return text.toString();
         }
 
         /**

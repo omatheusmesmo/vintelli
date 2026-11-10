@@ -102,7 +102,10 @@ final class ToolWindowPilotFixture implements AutoCloseable {
         FutureTask<String> render = new FutureTask<>(() -> {
             Rect area = new Rect(0, 0, size.width(), size.height());
             Buffer buffer = Buffer.empty(area);
-            DefaultRenderContext context = DefaultRenderContext.createEmpty();
+            testRunner.runner().eventRouter().clear();
+            testRunner.runner().focusManager().clearFocusables();
+            DefaultRenderContext context = new DefaultRenderContext(testRunner.runner().focusManager(),
+                    testRunner.runner().eventRouter());
             context.setStyleEngine(shell.themes().engine());
             shell.root().render(Frame.forTesting(buffer), area, context);
             return text(buffer);

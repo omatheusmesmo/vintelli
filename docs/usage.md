@@ -55,7 +55,9 @@ compatibility.
 Scripted, one command per process (`java -jar vintelli-app/target/quarkus-app/quarkus-run.jar <command>...`):
 
 - `run` lists the detected run configurations; `run maven:compile` starts
-  one and streams the output lines
+  one and streams the output lines. Application starts such as
+  `run maven:quarkus:dev` appear before build phases when the corresponding
+  plugin is declared; see [run configurations](run-configurations.md).
 - `terminal java --version` executes a command line through the terminal
   provider; a command the provider gates prints the confirmation hint and
   can be reissued with `terminal --yes <command>`
@@ -294,7 +296,10 @@ button, the project widget and the branch widget. On the right, aligned to the
 edge, are the run configuration, the Run slot, Debug, the more button, Search
 and Settings, with one blank column between buttons and two before the group.
 The Run slot shows Run while idle and Stop while a configuration runs; a click
-on the configuration selects the next one. Debug is drawn dimmed and does
+on the configuration opens its chooser. Up/Down and Enter or a pointer click
+select a configuration; Escape dismisses the chooser. The same chooser is
+available as `Choose Run Configuration` in the palette. The Run window and
+toolbar share the selection, which is remembered per project. Debug is drawn dimmed and does
 nothing until debugging exists. The more button opens the action menu, the same
 as `F10`. Search opens Find in Files, the same as `Alt+F`. Settings opens the
 palette narrowed to the theme choice, which is also listed as `Open Settings`
