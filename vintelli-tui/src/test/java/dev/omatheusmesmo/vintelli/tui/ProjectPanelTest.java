@@ -10,6 +10,7 @@ import dev.tamboui.layout.Rect;
 import dev.tamboui.terminal.Frame;
 import dev.tamboui.toolkit.element.DefaultRenderContext;
 import dev.tamboui.toolkit.event.EventResult;
+import dev.tamboui.tui.event.MouseButton;
 import dev.tamboui.tui.event.MouseEvent;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -28,6 +29,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ProjectPanelTest {
 
     private static final Rect AREA = new Rect(0, 0, 40, 8);
+    private static final String ELLIPSIS = "…";
+    private static final String DEEP_DIRECTORY = "docs/guide/api";
+    private static final String DEEP_FILE = DEEP_DIRECTORY + "/deep-clipping-test-file-name-here.txt";
+    private static final String DEEP_SIBLING = DEEP_DIRECTORY + "/other.txt";
 
     @TempDir
     Path root;
@@ -92,6 +97,43 @@ class ProjectPanelTest {
 
         assertTrue(firstFrame.contains("Deep.java"), firstFrame);
         assertTrue(secondFrame.contains(row(icons, "Deep.java", JavaTypeKind.ENUM)), secondFrame);
+    }
+
+    @Test
+    void aDeepRevealClipsTheSelectedRowAtItsEndAndKeepsTheNamesOfTheShallowRows() throws IOException {
+        ProjectTreeController controller = revealedDeepFile(new ArrayList<>());
+        ProjectPanel panel = panel(controller);
+        FileIcons icons = FileIcons.resolve();
+
+        String frame = render(panel);
+
+        assertTrue(frame.contains(icons.folderIconFor("docs").symbol(icons.mode()) + " docs"), frame);
+        assertTrue(frame.contains(ELLIPSIS), frame);
+    }
+
+    @Test
+    void aDisclosureMarkerStillTogglesItsOwnRowAfterADeepReveal() throws IOException {
+        ProjectTreeController controller = revealedDeepFile(new ArrayList<>());
+        ProjectPanel panel = panel(controller);
+        render(panel);
+
+        panel.clicked(MouseEvent.press(MouseButton.LEFT, 4, 1));
+
+        assertFalse(controller.files().contains("docs/guide/api"), "the guide marker collapses the guide row");
+        assertTrue(controller.files().contains("docs/other.md"), "the docs row stays expanded");
+    }
+
+    private ProjectTreeController revealedDeepFile(List<Runnable> scans) throws IOException {
+        Files.createDirectories(root.resolve(DEEP_DIRECTORY));
+        Files.writeString(root.resolve(DEEP_FILE), "deep");
+        Files.writeString(root.resolve(DEEP_SIBLING), "sibling");
+        Files.writeString(root.resolve("docs/guide/notes.md"), "notes");
+        Files.writeString(root.resolve("docs/other.md"), "other");
+        Files.writeString(root.resolve("README.md"), "# readme");
+        ProjectTreeController controller = controller(scans);
+        controller.expandAll();
+        controller.selectPath(DEEP_FILE);
+        return controller;
     }
 
     private static String row(FileIcons icons, String name, JavaTypeKind kind) {
