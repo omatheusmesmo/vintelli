@@ -17,6 +17,8 @@ import dev.omatheusmesmo.vintelli.tui.menu.MenuPopup;
 import dev.omatheusmesmo.vintelli.tui.OverlayStack.Kind;
 import dev.omatheusmesmo.vintelli.tui.layout.ShellLayout;
 import dev.omatheusmesmo.vintelli.tui.layout.ShellLayoutStore;
+import dev.omatheusmesmo.vintelli.tui.maven.MavenGoal;
+import dev.omatheusmesmo.vintelli.tui.maven.MavenToolWindow;
 import dev.omatheusmesmo.vintelli.tui.keymap.ConfigDirectory;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
 import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
@@ -342,6 +344,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         this.toolWindows.stream().filter(ProblemsToolWindow.class::isInstance)
                 .map(ProblemsToolWindow.class::cast)
                 .forEach(window -> window.setNavigateHandler(this::openDiagnostic));
+        this.toolWindows.stream().filter(MavenToolWindow.class::isInstance)
+                .map(MavenToolWindow.class::cast)
+                .forEach(window -> window.setRunHandler(this::runMavenGoal));
         Path resolvedRoot = editor == null ? Path.of("").toAbsolutePath().normalize() : editor.project();
         try {
             if (Files.exists(resolvedRoot)) {
@@ -940,6 +945,15 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     private void openStructureSymbol(NavigationCapability.DocumentSymbol symbol) {
         editorController.openActiveFileLine(symbol.selectionStartLine());
+    }
+
+    private void runMavenGoal(MavenGoal goal) {
+        if (runWindow == null) {
+            status = "Run window unavailable";
+            return;
+        }
+        switchToToolWindow(toolWindows.indexOf(runWindow));
+        runWindow.startGoal(goal.identifier(), goal.arguments());
     }
 
     private void openDiagnostic(Diagnostic problem) {
@@ -2013,7 +2027,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     private static boolean isCommandAction(String actionId) {
         return KeyActions.RUN_EXECUTE.equals(actionId) || KeyActions.RUN_STOP.equals(actionId)
-                || KeyActions.TERMINAL_EXECUTE.equals(actionId)
+                || KeyActions.MAVEN_ACTIVATE.equals(actionId) || KeyActions.TERMINAL_EXECUTE.equals(actionId)
                 || KeyActions.ACP_CHAT_NEW.equals(actionId) || KeyActions.ACP_CHAT_SEND.equals(actionId)
                 || KeyActions.ACP_CHAT_CANCEL.equals(actionId) || KeyActions.ACP_CHAT_PERMISSION.equals(actionId)
                 || KeyActions.ACP_CHAT_CLOSE.equals(actionId) || KeyActions.ACP_CHAT_SELECT_TAB.equals(actionId);

@@ -26,6 +26,9 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcon;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
+import dev.omatheusmesmo.vintelli.tui.maven.MavenModule;
+import dev.omatheusmesmo.vintelli.tui.maven.MavenProjectLoad;
+import dev.omatheusmesmo.vintelli.tui.maven.MavenProjectReader;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -84,13 +87,16 @@ public final class ShellInspectResource {
     private final Instance<VintelliShell> shell;
     private final Instance<ToolWindowRegistry> registry;
     private final boolean enabled;
+    private final String projectRoot;
 
     @Inject
     public ShellInspectResource(Instance<VintelliShell> shell, Instance<ToolWindowRegistry> registry,
-            @ConfigProperty(name = "vintelli.inspect.enabled", defaultValue = "false") boolean enabled) {
+            @ConfigProperty(name = "vintelli.inspect.enabled", defaultValue = "false") boolean enabled,
+            @ConfigProperty(name = "vintelli.local.project-root", defaultValue = ".") String projectRoot) {
         this.shell = shell;
         this.registry = registry;
         this.enabled = enabled;
+        this.projectRoot = projectRoot;
     }
 
     @GET
@@ -301,6 +307,38 @@ public final class ShellInspectResource {
         return new FileIconsView(icons.mode().name().toLowerCase(Locale.ROOT), resolved);
     }
 
+    /**
+     * Reads the Maven project of the configured project root the way the Maven
+     * tool window does and reports the outcome: the state, the reason when
+     * there is no tree, and the module selectors in tree order. The pom is read
+     * with the JDK XML parser, so every integration test, including the native
+     * runner, exercises that parser; a parser the image cannot start makes this
+     * call fail instead of staying silent. The endpoint is off like the render
+     * endpoint unless {@code vintelli.inspect.enabled} is {@code true}.
+     */
+    @GET
+    @Path("/maven")
+    @Produces(MediaType.APPLICATION_JSON)
+    public MavenView maven() {
+        if (!enabled) {
+            throw new NotFoundException();
+        }
+        return switch (MavenProjectReader.read(projectRoot)) {
+            case MavenProjectLoad.Loaded loaded -> new MavenView("loaded", "", selectors(loaded.root()));
+            case MavenProjectLoad.Missing missing -> new MavenView("missing", missing.reason(), List.of());
+            case MavenProjectLoad.Unreadable unreadable -> new MavenView("unreadable", unreadable.reason(), List.of());
+        };
+    }
+
+    private static List<String> selectors(MavenModule module) {
+        List<String> found = new ArrayList<>();
+        found.add(module.selector());
+        for (MavenModule child : module.modules()) {
+            found.addAll(selectors(child));
+        }
+        return found;
+    }
+
     private static String mainAreaRows(Buffer buffer) {
         StringBuilder text = new StringBuilder();
         for (int row = MAIN_AREA_TOP_ROW; row < STATUS_ROW; row++) {
@@ -393,5 +431,13 @@ public final class ShellInspectResource {
      * One resolved icon: the Nerd Font glyph and the ASCII fallback marker.
      */
     record FileIconView(String glyph, String ascii) {
+    }
+
+    /**
+     * The Maven project as the window reads it: {@code loaded}, {@code missing}
+     * or {@code unreadable}, the reason for the last two, and the module
+     * selectors in tree order with the empty root selector first.
+     */
+    record MavenView(String state, String reason, List<String> selectors) {
     }
 }
