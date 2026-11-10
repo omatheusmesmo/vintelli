@@ -3353,6 +3353,79 @@ class VintelliShellTest {
     }
 
     @Test
+    void theLeftMarkShowsOnlyWhileTheFirstTabIsScrolledAwayAndTakesOneCell() throws IOException {
+        ShellThemes themes = defaultThemes();
+        BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
+        for (int index = 1; index <= 6; index++) {
+            editor.open(new OpenRequest(projectFile("vintelli/module-" + index + "-long-name.txt", "x\n"), 0));
+        }
+        editor.selectTab(5);
+        VintelliShell shell = editorShell(themes, editor);
+
+        Buffer scrolled = offlineFrame(shell);
+        String labels = rowText(scrolled, HEADER_ROW);
+        assertFalse(labels.contains("module-1-long-name.txt"), "the window scrolled past the first tab: " + labels);
+        assertTrue(labels.contains("module-6-long-name.txt"), "the active tab stays visible: " + labels);
+        assertEquals(leftOverflowGlyph(), scrolled.get(EDITOR_HEADER_X + 1, HEADER_ROW).symbol(),
+                "the left marker sits in the separator column right of the focus column: " + labels);
+        assertEquals(1, CharWidth.of(leftOverflowGlyph()), "the left marker occupies one cell");
+
+        editor.selectTab(0);
+        Buffer unscrolled = offlineFrame(shell);
+        assertEquals(" ", unscrolled.get(EDITOR_HEADER_X + 1, HEADER_ROW).symbol(),
+                "with the first tab visible no left marker is drawn: " + rowText(unscrolled, HEADER_ROW));
+    }
+
+    @Test
+    void clickingTheLeftMarkSelectsNoTabEvenWhenTheFirstVisibleTabIsNextToIt() throws Exception {
+        ShellThemes themes = defaultThemes();
+        BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
+        Path last = null;
+        for (int index = 1; index <= 6; index++) {
+            last = projectFile("vintelli/module-" + index + "-long-name.txt", "x\n");
+            editor.open(new OpenRequest(last, 0));
+        }
+        editor.selectTab(5);
+        VintelliShell shell = editorShell(themes, editor);
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            awaitRenderedFrame(pilot, test, "module-6-long-name.txt");
+
+            pilot.click(EDITOR_HEADER_X + 1, HEADER_ROW);
+            settle(pilot);
+            assertEquals(last.toRealPath().toString(), editor.activeDocument().orElseThrow().file(),
+                    "a click on the left marker keeps the active tab and selects no visible tab");
+        }
+    }
+
+    @Test
+    void asciiModeMarksTheScrolledAwayTabsWithAnAsciiChevronAndNoOtherNonAsciiGlyph() throws IOException {
+        String previous = System.getProperty(IconMode.CONFIG_PROPERTY);
+        System.setProperty(IconMode.CONFIG_PROPERTY, "ascii");
+        try {
+            for (int index = 1; index <= 6; index++) {
+                projectFile("vintelli/module-" + index + "-long-name.txt", "x\n");
+            }
+            ShellThemes themes = defaultThemes();
+            BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
+            for (int index = 1; index <= 6; index++) {
+                editor.open(new OpenRequest(project.resolve("vintelli/module-" + index + "-long-name.txt"), 0));
+            }
+            editor.selectTab(5);
+            VintelliShell shell = editorShell(themes, editor);
+
+            Buffer buffer = offlineFocusFrame(shell, themes, "editor-panel");
+            String labels = rowText(buffer, HEADER_ROW);
+            assertEquals("<", buffer.get(EDITOR_HEADER_X + 1, HEADER_ROW).symbol(),
+                    "the ASCII face marks the scrolled away tabs with a chevron: " + labels);
+            assertTrue(labels.substring(EDITOR_HEADER_X, SIZE.width() - 1).chars().allMatch(character -> character < 128),
+                    "the ASCII face renders no non-ASCII glyph in the tab bar: " + labels);
+        } finally {
+            restoreProperty(IconMode.CONFIG_PROPERTY, previous);
+        }
+    }
+
+    @Test
     void asciiIconModeKeepsTheTabBarFreeOfNonAsciiGlyphsOnACleanBuffer() throws IOException {
         String previous = System.getProperty(IconMode.CONFIG_PROPERTY);
         System.setProperty(IconMode.CONFIG_PROPERTY, "ascii");
@@ -3452,6 +3525,10 @@ class VintelliShellTest {
 
     private static String overflowGlyph() {
         return FileIcons.resolve().mode() == IconMode.ASCII ? ">" : "»";
+    }
+
+    private static String leftOverflowGlyph() {
+        return FileIcons.resolve().mode() == IconMode.ASCII ? "<" : "«";
     }
 
     private static String dirtyMark() {

@@ -21,8 +21,9 @@ import java.util.List;
  * label row holds the pane focus mark, so the labels start two columns in.
  *
  * <p>Tabs that do not fit are clipped and the window scrolls, keeping the
- * selected tab visible; a {@code »} glyph on the right marks more tabs. The
- * styles come from the {@code EditorTabBarElement-*} rules of the active theme.
+ * selected tab visible; a {@code »} glyph on the right marks more tabs and a
+ * {@code «} glyph in the separator column marks tabs scrolled away on the left.
+ * The styles come from the {@code EditorTabBarElement-*} rules of the active theme.
  */
 final class EditorTabBarElement extends StyledElement<EditorTabBarElement> {
 
@@ -31,11 +32,12 @@ final class EditorTabBarElement extends StyledElement<EditorTabBarElement> {
     private static final int LEAD = 2;
     private static final int GAP = 2;
     private static final int OVERFLOW_RESERVE = 2;
+    private static final int OVERFLOW_LEFT_RESERVE = 1;
 
     record Label(Span icon, String text) {
     }
 
-    record Glyphs(String focusMark, String underline, String overflow) {
+    record Glyphs(String focusMark, String underline, String overflowLeft, String overflowRight) {
     }
 
     private record Window(int first, int last, boolean overflowRight) {
@@ -47,7 +49,7 @@ final class EditorTabBarElement extends StyledElement<EditorTabBarElement> {
     private List<Label> labels = List.of();
     private int selected = -1;
     private boolean focused;
-    private Glyphs glyphs = new Glyphs(" ", "-", ">");
+    private Glyphs glyphs = new Glyphs(" ", "-", "<", ">");
     private int firstVisible;
     private List<Slot> slots = List.of();
     private Rect renderedArea = Rect.ZERO;
@@ -108,7 +110,7 @@ final class EditorTabBarElement extends StyledElement<EditorTabBarElement> {
         int limit = window.overflowRight() ? area.right() - OVERFLOW_RESERVE : area.right();
 
         List<Slot> visible = new ArrayList<>();
-        int x = area.x() + LEAD;
+        int x = area.x() + LEAD + leftReserve(window.first());
         for (int index = window.first(); index <= window.last() && x < limit; index++) {
             if (index > window.first()) {
                 x += GAP;
@@ -126,8 +128,12 @@ final class EditorTabBarElement extends StyledElement<EditorTabBarElement> {
         }
         buffer.setStyle(new Rect(area.x(), labelRow, area.width(), 1),
                 Style.EMPTY.underlined().underlineColor(context.childStyle("header-rule").fg().orElse(null)));
+        if (window.first() > 0) {
+            draw(buffer, area.x() + LEAD - 1, area.x() + LEAD, labelRow, glyphs.overflowLeft(),
+                    context.childStyle("overflow"));
+        }
         if (window.overflowRight()) {
-            draw(buffer, area.right() - 1, area.right(), labelRow, glyphs.overflow(), context.childStyle("overflow"));
+            draw(buffer, area.right() - 1, area.right(), labelRow, glyphs.overflowRight(), context.childStyle("overflow"));
         }
         slots = List.copyOf(visible);
     }
@@ -165,16 +171,21 @@ final class EditorTabBarElement extends StyledElement<EditorTabBarElement> {
             first = selected;
         }
         while (true) {
-            int last = lastFitting(widths, first, region);
+            int budget = region - leftReserve(first);
+            int last = lastFitting(widths, first, budget);
             if (last >= count - 1) {
                 return new Window(first, count - 1, false);
             }
-            int lastBeforeOverflow = lastFitting(widths, first, region - OVERFLOW_RESERVE);
+            int lastBeforeOverflow = lastFitting(widths, first, budget - OVERFLOW_RESERVE);
             if (lastBeforeOverflow >= selected) {
                 return new Window(first, lastBeforeOverflow, true);
             }
             first++;
         }
+    }
+
+    private static int leftReserve(int first) {
+        return first > 0 ? OVERFLOW_LEFT_RESERVE : 0;
     }
 
     /** The last tab that fits the budget starting at {@code first}; the first tab always counts, clipped if needed. */
