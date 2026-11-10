@@ -54,7 +54,7 @@ final class ToolWindowPanel {
                         anchor == ToolWindow.Anchor.RIGHT ? compactRightTabTitle(window) : window.title()))
                 .toList();
         int clampedTab = Math.min(Math.max(host.activeIndex(anchor), 0), windows.size() - 1);
-        ToolTabBarElement tabs = new ToolTabBarElement(tabBarId(anchor), labels, clampedTab, tabUnderline());
+        ToolTabBarElement tabs = new ToolTabBarElement(tabBarId(anchor), labels, clampedTab, tabGlyphs());
         tabBars.put(anchor, tabs);
 
         Column column = Toolkit.column().id("tool-stripe-" + anchor.name().toLowerCase(Locale.ROOT));
@@ -131,8 +131,10 @@ final class ToolWindowPanel {
         return ToolStripes.nerdIcon(window, mode).orElseGet(() -> String.valueOf(window.shortcut()));
     }
 
-    private String tabUnderline() {
-        return mode == IconMode.ASCII ? "-" : "━";
+    private ToolTabBarElement.Glyphs tabGlyphs() {
+        return mode == IconMode.ASCII
+                ? new ToolTabBarElement.Glyphs("-", "<", ">")
+                : new ToolTabBarElement.Glyphs("━", "«", "»");
     }
 
     private static String compactRightTabTitle(ToolWindow window) {
