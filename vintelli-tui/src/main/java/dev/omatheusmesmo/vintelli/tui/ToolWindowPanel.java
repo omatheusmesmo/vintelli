@@ -50,7 +50,7 @@ final class ToolWindowPanel {
             return Toolkit.text("").length(0);
         }
         List<ToolTabBarElement.Label> labels = windows.stream()
-                .map(window -> new ToolTabBarElement.Label(String.valueOf(window.shortcut()),
+                .map(window -> new ToolTabBarElement.Label(tabMarker(window),
                         anchor == ToolWindow.Anchor.RIGHT ? compactRightTabTitle(window) : window.title()))
                 .toList();
         int clampedTab = Math.min(Math.max(host.activeIndex(anchor), 0), windows.size() - 1);
@@ -125,6 +125,10 @@ final class ToolWindowPanel {
 
     private static String tabBarId(ToolWindow.Anchor anchor) {
         return "tool-tabs-" + anchor.name().toLowerCase(Locale.ROOT);
+    }
+
+    private String tabMarker(ToolWindow window) {
+        return ToolStripes.nerdIcon(window, mode).orElseGet(() -> String.valueOf(window.shortcut()));
     }
 
     private String tabUnderline() {
