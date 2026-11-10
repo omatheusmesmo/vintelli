@@ -124,6 +124,11 @@ public final class MavenToolWindow implements ToolWindow {
     }
 
     @Override
+    public boolean claimsQuitChord() {
+        return false;
+    }
+
+    @Override
     public String actionForKey(KeyEvent event) {
         if (event.isKey(KeyCode.ENTER)) {
             return KeyActions.MAVEN_ACTIVATE;

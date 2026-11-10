@@ -8,6 +8,7 @@ import dev.omatheusmesmo.vintelli.tui.menu.MenuPopup;
 import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
 import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
+import dev.omatheusmesmo.vintelli.tui.maven.MavenToolWindow;
 import dev.omatheusmesmo.vintelli.tui.icons.JavaTypeKind;
 import dev.omatheusmesmo.vintelli.tui.layout.ShellLayoutStore;
 import dev.omatheusmesmo.vintelli.tui.layout.ShellLayout;
@@ -1460,6 +1461,36 @@ class VintelliShellTest {
 
             pressCtrlC(pilot);
             assertFalse(test.runner().isRunning(), "Ctrl+C must stop the shell event loop");
+        }
+    }
+
+    @Test
+    void ctrlCStillQuitsFromTheStructureWindowThatCapturesKeysOnlyToReceiveThem() throws Exception {
+        ShellThemes themes = defaultThemes();
+        VintelliShell shell = shellWithWindow(new StructureToolWindow(themes));
+        try (ToolkitTestRunner test = runShell(shell)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+
+            press(pilot, '6');
+            assertTrue(shell.isToolWindowVisible("structure"), "the digit opens the Structure window");
+            pressCtrlC(pilot);
+            assertFalse(test.runner().isRunning(), "Ctrl+C must quit from a list window that only receives keys");
+        }
+    }
+
+    @Test
+    void ctrlCStillQuitsFromTheMavenWindowThatCapturesKeysOnlyToReceiveThem() throws Exception {
+        ShellThemes themes = defaultThemes();
+        VintelliShell shell = shellWithWindow(new MavenToolWindow(() -> themes, project));
+        try (ToolkitTestRunner test = runShell(shell)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+
+            press(pilot, '7');
+            assertTrue(shell.isToolWindowVisible("maven"), "the digit opens the Maven window");
+            pressCtrlC(pilot);
+            assertFalse(test.runner().isRunning(), "Ctrl+C must quit from a list window that only receives keys");
         }
     }
 
@@ -4783,6 +4814,16 @@ class VintelliShellTest {
         ShellThemes themes = defaultThemes();
         List<ToolWindow> windows = new ArrayList<>(windowsWithAcp());
         windows.add(new StructureToolWindow(() -> themes));
+        return new VintelliShell(new ToolWindowRegistry(windows).toolWindows(), new ShellState(), themes);
+    }
+
+    private static VintelliShell shellWithWindow(ToolWindow window) {
+        ShellThemes themes = defaultThemes();
+        ToolWindowRegistry registry = new ToolWindowRegistry(List.of(
+                new RunToolWindow(() -> themes), new TerminalToolWindow(() -> themes), new ProblemsToolWindow(() -> themes),
+                new AcpAgentsToolWindow(() -> themes)));
+        List<ToolWindow> windows = new ArrayList<>(registry.toolWindows());
+        windows.add(window);
         return new VintelliShell(new ToolWindowRegistry(windows).toolWindows(), new ShellState(), themes);
     }
 
