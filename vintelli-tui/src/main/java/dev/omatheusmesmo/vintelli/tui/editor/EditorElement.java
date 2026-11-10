@@ -43,6 +43,8 @@ import java.util.Locale;
 final class EditorElement implements Element {
     private static final String UNDERLINE = "━";
     private static final String UNDERLINE_ASCII = "-";
+    private static final String OVERFLOW_LEFT = "«";
+    private static final String OVERFLOW_LEFT_ASCII = "<";
     private static final String OVERFLOW = "»";
     private static final String OVERFLOW_ASCII = ">";
     private static final String DIRTY_MARK = "●";
@@ -86,7 +88,9 @@ final class EditorElement implements Element {
             }
         }
         tabBar.update(labels, selected, focused, new EditorTabBarElement.Glyphs(focusMark,
-                ascii ? UNDERLINE_ASCII : UNDERLINE, ascii ? OVERFLOW_ASCII : OVERFLOW));
+                ascii ? UNDERLINE_ASCII : UNDERLINE,
+                ascii ? OVERFLOW_LEFT_ASCII : OVERFLOW_LEFT,
+                ascii ? OVERFLOW_ASCII : OVERFLOW));
         tabBar.render(frame, area, context);
     }
 
