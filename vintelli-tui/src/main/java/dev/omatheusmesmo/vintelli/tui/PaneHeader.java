@@ -4,6 +4,7 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 import dev.tamboui.layout.Rect;
+import dev.tamboui.text.CharWidth;
 import dev.tamboui.style.Color;
 import dev.tamboui.style.Style;
 import dev.tamboui.terminal.Frame;
@@ -78,9 +79,11 @@ final class PaneHeader extends StyledElement<PaneHeader> {
         Rect body = new Rect(area.x(), area.y() + 1, area.width(), Math.max(0, area.height() - 1));
         Style markerStyle = themes.resolver("pane-marker").toStyle();
         Style titleStyle = themes.resolver(focused ? "pane-header-focused" : "pane-header").toStyle();
+        String marker = focused ? focusMark : " ";
+        String shown = ruled ? title : ProjectPanel.clipEnd(title, Math.max(1, area.width() - CharWidth.of(marker) - 1));
         Line line = Line.from(
-                Span.styled(focused ? focusMark : " ", markerStyle),
-                Span.styled(" " + title, titleStyle));
+                Span.styled(marker, markerStyle),
+                Span.styled(" " + shown, titleStyle));
         frame.renderWidget(Paragraph.builder().text(Text.from(line)).build(), header);
         if (ruled) {
             Color rule = themes.resolver("pane-header-rule").toStyle().fg().orElse(null);

@@ -3848,7 +3848,7 @@ class VintelliShellTest {
         assertEquals("▝", buffer.get(editor.right() - 1, editor.y()).symbol(),
                 "the editor's top right corner meets the screen edge over blank header padding, so it rounds");
         String footerCorner = buffer.get(project.right() - 1, project.bottom() - 1).symbol();
-        assertTrue(Character.isLetter(footerCorner.charAt(0)),
+        assertTrue(!footerCorner.isBlank() && "▘▝▖▗".indexOf(footerCorner.charAt(0)) < 0,
                 "the project footer's bottom right corner holds text, so it stays square: " + footerCorner);
     }
 
