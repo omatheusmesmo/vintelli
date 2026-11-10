@@ -190,12 +190,23 @@ class ProjectTreeControllerTest {
     @Test
     void theHorizontalOffsetShowsTheEndOfALongRowAndReturnsWhenItFits() throws IOException {
         ProjectTreeController controller = controllerWithProject();
-        controller.trackColumn(50, 20);
+        controller.trackColumn(50, 20, 30);
         assertEquals(30, controller.leftColumn());
-        controller.trackColumn(20, 20);
+        controller.trackColumn(20, 20, 30);
         assertEquals(0, controller.leftColumn());
-        controller.trackColumn(10, 20);
+        controller.trackColumn(10, 20, 30);
         assertEquals(0, controller.leftColumn());
+    }
+
+    @Test
+    void aSelectedRowThatOnlyOverflowsItsEndIsClippedWithoutMovingTheOffset() throws IOException {
+        ProjectTreeController controller = controllerWithProject();
+        controller.trackColumn(24, 20, 10);
+        assertEquals(0, controller.leftColumn(), "the leading columns of the shallow rows stay");
+        assertTrue(controller.selectedClipped());
+        controller.trackColumn(30, 20, 10);
+        assertEquals(10, controller.leftColumn(), "a row whose name would be hidden scrolls to show it");
+        assertFalse(controller.selectedClipped());
     }
 
     @Test

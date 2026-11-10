@@ -66,6 +66,7 @@ final class ProjectTreeController {
     private volatile int syncedIndex = -1;
     private volatile int top;
     private volatile int leftColumn;
+    private volatile boolean selectedClipped;
     private volatile long revision;
     private volatile Path copiedPath;
 
@@ -256,11 +257,21 @@ final class ProjectTreeController {
     }
 
     /**
-     * Sets the number of leading columns cut from every row so that the end of
-     * the selected row is visible. A row that fits the view gives column 0.
+     * Fits the selected row to the view. A name that fits the view, whose row
+     * overflows by less than the name keeps one column of it, is cut at the end
+     * with an ellipsis, so the leading columns of every row stay. Otherwise the
+     * offset moves to show the end of the row, which cuts the leading columns of
+     * every row as before.
      */
-    void trackColumn(int selectedWidth, int viewWidth) {
-        leftColumn = Math.max(0, selectedWidth - viewWidth);
+    void trackColumn(int selectedWidth, int viewWidth, int nameWidth) {
+        int overflow = Math.max(0, selectedWidth - viewWidth);
+        boolean nameHidden = nameWidth > viewWidth || overflow >= nameWidth - 1;
+        leftColumn = nameHidden ? overflow : 0;
+        selectedClipped = overflow > 0 && !nameHidden;
+    }
+
+    boolean selectedClipped() {
+        return selectedClipped;
     }
 
     boolean registerClick(int index) {

@@ -24,6 +24,7 @@ import dev.tamboui.tui.event.MouseEvent;
 import dev.tamboui.widgets.common.ScrollBarPolicy;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.locks.ReentrantLock;
@@ -42,6 +43,7 @@ final class ProjectPanel implements Element {
     private static final int HIGHLIGHT_WIDTH = 2;
     private static final int INDENT_WIDTH = 2;
     private static final int MARKER_WIDTH = 2;
+    private static final String ELLIPSIS = "…";
 
     interface Host {
 
@@ -95,6 +97,10 @@ final class ProjectPanel implements Element {
     private long pushedJavaKinds = -1;
     private boolean pushedUnicode;
     private int pushedLeft;
+    private int pushedSelected = -1;
+    private boolean pushedClipped;
+    private int pushedView = -1;
+    private int viewColumns;
     private volatile Rect headerRow = Rect.ZERO;
     private volatile List<ProjectHeader.Target> headerTargets = List.of();
 
@@ -157,7 +163,8 @@ final class ProjectPanel implements Element {
                 host.clearPendingFocus();
             }
             controller.trackScroll(area.height());
-            controller.trackColumn(selectedLabelWidth(), viewWidth(area));
+            viewColumns = viewWidth(area);
+            controller.trackColumn(selectedLabelWidth(), viewColumns, selectedNameWidth());
             pushSelection();
             list.render(frame, area, context);
             if (!headerRow.isEmpty() && menus.isOpen()) {
@@ -420,14 +427,20 @@ final class ProjectPanel implements Element {
     }
 
     private void pushSelection() {
+        boolean clipped = controller.selectedClipped();
         if (pushedRevision != controller.revision() || pushedUnicode != unicodeTree
-                || pushedLeft != controller.leftColumn() || pushedJavaKinds != controller.javaKindVersion()) {
+                || pushedLeft != controller.leftColumn() || pushedJavaKinds != controller.javaKindVersion()
+                || pushedView != viewColumns || pushedClipped != clipped
+                || (clipped && pushedSelected != controller.selected())) {
             long kinds = controller.javaKindVersion();
             list.items(rows());
             pushedRevision = controller.revision();
             pushedJavaKinds = kinds;
             pushedUnicode = unicodeTree;
             pushedLeft = controller.leftColumn();
+            pushedView = viewColumns;
+            pushedClipped = clipped;
+            pushedSelected = controller.selected();
         }
         if (list.selected() != controller.selected()) {
             list.selected(controller.selected());
@@ -452,7 +465,17 @@ final class ProjectPanel implements Element {
         if (nodes.isEmpty()) {
             return files.stream().map(file -> dropColumns(vcsDecorated(file, file), left)).toList();
         }
-        return nodes.stream().map(node -> dropColumns(nodeLabel(node), left)).toList();
+        boolean clipped = controller.selectedClipped();
+        int selectedIndex = controller.selected();
+        List<String> labels = new ArrayList<>();
+        for (int index = 0; index < nodes.size(); index++) {
+            String label = dropColumns(nodeLabel(nodes.get(index)), left);
+            if (clipped && index == selectedIndex) {
+                label = clipEnd(label, viewColumns);
+            }
+            labels.add(label);
+        }
+        return labels;
     }
 
     private String nodeLabel(ProjectNode node) {
@@ -472,6 +495,11 @@ final class ProjectPanel implements Element {
         return node == null ? 0 : CharWidth.of(nodeLabel(node));
     }
 
+    private int selectedNameWidth() {
+        ProjectNode node = controller.selectedNode();
+        return node == null ? 0 : CharWidth.of(node.compactName());
+    }
+
     private int viewWidth(Rect area) {
         boolean scrollbar = controller.fileCount() > area.height();
         return area.width() - HIGHLIGHT_WIDTH - (scrollbar ? 1 : 0);
@@ -487,6 +515,25 @@ final class ProjectPanel implements Element {
         }
         String rest = label.substring(index);
         return skipped > columns ? " ".repeat(skipped - columns) + rest : rest;
+    }
+
+    private static String clipEnd(String label, int columns) {
+        if (CharWidth.of(label) <= columns) {
+            return label;
+        }
+        int budget = columns - CharWidth.of(ELLIPSIS);
+        int kept = 0;
+        int index = 0;
+        while (index < label.length()) {
+            int codePoint = label.codePointAt(index);
+            int width = CharWidth.of(codePoint);
+            if (kept + width > budget) {
+                break;
+            }
+            kept += width;
+            index += Character.charCount(codePoint);
+        }
+        return label.substring(0, index) + ELLIPSIS;
     }
 
     private String vcsSlot(String relative) {
