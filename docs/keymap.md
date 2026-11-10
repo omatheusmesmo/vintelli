@@ -78,3 +78,37 @@ relies on bare digit keys once an input has focus. Opening an overlay
 releases the capture; after closing it the shell keeps the focus until the
 tab is reselected.
 
+## IntelliJ comparison table
+
+The file
+`vintelli-tui/src/main/resources/dev/omatheusmesmo/vintelli/tui/keymap/intellij-keymap.csv`
+lists every action the `intellij` profile binds, with its active chords, the
+IntelliJ Windows/Linux default chords of the same action, and a status. It is
+packaged with the native image through `quarkus.native.resources.includes` in
+`vintelli-app/src/main/resources/application.properties`, and it is read by
+`KeymapTable` (JDK only). Chords are separated by ` | `, and the chord text is
+compared case-insensitively.
+
+Statuses:
+
+- `same`: the active chords equal IntelliJ's chords for the action.
+- `different`: IntelliJ binds the action to other chords. The reason says why
+  the chord stays (or is planned to move, #365 and #364).
+- `not-deliverable`: IntelliJ's chord cannot be sent by a terminal (Double
+  Shift, `Ctrl+Shift+letter`). The active chord stays and the reason names the
+  alternative.
+- `vintelli-only`: the action has no IntelliJ chord that this table can
+  confirm, or Vintelli has no IntelliJ counterpart. Unconfirmed IntelliJ chords
+  are never invented: they stay empty here.
+
+A binding change must update the table. `IntellijKeymapTableTest` builds the
+default profile with the real tool windows and fails when a bound action has
+no row, when a row names an action the profile does not bind, when a row's
+active chords differ from the bound ones, when a `same` row differs from
+IntelliJ or a `different` row does not, when a chord is bound to two actions
+outside the shared chords it documents (`Enter` for `select`, `confirm` and
+`editor_open`, `Delete` for `deleteForward` and `project_delete`, and the mouse
+wheel for `scroll` and its directions, all set by the TamboUI presets and the
+focus), and when a non-`same` row has no reason. Adding a shared chord means
+adding it to that test on purpose.
+
