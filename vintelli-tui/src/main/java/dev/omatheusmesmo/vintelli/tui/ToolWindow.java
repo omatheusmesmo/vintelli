@@ -169,4 +169,15 @@ public interface ToolWindow extends StatusBarWidgetContributor {
     default boolean capturesInput() {
         return false;
     }
+
+    /**
+     * Whether the quit chord belongs to this window while it captures input. A
+     * terminal or a chat takes it as an interrupt or an edit key, which is the
+     * default for a capturing window. A list that captures only to receive its
+     * arrow and Enter keys returns false, so Ctrl+C still quits the shell from
+     * it.
+     */
+    default boolean claimsQuitChord() {
+        return capturesInput();
+    }
 }

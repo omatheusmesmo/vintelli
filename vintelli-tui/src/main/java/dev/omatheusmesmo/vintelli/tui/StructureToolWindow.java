@@ -128,6 +128,11 @@ public final class StructureToolWindow implements ToolWindow {
     }
 
     @Override
+    public boolean claimsQuitChord() {
+        return false;
+    }
+
+    @Override
     public boolean handleKey(KeyEvent event) {
         if (event.isKey(KeyCode.BACKSPACE) && !filter.isEmpty()) {
             filter = filter.substring(0, filter.offsetByCodePoints(filter.length(), -1));

@@ -1353,7 +1353,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             status = "Git operation in progress";
             return EventResult.HANDLED;
         }
-        if (!inputCaptured && parts.keymap().matches(key, KeyActions.QUIT)) {
+        ToolWindow quitHolder = capturedWindow;
+        boolean quitClaimed = inputCaptured && (quitHolder == null || quitHolder.claimsQuitChord());
+        if (!quitClaimed && parts.keymap().matches(key, KeyActions.QUIT)) {
             return EventResult.UNHANDLED;
         }
         if (parts.keymap().matchesReserved(key, KeyActions.SEARCH_EVERYWHERE)) {
