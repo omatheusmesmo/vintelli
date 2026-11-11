@@ -116,3 +116,6 @@ wheel for `scroll` and its directions, all set by the TamboUI presets and the
 focus), and when a non-`same` row has no reason. Adding a shared chord means
 adding it to that test on purpose.
 
+
+`run.debug` (**Debug Selected Configuration**) starts a supported selected run
+configuration waiting for an external debugger; it is available in the palette.

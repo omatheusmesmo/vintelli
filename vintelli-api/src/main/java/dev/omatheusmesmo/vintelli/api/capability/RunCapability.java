@@ -27,6 +27,23 @@ public interface RunCapability extends ProviderDescriptor {
         return false;
     }
 
+    /** Availability of a suspended, loopback-only JDWP launch for this configuration. */
+    default DebugSupport debugSupport(String configurationName) {
+        return new DebugSupport(false, "This run provider does not support debug launch");
+    }
+
+    /** Starts a suspended debuggee; completion and cancellation follow the normal run lifecycle. */
+    default CapabilityResult<RunHandle> startDebug(RunRequest request, int port, Consumer<String> outputLines,
+            Consumer<RunCompletion> completion) {
+        return CapabilityResult.failed(new CapabilityFailure(debugSupport(request.configurationName()).reason(), ""));
+    }
+
+    record DebugSupport(boolean available, String reason) {
+        public DebugSupport {
+            reason = reason == null ? "" : reason;
+        }
+    }
+
     /**
      * Starts the run described by the request. Output lines stream into the
      * consumer while the run executes.

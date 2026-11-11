@@ -71,6 +71,7 @@ public final class KeyActions {
     public static final String VCS_COMMIT = "vcs_commit";
     public static final String VCS_SWITCH_BRANCH = "vcs_switchBranch";
     public static final String IDEA_MCP_CONNECT = "idea-mcp.connect";
+    public static final String RUN_DEBUG = "run.debug";
     public static final String RUN_EXECUTE = "run.execute";
     public static final String RUN_STOP = "run.stop";
     public static final String RUN_REFRESH = "run.refresh";
@@ -120,6 +121,7 @@ public final class KeyActions {
                 new KeyAction(ACTIVATE_PROJECT, "Activate Project Tool Window", "Alt+1"),
                 new KeyAction(SHELL_SETTINGS, "Open Settings", ""),
                 new KeyAction(IDEA_MCP_CONNECT, "Connect to IntelliJ IDEA", ""),
+                new KeyAction(RUN_DEBUG, "Debug Selected Configuration", ""),
                 new KeyAction(RUN_EXECUTE, "Run Selected Configuration", ""),
                 new KeyAction(RUN_REFRESH, "Refresh Run Configurations", ""),
                 new KeyAction(RUN_CHOOSE_CONFIGURATION, "Choose Run Configuration", ""),
