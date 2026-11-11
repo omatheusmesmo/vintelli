@@ -9,9 +9,11 @@ serves `didOpen`/`didChange`/`didClose`, the pushed diagnostics of
 `textDocument/publishDiagnostics`, hover, definition, references, completion
 and the `callHierarchy/*` requests. The diagnostics and call hierarchy ports of
 `vintelli-api` are implemented by providers whose identifier is the active
-profile, and the `vintelli-core` extension registers the LSP4J types and the
-four dynamic proxies for the native image from the Jandex index at build time,
-so an LSP4J upgrade needs no hand edited reflection config.
+profile, and the `vintelli-core` extension registers the LSP4J types and service
+proxies for the native image from the Jandex index at build time. When the
+optional DAP SDK is present, the same processor also registers the DAP types,
+callback implementation and proxy. An LSP4J upgrade needs no hand edited
+reflection config.
 
 Profiles are configuration only. The `jdtls` profile of issue #20 is the first
 tenant:
@@ -48,6 +50,44 @@ and the status row carry an explicit unavailable reason instead.
 over HTTP for the native ITs, which run against the fake language server of
 `vintelli-lsp`; they answer 404 unless
 `vintelli.lsp.debug-endpoint.enabled=true`.
+
+## Java Debug Adapter
+
+The optional `java-dap` provider uses the Java Debug Adapter as a jdtls extension.
+It is disabled by default. Enable it and provide the jdtls profile with the
+absolute path to the Java Debug plugin JAR in `initializationOptions.bundles`:
+
+```properties
+vintelli.debug.enabled=true
+vintelli.lsp.profile=jdtls
+vintelli.lsp.profiles.jdtls.command=jdtls
+vintelli.lsp.profiles.jdtls.args=-data,/home/me/.cache/vintelli/jdtls-data
+vintelli.lsp.profiles.jdtls.workspace-root=/home/me/projects/app
+vintelli.lsp.profiles.jdtls.initialization-options={"bundles":["/opt/jdtls/plugins/com.microsoft.java.debug.plugin.jar"]}
+vintelli.lsp.profiles.jdtls.java.min-version=25
+vintelli.lsp.profiles.jdtls.java.home=/opt/jdk-25
+```
+
+Obtain the Java Debug plugin JAR and replace the example path with its actual
+absolute path. The profile must start jdtls
+with that bundle, and the server must advertise the
+`vscode.java.startDebugSession` workspace command. Vintelli does not infer
+support from the JAR filename. When either the bundle configuration or command
+is missing, the provider reports why it is unavailable.
+
+The DAP connection and debuggee attach are restricted to `127.0.0.1`. Launch
+uses the selected `RunCapability`'s suspended JDWP launch; attaching to an
+existing JDWP process detaches without terminating that process. The current
+provider exposes launch, attach, session state, threads, cancellation and
+disconnect through its API. It does not yet provide gutter breakpoints,
+stepping, a Debug tool window or expression evaluation; those are tracked in
+[#387](https://github.com/omatheusmesmo/vintelli/issues/387),
+[#388](https://github.com/omatheusmesmo/vintelli/issues/388),
+[#389](https://github.com/omatheusmesmo/vintelli/issues/389) and
+[#390](https://github.com/omatheusmesmo/vintelli/issues/390). Native provider
+integration tests cover the DAP twin. The opt-in contract against an installed
+real jdt.ls and Java Debug service is documented in
+[`java-debug-real-contract.md`](java-debug-real-contract.md).
 
 ## Real jdtls integration test
 

@@ -7,6 +7,7 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.function.Consumer;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import dev.omatheusmesmo.vintelli.api.capability.CallHierarchyCapability;
@@ -19,6 +20,7 @@ import dev.omatheusmesmo.vintelli.api.capability.CapabilityStatus;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityRegistry;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
 import dev.omatheusmesmo.vintelli.api.capability.CodeActionCapability;
+import dev.omatheusmesmo.vintelli.api.capability.DebugCapability;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Diagnostic;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderDescriptor;
@@ -72,6 +74,9 @@ class CapabilityRegistryTest {
         CapabilitySelection<RunCapability> run = contract.run();
         assertFalse(run.isAvailable());
         assertEquals("no provider is registered for 'run'", unavailableReasonOf(run));
+        CapabilitySelection<DebugCapability> debug = contract.debug();
+        assertFalse(debug.isAvailable());
+        assertEquals("no provider is registered for 'debug'", unavailableReasonOf(debug));
     }
 
     @Test
@@ -115,6 +120,22 @@ class CapabilityRegistryTest {
 
         assertEquals("code-stub", selectedIdentifierOf(registry.codeActions()));
         assertEquals("code-stub", statusOf(registry, CapabilityType.CODE_ACTION).providerIdentifier());
+    }
+
+    @Test
+    void selectsDebugProviderByConfiguredOrderAndReportsUnavailableWithoutOne() {
+        TestingDebugProvider first = new TestingDebugProvider("jdtls");
+        TestingDebugProvider backup = new TestingDebugProvider("backup");
+        DefaultCapabilityRegistry registry = new DefaultCapabilityRegistry(
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(backup, first), orders(Map.of(CapabilityType.DEBUG, List.of("jdtls", "backup"))));
+
+        assertEquals("jdtls", selectedIdentifierOf(registry.debug()));
+        assertEquals("jdtls", statusOf(registry, CapabilityType.DEBUG).providerIdentifier());
+
+        DefaultCapabilityRegistry empty = registryWith(NO_ORDER);
+        assertFalse(empty.debug().isAvailable());
+        assertEquals("no provider is registered for 'debug'", unavailableReasonOf(empty.debug()));
     }
 
     @Test
@@ -615,6 +636,45 @@ class CapabilityRegistryTest {
         @Override
         public String provenance() {
             return "stub code actions";
+        }
+    }
+
+    private static final class TestingDebugProvider implements DebugCapability {
+
+        private final String identifier;
+
+        private TestingDebugProvider(String identifier) {
+            this.identifier = identifier;
+        }
+
+        @Override
+        public String identifier() {
+            return identifier;
+        }
+
+        @Override
+        public ProviderHealth health() {
+            return ProviderHealth.available();
+        }
+
+        @Override
+        public String provenance() {
+            return "debug adapter";
+        }
+
+        @Override
+        public CapabilityResult<DebugSession> launch(DebugRequest request, Consumer<String> outputLines) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public CapabilityResult<DebugSession> attach(AttachRequest request, Consumer<String> outputLines) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public List<DebugSessionSnapshot> snapshot() {
+            return List.of();
         }
     }
 

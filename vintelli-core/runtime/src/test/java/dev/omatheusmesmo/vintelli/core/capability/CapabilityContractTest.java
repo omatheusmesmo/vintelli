@@ -11,6 +11,7 @@ import java.util.Map;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilitySelection;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityStatus;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
+import dev.omatheusmesmo.vintelli.api.capability.DebugCapability;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import dev.omatheusmesmo.vintelli.api.capability.RunCapability.RunRequest;
 import dev.omatheusmesmo.vintelli.api.capability.SkippedProvider;
@@ -80,5 +81,30 @@ class CapabilityContractTest {
         assertThrows(UnsupportedOperationException.class,
                 () -> snapshot.add(CapabilityStatus.unavailable(CapabilityType.RUN, "mutated")));
         assertEquals(CapabilityType.values().length, registry.snapshot().size());
+    }
+
+    @Test
+    void debugSnapshotCopiesThreadsAndNormalizesOptionalText() {
+        List<DebugCapability.DebugThread> threads = new ArrayList<>();
+        threads.add(new DebugCapability.DebugThread(1, "main"));
+
+        DebugCapability.DebugSessionSnapshot snapshot = new DebugCapability.DebugSessionSnapshot(
+                "session-1", "maven:test", DebugCapability.State.STOPPED, threads, null, "breakpoint");
+        threads.clear();
+
+        assertEquals(List.of(new DebugCapability.DebugThread(1, "main")), snapshot.threads());
+        assertEquals("", snapshot.reason());
+        assertThrows(UnsupportedOperationException.class,
+                () -> snapshot.threads().add(new DebugCapability.DebugThread(2, "worker")));
+    }
+
+    @Test
+    void debugAttachRequestOnlyAcceptsValidPortsAndCarriesNoRemoteHost() {
+        DebugCapability.AttachRequest request = new DebugCapability.AttachRequest(5005, "local target");
+
+        assertEquals(5005, request.port());
+        assertEquals("local target", request.label());
+        assertThrows(IllegalArgumentException.class, () -> new DebugCapability.AttachRequest(0, "invalid"));
+        assertThrows(IllegalArgumentException.class, () -> new DebugCapability.AttachRequest(65536, "invalid"));
     }
 }

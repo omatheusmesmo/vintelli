@@ -328,8 +328,88 @@ class LspClientTest {
         assertTraceContains(traceFile, "shutdown", "exit");
     }
 
+    @Test
+    void startsTheJavaDebugAdapterThroughTheAdvertisedWorkspaceCommand() throws Exception {
+        Path traceFile = trace("java-debug-adapter");
+        String options = javaDebugOptions();
+        try (LspClient client = new LspClient(config("unit",
+                fakeCommand(traceFile, PROFILE_MARKER, "--java-debug", "--dap-port=60001"),
+                Optional.of(options)))) {
+
+            assertEquals(ProviderHealth.available(), client.debugAdapterHealth());
+            CapabilityResult<Integer> result = client.startDebugAdapter();
+
+            assertEquals(60001, ok(result));
+            assertTrue(Files.readString(traceFile).contains(
+                    "executeCommand vscode.java.startDebugSession\n"));
+        }
+        assertTraceContains(traceFile, "initialize", "initialized", "executeCommand vscode.java.startDebugSession",
+                "shutdown", "exit");
+    }
+
+    @Test
+    void explainsMissingJavaDebugBundleAndUnadvertisedCommand() throws Exception {
+        Path missingBundleTrace = trace("missing-java-debug-bundle");
+        try (LspClient client = new LspClient(config("unit",
+                fakeCommand(missingBundleTrace, PROFILE_MARKER, "--java-debug"), Optional.empty()))) {
+            assertFalse(client.debugAdapterHealth().isAvailable());
+            assertTrue(client.debugAdapterHealth().reason().contains("initializationOptions.bundles"));
+        }
+
+        Path unsupportedTrace = trace("unsupported-java-debug-command");
+        String options = javaDebugOptions();
+        try (LspClient client = new LspClient(config("unit",
+                fakeCommand(unsupportedTrace, PROFILE_MARKER), Optional.of(options)))) {
+            CapabilityResult<Integer> result = client.startDebugAdapter();
+
+            assertTrue(result.isFailure());
+            assertTrue(result.failureOf().orElseThrow().reason().contains("does not advertise"));
+            assertTrue(client.debugAdapterHealth().reason().contains("does not advertise"));
+            assertFalse(Files.readString(unsupportedTrace).contains("executeCommand "));
+        }
+    }
+
+    @Test
+    void rejectsOutOfRangeAndMalformedAdapterPorts() throws Exception {
+        for (String port : List.of("0", "65536", "1.5", "not-a-port")) {
+            Path traceFile = trace("invalid-java-debug-port-" + port.replace('.', '-'));
+            try (LspClient client = new LspClient(config("unit",
+                    fakeCommand(traceFile, PROFILE_MARKER, "--java-debug", "--dap-port=" + port),
+                    Optional.of(javaDebugOptions())))) {
+                CapabilityResult<Integer> result = client.startDebugAdapter();
+                assertTrue(result.isFailure(), port);
+                assertTrue(result.failureOf().orElseThrow().reason().contains("invalid DAP adapter port"), port);
+            }
+        }
+    }
+
+    @Test
+    void aTransientInvalidAdapterPortDoesNotPoisonHealthOrTheNextAttempt() throws Exception {
+        Path traceFile = trace("java-debug-adapter-retry");
+        try (LspClient client = new LspClient(config("unit",
+                fakeCommand(traceFile, PROFILE_MARKER, "--java-debug", "--dap-ports=65536,60002"),
+                Optional.of(javaDebugOptions())))) {
+            CapabilityResult<Integer> first = client.startDebugAdapter();
+            assertTrue(first.isFailure());
+            assertEquals(ProviderHealth.available(), client.debugAdapterHealth());
+
+            CapabilityResult<Integer> second = client.startDebugAdapter();
+
+            assertEquals(60002, ok(second));
+        }
+        assertTraceContains(traceFile, "executeCommand vscode.java.startDebugSession");
+        assertEquals(2, Files.readString(traceFile).split("executeCommand vscode.java.startDebugSession", -1).length - 1);
+    }
+
     private Path document() {
         return workspace.resolve("Fake.java");
+    }
+
+    private String javaDebugOptions() throws IOException {
+        Path bundle = workspace.resolve("debug-bundle-sha256-7d4a.jar");
+        Files.writeString(bundle, "fake java debug bundle");
+        String path = bundle.toAbsolutePath().toString().replace("\\", "\\\\").replace("\"", "\\\"");
+        return "{\"bundles\":[\"" + path + "\"]}";
     }
 
     private static <V> V ok(CapabilityResult<V> result) {

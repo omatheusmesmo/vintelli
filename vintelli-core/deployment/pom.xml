@@ -41,6 +41,18 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <groupId>org.eclipse.lsp4j</groupId>
+            <artifactId>org.eclipse.lsp4j.debug</artifactId>
+            <version>${lsp4j.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>dev.omatheusmesmo</groupId>
+            <artifactId>vintelli-debug</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <!-- Service files on the classpath for the TamboUI provider registration test. -->
             <groupId>dev.tamboui</groupId>
             <artifactId>tamboui-core</artifactId>

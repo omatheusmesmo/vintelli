@@ -29,6 +29,7 @@ class CapabilitiesConfigTest {
                 "run.provider-order", " local, idea ",
                 "read-file.provider-order", "lsp",
                 "editor-bridge.provider-order", "generic, builtin",
+                "debug.provider-order", "jdtls",
                 "vcs.provider-order", "local, other"));
 
         CapabilityOrders orders = new CapabilityOrders(config.getConfigMapping(CapabilitiesConfig.class));
@@ -36,6 +37,7 @@ class CapabilitiesConfigTest {
         assertEquals(List.of("local", "idea"), orders.orderFor(CapabilityType.RUN));
         assertEquals(List.of("lsp"), orders.orderFor(CapabilityType.READ_FILE));
         assertEquals(List.of("generic", "builtin"), orders.orderFor(CapabilityType.EDITOR_BRIDGE));
+        assertEquals(List.of("jdtls"), orders.orderFor(CapabilityType.DEBUG));
         assertEquals(List.of("local", "other"), orders.orderFor(CapabilityType.VERSION_CONTROL));
         assertEquals(List.of(), orders.orderFor(CapabilityType.DIAGNOSTICS));
         assertEquals(List.of(), orders.orderFor(CapabilityType.TERMINAL));

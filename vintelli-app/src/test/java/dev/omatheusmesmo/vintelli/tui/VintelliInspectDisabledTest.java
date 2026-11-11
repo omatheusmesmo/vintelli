@@ -21,6 +21,9 @@ class VintelliInspectDisabledTest {
         given().get("/tui/debug-launch-probe").then().statusCode(404);
         given().post("/tui/debug-launch-probe").then().statusCode(404);
         given().delete("/tui/debug-launch-probe").then().statusCode(404);
+        given().get("/tui/debug-capability-probe").then().statusCode(404);
+        given().post("/tui/debug-capability-probe").then().statusCode(404);
+        given().delete("/tui/debug-capability-probe").then().statusCode(404);
         given().get("/tui/run-selection").then().statusCode(404);
         given().post("/tui/run-selection?id=maven:compile").then().statusCode(404);
     }

@@ -2,6 +2,7 @@ package dev.omatheusmesmo.vintelli.core.deployment;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 
 import io.quarkus.deployment.annotations.BuildProducer;
 import io.quarkus.deployment.annotations.BuildStep;
@@ -11,6 +12,7 @@ import io.quarkus.deployment.builditem.nativeimage.NativeImageProxyDefinitionBui
 import io.quarkus.deployment.builditem.nativeimage.ReflectiveClassBuildItem;
 import org.jboss.jandex.ClassInfo;
 import org.jboss.jandex.DotName;
+import io.quarkus.bootstrap.classloading.QuarkusClassLoader;
 
 /**
  * Native image registration for the LSP4J based client of {@code vintelli-lsp}
@@ -27,6 +29,8 @@ final class LspClientProcessor {
 
     private static final String LSP4J_PREFIX = "org.eclipse.lsp4j.";
     private static final DotName LANGUAGE_CLIENT = DotName.createSimple("org.eclipse.lsp4j.services.LanguageClient");
+    private static final DotName DEBUG_PROTOCOL_CLIENT = DotName.createSimple(
+            "org.eclipse.lsp4j.debug.services.IDebugProtocolClient");
     private static final List<String> PROXY_ENDPOINTS = List.of(
             "org.eclipse.lsp4j.services.LanguageServer",
             "org.eclipse.lsp4j.services.TextDocumentService",
@@ -39,6 +43,17 @@ final class LspClientProcessor {
         dependencies.produce(new IndexDependencyBuildItem("org.eclipse.lsp4j", "org.eclipse.lsp4j"));
         dependencies.produce(new IndexDependencyBuildItem("org.eclipse.lsp4j", "org.eclipse.lsp4j.jsonrpc"));
         dependencies.produce(new IndexDependencyBuildItem("dev.omatheusmesmo", "vintelli-lsp"));
+    }
+
+    @BuildStep(onlyIf = DebugProtocolAvailable.class)
+    void indexDebugArtifacts(BuildProducer<IndexDependencyBuildItem> dependencies) {
+        dependencies.produce(new IndexDependencyBuildItem("org.eclipse.lsp4j", "org.eclipse.lsp4j.debug"));
+        dependencies.produce(new IndexDependencyBuildItem("org.eclipse.lsp4j", "org.eclipse.lsp4j.jsonrpc.debug"));
+    }
+
+    @BuildStep(onlyIf = DebugProviderAvailable.class)
+    void indexDebugProvider(BuildProducer<IndexDependencyBuildItem> dependencies) {
+        dependencies.produce(new IndexDependencyBuildItem("dev.omatheusmesmo", "vintelli-debug"));
     }
 
     @BuildStep
@@ -54,6 +69,13 @@ final class LspClientProcessor {
                 .map(Object::toString)
                 .filter(name -> !name.startsWith(LSP4J_PREFIX))
                 .forEach(registrations::add);
+        if (index.getIndex().getClassByName(DEBUG_PROTOCOL_CLIENT) != null) {
+            index.getIndex().getAllKnownImplementors(DEBUG_PROTOCOL_CLIENT).stream()
+                    .map(ClassInfo::name)
+                    .map(Object::toString)
+                    .filter(name -> !name.startsWith(LSP4J_PREFIX))
+                    .forEach(registrations::add);
+        }
         return ReflectiveClassBuildItem.builder(registrations.toArray(String[]::new))
                 .constructors()
                 .methods()
@@ -65,6 +87,30 @@ final class LspClientProcessor {
     void lsp4jProxies(BuildProducer<NativeImageProxyDefinitionBuildItem> proxies) {
         for (String service : PROXY_ENDPOINTS) {
             proxies.produce(new NativeImageProxyDefinitionBuildItem(service, JSONRPC_ENDPOINT));
+        }
+    }
+
+    @BuildStep(onlyIf = DebugProtocolAvailable.class)
+    void debugProtocolProxy(BuildProducer<NativeImageProxyDefinitionBuildItem> proxies) {
+        proxies.produce(new NativeImageProxyDefinitionBuildItem(
+                "org.eclipse.lsp4j.debug.services.IDebugProtocolServer", JSONRPC_ENDPOINT));
+    }
+
+    static final class DebugProtocolAvailable implements BooleanSupplier {
+
+        @Override
+        public boolean getAsBoolean() {
+            return QuarkusClassLoader.isClassPresentAtRuntime(
+                    "org.eclipse.lsp4j.debug.services.IDebugProtocolServer");
+        }
+    }
+
+    static final class DebugProviderAvailable implements BooleanSupplier {
+
+        @Override
+        public boolean getAsBoolean() {
+            return QuarkusClassLoader.isClassPresentAtRuntime(
+                    "dev.omatheusmesmo.vintelli.debug.JavaDebugCapability");
         }
     }
 }
