@@ -3,9 +3,14 @@
 The MCP endpoint, the Host and Origin guard, the browser terminal and how to configure MCP clients.
 
 Vintelli exposes an MCP server over streamable HTTP at `http://127.0.0.1:8080/mcp`
-(`io.quarkiverse.mcp:quarkus-mcp-server-http`). The HTTP server binds the
-loopback address by default (`quarkus.http.host=127.0.0.1`); set
-`quarkus.http.host` if other machines or containers must reach it.
+(`io.quarkiverse.mcp:quarkus-mcp-server-http`). The headless `serve` command
+keeps that port. The TUI, CLI and REPL processes bind a free loopback port
+instead, so several instances run side by side; pin one with
+`quarkus.http.port` (for example `-Dquarkus.http.port=8080`), and a pinned port
+that is already taken makes the process exit with status 1 and a message on
+stderr. The HTTP server binds the loopback address by default
+(`quarkus.http.host=127.0.0.1`); set `quarkus.http.host` if other machines or
+containers must reach it.
 
 The HTTP CORS filter is enabled with `quarkus.http.cors.enabled` and no
 `cors.origins` are configured, so the endpoint stays same-origin only and the
@@ -215,5 +220,6 @@ Tools that follow the `.mcp.json` convention need a `vintelli` entry like:
 
 This repository carries its own `.mcp.json` at the root for the Quarkus agent,
 which is unrelated to Vintelli, so merge the `vintelli` entry into your
-config instead of replacing the file. The port above is the Quarkus default;
-change it with `quarkus.http.port`.
+config instead of replacing the file. The port above is the one `serve` binds;
+a TUI process picks a free port unless `quarkus.http.port` pins it, so point the
+client at the pinned port when the TUI is the server.
