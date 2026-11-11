@@ -3,6 +3,8 @@ package dev.omatheusmesmo.vintelli.cli;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
 
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityFailure;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityRegistry;
@@ -45,17 +47,31 @@ public final class RunCommand implements Command<CommandInvocation> {
         };
     }
 
-    private CommandResult execute(RunCapability runs, CommandInvocation invocation) {
+    private CommandResult execute(RunCapability runs, CommandInvocation invocation) throws InterruptedException {
         if (configurationName == null || configurationName.isBlank()) {
             return list(runs.listConfigurations(), invocation);
         }
+        CountDownLatch completed = new CountDownLatch(1);
+        AtomicReference<RunCapability.RunCompletion> completion = new AtomicReference<>();
         CapabilityResult<RunCapability.RunHandle> started = runs.start(
                 new RunCapability.RunRequest(configurationName, Path.of("."), Map.of()),
-                invocation::println);
+                invocation::println, ended -> {
+                    completion.set(ended);
+                    completed.countDown();
+                });
         if (started.isFailure()) {
             return failure(started, invocation);
         }
-        return CommandResult.SUCCESS;
+        if (!runs.reportsCompletion()) return CommandResult.SUCCESS;
+        RunCapability.RunHandle handle = ((CapabilityResult.Ok<RunCapability.RunHandle>) started).value();
+        try {
+            completed.await();
+            RunCapability.RunCompletion ended = completion.get();
+            return ended.outcome() == RunCapability.RunOutcome.EXITED && ended.exitCode().orElse(-1) == 0
+                    ? CommandResult.SUCCESS : CommandResult.FAILURE;
+        } finally {
+            handle.cancel();
+        }
     }
 
     private static CommandResult list(CapabilityResult<List<RunCapability.RunConfiguration>> listing,

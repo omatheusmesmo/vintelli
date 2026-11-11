@@ -31,6 +31,7 @@ Key actions in the `intellij` profile:
 | `Activate<Name>ToolWindow` | `Alt+1` Project, `Alt+4` Run, `Alt+6` Problems, `Alt+7` Structure, `Alt+F12` Terminal (`Alt+2` too), `Alt+8` ACP Agents, `Alt+9` Maven. Each tool window also takes its bare digit when no input has focus | `Alt+1` Project, `Alt+4` Run, `Alt+6` Problems, `Alt+7` Structure, `Alt+F12` Terminal; none for ACP Agents and Maven |
 | `SearchEverywhere` | `Ctrl+P` | `Double Shift` |
 | `KeymapHelp` | `F1` | `F1` |
+| `run.choose-configuration` | Palette: Choose Run Configuration; toolbar configuration name | - |
 | `moveUp` / `moveDown` | arrow keys (`j/k` in the `vim` profile) | - |
 | `quit` | `Ctrl+C` | - |
 

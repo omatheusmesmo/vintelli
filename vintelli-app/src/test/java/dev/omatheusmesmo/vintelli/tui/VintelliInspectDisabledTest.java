@@ -18,6 +18,8 @@ class VintelliInspectDisabledTest {
         given().get("/tui/render").then().statusCode(404);
         given().post("/tui/theme?name=darcula").then().statusCode(404);
         given().get("/tui/keymap").then().statusCode(404);
+        given().get("/tui/run-selection").then().statusCode(404);
+        given().post("/tui/run-selection?id=maven:compile").then().statusCode(404);
     }
 
     /**

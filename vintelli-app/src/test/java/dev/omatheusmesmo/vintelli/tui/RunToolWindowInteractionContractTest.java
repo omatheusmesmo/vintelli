@@ -125,10 +125,10 @@ class RunToolWindowInteractionContractTest {
         assertTrue(condition.getAsBoolean(), "Run interaction did not reach its expected state");
     }
 
-    private static final class FakeRegistry implements CapabilityRegistry {
+    static final class FakeRegistry implements CapabilityRegistry {
         private final RunCapability provider;
 
-        private FakeRegistry(RunCapability provider) {
+        FakeRegistry(RunCapability provider) {
             this.provider = provider;
         }
 

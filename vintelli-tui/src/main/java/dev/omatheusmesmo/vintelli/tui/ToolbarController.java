@@ -78,7 +78,7 @@ final class ToolbarController {
             case BRANCH -> host.refreshBranch();
             case CONFIGURATION -> {
                 if (run != null) {
-                    host.dispatch(KeyActions.RUN_SELECT_NEXT);
+                    host.dispatch(KeyActions.RUN_CHOOSE_CONFIGURATION);
                 }
             }
             case RUN -> dispatchRunAction(KeyActions.RUN_EXECUTE);

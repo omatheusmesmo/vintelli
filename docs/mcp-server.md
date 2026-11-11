@@ -84,6 +84,12 @@ the shortcut string of every named action) as JSON. It is gated by the same
 `vintelli.inspect.enabled` switch and exists so the TamboUI binding presets
 are exercised on every run, including the native runner.
 
+`GET /tui/run-selection` lists detected run configurations and the saved choice.
+`POST /tui/run-selection?id=<identifier>` saves a listed configuration for the
+next shell session; it does not start a process or forward input to a live TUI.
+Unknown ids return 400. Both routes answer 404 unless
+`vintelli.inspect.enabled=true` and share the Host and Origin guard above.
+
 `GET /inspect/editor` and its `POST /open`, `/insert`, `/undo` and `/save`
 actions expose a small headless editor inspection surface for native
 integration tests and local debugging. It is off unless

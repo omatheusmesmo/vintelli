@@ -74,6 +74,7 @@ public final class KeyActions {
     public static final String RUN_EXECUTE = "run.execute";
     public static final String RUN_STOP = "run.stop";
     public static final String RUN_REFRESH = "run.refresh";
+    public static final String RUN_CHOOSE_CONFIGURATION = "run.choose-configuration";
     public static final String RUN_SELECT_NEXT = "run.select-next";
     public static final String RUN_SELECT_PREVIOUS = "run.select-previous";
     public static final String MAVEN_ACTIVATE = "maven.activate";
@@ -121,6 +122,7 @@ public final class KeyActions {
                 new KeyAction(IDEA_MCP_CONNECT, "Connect to IntelliJ IDEA", ""),
                 new KeyAction(RUN_EXECUTE, "Run Selected Configuration", ""),
                 new KeyAction(RUN_REFRESH, "Refresh Run Configurations", ""),
+                new KeyAction(RUN_CHOOSE_CONFIGURATION, "Choose Run Configuration", ""),
                 new KeyAction(RUN_STOP, "Stop Current Run", ""),
                 new KeyAction(TERMINAL_EXECUTE, "Execute Terminal Command", ""),
                 new KeyAction(PROBLEMS_NAVIGATE, "Open Selected Problem", ""),

@@ -52,13 +52,13 @@ class ToolbarControllerTest {
     }
 
     @Test
-    void configurationSelectsTheNextConfigurationOnlyWhenARunWindowExists() {
+    void configurationOpensTheChooserOnlyWhenARunWindowExists() {
         RecordingHost host = new RecordingHost(false);
         assertTrue(controller(host, null).click(segment(MainToolbar.Kind.CONFIGURATION)));
         assertEquals(List.of(), host.dispatched, "no run window, no selection");
         assertTrue(controller(host, new RunToolWindow(ToolbarControllerTest::themes))
                 .click(segment(MainToolbar.Kind.CONFIGURATION)));
-        assertEquals(List.of(KeyActions.RUN_SELECT_NEXT), host.dispatched);
+        assertEquals(List.of(KeyActions.RUN_CHOOSE_CONFIGURATION), host.dispatched);
     }
 
     @Test

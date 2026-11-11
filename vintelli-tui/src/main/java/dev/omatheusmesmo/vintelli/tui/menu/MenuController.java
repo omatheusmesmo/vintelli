@@ -60,10 +60,18 @@ final class MenuController {
     }
 
     void open(int index) {
+        open(index, null);
+    }
+
+    void open(int index, String actionId) {
         invalidateHitbox();
         menuIndex = Math.clamp(index, 0, menus.size() - 1);
         selected = 0;
         open = true;
+        List<MenuEntry> choices = visibleEntries();
+        for (int choice = 0; choice < choices.size(); choice++) {
+            if (choices.get(choice).actionId().equals(actionId)) selected = choice;
+        }
     }
 
     void close() {

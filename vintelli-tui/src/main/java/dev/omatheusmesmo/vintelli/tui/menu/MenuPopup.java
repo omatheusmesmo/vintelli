@@ -58,6 +58,10 @@ public final class MenuPopup {
         controller.open(index);
     }
 
+    public void open(int index, String selectedAction) {
+        controller.open(index, selectedAction);
+    }
+
     public void close() {
         controller.close();
     }
