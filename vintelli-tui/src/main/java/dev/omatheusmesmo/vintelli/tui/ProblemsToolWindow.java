@@ -18,6 +18,7 @@ import dev.tamboui.tui.event.KeyEvent;
 import dev.tamboui.tui.event.MouseEvent;
 import dev.tamboui.tui.event.MouseEventKind;
 import dev.tamboui.widgets.paragraph.Paragraph;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import jakarta.annotation.PreDestroy;
 import jakarta.inject.Inject;
 import jakarta.inject.Provider;
@@ -30,6 +31,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
@@ -60,16 +62,23 @@ public final class ProblemsToolWindow implements ToolWindow {
     private Filter filter = Filter.ALL;
     private String message = "Open one or more files in the editor, then refresh";
     private CapabilityStateLine.Summary capabilitySummary;
+    private final boolean ideaConfigured;
     private int selectedIndex;
     private int scrollOffset;
     private int viewportRows = 1;
     private Rect lastArea = new Rect(0, 0, 0, 0);
 
-    @Inject
     public ProblemsToolWindow(CapabilityRegistry registry, BuiltinEditor editor, Provider<ShellThemes> themes) {
+        this(registry, editor, themes, Optional.empty());
+    }
+
+    @Inject
+    public ProblemsToolWindow(CapabilityRegistry registry, BuiltinEditor editor, Provider<ShellThemes> themes,
+            @ConfigProperty(name = "vintelli.idea.mcp.url") Optional<String> ideaUrl) {
         this.registry = registry;
         this.editor = editor;
         this.themes = themes;
+        this.ideaConfigured = CapabilityStateLine.ideaConfigured(ideaUrl);
         this.capabilitySummary = registry == null
                 ? CapabilityStateLine.notConfigured(CapabilityType.DIAGNOSTICS)
                 : CapabilityStateLine.checking(CapabilityType.DIAGNOSTICS);
@@ -207,7 +216,8 @@ public final class ProblemsToolWindow implements ToolWindow {
     }
 
     private void load(long request) {
-        CapabilityStateLine.Summary summary = CapabilityStateLine.read(registry, CapabilityType.DIAGNOSTICS);
+        CapabilityStateLine.Summary summary = CapabilityStateLine.read(registry, CapabilityType.DIAGNOSTICS,
+                ideaConfigured);
         synchronized (this) {
             if (request == refreshSequence.get()) {
                 capabilitySummary = summary;

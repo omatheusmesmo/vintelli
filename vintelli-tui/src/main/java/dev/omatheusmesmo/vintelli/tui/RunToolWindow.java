@@ -6,6 +6,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -55,6 +56,7 @@ public final class RunToolWindow implements ToolWindow {
     private final AtomicLong runSequence = new AtomicLong();
     private final AtomicLong capabilitySequence = new AtomicLong();
     private final AtomicBoolean capabilityRequested = new AtomicBoolean();
+    private final boolean ideaConfigured;
 
     private volatile List<RunCapability.RunConfiguration> configurations = List.of();
     private volatile RunCapability provider;
@@ -79,6 +81,7 @@ public final class RunToolWindow implements ToolWindow {
         this.debugPort = 5005;
         this.status = "Run provider unavailable";
         this.capabilitySummary = CapabilityStateLine.notConfigured(CapabilityType.RUN);
+        this.ideaConfigured = false;
     }
 
     public RunToolWindow(Provider<ShellThemes> themes, CapabilityRegistry capabilities, UiWorkQueue uiWork,
@@ -92,11 +95,17 @@ public final class RunToolWindow implements ToolWindow {
         this(themes, capabilities, uiWork, workingDirectory, selectionStore, 5005);
     }
 
+    public RunToolWindow(Provider<ShellThemes> themes, CapabilityRegistry capabilities, UiWorkQueue uiWork,
+            String workingDirectory, RunSelectionStore selectionStore, int debugPort) {
+        this(themes, capabilities, uiWork, workingDirectory, selectionStore, debugPort, Optional.empty());
+    }
+
     @Inject
     public RunToolWindow(Provider<ShellThemes> themes, CapabilityRegistry capabilities, UiWorkQueue uiWork,
             @ConfigProperty(name = "vintelli.local.project-root", defaultValue = ".") String workingDirectory,
             RunSelectionStore selectionStore,
-            @ConfigProperty(name = "vintelli.debug.port", defaultValue = "5005") int debugPort) {
+            @ConfigProperty(name = "vintelli.debug.port", defaultValue = "5005") int debugPort,
+            @ConfigProperty(name = "vintelli.idea.mcp.url") Optional<String> ideaUrl) {
         this.debugPort = debugPort;
         this.themes = themes;
         this.capabilities = capabilities;
@@ -104,6 +113,7 @@ public final class RunToolWindow implements ToolWindow {
         this.workingDirectory = Path.of(workingDirectory).toAbsolutePath().normalize();
         this.selectionStore = selectionStore;
         this.preferredConfiguration = selectionStore == null ? null : selectionStore.load().orElse(null);
+        this.ideaConfigured = CapabilityStateLine.ideaConfigured(ideaUrl);
     }
 
     @PostConstruct
@@ -473,7 +483,8 @@ public final class RunToolWindow implements ToolWindow {
         capabilityRequested.set(true);
         long sequence = capabilitySequence.incrementAndGet();
         Thread.ofVirtual().name("vintelli-run-capability").start(() -> {
-            CapabilityStateLine.Summary summary = CapabilityStateLine.read(capabilities, CapabilityType.RUN);
+            CapabilityStateLine.Summary summary = CapabilityStateLine.read(capabilities, CapabilityType.RUN,
+                    ideaConfigured);
             uiWork.execute(() -> {
                 if (sequence == capabilitySequence.get()) {
                     capabilitySummary = summary;

@@ -8,6 +8,7 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityRegistry;
@@ -52,12 +53,20 @@ public final class TerminalToolWindow implements ToolWindow {
     private final AtomicLong capabilitySequence = new AtomicLong();
     private final AtomicBoolean capabilityRequested = new AtomicBoolean();
     private volatile CapabilityStateLine.Summary capabilitySummary;
+    private final boolean ideaConfigured;
 
-    /** CDI construction with the selected terminal capability. */
-    @Inject
+    /** Construction with the selected terminal capability and no IDEA endpoint configured. */
     public TerminalToolWindow(Provider<ShellThemes> themes, CapabilityRegistry capabilities) {
+        this(themes, capabilities, Optional.empty());
+    }
+
+    /** CDI construction with the selected terminal capability and the optional IDEA endpoint. */
+    @Inject
+    public TerminalToolWindow(Provider<ShellThemes> themes, CapabilityRegistry capabilities,
+            @ConfigProperty(name = "vintelli.idea.mcp.url") Optional<String> ideaUrl) {
         this.themes = themes;
         this.capabilities = capabilities;
+        this.ideaConfigured = CapabilityStateLine.ideaConfigured(ideaUrl);
         this.capabilitySummary = capabilities == null
                 ? CapabilityStateLine.notConfigured(CapabilityType.TERMINAL)
                 : CapabilityStateLine.checking(CapabilityType.TERMINAL);
@@ -222,7 +231,8 @@ public final class TerminalToolWindow implements ToolWindow {
         capabilityRequested.set(true);
         long sequence = capabilitySequence.incrementAndGet();
         Thread.ofVirtual().name("vintelli-terminal-capability").start(() -> {
-            CapabilityStateLine.Summary summary = CapabilityStateLine.read(capabilities, CapabilityType.TERMINAL);
+            CapabilityStateLine.Summary summary = CapabilityStateLine.read(capabilities, CapabilityType.TERMINAL,
+                    ideaConfigured);
             if (sequence == capabilitySequence.get()) {
                 capabilitySummary = summary;
             }

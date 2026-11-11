@@ -12,6 +12,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.BooleanSupplier;
 import java.util.stream.IntStream;
 
@@ -104,7 +105,8 @@ class ProblemsToolWindowInteractionContractTest {
                 .toList();
         TestRegistry registry = new TestRegistry(new TestDiagnostics(diagnostics),
                 List.of(new SkippedProvider("idea", "not connected")));
-        ProblemsToolWindow window = new ProblemsToolWindow(registry, editor, () -> themes);
+        ProblemsToolWindow window = new ProblemsToolWindow(registry, editor, () -> themes,
+                Optional.of("http://127.0.0.1:64342/stream"));
         window.refresh();
         assertTrue(await(() -> window.problems().size() == diagnostics.size()), "diagnostics did not load");
         VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window, editor), new ShellState(), themes)

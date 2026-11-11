@@ -1,9 +1,11 @@
 package dev.omatheusmesmo.vintelli.tui;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 
@@ -43,6 +45,57 @@ class CapabilityStateLineTest {
 
         assertEquals("Problems: jdtls (jdtls over stdio)", summary.headline());
         assertEquals(List.of("skipped idea: not connected", "skipped lsp4j: handshake timed out"), summary.skipped());
+    }
+
+    @Test
+    void unconfiguredIdeaIsNotReportedAsASkippedProvider() {
+        CapabilityStateLine.Summary summary = CapabilityStateLine.of(List.of(
+                CapabilityStatus.available(CapabilityType.RUN, "lsp", "lsp over stdio", List.of(
+                        new SkippedProvider("idea", "disconnected: not connected yet"),
+                        new SkippedProvider("backup", "not started")))),
+                CapabilityType.RUN, false);
+
+        assertEquals("Run: lsp (lsp over stdio)", summary.headline());
+        assertEquals(List.of("skipped backup: not started"), summary.skipped());
+    }
+
+    @Test
+    void configuredIdeaThatFailsStillExplainsWhy() {
+        String reason = "unreachable: IDEA not reachable at the configured URL; start IDEA or check the copied endpoint";
+        CapabilityStateLine.Summary summary = CapabilityStateLine.of(List.of(
+                CapabilityStatus.available(CapabilityType.RUN, "lsp", "lsp over stdio", List.of(
+                        new SkippedProvider("idea", reason)))),
+                CapabilityType.RUN, true);
+
+        assertEquals(List.of("skipped idea: " + reason), summary.skipped());
+    }
+
+    @Test
+    void unconfiguredIdeaDoesNotHideSkippedProvidersOfOtherIdentifiers() {
+        CapabilityStateLine.Summary summary = CapabilityStateLine.of(List.of(
+                CapabilityStatus.available(CapabilityType.DIAGNOSTICS, "jdtls", "jdtls over stdio", List.of(
+                        new SkippedProvider("ideaish", "handshake timed out")))),
+                CapabilityType.DIAGNOSTICS, false);
+
+        assertEquals(List.of("skipped ideaish: handshake timed out"), summary.skipped());
+    }
+
+    @Test
+    void unavailableRowKeepsEveryReasonWhenNoProviderIsAvailable() {
+        CapabilityStateLine.Summary summary = CapabilityStateLine.of(List.of(
+                CapabilityStatus.unavailable(CapabilityType.RUN,
+                        "no healthy provider for 'Run': idea (disconnected: not connected yet)")),
+                CapabilityType.RUN, false);
+
+        assertEquals("Run unavailable: no healthy provider for 'Run': idea (disconnected: not connected yet)",
+                summary.headline());
+    }
+
+    @Test
+    void ideaIsConfiguredOnlyWhenTheUrlIsSetAndNotBlank() {
+        assertTrue(CapabilityStateLine.ideaConfigured(Optional.of("http://127.0.0.1:64342/stream")));
+        assertFalse(CapabilityStateLine.ideaConfigured(Optional.empty()));
+        assertFalse(CapabilityStateLine.ideaConfigured(Optional.of("   ")));
     }
 
     @Test
