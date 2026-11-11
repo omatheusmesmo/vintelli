@@ -63,6 +63,7 @@ public final class EditorDocument {
     public int lineCount() { return state.lineCount(); }
     public boolean importsFolded() { return fold != null; }
     int documentRow(int viewRow) { return fold == null ? viewRow : fold.toDocument(viewRow); }
+    int viewRow(int documentRow) { return fold == null ? documentRow : fold.hides(documentRow) ? -1 : fold.toView(documentRow); }
 
     boolean hasDiagnosticAt(int viewRow) {
         int first = documentRow(viewRow);

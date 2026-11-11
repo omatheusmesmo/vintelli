@@ -59,6 +59,8 @@ final class EditorElement implements Element {
     private final TextAreaElement textArea = Toolkit.textArea();
     private final MenuAwareTextArea menuAwareTextArea;
     private final EditorTabBarElement tabBar = new EditorTabBarElement();
+    private final EditorFind find = new EditorFind();
+    private final EditorFindRow findRow = new EditorFindRow(find);
     private Rect renderedArea = Rect.ZERO;
     private Rect bodyArea = Rect.ZERO;
     private Rect textBody = Rect.ZERO;
@@ -111,9 +113,10 @@ final class EditorElement implements Element {
                 textArea.render(frame, area, context);
             } else {
                 document.paintViewport(area.height(), () -> textArea.render(frame, area, context));
+                findRow.paintMatches(frame.buffer(), area, document, context);
             }
             paintCaretRow(frame.buffer(), area);
-            if (TYPING_FOCUS_IDS.stream().anyMatch(context::isFocused)) {
+            if (!find.isOpenOn(document) && TYPING_FOCUS_IDS.stream().anyMatch(context::isFocused)) {
                 paintCaret(frame.buffer(), area, context);
             }
         }
@@ -205,6 +208,7 @@ final class EditorElement implements Element {
     @Override public void render(Frame frame, Rect area, RenderContext context) {
         synchronized (editor) {
             EditorDocument document = editor.document();
+            find.syncTo(document);
             if (!area.equals(renderedArea)) {
                 dragDocument = null;
                 if (document != null) { document.requestReveal(); }
@@ -218,7 +222,8 @@ final class EditorElement implements Element {
             } else {
                 Row body = Toolkit.row().fill();
                 int gutterWidth = Integer.toString(document.lineCount()).length() + 3;
-                int bodyHeight = Math.max(0, area.height() - 1);
+                boolean finding = find.isOpenOn(document);
+                int bodyHeight = Math.max(0, area.height() - (finding ? 2 : 1));
                 if (document.consumeReveal()) {
                     document.state().ensureCursorVisible(bodyHeight, Math.max(0, area.width() - gutterWidth));
                 }
@@ -230,6 +235,9 @@ final class EditorElement implements Element {
                         .clip().fill();
                 body.add(menuAwareTextArea);
                 column.add(body);
+                if (finding) {
+                    column.add(findRow);
+                }
                 TextElement statusLine = Toolkit.text(editor.status()).length(1);
                 if (editor.closeConfirmationPending()) {
                     statusLine.id("editor-close-confirmation").focusable().onKeyEvent(key -> {
@@ -270,7 +278,7 @@ final class EditorElement implements Element {
         return Text.from(lines);
     }
 
-    private static Style roleStyle(RenderContext context, String role) {
+    static Style roleStyle(RenderContext context, String role) {
         return context.resolveStyle(role, role).map(CssStyleResolver::toStyle).orElse(Style.EMPTY);
     }
 
@@ -328,6 +336,18 @@ final class EditorElement implements Element {
         dragDocument = null;
     }
 
+    void openFind(EditorDocument document) {
+        find.open(document);
+    }
+
+    void closeFind() {
+        find.close();
+    }
+
+    boolean findOpenOn(EditorDocument document) {
+        return document != null && find.isOpenOn(document);
+    }
+
     /** The view row and character column under a screen cell, clamped to the visible text area. */
     private TextPosition textPosition(EditorDocument document, int x, int y) {
         TextAreaState state = document.state();
@@ -350,6 +370,10 @@ final class EditorElement implements Element {
             if (reserved(event)) { return EventResult.UNHANDLED; }
             EditorDocument document = editor.document();
             if (document == null) { return EventResult.UNHANDLED; }
+            if (find.isOpenOn(document)) {
+                if (event.isKey(KeyCode.ESCAPE)) { editor.closeFind(); } else { findRow.handleKeyEvent(event, focused); }
+                return EventResult.HANDLED;
+            }
             // Bind the current document on the input path too; events can arrive
             // before the first render or immediately after a tab switch.
             textArea.state(document.state());

@@ -198,6 +198,24 @@ EditorTabBarElement-overflow {
   text-style: reversed;
 }
 
+#editor-find {
+  color: $editor-fg;
+  background: $editor-bg;
+}
+
+.editor-find-match {
+  background: $editor-selection;
+}
+
+.editor-find-current {
+  background: $selection-bg;
+  text-style: bold;
+}
+
+.editor-find-count {
+  color: $muted;
+}
+
 .editor-push-highlight {
   color: $editor-keyword;
   text-style: bold;

@@ -80,6 +80,23 @@ relies on bare digit keys once an input has focus. Opening an overlay
 releases the capture; after closing it the shell keeps the focus until the
 tab is reselected.
 
+## Find row in the editor
+
+`Find` (`Ctrl+F`) opens a find row above the editor status line. While it is
+open, typed characters and Backspace edit the query, and the other keys are
+local to the row rather than named actions, so they do not appear in the
+table below:
+
+| Key | Effect |
+|---|---|
+| `Enter`, `F3`, `Down` | Next match, wrapping to the first |
+| `Shift+Enter`, `Shift+F3`, `Up` | Previous match, wrapping to the last |
+| `Escape` | Closes the row and returns the focus to the text |
+
+The search is literal and case-sensitive. The caret keys do not move the caret
+in the text while the row is open, so close it with `Escape` first. `Find in
+Files` (`Alt+F`) keeps opening the project search.
+
 ## IntelliJ comparison table
 
 The file
