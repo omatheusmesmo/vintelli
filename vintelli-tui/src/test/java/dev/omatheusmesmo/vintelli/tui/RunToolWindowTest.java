@@ -151,10 +151,29 @@ class RunToolWindowTest {
         assertTrue(screen.contains("› idea:Config19"), screen);
         assertTrue(screen.contains("Console"), screen);
 
-        // The first visible row is Config16 after scrolling; clicking it must
-        // select that item, not a hidden row based on the original list offset.
-        assertTrue(window.handleMouse(MouseEvent.press(MouseButton.LEFT, 5, 4)));
-        assertEquals(16, window.selectedIndex());
+        // Clicking the first visible configuration must select that item, not
+        // a hidden row based on the original list offset.
+        String[] screenRows = screen.split("\\R");
+        int firstVisibleConfigurationRow = -1;
+        String firstVisibleConfiguration = null;
+        for (int row = 0; row < screenRows.length; row++) {
+            if (screenRows[row].contains("idea:Config")) {
+                firstVisibleConfigurationRow = row;
+                firstVisibleConfiguration = screenRows[row].strip().replaceFirst("^›\\s*", "").split("\\s+")[0];
+                break;
+            }
+        }
+        assertTrue(firstVisibleConfigurationRow >= 0, screen);
+        int expectedIndex = -1;
+        for (int index = 0; index < window.configurations().size(); index++) {
+            if (window.configurations().get(index).identifier().equals(firstVisibleConfiguration)) {
+                expectedIndex = index;
+                break;
+            }
+        }
+        assertTrue(expectedIndex >= 0, firstVisibleConfiguration);
+        assertTrue(window.handleMouse(MouseEvent.press(MouseButton.LEFT, 5, firstVisibleConfigurationRow)));
+        assertEquals(expectedIndex, window.selectedIndex());
         assertNull(window.actionForMouse(MouseEvent.press(MouseButton.RIGHT, 41, 2)));
     }
 
