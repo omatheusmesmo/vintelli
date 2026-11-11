@@ -740,6 +740,7 @@ final class ProjectTreeController {
         } else if (selected < paths.size()) {
             state.selectFile(paths.get(selected));
         }
+        vcsRefresh.run();
     }
 
     private void appendVisible(List<ProjectNode> nodes, List<ProjectNode> output) {
@@ -750,7 +751,6 @@ final class ProjectTreeController {
                 appendVisible(row.children, output);
             }
         }
-        vcsRefresh.run();
     }
 
     private ProjectNode findNode(String relative) {
