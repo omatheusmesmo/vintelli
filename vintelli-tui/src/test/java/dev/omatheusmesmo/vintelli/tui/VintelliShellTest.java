@@ -1173,6 +1173,33 @@ class VintelliShellTest {
     }
 
     @Test
+    void rebuildingTheProjectTreeRunsVcsStatusOnceNotOncePerExpandedFolder() throws Exception {
+        Files.createDirectories(project.resolve("src/main/a"));
+        Files.createDirectories(project.resolve("src/main/b"));
+        Files.createDirectories(project.resolve("src/test"));
+        Files.writeString(project.resolve("src/main/a/A.java"), "class A {}");
+        Files.writeString(project.resolve("src/main/b/B.java"), "class B {}");
+        Files.writeString(project.resolve("src/test/T.java"), "class T {}");
+        AtomicInteger statusCalls = new AtomicInteger();
+        VintelliShell shell = shellWithVcsTree(countingModifiedVcs("src/main/a/A.java", statusCalls), project);
+        shell.refreshProjectTree();
+        for (String folder : List.of("src", "src/main", "src/main/a", "src/main/b")) {
+            shell.selectPath(folder);
+            shell.expandSelected();
+        }
+        shell.selectPath("src/main/a/A.java");
+        statusCalls.set(0);
+
+        shell.refreshProjectTree();
+
+        assertEquals(1, statusCalls.get(), "one rebuild should ask the VCS for status once, whatever the expanded folders");
+        FileIcons icons = FileIcons.resolve();
+        String changedRow = "  M " + icons.iconFor("A.java", JavaTypeKind.CLASS).symbol(icons.mode()) + " A.java";
+        String rendered = awaitRendered(shell, changedRow);
+        assertTrue(rendered.contains(changedRow), "the rebuilt rows keep the VCS state: " + rendered);
+    }
+
+    @Test
     void aVcsMarkerInTheSlotDoesNotMoveTheFileNameColumn() throws Exception {
         Files.createDirectories(project.resolve("src/lib"));
         Files.writeString(project.resolve("src/A.java"), "class A {}");
@@ -1212,8 +1239,13 @@ class VintelliShellTest {
     }
 
     private static VersionControlCapability modifiedVcs(String changedPath) {
+        return countingModifiedVcs(changedPath, new AtomicInteger());
+    }
+
+    private static VersionControlCapability countingModifiedVcs(String changedPath, AtomicInteger statusCalls) {
         return new VersionControlCapability() {
             @Override public CapabilityResult<Status> status() {
+                statusCalls.incrementAndGet();
                 return CapabilityResult.ok(new Status("main", 0, 0,
                         List.of(new Entry(State.MODIFIED, changedPath))));
             }
