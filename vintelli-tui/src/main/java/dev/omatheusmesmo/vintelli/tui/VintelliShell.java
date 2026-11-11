@@ -1430,7 +1430,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 parts.stack().closeOverlays();
                 ideaConnection.connect();
             }
-            case KeyActions.FIND, KeyActions.FIND_IN_FILES -> {
+            case KeyActions.FIND -> {
+                parts.stack().closeOverlays();
+                openEditorFind();
+            }
+            case KeyActions.FIND_IN_FILES -> {
                 parts.stack().closeOverlays();
                 openSearch(parts, ProjectSearchModel.Mode.TEXT);
             }
@@ -1488,6 +1492,18 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 }
             }
         }
+    }
+
+    private void openEditorFind() {
+        if (editor == null || editor.activeDocument().isEmpty()) {
+            status = "Open a file to find text in";
+            return;
+        }
+        editor.openFind();
+        toolWindowHost.clearFocus();
+        inputCaptured = true;
+        capturedWindow = editor;
+        status = editor.status();
     }
 
     private void focusProjectPanel() {

@@ -3175,6 +3175,135 @@ class VintelliShellTest {
     }
 
     @Test
+    void ctrlFSearchesTheOpenFileAndEnterAndShiftEnterWalkTheMatchesWithWraparound() throws Exception {
+        EditorShell fixture = openEditorShell("Find.txt", "alpha\nfoo one\nbar\nfoo two\nfoo three\n", 0);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            press(pilot, 'f', KeyModifiers.CTRL);
+            type(pilot, "foo");
+
+            String frame = awaitRenderedFrame(pilot, test, "1 of 3");
+            assertTrue(frame.contains("Find: foo"), frame);
+            assertEquals(1, fixture.editor().pointerState().orElseThrow().line(), "the first match is current");
+
+            pilot.press(KeyCode.ENTER);
+            settle(pilot);
+            awaitRenderedFrame(pilot, test, "2 of 3");
+            assertEquals(3, fixture.editor().pointerState().orElseThrow().line(), "Enter moves to the next match");
+
+            pilot.press(KeyCode.ENTER, KeyModifiers.SHIFT);
+            settle(pilot);
+            awaitRenderedFrame(pilot, test, "1 of 3");
+            assertEquals(1, fixture.editor().pointerState().orElseThrow().line(), "Shift+Enter moves back");
+
+            pilot.press(KeyCode.ENTER, KeyModifiers.SHIFT);
+            settle(pilot);
+            awaitRenderedFrame(pilot, test, "3 of 3");
+            assertEquals(4, fixture.editor().pointerState().orElseThrow().line(), "the previous match wraps to the last");
+
+            pilot.press(KeyCode.F3);
+            settle(pilot);
+            awaitRenderedFrame(pilot, test, "1 of 3");
+            assertEquals(1, fixture.editor().pointerState().orElseThrow().line(), "F3 wraps to the first match");
+
+            pilot.press(KeyCode.ESCAPE);
+            settle(pilot);
+            assertFalse(fixture.editor().findOpen(), "Escape closes the find row");
+            assertEquals("Find closed", fixture.editor().status());
+            assertFalse(fixture.editor().activeDocument().orElseThrow().dirty(), "searching never dirties the document");
+            assertFalse(fixture.editor().undo(), "searching adds no undo entry");
+            pressCtrlC(pilot);
+        }
+    }
+
+    @Test
+    void editorFindStatesAnEmptyResultAndLeavesTheCaretWhereItWas() throws Exception {
+        EditorShell fixture = openEditorShell("Empty.txt", "alpha\nbeta\n", 1);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            press(pilot, 'f', KeyModifiers.CTRL);
+            type(pilot, "zeta");
+
+            String frame = awaitRenderedFrame(pilot, test, "No results");
+            assertTrue(frame.contains("No results"), frame);
+            pilot.press(KeyCode.ENTER);
+            settle(pilot);
+            assertEquals(1, fixture.editor().pointerState().orElseThrow().line(), "no match leaves the caret in place");
+            pressCtrlC(pilot);
+        }
+    }
+
+    @Test
+    void editorFindScrollsTheViewToTheCurrentMatchAndUnfoldsAFoldedImportMatch() throws Exception {
+        EditorShell scrolled = openEditorShell("Long.txt", numberedLines(40), 0);
+        try (MouseShellRunner test = runMouseShell(scrolled.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            press(pilot, 'f', KeyModifiers.CTRL);
+            type(pilot, "line 35");
+
+            awaitRenderedFrame(pilot, test, "1 of 1");
+            BuiltinEditor.PointerState caret = scrolled.editor().pointerState().orElseThrow();
+            assertEquals(34, caret.line());
+            assertTrue(caret.scrollRow() > 0, "the view scrolls down to the match");
+            pressCtrlC(pilot);
+        }
+
+        String source = "package a;\n\nimport java.util.List;\nimport java.util.Map;\n\nclass C {\n  int v;\n}\n";
+        EditorShell folded = openEditorShell("Folded.java", source, 0);
+        assertTrue(folded.editor().toggleImportFold(), "the import block folds");
+        try (MouseShellRunner test = runMouseShell(folded.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            assertTrue(awaitRenderedFrame(pilot, test, "import ...").contains("import ..."), "the block starts folded");
+            press(pilot, 'f', KeyModifiers.CTRL);
+            type(pilot, "Map");
+
+            String frame = awaitRenderedFrame(pilot, test, "import java.util.Map;");
+            assertTrue(frame.contains("import java.util.Map;"), "a match inside the fold unfolds the block: " + frame);
+            assertEquals(3, folded.editor().pointerState().orElseThrow().line());
+            pressCtrlC(pilot);
+        }
+    }
+
+    @Test
+    void altFKeepsTheProjectSearchAndDoesNotOpenTheEditorFind() throws Exception {
+        EditorShell fixture = openEditorShell("Scope.txt", "alpha\n", 0, defaultThemes(), true);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            press(pilot, 'f', KeyModifiers.ALT);
+            awaitShellStatus(fixture.shell(), "Find in Files: type to search");
+            assertEquals("Find in Files: type to search", fixture.shell().status());
+            assertFalse(fixture.editor().findOpen(), "the project search does not open the editor find");
+            pressCtrlC(pilot);
+        }
+    }
+
+    @Test
+    void editorFindMatchesUseTheThemeRolesInBothThemes() throws Exception {
+        for (String theme : List.of("dark", "darcula")) {
+            ShellThemes themes = new ShellThemes(theme, (Path) null);
+            EditorShell fixture = openEditorShell("Themed.txt", "foo one\nbar foo\n", 0, themes, false);
+            try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+                Pilot pilot = test.pilot();
+                press(pilot, 'f', KeyModifiers.CTRL);
+                type(pilot, "foo");
+                awaitRenderedFrame(pilot, test, "1 of 2");
+                pressCtrlC(pilot);
+            }
+
+            Buffer buffer = offlineFrame(fixture.shell());
+            int currentRow = rowContaining(buffer, "foo one");
+            int otherRow = rowContaining(buffer, "bar foo");
+            assertTrue(currentRow >= 0 && otherRow >= 0, "both matching rows are rendered");
+            int currentX = rowText(buffer, currentRow).indexOf("foo one");
+            int otherX = rowText(buffer, otherRow).indexOf("foo");
+            assertEquals(themes.color("selection-bg"), cellBg(buffer, currentX, currentRow),
+                    theme + ": the current match uses the current-match role");
+            assertEquals(themes.color("editor-selection"), cellBg(buffer, otherX, otherRow),
+                    theme + ": the other matches use the match role");
+        }
+    }
+
+    @Test
     void projectSplitterKeepsTheMinimumEditorWidthBesideTheRightToolStripe() throws Exception {
         ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
         VintelliShell shell = new VintelliShell(ShellConfig.of(windowsWithAcp(), new ShellState(), defaultThemes())
@@ -4555,15 +4684,22 @@ class VintelliShellTest {
     }
 
     private EditorShell openEditorShell(String name, String text, int row) throws IOException {
+        return openEditorShell(name, text, row, defaultThemes(), false);
+    }
+
+    private EditorShell openEditorShell(String name, String text, int row, ShellThemes themes, boolean projectSearch)
+            throws IOException {
         Path file = project.resolve(name);
         Files.writeString(file, text);
-        ShellThemes themes = defaultThemes();
         BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
         assertFalse(editor.open(new OpenRequest(file, row)).isFailure());
         List<ToolWindow> windows = new ArrayList<>(defaultWindows());
         windows.add(editor);
-        VintelliShell shell = new VintelliShell(ShellConfig.of(new ToolWindowRegistry(windows).toolWindows(), new ShellState(), themes));
-        return new EditorShell(shell, editor);
+        ShellConfig config = ShellConfig.of(new ToolWindowRegistry(windows).toolWindows(), new ShellState(), themes);
+        if (projectSearch) {
+            config = config.withProjectSearch(new IdleProjectSearch());
+        }
+        return new EditorShell(new VintelliShell(config), editor);
     }
 
     private static String numberedLines(int count) {

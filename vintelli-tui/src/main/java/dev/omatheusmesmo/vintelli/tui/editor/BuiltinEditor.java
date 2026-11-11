@@ -17,6 +17,7 @@ import dev.tamboui.terminal.Frame;
 import dev.tamboui.toolkit.element.DefaultRenderContext;
 import dev.tamboui.toolkit.element.Element;
 import dev.tamboui.toolkit.element.RenderContext;
+import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
 import dev.tamboui.tui.event.MouseButton;
 import dev.tamboui.tui.event.MouseEvent;
@@ -107,6 +108,7 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     @Override public int ordinal() { return 40; }
     @Override public boolean capturesInput() { return true; }
     @Override public boolean handleKey(KeyEvent key) { return element.handleKeyEvent(key, true).isHandled(); }
+    @Override public boolean shouldHandleKeyBeforeShell(KeyEvent key) { return key.isKey(KeyCode.ESCAPE) && findOpen(); }
     @Override public synchronized void render(Frame frame, Rect area) {
         element.render(frame, area, DefaultRenderContext.createEmpty());
     }
@@ -281,6 +283,23 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
 
     public synchronized boolean undo() { boolean changed = document() != null && document().undo(); if (changed) { persist(); } return changed; }
     public synchronized boolean redo() { boolean changed = document() != null && document().redo(); if (changed) { persist(); } return changed; }
+    public synchronized void openFind() {
+        ensureSession();
+        EditorDocument document = document();
+        if (document == null) {
+            status = "No file is open";
+            return;
+        }
+        element.openFind(document);
+        focusRequest = TEXT_AREA_ID;
+        status = "Find: type to search, Enter or F3 for next, Shift+Enter for previous, Escape closes";
+    }
+    public synchronized void closeFind() {
+        element.closeFind();
+        focusRequest = document() == null ? null : TEXT_AREA_ID;
+        status = "Find closed";
+    }
+    public synchronized boolean findOpen() { return element.findOpenOn(document()); }
     public synchronized boolean findNext(String query) {
         boolean found = document() != null && document().find(query);
         status = found ? "Found: " + query : "No match: " + query;
