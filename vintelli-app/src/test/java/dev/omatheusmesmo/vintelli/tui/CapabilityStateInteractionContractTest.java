@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -45,6 +46,8 @@ class CapabilityStateInteractionContractTest {
 
     private static final Size VIEWPORT = new Size(100, 30);
     private static final String NO_PROVIDER = "no provider is wired";
+    private static final String NOT_CONNECTED_YET = "disconnected: not connected yet";
+    private static final String IDEA_URL = "http://127.0.0.1:64342/stream";
 
     @TempDir
     Path project;
@@ -120,7 +123,8 @@ class CapabilityStateInteractionContractTest {
         registry.skipped = List.of(new SkippedProvider("idea", "not connected"));
         BuiltinEditor editor = editor(themes, openedBrokenFile());
 
-        try (ToolWindowPilotFixture fixture = open(List.of(new ProblemsToolWindow(registry, editor, () -> themes)),
+        try (ToolWindowPilotFixture fixture = open(List.of(
+                        new ProblemsToolWindow(registry, editor, () -> themes, Optional.of(IDEA_URL))),
                 themes, registry, uiWork)) {
             fixture.press('6', KeyModifiers.ALT);
             assertTrue(fixture.await(() -> fixture.renderedText().contains("skipped idea: not connected"),
@@ -128,6 +132,73 @@ class CapabilityStateInteractionContractTest {
             String screen = fixture.renderedText();
             assertTrue(screen.contains("Problems: jdtls (jdtls over stdio)"), screen);
             assertTrue(screen.contains("broken target"), screen);
+        }
+    }
+
+    @Test
+    void plainInstallHidesTheUnconfiguredIdeaSkipInRunTerminalAndProblems() throws Exception {
+        ShellThemes themes = themes();
+        UiWorkQueue uiWork = new UiWorkQueue();
+        ScriptedRegistry registry = new ScriptedRegistry();
+        registry.run = new FakeRun();
+        registry.terminal = new FakeTerminal();
+        registry.diagnostics = new FakeDiagnostics(List.of(broken("broken target")));
+        registry.runSkipped = List.of(new SkippedProvider("idea", NOT_CONNECTED_YET));
+        registry.terminalSkipped = List.of(new SkippedProvider("idea", NOT_CONNECTED_YET));
+        registry.skipped = List.of(new SkippedProvider("idea", NOT_CONNECTED_YET));
+        BuiltinEditor editor = editor(themes, openedBrokenFile());
+
+        RunToolWindow run = new RunToolWindow(() -> themes, registry, uiWork, ".", null, 5005, Optional.empty());
+        run.refreshConfigurations();
+        try (ToolWindowPilotFixture fixture = open(List.of(run), themes, registry, uiWork)) {
+            fixture.press('4', KeyModifiers.ALT);
+            assertTrue(fixture.await(() -> fixture.renderedText().contains("Run: idea (IDEA MCP)"),
+                    Duration.ofSeconds(3)), fixture.renderedText());
+            assertFalse(fixture.renderedText().contains("skipped idea"), fixture.renderedText());
+        }
+        try (ToolWindowPilotFixture fixture = open(List.of(
+                        new TerminalToolWindow(() -> themes, registry, Optional.empty())),
+                themes, registry, uiWork)) {
+            fixture.press('2', KeyModifiers.ALT);
+            assertTrue(fixture.await(() -> fixture.renderedText().contains("Terminal: pty (local shell)"),
+                    Duration.ofSeconds(3)), fixture.renderedText());
+            assertFalse(fixture.renderedText().contains("skipped idea"), fixture.renderedText());
+        }
+        try (ToolWindowPilotFixture fixture = open(List.of(
+                        new ProblemsToolWindow(registry, editor, () -> themes, Optional.empty())),
+                themes, registry, uiWork)) {
+            fixture.press('6', KeyModifiers.ALT);
+            assertTrue(fixture.await(() -> fixture.renderedText().contains("Problems: jdtls (jdtls over stdio)"),
+                    Duration.ofSeconds(3)), fixture.renderedText());
+            assertFalse(fixture.renderedText().contains("skipped idea"), fixture.renderedText());
+        }
+    }
+
+    @Test
+    void configuredIdeaThatFailsExplainsWhyInRunAndTerminal() throws Exception {
+        ShellThemes themes = themes();
+        UiWorkQueue uiWork = new UiWorkQueue();
+        ScriptedRegistry registry = new ScriptedRegistry();
+        registry.run = new FakeRun();
+        registry.terminal = new FakeTerminal();
+        String failure = "unreachable: IDEA not reachable at the configured URL";
+        registry.runSkipped = List.of(new SkippedProvider("idea", failure));
+        registry.terminalSkipped = List.of(new SkippedProvider("idea", failure));
+
+        RunToolWindow run = new RunToolWindow(() -> themes, registry, uiWork, ".", null, 5005,
+                Optional.of(IDEA_URL));
+        run.refreshConfigurations();
+        try (ToolWindowPilotFixture fixture = open(List.of(run), themes, registry, uiWork)) {
+            fixture.press('4', KeyModifiers.ALT);
+            assertTrue(fixture.await(() -> fixture.renderedText().contains("skipped idea: " + failure),
+                    Duration.ofSeconds(3)), fixture.renderedText());
+        }
+        try (ToolWindowPilotFixture fixture = open(List.of(
+                        new TerminalToolWindow(() -> themes, registry, Optional.of(IDEA_URL))),
+                themes, registry, uiWork)) {
+            fixture.press('2', KeyModifiers.ALT);
+            assertTrue(fixture.await(() -> fixture.renderedText().contains("skipped idea: " + failure),
+                    Duration.ofSeconds(3)), fixture.renderedText());
         }
     }
 
@@ -188,7 +259,8 @@ class CapabilityStateInteractionContractTest {
                 "not connected to the IDEA MCP server after three retries and a long backoff"));
         BuiltinEditor editor = editor(themes, openedBrokenFile());
 
-        try (ToolWindowPilotFixture fixture = open(List.of(new ProblemsToolWindow(registry, editor, () -> themes)),
+        try (ToolWindowPilotFixture fixture = open(List.of(
+                        new ProblemsToolWindow(registry, editor, () -> themes, Optional.of(IDEA_URL))),
                 themes, registry, uiWork)) {
             fixture.press('6', KeyModifiers.ALT);
             fixture.resize(80, 16);
@@ -239,6 +311,8 @@ class CapabilityStateInteractionContractTest {
         private volatile TerminalCapability terminal;
         private volatile DiagnosticsCapability diagnostics;
         private volatile List<SkippedProvider> skipped = List.of();
+        private volatile List<SkippedProvider> runSkipped = List.of();
+        private volatile List<SkippedProvider> terminalSkipped = List.of();
         private volatile CountDownLatch gate;
         private final AtomicInteger snapshots = new AtomicInteger();
 
@@ -288,11 +362,11 @@ class CapabilityStateInteractionContractTest {
             RunCapability current = run;
             rows.add(current == null ? CapabilityStatus.unavailable(CapabilityType.RUN, NO_PROVIDER)
                     : CapabilityStatus.available(CapabilityType.RUN, current.identifier(), current.provenance(),
-                            List.of()));
+                            runSkipped));
             TerminalCapability shell = terminal;
             rows.add(shell == null ? CapabilityStatus.unavailable(CapabilityType.TERMINAL, NO_PROVIDER)
                     : CapabilityStatus.available(CapabilityType.TERMINAL, shell.identifier(), shell.provenance(),
-                            List.of()));
+                            terminalSkipped));
             rows.add(CapabilityStatus.unavailable(CapabilityType.READ_FILE, NO_PROVIDER));
             DiagnosticsCapability problems = diagnostics;
             rows.add(problems == null ? CapabilityStatus.unavailable(CapabilityType.DIAGNOSTICS, NO_PROVIDER)
