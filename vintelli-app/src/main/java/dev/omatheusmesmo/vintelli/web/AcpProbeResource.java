@@ -12,6 +12,7 @@ import io.smallrye.common.annotation.Blocking;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import jakarta.ws.rs.POST;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
@@ -74,7 +75,7 @@ public final class AcpProbeResource {
     @POST
     @Path("/chat-session")
     @Blocking
-    public RestResponse<AcpProbeReply> chatSession() {
+    public RestResponse<AcpProbeReply> chatSession(@QueryParam("agent") String agentId) {
         if (!agents.isConfigured()) {
             return RestResponse.status(RestResponse.Status.NOT_FOUND, new AcpProbeReply("DISABLED", List.of(), ""));
         }
@@ -83,7 +84,7 @@ public final class AcpProbeResource {
         String state = "OK";
         String detail = "";
         try {
-            sessionId = chat.openSession(update -> {
+            sessionId = chat.openSession(agentId == null ? "configured" : agentId, update -> {
                 if (update instanceof AcpChatPort.Message message) {
                     phases.add("message:" + message.text());
                 } else if (update instanceof AcpChatPort.ToolCall tool) {

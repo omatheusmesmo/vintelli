@@ -74,6 +74,22 @@ class VintelliCliCommandsTest {
     }
 
     @Test
+    @Launch(value = {"agents", "list"}, exitCode = 0)
+    void agentsListShowsPresetsAndLegacyAvailability(LaunchResult result) {
+        assertTrue(result.getOutput().contains("opencode - OpenCode:"), result.getOutput());
+        assertTrue(result.getOutput().contains("claude - Claude Code:"), result.getOutput());
+        assertTrue(result.getOutput().contains("pi - pi:"), result.getOutput());
+        assertTrue(result.getOutput().contains("configured - Configured agent: ready"), result.getOutput());
+    }
+
+    @Test
+    @Launch(value = {"agents", "prompt", "--agent=configured", "echo:selected"}, exitCode = 0)
+    void explicitlySelectedAgentCompletesTheSessionRoundTrip(LaunchResult result) {
+        assertTrue(result.getOutput().contains("echo:selected"), result.getOutput());
+        assertTrue(result.getOutput().contains("Stop reason: end_turn"), result.getOutput());
+    }
+
+    @Test
     @Launch(value = {"agents"}, exitCode = 2)
     void bareAgentsCommandPointsAtThePromptUsage(LaunchResult result) {
         assertTrue(result.getOutput().contains("agents prompt"), result.getOutput());

@@ -10,7 +10,7 @@ It runs with open tooling only. IntelliJ IDEA is an optional extra.
 - 🖥️ **Work where you already are.** A full IDE layout in your terminal, with no window to open.
 - ⚡ **Native when you want it.** With a GraalVM or Mandrel toolchain, the installer builds one binary that needs no JVM to run.
 - 🔓 **Open tools by default.** Maven, Gradle, terminal commands and Git (JGit) need no IDE.
-- 🤖 **AI agents in a side panel.** Host OpenCode, Claude Code or pi over ACP (`Alt+8`).
+- 🤖 **AI agents in a side panel.** Choose OpenCode, Claude Code or pi over ACP (`Alt+8`), with executable availability shown before starting a session. See [agent setup](docs/acp-agents.md).
 - 🔌 **Other agents can drive it.** The MCP server reads the shell state and pushes highlights and diffs into the TUI.
 - 🧠 **Language support over LSP.** Configurable profiles, with jdtls as the first one.
 - ⌨️ **Familiar keys and colors.** The `intellij` keymap is the default, and the themes come from IntelliJ IDEA's color files.
@@ -116,6 +116,7 @@ Start with [usage](docs/usage.md), the [keymap](docs/keymap.md) and [themes](doc
 | IntelliJ IDEA provider | [docs/intellij-idea.md](docs/intellij-idea.md) |
 | Native image | [docs/native-image.md](docs/native-image.md) |
 | Language servers | [docs/language-servers.md](docs/language-servers.md) |
+| ACP agents | [docs/acp-agents.md](docs/acp-agents.md) |
 
 </details>
 

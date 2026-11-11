@@ -42,10 +42,12 @@ public final class AcpAgentClientFactory {
     private final boolean enabled;
     private final String command;
     private final List<String> args;
+    private final AcpAgentCatalog catalog;
 
     @Inject
-    AcpAgentClientFactory(AcpJsonMapper acpJsonMapper, AcpProbeConfig config) {
+    AcpAgentClientFactory(AcpJsonMapper acpJsonMapper, AcpProbeConfig config, AcpAgentCatalog catalog) {
         this.acpJsonMapper = acpJsonMapper;
+        this.catalog = catalog;
         this.enabled = config.enabled().orElse(false);
         this.command = config.agentCommand().orElse("");
         this.args = config.agentArgs().map(value -> List.of(value.split(","))).orElse(List.of());
@@ -95,7 +97,13 @@ public final class AcpAgentClientFactory {
     /** Builds the production chat client with streamed updates and user-mediated permissions. */
     public AcpSyncClient chatClient(Consumer<AcpSchema.SessionNotification> updates,
             Function<AcpSchema.RequestPermissionRequest, AcpSchema.RequestPermissionResponse> permissions) {
-        AgentParameters parameters = AgentParameters.builder(command).args(args).build();
+        return chatClient(catalog.defaultAgent(), updates, permissions);
+    }
+
+    public AcpSyncClient chatClient(String agentId, Consumer<AcpSchema.SessionNotification> updates,
+            Function<AcpSchema.RequestPermissionRequest, AcpSchema.RequestPermissionResponse> permissions) {
+        AcpAgentCatalog.Launch launch = catalog.require(agentId);
+        AgentParameters parameters = AgentParameters.builder(launch.command()).args(launch.args()).build();
         StdioAcpClientTransport transport = new StdioAcpClientTransport(parameters, acpJsonMapper);
         return AcpClient.sync(transport)
                 .requestTimeout(REQUEST_TIMEOUT)

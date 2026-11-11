@@ -27,6 +27,7 @@ import dev.tamboui.buffer.Buffer;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.markdown.MarkdownView;
 import dev.tamboui.style.Style;
+import dev.tamboui.style.Overflow;
 import dev.tamboui.terminal.Frame;
 import dev.tamboui.text.Line;
 import dev.tamboui.text.Span;
@@ -65,6 +66,10 @@ public final class AcpAgentsToolWindow implements ToolWindow {
     private final ExecutorService worker = Executors.newVirtualThreadPerTaskExecutor();
     private final List<ChatSession> sessions = new ArrayList<>();
     private final List<TabHit> renderedTabs = new ArrayList<>();
+    private final List<AgentHit> renderedAgents = new ArrayList<>();
+    private List<AcpChatPort.Agent> agentChoices = List.of();
+    private boolean agentPickerOpen;
+    private int selectedAgent;
     private Rect lastArea = Rect.ZERO;
     private int activeIndex = -1;
     private int sessionSequence;
@@ -113,6 +118,10 @@ public final class AcpAgentsToolWindow implements ToolWindow {
 
     @Override
     public String actionForKey(KeyEvent event) {
+        if (agentPickerOpen) {
+            if (event.isKey(KeyCode.ENTER)) return ACP_NEW;
+            if (event.isKey(KeyCode.ESCAPE)) return ACP_CLOSE;
+        }
         if (event.hasCtrl() && event.isCharIgnoreCase('n')) return ACP_NEW;
         if (event.hasCtrl() && event.isCharIgnoreCase('w')) return ACP_CLOSE;
         ChatSession active = activeSession();
@@ -140,6 +149,19 @@ public final class AcpAgentsToolWindow implements ToolWindow {
 
     @Override
     public boolean handleKey(KeyEvent event) {
+        if (agentPickerOpen) {
+            if (event.isKey(KeyCode.UP)) {
+                selectedAgent = Math.max(0, selectedAgent - 1);
+                notice = "";
+                return true;
+            }
+            if (event.isKey(KeyCode.DOWN)) {
+                selectedAgent = Math.min(agentChoices.size() - 1, selectedAgent + 1);
+                notice = "";
+                return true;
+            }
+            return false;
+        }
         if (event.isKey(KeyCode.PAGE_UP)) {
             scrollOffset = Math.max(0, scrollOffset + 8);
             return true;
@@ -190,6 +212,15 @@ public final class AcpAgentsToolWindow implements ToolWindow {
         if (!event.isClick() || !event.isLeftButton() || !inside(lastArea, event.x(), event.y())) return null;
         int y = event.y() - lastArea.y();
         int x = event.x() - lastArea.x();
+        if (agentPickerOpen) {
+            for (AgentHit hit : renderedAgents) {
+                if (event.y() == hit.row()) {
+                    selectedAgent = hit.index();
+                    return ACP_NEW;
+                }
+            }
+            return null;
+        }
         if (y == TAB_ROW) {
             for (TabHit tab : renderedTabs) {
                 if (event.x() >= tab.start() && event.x() < tab.end()) {
@@ -220,6 +251,11 @@ public final class AcpAgentsToolWindow implements ToolWindow {
             return true;
         }
         if (ACP_CLOSE.equals(actionId)) {
+            if (agentPickerOpen) {
+                agentPickerOpen = false;
+                notice = "";
+                return true;
+            }
             closeActiveSession();
             return true;
         }
@@ -268,6 +304,7 @@ public final class AcpAgentsToolWindow implements ToolWindow {
         uiWork.drain();
         lastArea = area;
         renderedTabs.clear();
+        renderedAgents.clear();
         permissionStartRow = -1;
         permissionChoiceByVisibleRow = List.of();
         promptRow = Math.max(TRANSCRIPT_TOP, area.height() - 1);
@@ -276,6 +313,10 @@ public final class AcpAgentsToolWindow implements ToolWindow {
         frame.renderWidget(Paragraph.builder().text(Text.from(" ")).style(bodyStyle).build(), area);
         if (area.width() < 8 || area.height() < 3) return;
         renderTabs(frame, area, active);
+        if (agentPickerOpen) {
+            renderAgentPicker(frame, area);
+            return;
+        }
         ChatSession session = activeSession();
         if (session == null) {
             renderEmpty(frame, area, active);
@@ -310,8 +351,8 @@ public final class AcpAgentsToolWindow implements ToolWindow {
         List<String> lines = new ArrayList<>();
         if (notice.isBlank()) {
             if (chat == null || !chat.isConfigured()) {
-                lines.add("No ACP agent is configured.");
-                lines.add("Set vintelli.acp.probe.agent-command and vintelli.acp.probe.enabled.");
+                lines.add("No ACP agent is ready.");
+                lines.add("Press Enter to choose an agent and see its status.");
             } else {
                 lines.add("Start an ACP session with [Ctrl+N] or click New.");
                 lines.add("Each session runs the configured stdio agent through the ACP SDK.");
@@ -322,6 +363,28 @@ public final class AcpAgentsToolWindow implements ToolWindow {
         frame.renderWidget(Paragraph.builder().text(Text.from(String.join("\n", lines))).build(),
                 new Rect(area.x() + CONTENT_INSET, area.y() + TRANSCRIPT_TOP + 1,
                         area.width() - 2 * CONTENT_INSET, Math.max(1, promptRow - TRANSCRIPT_TOP - 1)));
+    }
+
+    private void renderAgentPicker(Frame frame, Rect area) {
+        List<String> lines = new ArrayList<>();
+        lines.add("Choose an agent [Enter] [Esc]");
+        int availableRows = Math.max(1, area.height() - 5);
+        int first = Math.max(0, selectedAgent - availableRows + 1);
+        for (int index = first; index < Math.min(agentChoices.size(), first + availableRows); index++) {
+            AcpChatPort.Agent agent = agentChoices.get(index);
+            lines.add((index == selectedAgent ? "> " : "  ") + plainText(agent.name())
+                    + (agent.available() ? " (ready)" : " (unavailable)"));
+            renderedAgents.add(new AgentHit(index, area.y() + TRANSCRIPT_TOP + lines.size() - 1));
+        }
+        AcpChatPort.Agent selected = agentChoices.get(selectedAgent);
+        frame.renderWidget(Paragraph.builder().text(Text.from(String.join("\n", lines))).build(),
+                new Rect(area.x() + CONTENT_INSET, area.y() + TRANSCRIPT_TOP,
+                        area.width() - 2 * CONTENT_INSET, area.height() - TRANSCRIPT_TOP));
+        int detailsY = area.y() + TRANSCRIPT_TOP + lines.size();
+        frame.renderWidget(Paragraph.builder().text(Text.from(plainText(notice.isBlank() ? selected.reason() : notice)))
+                        .overflow(Overflow.WRAP_WORD).build(),
+                new Rect(area.x() + CONTENT_INSET, detailsY, area.width() - 2 * CONTENT_INSET,
+                        Math.max(0, area.bottom() - detailsY)));
     }
 
     private void renderTranscript(Frame frame, Rect area, ChatSession session, ShellThemes active) {
@@ -468,18 +531,39 @@ public final class AcpAgentsToolWindow implements ToolWindow {
     }
 
     private void openSession() {
-        if (chat == null || !chat.isConfigured()) {
-            notice = "No ACP agent is configured. Set vintelli.acp.probe.agent-command and enable ACP.";
+        if (chat == null) {
+            notice = "No ACP agent service is available.";
             return;
         }
-        ChatSession session = new ChatSession("opening-" + UUID.randomUUID(), "Chat " + (++sessionSequence));
+        if (!agentPickerOpen) {
+            agentChoices = chat.agents();
+            if (agentChoices.isEmpty()) {
+                notice = "No ACP agent is configured. Enable vintelli.acp.enabled and configure an agent.";
+                return;
+            }
+            selectedAgent = 0;
+            if (agentChoices.size() > 1) {
+                agentPickerOpen = true;
+                notice = "";
+                return;
+            }
+        }
+        AcpChatPort.Agent agent = agentChoices.get(selectedAgent);
+        if (!agent.available()) {
+            notice = agent.reason();
+            return;
+        }
+        agentPickerOpen = false;
+        String title = agent.id().equals("configured") ? "Chat " + (++sessionSequence)
+                : plainText(agent.name()) + " " + (++sessionSequence);
+        ChatSession session = new ChatSession("opening-" + UUID.randomUUID(), title);
         sessions.add(session);
         activeIndex = sessions.size() - 1;
         input = "";
         notice = "";
         worker.submit(() -> {
             try {
-                String id = chat.openSession(update -> uiWork.execute(() -> applyUpdate(session, update)),
+                String id = chat.openSession(agent.id(), update -> uiWork.execute(() -> applyUpdate(session, update)),
                         request -> waitForPermission(session, request));
                 boolean closeLateSession;
                 synchronized (session) {
@@ -775,4 +859,5 @@ public final class AcpAgentsToolWindow implements ToolWindow {
     private record NoticeBlock(String text) implements ChatBlock { }
     private record PendingPermission(PermissionRequest request, CompletableFuture<PermissionChoice> answer) { }
     private record TabHit(int index, int start, int end) { }
+    private record AgentHit(int index, int row) { }
 }
