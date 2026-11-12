@@ -115,6 +115,7 @@ is unchanged and keeps the chords these actions had before.
 | `editor_previousTab` (Previous Editor Tab) | `Alt+Left` | `Alt+Left` | `Alt+[` |
 | `project_rename` (Rename Project Entry) | `Shift+F6` | `Shift+F6` | `F2` |
 | `project_select_opened_file` (Select Opened File) | `Alt+F1` | `Alt+F1` | `F3` |
+| `editor_duplicateLine` (Duplicate Line) | `Ctrl+D` | `Ctrl+D` | none, the `vim` profile binds nothing here |
 
 Decisions behind the table:
 
@@ -141,6 +142,12 @@ Decisions behind the table:
   IntelliJ action.
 - **`Alt+F` stays** for Find in Files, because IntelliJ's `Ctrl+Shift+F`
   cannot be delivered.
+- **`Ctrl+D`** (Duplicate Line) copies the caret line below itself and moves
+  the caret to the copy, in the same column, as one undo step. It works on
+  the last line with or without a trailing newline (the document ends as it
+  did) and with folded imports. Known gap: with a selection, IntelliJ
+  duplicates the selected text, while Vintelli duplicates the caret line only
+  and clears the selection. Duplicating the selected text is not done yet.
 
 Terminal caveats, from the captures in `docs/spikes/spike-27-keyboard-and-colors.md`
 and `docs/spikes/spike-49-per-terminal-capture.md`:

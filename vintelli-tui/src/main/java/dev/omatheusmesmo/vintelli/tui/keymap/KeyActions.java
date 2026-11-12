@@ -40,6 +40,7 @@ public final class KeyActions {
     public static final String NEXT_PROBLEM = "editor_nextProblem";
     public static final String TOGGLE_IMPORT_FOLD = "editor_toggleImportFold";
     public static final String TOGGLE_BREAKPOINT = "editor_toggleBreakpoint";
+    public static final String DUPLICATE_LINE = "editor_duplicateLine";
     public static final String GO_TO_FILE = "navigation_goToFile";
     public static final String FOCUS_NAVIGATION_BAR = "navigation_focusBreadcrumbs";
     public static final String FIND_IN_FILES = "navigation_findInFiles";
@@ -110,6 +111,7 @@ public final class KeyActions {
                 new KeyAction(REDO, "Redo", ""), new KeyAction(FIND, "Find in Editor", ""),
                 new KeyAction(CUT, "Cut", "Ctrl+X"), new KeyAction(COPY, "Copy", "Ctrl+C"),
                 new KeyAction(PASTE, "Paste", "Ctrl+V"),
+                new KeyAction(DUPLICATE_LINE, "Duplicate Line", "Ctrl+D"),
                 new KeyAction(CLOSE_TAB, "Close Editor Tab", ""),
                 new KeyAction(NEXT_TAB, "Next Editor Tab", ""),
                 new KeyAction(PREVIOUS_TAB, "Previous Editor Tab", ""),
