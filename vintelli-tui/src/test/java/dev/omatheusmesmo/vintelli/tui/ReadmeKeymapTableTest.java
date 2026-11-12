@@ -26,8 +26,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class ReadmeKeymapTableTest {
 
     private static final Path README = Path.of("..", "docs", "keymap.md");
-    private static final int TABLE_ROWS = 7;
-    private static final int COMPARABLE_ROWS = 3;
+    private static final int TABLE_ROWS = 8;
+    private static final int COMPARABLE_ROWS = 4;
     private static final String NO_REFERENCE = "-";
 
     @Test
@@ -57,7 +57,7 @@ class ReadmeKeymapTableTest {
      * rows naming a single action id are read.
      */
     private static boolean isSingleActionId(String action) {
-        return action.matches("[A-Za-z][A-Za-z0-9]*");
+        return action.matches("[A-Za-z][A-Za-z0-9_]*");
     }
 
     private static String intellijReference(Keymap keymap, String actionId) {

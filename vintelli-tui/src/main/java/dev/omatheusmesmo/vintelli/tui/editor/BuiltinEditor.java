@@ -3,6 +3,9 @@ package dev.omatheusmesmo.vintelli.tui.editor;
 import dev.omatheusmesmo.vintelli.api.ShellEditorPalette;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityFailure;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
+import dev.omatheusmesmo.vintelli.api.capability.CapabilityRegistry;
+import dev.omatheusmesmo.vintelli.api.capability.CapabilitySelection;
+import dev.omatheusmesmo.vintelli.api.capability.DebugCapability;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Diagnostic;
 import dev.omatheusmesmo.vintelli.api.capability.EditorBridge;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
@@ -36,12 +39,15 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.HashMap;
+import java.util.TreeMap;
 import java.util.function.Supplier;
 
 /** Built-in adapter. All document, element and external inspection access shares this monitor. */
@@ -65,9 +71,14 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     private static final Keymap DEFAULT_KEYMAP = Keymap.ofProfile(KeymapProfile.DEFAULT, List.of());
     private final List<EditorDocument> documents = new ArrayList<>();
     private final Supplier<ShellEditorPalette> palette;
+    private final Instance<CapabilityRegistry> capabilities;
     private final EditorElement element;
     private Path project;
     private EditorSessionStore sessionStore;
+    private BreakpointStore breakpointStore;
+    private final Map<Path, Map<Integer, DebugCapability.SourceBreakpoint>> breakpoints = new HashMap<>();
+    private final Map<Path, Object> breakpointSyncLocks = new HashMap<>();
+    private long breakpointGeneration;
     private int active = -1;
     private Path pendingClose;
     private String status = "Open a file from Project or Go to File";
@@ -82,13 +93,15 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
 
     @Inject
     public BuiltinEditor(@ConfigProperty(name = "vintelli.local.project-root") Optional<String> configuredRoot,
-            Instance<ShellThemes> themes) {
+            Instance<ShellThemes> themes, Instance<CapabilityRegistry> capabilities) {
         this(configuredRoot.filter(value -> !value.isBlank()).map(Path::of).orElse(Path.of("")), null,
-                () -> themes.get().editorPalette());
+                () -> themes.get().editorPalette(), capabilities);
         Path config = ConfigDirectory.configRoot(ConfigDirectory.sharedConfigDir(), System.getenv("XDG_CONFIG_HOME"),
                 System.getenv("APPDATA"), System.getProperty("user.home"));
         if (config != null) {
             sessionStore = new EditorSessionStore(config.resolve("vintelli/editor-tabs").resolve(projectKey(project) + ".properties"));
+            breakpointStore = new BreakpointStore(config.resolve("vintelli/editor-tabs")
+                    .resolve(projectKey(project) + ".breakpoints.properties"));
         }
     }
 
@@ -103,6 +116,17 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
      */
     public BuiltinEditor(Path project, Path sessionFile, Supplier<ShellEditorPalette> palette,
             SystemClipboard systemClipboard, Consumer<String> terminal) {
+        this(project, sessionFile, palette, systemClipboard, terminal, null);
+    }
+
+    BuiltinEditor(Path project, Path sessionFile, Supplier<ShellEditorPalette> palette,
+            Instance<CapabilityRegistry> capabilities) {
+        this(project, sessionFile, palette, new NativeSystemClipboard(System.getenv("PATH")),
+                BuiltinEditor::writeTerminal, capabilities);
+    }
+
+    private BuiltinEditor(Path project, Path sessionFile, Supplier<ShellEditorPalette> palette,
+            SystemClipboard systemClipboard, Consumer<String> terminal, Instance<CapabilityRegistry> capabilities) {
         Path absoluteProject = project.toAbsolutePath().normalize();
         try {
             this.project = absoluteProject.toRealPath();
@@ -110,8 +134,11 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
             this.project = absoluteProject;
         }
         this.palette = palette;
+        this.capabilities = capabilities;
         sessionStore = sessionFile == null ? null : new EditorSessionStore(sessionFile);
         clipboard = new EditorClipboard(systemClipboard, terminal);
+        breakpointStore = sessionFile == null ? null : new BreakpointStore(sessionFile.resolveSibling(
+                sessionFile.getFileName() + ".breakpoints"));
         element = new EditorElement(this);
     }
 
@@ -196,6 +223,118 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     public synchronized void requestFocus() { focusRequest = TEXT_AREA_ID; }
     synchronized EditorDocument document() { return active < 0 ? null : documents.get(active); }
 
+    synchronized Map<Integer, DebugCapability.SourceBreakpoint> breakpoints(EditorDocument document) {
+        return Map.copyOf(breakpoints.getOrDefault(document.file(), Map.of()));
+    }
+
+    synchronized boolean toggleBreakpoint(int line) {
+        EditorDocument document = document();
+        if (document == null || line < 0 || line >= document.lineCount()) {
+            return false;
+        }
+        Map<Integer, DebugCapability.SourceBreakpoint> source = breakpoints.computeIfAbsent(document.file(),
+                ignored -> new TreeMap<>());
+        if (source.remove(line) == null) {
+            source.put(line, new DebugCapability.SourceBreakpoint(document.file().toString(), line + 1));
+        }
+        breakpointGeneration++;
+        syncBreakpoints(document.file());
+        persistBreakpoints();
+        return true;
+    }
+
+    public synchronized boolean toggleBreakpointAtCaret() {
+        EditorDocument document = document();
+        return document != null && toggleBreakpoint(document.row());
+    }
+
+    private void syncBreakpoints(Path file) {
+        if (capabilities == null) {
+            markBreakpointsPending(file, "Debug provider unavailable");
+            return;
+        }
+        try {
+            if (!capabilities.isResolvable()) {
+                markBreakpointsPending(file, "Debug provider unavailable");
+                return;
+            }
+        } catch (RuntimeException failure) {
+            markBreakpointsPending(file, failure.getMessage() == null
+                    ? "Debug provider unavailable" : failure.getMessage());
+            return;
+        }
+        Object lock = breakpointSyncLocks.computeIfAbsent(file, ignored -> new Object());
+        Thread.ofVirtual().name("vintelli-breakpoint-sync").start(() -> {
+            synchronized (lock) {
+                try {
+                    CapabilitySelection<DebugCapability> selected = capabilities.get().debug();
+                    if (selected instanceof CapabilitySelection.Unavailable<DebugCapability> unavailable) {
+                        markBreakpointsPending(file, unavailable.reason());
+                        return;
+                    }
+                    if (!(selected instanceof CapabilitySelection.Selected<DebugCapability> available)) {
+                        markBreakpointsPending(file, "Debug provider unavailable");
+                        return;
+                    }
+                    List<DebugCapability.SourceBreakpoint> requested;
+                    synchronized (BuiltinEditor.this) {
+                        requested = breakpoints.getOrDefault(file, Map.of()).values().stream()
+                                .sorted(Comparator.comparingInt(DebugCapability.SourceBreakpoint::line)).toList();
+                    }
+                    CapabilityResult<List<DebugCapability.SourceBreakpoint>> result = available.provider()
+                            .setBreakpoints(file.toString(), requested);
+                    if (result instanceof CapabilityResult.Ok<List<DebugCapability.SourceBreakpoint>> ok) {
+                        Map<Integer, DebugCapability.SourceBreakpoint> synchronizedPoints = new TreeMap<>();
+                        for (DebugCapability.SourceBreakpoint point : ok.value()) {
+                            synchronizedPoints.put(point.line() - 1, point);
+                        }
+                        synchronized (BuiltinEditor.this) {
+                            List<Integer> currentLines = breakpoints.getOrDefault(file, Map.of()).keySet().stream().sorted().toList();
+                            List<Integer> appliedLines = synchronizedPoints.keySet().stream().sorted().toList();
+                            if (!currentLines.equals(appliedLines)) {
+                                return;
+                            }
+                            breakpoints.put(file, synchronizedPoints);
+                            persistBreakpoints();
+                        }
+                    } else {
+                        markBreakpointsPending(file,
+                                ((CapabilityResult.Failed<List<DebugCapability.SourceBreakpoint>>) result).failure().reason());
+                    }
+                } catch (RuntimeException failure) {
+                    markBreakpointsPending(file, failure.getMessage() == null
+                            ? "Debug provider unavailable" : failure.getMessage());
+                }
+            }
+        });
+    }
+
+    private synchronized void markBreakpointsPending(Path file, String reason) {
+        Map<Integer, DebugCapability.SourceBreakpoint> source = breakpoints.get(file);
+        if (source == null || source.isEmpty()) {
+            return;
+        }
+        Map<Integer, DebugCapability.SourceBreakpoint> pending = new TreeMap<>();
+        source.forEach((line, point) -> pending.put(line, new DebugCapability.SourceBreakpoint(point.sourcePath(),
+                point.line(), DebugCapability.BreakpointState.PENDING, reason)));
+        breakpoints.put(file, pending);
+    }
+
+    private void persistBreakpoints() {
+        if (breakpointStore == null) {
+            return;
+        }
+        try {
+            List<BreakpointStore.Source> sources = breakpoints.entrySet().stream()
+                    .map(source -> new BreakpointStore.Source(source.getKey(),
+                            source.getValue().keySet().stream().toList()))
+                    .toList();
+            breakpointStore.save(project, sources);
+        } catch (IOException failure) {
+            status = "Cannot persist breakpoints: " + failure.getMessage();
+        }
+    }
+
     @Override
     public synchronized CapabilityResult<Opened> open(OpenRequest request) {
         ensureSession();
@@ -237,6 +376,61 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     @Override public synchronized Optional<Path> currentFile() {
         ensureSession();
         return Optional.ofNullable(document()).map(EditorDocument::file);
+    }
+
+    @Override public synchronized Map<Path, List<DebugCapability.SourceBreakpoint>> sourceBreakpoints() {
+        ensureSession();
+        return breakpointSnapshotContents();
+    }
+
+    @Override public synchronized EditorBridge.SourceBreakpointSnapshot sourceBreakpointSnapshot() {
+        ensureSession();
+        return new EditorBridge.SourceBreakpointSnapshot(breakpointGeneration, breakpointSnapshotContents());
+    }
+
+    private Map<Path, List<DebugCapability.SourceBreakpoint>> breakpointSnapshotContents() {
+        Map<Path, List<DebugCapability.SourceBreakpoint>> snapshot = new HashMap<>();
+        breakpoints.forEach((file, points) -> snapshot.put(file, points.values().stream()
+                .sorted(Comparator.comparingInt(DebugCapability.SourceBreakpoint::line)).toList()));
+        return Map.copyOf(snapshot);
+    }
+
+    @Override public synchronized void updateSourceBreakpoints(
+            Map<Path, List<DebugCapability.SourceBreakpoint>> results) {
+        if (results == null || results.isEmpty()) {
+            return;
+        }
+        ensureSession();
+        applySourceBreakpointResults(results);
+    }
+
+    @Override public synchronized boolean updateSourceBreakpoints(long generation,
+            Map<Path, List<DebugCapability.SourceBreakpoint>> results) {
+        ensureSession();
+        if (generation != breakpointGeneration) {
+            return false;
+        }
+        applySourceBreakpointResults(results);
+        return generation == breakpointGeneration;
+    }
+
+    private void applySourceBreakpointResults(Map<Path, List<DebugCapability.SourceBreakpoint>> results) {
+        if (results == null || results.isEmpty()) {
+            return;
+        }
+        for (Map.Entry<Path, List<DebugCapability.SourceBreakpoint>> source : results.entrySet()) {
+            Map<Integer, DebugCapability.SourceBreakpoint> current = breakpoints.get(source.getKey());
+            if (current == null) {
+                continue;
+            }
+            Map<Integer, DebugCapability.SourceBreakpoint> byLine = new TreeMap<>();
+            source.getValue().forEach(point -> byLine.put(point.line() - 1, point));
+            if (!current.keySet().equals(byLine.keySet())) {
+                continue;
+            }
+            breakpoints.put(source.getKey(), byLine);
+        }
+        persistBreakpoints();
     }
 
     public synchronized Optional<DocumentView> activeDocument() {
@@ -302,8 +496,8 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
         } catch (IOException failure) { return failed("Cannot save file", failure.getMessage()); }
     }
 
-    public synchronized boolean undo() { boolean changed = document() != null && document().undo(); if (changed) { persist(); } return changed; }
-    public synchronized boolean redo() { boolean changed = document() != null && document().redo(); if (changed) { persist(); } return changed; }
+    public synchronized boolean undo() { boolean changed = document() != null && document().undo(); if (changed) { changed(); } return changed; }
+    public synchronized boolean redo() { boolean changed = document() != null && document().redo(); if (changed) { changed(); } return changed; }
     public synchronized void openFind() {
         ensureSession();
         EditorDocument document = document();
@@ -329,7 +523,7 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     public synchronized void insert(String text) {
         if (document() == null) { return; }
         document().mutate(() -> document().state().insert(text.replace("\r\n", "\n")));
-        persist();
+        changed();
     }
     /**
      * Keymap the editor reads its copy, cut and paste chords from. The shell binds its
@@ -459,7 +653,22 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
 
     public synchronized List<Diagnostic> diagnostics() { return document() == null ? List.of() : document().diagnostics(); }
 
-    synchronized void changed() { persist(); }
+    synchronized void changed() {
+        EditorDocument document = document();
+        if (document != null) {
+            Map<Integer, DebugCapability.SourceBreakpoint> source = breakpoints.get(document.file());
+            if (source != null) {
+                Set<Integer> previousLines = Set.copyOf(source.keySet());
+                source.keySet().removeIf(line -> line >= document.lineCount());
+                if (!previousLines.equals(source.keySet())) {
+                    breakpointGeneration++;
+                }
+                syncBreakpoints(document.file());
+            }
+            persistBreakpoints();
+        }
+        persist();
+    }
 
     public synchronized void restoreSession() { ensureSession(); }
     private void ensureSession() {
@@ -467,6 +676,21 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
         sessionLoaded = true;
         if (sessionStore == null) { return; }
         try {
+            if (breakpointStore != null) {
+                for (BreakpointStore.Source source : breakpointStore.load(project)) {
+                    Map<Integer, DebugCapability.SourceBreakpoint> restored = breakpoints.computeIfAbsent(source.file(),
+                            ignored -> new TreeMap<>());
+                    for (int line : source.lines()) {
+                        restored.put(line, new DebugCapability.SourceBreakpoint(source.file().toString(), line + 1));
+                    }
+                }
+                if (!breakpoints.isEmpty()) {
+                    breakpointGeneration++;
+                }
+                for (Path source : List.copyOf(breakpoints.keySet())) {
+                    syncBreakpoints(source);
+                }
+            }
             EditorSessionStore.Session session = sessionStore.load(project);
             for (EditorSessionStore.Tab tab : session.tabs()) {
                 if (openFile(new OpenRequest(tab.file(), tab.row()), false).isFailure()) {
@@ -488,6 +712,9 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
                 document().position(tab.row(), tab.column());
             }
             if (!documents.isEmpty()) { active = Math.clamp(session.selected(), 0, documents.size() - 1); }
+            for (Path source : List.copyOf(breakpoints.keySet())) {
+                syncBreakpoints(source);
+            }
         } catch (IOException | RuntimeException failure) { status = "Cannot restore editor session: " + failure.getMessage(); }
     }
 

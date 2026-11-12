@@ -62,6 +62,8 @@ class KeymapTest {
         assertTrue(keymap.matches(actionChord('6'), KeyActions.activateToolWindow("problems")));
         assertTrue(keymap.matches(actionChord('8'), KeyActions.activateToolWindow("acp.agents")));
         assertTrue(keymap.matches(keypress('c', KeyModifiers.CTRL), QUIT));
+        assertTrue(keymap.matches(keypress('b', KeyModifiers.CTRL), KeyActions.TOGGLE_BREAKPOINT));
+        assertTrue(keymap.matchesReserved(keypress('b', KeyModifiers.CTRL), KeyActions.TOGGLE_BREAKPOINT));
     }
 
     @Test
@@ -160,7 +162,8 @@ class KeymapTest {
                 "editor_open", "editor_save", "editor_undo", "editor_redo", "editor_find",
                 "editor_cut", "editor_copy", "editor_paste",
                 "editor_close", "editor_nextTab", "editor_previousTab", "editor_definition",
-                "editor_usages", "editor_nextProblem", "editor_toggleImportFold", "navigation_goToFile", "navigation_findInFiles",
+                "editor_usages", "editor_nextProblem", "editor_toggleImportFold", "editor_toggleBreakpoint",
+                "navigation_goToFile", "navigation_findInFiles",
                 "navigation_focusBreadcrumbs",
                 "layout_project_wider", "layout_project_narrower", "layout_bottom_taller", "layout_bottom_shorter",
                 "shell.theme.switch", "shell.settings", "project_new_file", "project_new_directory", "project_rename",

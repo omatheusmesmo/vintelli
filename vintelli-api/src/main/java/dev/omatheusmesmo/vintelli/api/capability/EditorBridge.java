@@ -1,6 +1,8 @@
 package dev.omatheusmesmo.vintelli.api.capability;
 
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -40,6 +42,37 @@ public interface EditorBridge extends ProviderDescriptor {
      *         back into the shell
      */
     Optional<Path> currentFile();
+
+    /**
+     * @return the editor's complete source breakpoint sets, keyed by absolute source path
+     */
+    default Map<Path, List<DebugCapability.SourceBreakpoint>> sourceBreakpoints() {
+        return Map.of();
+    }
+
+    /** Returns an atomic source snapshot and its location generation. */
+    default SourceBreakpointSnapshot sourceBreakpointSnapshot() {
+        return new SourceBreakpointSnapshot(0, sourceBreakpoints());
+    }
+
+    /** Applies provider verification results to the matching persisted source anchors. */
+    default void updateSourceBreakpoints(Map<Path, List<DebugCapability.SourceBreakpoint>> results) {
+        // Other editor adapters may not render source breakpoint state.
+    }
+
+    /** Applies results only while the editor still has the snapshot's location generation. */
+    default boolean updateSourceBreakpoints(long generation,
+            Map<Path, List<DebugCapability.SourceBreakpoint>> results) {
+        updateSourceBreakpoints(results);
+        return true;
+    }
+
+    record SourceBreakpointSnapshot(long generation,
+            Map<Path, List<DebugCapability.SourceBreakpoint>> sources) {
+        public SourceBreakpointSnapshot {
+            sources = sources == null ? Map.of() : Map.copyOf(sources);
+        }
+    }
 
     record OpenRequest(Path file, int line) {
 

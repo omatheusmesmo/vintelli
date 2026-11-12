@@ -9,9 +9,12 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.Objects;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -31,6 +34,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
+import java.util.stream.Collectors;
 
 import org.eclipse.lsp4j.debug.Capabilities;
 import org.eclipse.lsp4j.debug.ConfigurationDoneArguments;
@@ -40,6 +44,10 @@ import org.eclipse.lsp4j.debug.InitializeRequestArguments;
 import org.eclipse.lsp4j.debug.OutputEventArguments;
 import org.eclipse.lsp4j.debug.StoppedEventArguments;
 import org.eclipse.lsp4j.debug.TerminatedEventArguments;
+import org.eclipse.lsp4j.debug.Breakpoint;
+import org.eclipse.lsp4j.debug.SetBreakpointsArguments;
+import org.eclipse.lsp4j.debug.SetBreakpointsResponse;
+import org.eclipse.lsp4j.debug.Source;
 import org.eclipse.lsp4j.debug.ThreadsResponse;
 import org.eclipse.lsp4j.debug.launch.DSPLauncher;
 import org.eclipse.lsp4j.debug.services.IDebugProtocolClient;
@@ -90,6 +98,10 @@ public final class JavaDebugCapability implements DebugCapability {
     private final Duration requestTimeout;
     private final Semaphore activeSessions = new Semaphore(MAX_ACTIVE_SESSIONS);
     private final ConcurrentHashMap<String, DapSession> sessions = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, List<DebugCapability.SourceBreakpoint>> sourceBreakpoints = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Object> sourceBreakpointLocks = new ConcurrentHashMap<>();
+    private final Set<String> knownBreakpointSources = ConcurrentHashMap.newKeySet();
+    private final Object breakpointSetsLock = new Object();
     private final Object lifecycleLock = new Object();
     private boolean closing;
 
@@ -220,6 +232,114 @@ public final class JavaDebugCapability implements DebugCapability {
     public List<DebugSessionSnapshot> snapshot() {
         return sessions.values().stream().map(DapSession::snapshot)
                 .sorted((left, right) -> left.id().compareTo(right.id())).toList();
+    }
+
+    @Override
+    public CapabilityResult<List<DebugCapability.SourceBreakpoint>> setBreakpoints(String sourcePath,
+            List<DebugCapability.SourceBreakpoint> breakpoints) {
+        if (sourcePath == null || sourcePath.isBlank()) {
+            return CapabilityResult.failed(new CapabilityFailure("A breakpoint source path is required", ""));
+        }
+        if (breakpoints != null && breakpoints.stream().anyMatch(point -> !sourcePath.equals(point.sourcePath()))) {
+            return CapabilityResult.failed(new CapabilityFailure("Breakpoint source path does not match the request", sourcePath));
+        }
+        List<DebugCapability.SourceBreakpoint> requested = breakpoints == null ? List.of() : breakpoints.stream()
+                .sorted(Comparator.comparingInt(DebugCapability.SourceBreakpoint::line)).toList();
+        synchronized (breakpointSetsLock) {
+            Object sourceLock = sourceBreakpointLocks.computeIfAbsent(sourcePath, ignored -> new Object());
+            synchronized (sourceLock) {
+                if (requested.isEmpty()) { sourceBreakpoints.remove(sourcePath); }
+                else { sourceBreakpoints.put(sourcePath, requested); }
+                knownBreakpointSources.add(sourcePath);
+                return applyBreakpointsToLiveSessions(sourcePath, requested);
+            }
+        }
+    }
+
+    @Override
+    public CapabilityResult<Map<String, List<DebugCapability.SourceBreakpoint>>> replaceBreakpoints(
+            Map<String, List<DebugCapability.SourceBreakpoint>> completeSources) {
+        Map<String, List<DebugCapability.SourceBreakpoint>> requestedSources = completeSources == null
+                ? Map.of() : Map.copyOf(completeSources);
+        synchronized (breakpointSetsLock) {
+            List<String> paths = new ArrayList<>(knownBreakpointSources);
+            requestedSources.keySet().forEach(path -> {
+                if (path == null || path.isBlank()) {
+                    throw new IllegalArgumentException("Breakpoint source path is required");
+                }
+                if (!paths.contains(path)) {
+                    paths.add(path);
+                }
+            });
+            paths.sort(String::compareTo);
+            Map<String, List<DebugCapability.SourceBreakpoint>> result = new TreeMap<>();
+            for (String path : paths) {
+                List<DebugCapability.SourceBreakpoint> points = requestedSources.getOrDefault(path, List.of());
+                CapabilityResult<List<DebugCapability.SourceBreakpoint>> synchronizedPoints = setBreakpoints(path, points);
+                if (synchronizedPoints instanceof CapabilityResult.Failed<List<DebugCapability.SourceBreakpoint>> failed) {
+                    return CapabilityResult.failed(failed.failure());
+                }
+                result.put(path, ((CapabilityResult.Ok<List<DebugCapability.SourceBreakpoint>>) synchronizedPoints).value());
+            }
+            return CapabilityResult.ok(Map.copyOf(result));
+        }
+    }
+
+    private CapabilityResult<List<DebugCapability.SourceBreakpoint>> applyBreakpointsToLiveSessions(String sourcePath,
+            List<DebugCapability.SourceBreakpoint> requested) {
+        Map<Integer, List<DebugCapability.SourceBreakpoint>> observations = new TreeMap<>();
+        for (DapSession session : sessions.values().stream().filter(value -> !value.isTerminal())
+                .sorted(Comparator.comparing(value -> value.id)).toList()) {
+            CapabilityResult<List<DebugCapability.SourceBreakpoint>> applied = session.setBreakpoints(sourcePath, requested);
+            List<DebugCapability.SourceBreakpoint> sessionPoints;
+            if (applied instanceof CapabilityResult.Ok<List<DebugCapability.SourceBreakpoint>> ok) {
+                sessionPoints = ok.value();
+            } else {
+                String reason = ((CapabilityResult.Failed<List<DebugCapability.SourceBreakpoint>>) applied)
+                        .failure().reason();
+                sessionPoints = requested.stream().map(point -> new DebugCapability.SourceBreakpoint(sourcePath,
+                        point.line(), DebugCapability.BreakpointState.REJECTED, reason)).toList();
+            }
+            Map<Integer, DebugCapability.SourceBreakpoint> byLine = new HashMap<>();
+            sessionPoints.forEach(point -> byLine.put(point.line(), point));
+            for (DebugCapability.SourceBreakpoint point : requested) {
+                observations.computeIfAbsent(point.line(), ignored -> new ArrayList<>()).add(byLine.getOrDefault(
+                        point.line(), new DebugCapability.SourceBreakpoint(sourcePath, point.line())));
+            }
+        }
+        List<DebugCapability.SourceBreakpoint> result = requested.stream().map(point -> {
+            List<DebugCapability.SourceBreakpoint> reports = observations.getOrDefault(point.line(), List.of());
+            DebugCapability.BreakpointState state = reports.stream()
+                    .anyMatch(report -> report.state() == DebugCapability.BreakpointState.REJECTED)
+                            ? DebugCapability.BreakpointState.REJECTED
+                            : reports.isEmpty() || reports.stream()
+                                    .anyMatch(report -> report.state() == DebugCapability.BreakpointState.PENDING)
+                                            ? DebugCapability.BreakpointState.PENDING
+                                            : DebugCapability.BreakpointState.VERIFIED;
+            String message = reports.stream().map(DebugCapability.SourceBreakpoint::message).filter(value -> !value.isBlank())
+                    .distinct().sorted().collect(Collectors.joining("; "));
+            List<Integer> resolvedLines = reports.stream().map(DebugCapability.SourceBreakpoint::resolvedLine)
+                    .filter(Objects::nonNull).distinct().toList();
+            boolean everyReportResolved = !reports.isEmpty()
+                    && reports.stream().allMatch(report -> report.resolvedLine() != null);
+            List<String> resolvedSources = reports.stream().map(DebugCapability.SourceBreakpoint::resolvedSourcePath)
+                    .distinct().toList();
+            String resolvedSource = resolvedSources.size() == 1 ? resolvedSources.getFirst() : sourcePath;
+            Integer resolvedLine = everyReportResolved && resolvedLines.size() == 1 && resolvedSources.size() == 1
+                    ? resolvedLines.getFirst() : null;
+            return new DebugCapability.SourceBreakpoint(sourcePath, point.line(), state, message, resolvedLine, resolvedSource);
+        }).toList();
+        return CapabilityResult.ok(result);
+    }
+
+    private void replayBreakpoints(DapSession session) {
+        for (String sourcePath : knownBreakpointSources.stream().sorted().toList()) {
+            Object sourceLock = sourceBreakpointLocks.computeIfAbsent(sourcePath, ignored -> new Object());
+            synchronized (sourceLock) {
+                List<DebugCapability.SourceBreakpoint> requested = sourceBreakpoints.getOrDefault(sourcePath, List.of());
+                session.setBreakpoints(sourcePath, requested);
+            }
+        }
     }
 
     @PreDestroy
@@ -433,6 +553,7 @@ public final class JavaDebugCapability implements DebugCapability {
             if (isTerminal()) {
                 return false;
             }
+            replayBreakpoints(this);
             protocol.configurationDone(new ConfigurationDoneArguments())
                     .get(requestTimeout.toMillis(), TimeUnit.MILLISECONDS);
             long remaining = deadline - System.nanoTime();
@@ -641,6 +762,47 @@ public final class JavaDebugCapability implements DebugCapability {
                 return CapabilityResult.ok(copy);
             } catch (Exception failure) {
                 return CapabilityResult.failed(new CapabilityFailure(failureReason(failure), ""));
+            }
+        }
+
+        private CapabilityResult<List<DebugCapability.SourceBreakpoint>> setBreakpoints(String sourcePath,
+                List<DebugCapability.SourceBreakpoint> requested) {
+            IDebugProtocolServer protocol = server;
+            if (protocol == null || isTerminal()) {
+                return CapabilityResult.ok(requested.stream().map(point -> new DebugCapability.SourceBreakpoint(
+                        sourcePath, point.line())).toList());
+            }
+            Source source = new Source();
+            source.setPath(sourcePath);
+            SetBreakpointsArguments arguments = new SetBreakpointsArguments();
+            arguments.setSource(source);
+            arguments.setSourceModified(false);
+            arguments.setBreakpoints(DapSourceBreakpoints.fromApi(requested));
+            try {
+                SetBreakpointsResponse response = protocol.setBreakpoints(arguments)
+                        .get(requestTimeout.toMillis(), TimeUnit.MILLISECONDS);
+                Breakpoint[] returnedArray = response == null ? null : response.getBreakpoints();
+                List<Breakpoint> returned = returnedArray == null ? List.of() : Arrays.asList(returnedArray);
+                List<DebugCapability.SourceBreakpoint> applied = new ArrayList<>();
+                for (int index = 0; index < requested.size(); index++) {
+                    DebugCapability.SourceBreakpoint point = requested.get(index);
+                    Breakpoint actual = index < returned.size() ? returned.get(index) : null;
+                    DebugCapability.BreakpointState state = actual == null ? DebugCapability.BreakpointState.PENDING
+                            : Boolean.TRUE.equals(actual.isVerified()) ? DebugCapability.BreakpointState.VERIFIED
+                                    : DebugCapability.BreakpointState.REJECTED;
+                    String message = actual == null || actual.getMessage() == null ? "" : actual.getMessage();
+                    Source resolvedSource = actual == null ? null : actual.getSource();
+                    String resolvedPath = resolvedSource == null || resolvedSource.getPath() == null
+                            ? sourcePath : resolvedSource.getPath();
+                    Integer resolvedLine = actual == null ? null : actual.getLine();
+                    applied.add(new DebugCapability.SourceBreakpoint(sourcePath, point.line(), state, message,
+                            resolvedLine, resolvedPath));
+                }
+                return CapabilityResult.ok(List.copyOf(applied));
+            } catch (Exception failure) {
+                String reason = failureReason(failure);
+                return CapabilityResult.ok(requested.stream().map(point -> new DebugCapability.SourceBreakpoint(
+                        sourcePath, point.line(), DebugCapability.BreakpointState.REJECTED, reason)).toList());
             }
         }
 

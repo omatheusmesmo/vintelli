@@ -1,6 +1,7 @@
 package dev.omatheusmesmo.vintelli.tui.editor;
 
 import dev.omatheusmesmo.vintelli.api.ShellEditorPalette;
+import dev.omatheusmesmo.vintelli.api.capability.DebugCapability;
 import dev.omatheusmesmo.vintelli.tui.VcsMarkers;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcon;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
@@ -38,6 +39,7 @@ import dev.tamboui.widgets.input.TextAreaState;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /** Toolkit view for the built-in editor. Calls into document state are serialized by its owner. */
 final class EditorElement implements Element {
@@ -51,6 +53,9 @@ final class EditorElement implements Element {
     private static final String DIRTY_MARK_ASCII = "*";
     private static final String LINE_NUMBER_ROLE = "editor-line-number";
     private static final String CURRENT_LINE_NUMBER_ROLE = "editor-line-number-current";
+    private static final String VERIFIED_BREAKPOINT_ROLE = "editor-breakpoint-verified";
+    private static final String PENDING_BREAKPOINT_ROLE = "editor-breakpoint-pending";
+    private static final String REJECTED_BREAKPOINT_ROLE = "editor-breakpoint-rejected";
     private static final String CARET_ROLE = "editor-caret";
     private static final List<String> TYPING_FOCUS_IDS = List.of(BuiltinEditor.TEXT_AREA_ID, "editor-panel", "editor-content");
     private static final int WHEEL_STEP = 3;
@@ -264,15 +269,28 @@ final class EditorElement implements Element {
         Style number = roleStyle(context, LINE_NUMBER_ROLE);
         Style current = roleStyle(context, CURRENT_LINE_NUMBER_ROLE);
         int caret = document.state().cursorRow();
+        Map<Integer, DebugCapability.SourceBreakpoint> breakpoints = editor.breakpoints(document);
+        boolean ascii = editor.icons().mode() == IconMode.ASCII;
         List<Line> lines = new ArrayList<>();
         int first = document.state().scrollRow();
         int end = Math.min(document.state().lineCount(), first + height);
         for (int row = first; row < end; row++) {
             boolean diagnostic = document.hasDiagnosticAt(row);
-            String marker = diagnostic ? "! " : editor.vcsChangedLine(row) ? "+ " : "  ";
+            var breakpoint = breakpoints.get(document.documentRow(row));
+            String marker;
+            Style markerStyle = Style.EMPTY;
+            if (breakpoint != null) {
+                switch (breakpoint.state()) {
+                    case VERIFIED -> { marker = ascii ? "B " : "● "; markerStyle = roleStyle(context, VERIFIED_BREAKPOINT_ROLE); }
+                    case REJECTED -> { marker = ascii ? "! " : "× "; markerStyle = roleStyle(context, REJECTED_BREAKPOINT_ROLE); }
+                    default -> { marker = ascii ? "o " : "◌ "; markerStyle = roleStyle(context, PENDING_BREAKPOINT_ROLE); }
+                }
+            } else {
+                marker = diagnostic ? "! " : editor.vcsChangedLine(row) ? "+ " : "  ";
+            }
             String digits = Integer.toString(document.documentRow(row) + 1);
             String padding = " ".repeat(width - 3 - digits.length());
-            lines.add(Line.from(Span.raw(marker), Span.styled(padding + digits, row == caret ? current : number),
+            lines.add(Line.from(Span.styled(marker, markerStyle), Span.styled(padding + digits, row == caret ? current : number),
                     Span.raw(" ")));
         }
         return Text.from(lines);
@@ -310,6 +328,13 @@ final class EditorElement implements Element {
                     return true;
                 }
                 dragDocument = null;
+            }
+            if (event.isPress() && event.isLeftButton() && bodyArea.contains(event.x(), event.y())
+                    && event.x() < textBody.x()) {
+                int row = Math.clamp(document.state().scrollRow() + event.y() - bodyArea.y(), 0,
+                        document.state().lineCount() - 1);
+                editor.toggleBreakpoint(document.documentRow(row));
+                return true;
             }
             if (event.isPress() && event.isLeftButton() && textBody.contains(event.x(), event.y())) {
                 TextPosition at = textPosition(document, event.x(), event.y());

@@ -7,6 +7,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -25,6 +26,10 @@ import org.eclipse.lsp4j.debug.DisconnectArguments;
 import org.eclipse.lsp4j.debug.InitializeRequestArguments;
 import org.eclipse.lsp4j.debug.Thread;
 import org.eclipse.lsp4j.debug.ThreadsResponse;
+import org.eclipse.lsp4j.debug.SetBreakpointsArguments;
+import org.eclipse.lsp4j.debug.SetBreakpointsResponse;
+import org.eclipse.lsp4j.debug.SourceBreakpoint;
+import org.eclipse.lsp4j.debug.Breakpoint;
 import org.eclipse.lsp4j.debug.launch.DSPLauncher;
 import org.eclipse.lsp4j.debug.services.IDebugProtocolClient;
 import org.eclipse.lsp4j.debug.services.IDebugProtocolServer;
@@ -47,6 +52,7 @@ final class JavaDebugAdapterTwin implements AutoCloseable {
     private final Set<Socket> connections = ConcurrentHashMap.newKeySet();
     private final Map<Long, Integer> threadIds = new ConcurrentHashMap<>();
     private final AtomicInteger nextThreadId = new AtomicInteger(1);
+    private final AtomicReference<List<Integer>> breakpointLines = new AtomicReference<>(List.of());
     private final AtomicReference<Mode> mode = new AtomicReference<>(Mode.HEALTHY);
     private volatile ServerSocket listener;
     private volatile VirtualMachine virtualMachine;
@@ -66,6 +72,10 @@ final class JavaDebugAdapterTwin implements AutoCloseable {
 
     int lastTargetPort() {
         return lastTargetPort;
+    }
+
+    List<Integer> breakpointLines() {
+        return breakpointLines.get();
     }
 
     void mode(Mode requested) {
@@ -247,6 +257,21 @@ final class JavaDebugAdapterTwin implements AutoCloseable {
             } catch (RuntimeException failure) {
                 return CompletableFuture.failedFuture(failure);
             }
+        }
+
+        @Override
+        public CompletableFuture<SetBreakpointsResponse> setBreakpoints(SetBreakpointsArguments arguments) {
+            List<SourceBreakpoint> requested = arguments.getBreakpoints() == null
+                    ? List.of() : List.of(arguments.getBreakpoints());
+            breakpointLines.set(requested.stream().map(SourceBreakpoint::getLine).toList());
+            SetBreakpointsResponse response = new SetBreakpointsResponse();
+            response.setBreakpoints(requested.stream().map(sourceBreakpoint -> {
+                Breakpoint breakpoint = new Breakpoint();
+                breakpoint.setLine(sourceBreakpoint.getLine());
+                breakpoint.setVerified(true);
+                return breakpoint;
+            }).toArray(Breakpoint[]::new));
+            return CompletableFuture.completedFuture(response);
         }
 
         @Override

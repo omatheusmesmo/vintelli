@@ -2,6 +2,7 @@ package dev.omatheusmesmo.vintelli.tui.editor;
 
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Diagnostic;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Severity;
+import dev.omatheusmesmo.vintelli.api.capability.DebugCapability;
 import dev.omatheusmesmo.vintelli.api.capability.EditorBridge.OpenRequest;
 import dev.omatheusmesmo.vintelli.tui.ShellThemes;
 import dev.tamboui.layout.Size;
@@ -14,6 +15,8 @@ import dev.tamboui.toolkit.event.EventResult;
 import dev.tamboui.tui.event.Event;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
+import dev.tamboui.tui.event.MouseButton;
+import dev.tamboui.tui.event.MouseEvent;
 import dev.tamboui.tui.pilot.Pilot;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Assumptions;
@@ -333,6 +336,92 @@ class BuiltinEditorTest {
         assertEquals("class Two {}\n", restored.activeDocument().orElseThrow().text());
         restored.previousTab();
         assertTrue(restored.activeDocument().orElseThrow().text().startsWith("// recovered\n"));
+    }
+
+    @Test
+    void persistsBreakpointsPerProjectAndKeepsTheirLineNumbersAcrossEditAndUndo() throws IOException {
+        Path source = write("Breakpoint.java", "class Breakpoint {\n  void run() {}\n}\n");
+        Path removed = write("Removed.java", "class Removed {}\n");
+        Path session = project.resolve("editor.properties");
+        BuiltinEditor editor = editor(session);
+        editor.open(new OpenRequest(source, 0));
+
+        assertTrue(editor.toggleBreakpoint(1));
+        editor.insert("// inserted above the source\n");
+        assertTrue(editor.breakpoints(editor.document()).containsKey(1));
+        assertTrue(editor.undo());
+        assertTrue(editor.breakpoints(editor.document()).containsKey(1));
+        editor.open(new OpenRequest(removed, 0));
+        assertTrue(editor.toggleBreakpoint(0));
+        assertTrue(editor.toggleBreakpoint(0));
+
+        BuiltinEditor restored = editor(session);
+        restored.restoreSession();
+        restored.open(new OpenRequest(source, 0));
+        assertTrue(restored.breakpoints(restored.document()).containsKey(1));
+        assertEquals(DebugCapability.BreakpointState.PENDING,
+                restored.breakpoints(restored.document()).get(1).state());
+        assertTrue(restored.sourceBreakpoints().containsKey(removed.toRealPath()));
+        assertTrue(restored.sourceBreakpoints().get(removed.toRealPath()).isEmpty(),
+                "empty source sets persist so a later provider reconciliation can clear removed breakpoints");
+    }
+
+    @Test
+    void removesBreakpointsWhenEditsMakeTheirLineUnavailable() throws IOException {
+        Path source = write("Shortened.java", "first\nsecond\nthird\n");
+        BuiltinEditor editor = editor(null);
+        editor.open(new OpenRequest(source, 0));
+        assertTrue(editor.toggleBreakpoint(2));
+
+        editor.document().mutate(() -> editor.document().state().setText("first\n"));
+        editor.changed();
+
+        assertTrue(editor.breakpoints(editor.document()).isEmpty());
+        assertTrue(editor.sourceBreakpoints().containsKey(source.toRealPath()));
+        assertTrue(editor.sourceBreakpoints().get(source.toRealPath()).isEmpty());
+        editor.undo();
+        assertTrue(editor.breakpoints(editor.document()).isEmpty(), "undo does not resurrect a truncated breakpoint");
+    }
+
+    @Test
+    void gutterClickTogglesTheVisibleLineWithoutMovingCaretOrSelection() throws IOException {
+        Path source = write("Gutter.java", "first\nsecond\nthird\n");
+        BuiltinEditor editor = editor(null);
+        editor.open(new OpenRequest(source, 0));
+        render(editor, 40, 6);
+        BuiltinEditor.PointerState before = editor.pointerState().orElseThrow();
+
+        assertTrue(editor.handlePointer(MouseEvent.press(MouseButton.LEFT, 1, 1)));
+
+        assertTrue(editor.breakpoints(editor.document()).containsKey(1));
+        BuiltinEditor.PointerState after = editor.pointerState().orElseThrow();
+        assertEquals(before.line(), after.line());
+        assertEquals(before.column(), after.column());
+        assertEquals(before.selectedText(), after.selectedText());
+    }
+
+    @Test
+    void rendersBreakpointMarkersInAsciiAndUnicodeIconModes() throws IOException {
+        String previous = System.getProperty("vintelli.icons");
+        try {
+            System.setProperty("vintelli.icons", "ascii");
+            BuiltinEditor ascii = editor(null);
+            ascii.open(new OpenRequest(write("Ascii.java", "class Ascii {}\n"), 0));
+            ascii.toggleBreakpoint(0);
+            assertTrue(row(render(ascii, 30, 4), 0).startsWith("o 1"));
+
+            System.setProperty("vintelli.icons", "nerd");
+            BuiltinEditor unicode = editor(null);
+            unicode.open(new OpenRequest(write("Unicode.java", "class Unicode {}\n"), 0));
+            unicode.toggleBreakpoint(0);
+            assertTrue(row(render(unicode, 30, 4), 0).startsWith("◌ 1"));
+        } finally {
+            if (previous == null) {
+                System.clearProperty("vintelli.icons");
+            } else {
+                System.setProperty("vintelli.icons", previous);
+            }
+        }
     }
 
     @Test

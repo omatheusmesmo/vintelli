@@ -136,6 +136,18 @@ class EditorControllerTest {
         assertEquals("No problems in the active file", lastStatus());
     }
 
+    @Test
+    void namedBreakpointActionClosesOverlaysAndTargetsTheCaretLine() {
+        controller.openFile(project.resolve("src/Main.java"), 0);
+        List<Boolean> focusedWhenClosed = new ArrayList<>();
+
+        assertTrue(controller.handle(KeyActions.TOGGLE_BREAKPOINT,
+                () -> focusedWhenClosed.add(editor.activeDocument().isPresent())));
+
+        assertEquals(List.of(true), focusedWhenClosed);
+        assertEquals("Breakpoint toggled at line 1", lastStatus());
+    }
+
     private EditorController.Host host() {
         return new EditorController.Host() {
             @Override
