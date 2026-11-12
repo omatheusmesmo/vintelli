@@ -53,6 +53,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -1821,6 +1822,47 @@ class VintelliShellTest {
             pressCtrlC(pilot);
         } finally {
             finishConnection.countDown();
+        }
+    }
+
+    @Test
+    void statusBarShowsTheIdeaStateOnlyWhenTheEndpointIsConfigured() throws Exception {
+        IdeaMcpConnection connection = new IdeaMcpConnection() {
+            @Override
+            public Snapshot connectionStatus() {
+                return new Snapshot("CONSENT_PENDING", "IDEA answered 403: approve the MCP consent dialog");
+            }
+
+            @Override
+            public Snapshot reconnectFromUserAction() {
+                return connectionStatus();
+            }
+        };
+        VintelliShell configured = new VintelliShell(ShellConfig.of(defaultWindows(), new ShellState(), defaultThemes())
+                .withIdeaMcpConnection(connection)
+                .withIdeaStatus(IdeaStatusBadge.of(Optional.of("http://127.0.0.1:9/stream"), connection)));
+
+        try (MouseShellRunner test = runMouseShell(configured, SIZE)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+            pause(pilot, Duration.ofMillis(200));
+            pilot.press(KeyCode.ESCAPE);
+            settle(pilot);
+            String frame = awaitRenderedFrame(pilot, test, "IDEA: consent pending");
+            assertTrue(frame.lines().reduce((first, last) -> last).orElse("").contains("IDEA: consent pending"),
+                    "the IDEA state is drawn on the status row; frame:\n" + frame);
+            pressCtrlC(pilot);
+        }
+
+        VintelliShell plain = new VintelliShell(ShellConfig.of(defaultWindows(), new ShellState(), defaultThemes())
+                .withIdeaMcpConnection(connection));
+        try (MouseShellRunner test = runMouseShell(plain, SIZE)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+            pause(pilot, Duration.ofMillis(200));
+            assertFalse(test.renderedFrame().contains("IDEA: "),
+                    "without the endpoint the status bar keeps its standalone layout");
+            pressCtrlC(pilot);
         }
     }
 

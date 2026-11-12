@@ -13,6 +13,8 @@ import jakarta.enterprise.inject.Instance;
 import jakarta.enterprise.inject.Produces;
 import jakarta.inject.Singleton;
 import java.util.List;
+import java.util.Optional;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 @Singleton
 final class ShellConfigProducer {
@@ -23,7 +25,9 @@ final class ShellConfigProducer {
             @All List<NavigationCapability> navigationProviders, CapabilityRegistry capabilityRegistry,
             @All List<StatusBarWidgetContributor> statusBarContributors,
             @All List<VersionControlCapability> vcsProviders, @All List<ProjectFileOperations> fileOperations,
-            Instance<IdeaMcpConnection> ideaMcpConnections) {
+            Instance<IdeaMcpConnection> ideaMcpConnections,
+            @ConfigProperty(name = "vintelli.idea.mcp.url") Optional<String> ideaUrl) {
+        IdeaMcpConnection ideaMcpConnection = ideaMcpConnections.isResolvable() ? ideaMcpConnections.get() : null;
         return ShellConfig.of(registry.toolWindows(), state, themes.get())
                 .withKeymapSupplier(keymapRegistry::get)
                 .withProjectSearch(projectSearch)
@@ -33,6 +37,7 @@ final class ShellConfigProducer {
                 .withPersistLayout(true)
                 .withStatusBarContributors(statusBarContributors)
                 .withFileOperations(fileOperations.isEmpty() ? null : fileOperations.getFirst())
-                .withIdeaMcpConnection(ideaMcpConnections.isResolvable() ? ideaMcpConnections.get() : null);
+                .withIdeaMcpConnection(ideaMcpConnection)
+                .withIdeaStatus(IdeaStatusBadge.of(ideaUrl, ideaMcpConnection));
     }
 }

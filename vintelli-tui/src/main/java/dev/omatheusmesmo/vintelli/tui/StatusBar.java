@@ -81,10 +81,17 @@ final class StatusBar {
     private final List<StatusBarWidgetContributor> contributors;
     private final Glyphs glyphs;
     private final Supplier<Navigation> navigation;
+    private final IdeaStatusBadge idea;
 
     StatusBar(Supplier<String> message, BooleanSupplier inputBlocking, CapabilityRegistry registry,
             BuiltinEditor editor, List<? extends StatusBarWidgetContributor> contributors, Glyphs glyphs,
             Supplier<Navigation> navigation) {
+        this(message, inputBlocking, registry, editor, contributors, glyphs, navigation, IdeaStatusBadge.absent());
+    }
+
+    StatusBar(Supplier<String> message, BooleanSupplier inputBlocking, CapabilityRegistry registry,
+            BuiltinEditor editor, List<? extends StatusBarWidgetContributor> contributors, Glyphs glyphs,
+            Supplier<Navigation> navigation, IdeaStatusBadge idea) {
         this.message = message;
         this.inputBlocking = inputBlocking;
         this.registry = registry;
@@ -92,6 +99,7 @@ final class StatusBar {
         this.contributors = List.copyOf(contributors);
         this.glyphs = glyphs;
         this.navigation = navigation;
+        this.idea = idea;
     }
 
     /**
@@ -131,6 +139,9 @@ final class StatusBar {
         }
         segments.add(new StatusBarLayout.Segment(StatusBarLayout.MESSAGE_ID, PRIORITY_MESSAGE, shellMessage,
                 compactShell(shellMessage)));
+        if (!inputBlocking.getAsBoolean()) {
+            idea.segment().ifPresent(segments::add);
+        }
         if (inputBlocking.getAsBoolean() || editor == null) {
             return List.copyOf(segments);
         }

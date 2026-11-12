@@ -98,6 +98,35 @@ flowchart LR
 
 Local providers are the default path. The dashed connections are optional, and Vintelli starts without any of them.
 
+## IntelliJ IDEA (optional)
+
+Vintelli works without IntelliJ IDEA. Every capability has a standalone provider, and IDEA only adds its providers for Run, Terminal, Problems and call hierarchy when you connect it.
+
+To connect IDEA:
+
+1. In IDEA, open **Settings | Tools | MCP Server** and enable the server.
+2. Click **Copy HTTP Stream Config** and use that URL as `vintelli.idea.mcp.url`.
+3. Approve IDEA's consent dialog on the first tool call, or enable *brave mode* in the same settings. Brave mode lets tools run without that dialog, so enable it only with that risk in mind.
+
+Vintelli reads these keys from `application.properties` or a profile:
+
+| Key | Required | Purpose |
+|---|---|---|
+| `vintelli.idea.mcp.url` | yes | The streamable HTTP endpoint from IDEA. There is no default, because IDEA picks a free port. |
+| `vintelli.idea.mcp.project-path` | no | The project IDEA should work on, sent as `IJ_MCP_SERVER_PROJECT_PATH`. |
+| `vintelli.idea.mcp.auth-token` | no | The token IDEA requires when it is in restricted mode, sent as `IJ_MCP_AUTH_TOKEN`. |
+
+For development, keep the settings in a `%dev.` profile:
+
+```properties
+%dev.vintelli.idea.mcp.url=http://127.0.0.1:<port>/stream
+%dev.vintelli.idea.mcp.project-path=${PWD}
+```
+
+When `vintelli.idea.mcp.url` is set, the status bar shows the IDEA state, such as `IDEA: connected` or `IDEA: consent pending`. Healthy states are dimmed and problems are emphasized. The full reason is in the providers popup. Without the URL, the status bar is unchanged.
+
+The complete setup, the states and the CLI commands are in [IntelliJ IDEA as an optional provider](docs/intellij-idea.md).
+
 ## Documentation
 
 Start with [usage](docs/usage.md), the [keymap](docs/keymap.md) and [themes](docs/themes.md).

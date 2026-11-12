@@ -286,7 +286,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         this.statusBar = new StatusBar(() -> runWindow != null && runWindow.debugging() ? "Debug | " + status : status, () -> projects.inputActive() || vcsActions.promptOpen()
                 || projects.deletePending(), capabilityRegistry, editor, statusBarContributors,
                 new StatusBar.Glyphs(ProjectTreeGlyphs.supportsUnicode(), fileIcons.mode()),
-                editorController::statusNavigation);
+                editorController::statusNavigation, config.ideaStatus());
         this.statusBarElement = new StatusBarElement(statusBar, editorController::navigateToBreadcrumb);
         this.rootBase = buildRootContent();
         this.lockedRoot = new LockedElement(rootBase, frameLock, this, true);
