@@ -48,6 +48,8 @@ final class PaneLayoutController {
 
         int bottomRows(int availableHeight);
 
+        boolean leftWindowsOpen();
+
         boolean rightRegistered();
 
         boolean rightVisible();
@@ -81,8 +83,13 @@ final class PaneLayoutController {
         return layout.isSizeCustomized();
     }
 
+    /** The left column holds the project pane, a left tool window, or both. */
+    boolean leftColumnShown() {
+        return layout.isProjectVisible() || host.leftWindowsOpen();
+    }
+
     int leftRegionWidth(int projectWidth) {
-        return TOOL_STRIP_WIDTH + (layout.isProjectVisible() ? projectWidth + PANE_SEPARATOR_WIDTH : 0);
+        return TOOL_STRIP_WIDTH + (leftColumnShown() ? projectWidth + PANE_SEPARATOR_WIDTH : 0);
     }
 
     int rightStripeWidth() {
@@ -106,7 +113,8 @@ final class PaneLayoutController {
 
     int sizedProjectWidth() {
         int base = projectBase();
-        return Math.min(layout.projectWidth(base), Math.max(0, projectCap(base)));
+        int sized = Math.min(layout.projectWidth(base), Math.max(0, projectCap(base)));
+        return base > 0 ? Math.max(1, sized) : sized;
     }
 
     void resizeProject(int delta) {
@@ -114,12 +122,13 @@ final class PaneLayoutController {
             host.status("Project layout is not ready");
             return;
         }
-        if (!layout.isProjectVisible()) {
+        if (!leftColumnShown()) {
             host.status("Project panel is hidden");
             return;
         }
         adoptDefaultSizes();
-        setProjectWidth(host.projectPanelWidth() + delta);
+        int current = layout.isProjectVisible() ? host.projectPanelWidth() : sizedProjectWidth();
+        setProjectWidth(current + delta);
         host.placeProject(leftRegionWidth(sizedProjectWidth()));
         persist();
         host.status("Project panel: " + sizedProjectWidth() + " columns");
@@ -168,7 +177,7 @@ final class PaneLayoutController {
         int bottom = vertical.y() + vertical.height() - 1;
         if (!host.bottomWindowsHidden() && y == horizontal.y() && x >= horizontal.x() && x <= right) {
             splitter = SplitterDrag.BOTTOM;
-        } else if (layout.isProjectVisible() && x == vertical.x() && y >= vertical.y() && y <= bottom) {
+        } else if (leftColumnShown() && x == vertical.x() && y >= vertical.y() && y <= bottom) {
             splitter = SplitterDrag.PROJECT;
         } else {
             return false;

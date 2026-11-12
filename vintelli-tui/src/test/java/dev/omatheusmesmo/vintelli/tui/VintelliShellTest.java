@@ -228,6 +228,86 @@ class VintelliShellTest {
     }
 
     @Test
+    void aLeftWindowShowsFromItsStripeIconWithTheProjectPaneHiddenAndSizesTheColumn() throws Exception {
+        VintelliShell shell = shellWithLeftWindows(leftNotes());
+        Buffer buffer = offlineFrame(shell);
+        int projectIcon = findRow(buffer, 1, "P");
+        int notesIcon = findRow(buffer, 1, "N");
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+            int columnWithProject = pilot.findElement("left-stripe").width();
+
+            pilot.click(1, projectIcon);
+            settle(pilot);
+            assertEquals("Project panel hidden", shell.status());
+            assertTrue(pilot.hasElement("tool-pane-fake.notes"), "the open left window is drawn with the project pane hidden");
+            assertEquals(columnWithProject, pilot.findElement("left-stripe").width(),
+                    "the left column keeps the width of the project setting");
+
+            pilot.press('=', KeyModifiers.ALT);
+            settle(pilot);
+            assertEquals(columnWithProject + 2, pilot.findElement("left-stripe").width(),
+                    "Alt+= resizes the left column while the project pane is hidden");
+
+            pilot.click(1, notesIcon);
+            settle(pilot);
+            assertFalse(shell.isToolWindowVisible("fake.notes"), shell.status());
+            assertFalse(pilot.hasElement("tool-pane-fake.notes"), "the stripe icon hides the left window again");
+            assertEquals(VintelliShell.TOOL_STRIP_WIDTH, pilot.findElement("left-stripe").width(),
+                    "hiding the last left window restores the strip alone");
+
+            pilot.click(1, notesIcon);
+            settle(pilot);
+            assertTrue(shell.isToolWindowVisible("fake.notes"), shell.status());
+            assertTrue(pilot.hasElement("tool-pane-fake.notes"), "the stripe icon shows the left window again");
+        }
+    }
+
+    @Test
+    void theTabRowOfALeftColumnActivatesItsWindowWithTheProjectPaneHidden() throws Exception {
+        VintelliShell shell = shellWithLeftWindows(leftNotes(), leftOutline());
+        int projectIcon = findRow(offlineFrame(shell), 1, "P");
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+            pilot.click(1, projectIcon);
+            settle(pilot);
+
+            String frame = test.renderedFrame();
+            int tabRow = frameRowContaining(frame, OUTLINE_TAB);
+            int tabColumn = frame.split("\n", -1)[tabRow].indexOf(OUTLINE_TAB);
+            pilot.click(tabColumn, tabRow);
+            settle(pilot);
+
+            assertEquals("Tool window: Outline", shell.status());
+            assertTrue(pilot.hasElement("tool-pane-fake.outline"), "the clicked tab shows its window");
+            assertFalse(pilot.hasElement("tool-pane-fake.notes"), "the other left window is no longer drawn");
+        }
+    }
+
+    @Test
+    void aHiddenProjectPaneDoesNotLeaveTheTabRowOfAnEarlierFrameClickable() throws Exception {
+        VintelliShell shell = shellWithLeftWindows(leftNotes(), leftOutline());
+        int projectIcon = findRow(offlineFrame(shell), 1, "P");
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+            String withProject = test.renderedFrame();
+            int staleRow = frameRowContaining(withProject, OUTLINE_TAB);
+            int staleColumn = withProject.split("\n", -1)[staleRow].indexOf(OUTLINE_TAB);
+
+            pilot.click(1, projectIcon);
+            settle(pilot);
+            pilot.click(staleColumn, staleRow);
+            settle(pilot);
+
+            assertFalse(shell.status().startsWith("Tool window:"),
+                    "the tab row of the frame before the hide must not answer: " + shell.status());
+        }
+    }
+
+    @Test
     void escapeKeepsAHiddenProjectPanelHiddenAndFocusesTheEditor() throws Exception {
         FakeToolWindow terminalLike = new FakeToolWindow("fake.terminal", "Fake Terminal", '3', 60, "type away", true);
         VintelliShell shell = shellWithFakeWindow(terminalLike);
@@ -5356,6 +5436,23 @@ class VintelliShellTest {
         return new VintelliShell(ShellConfig.of(new ToolWindowRegistry(windows).toolWindows(), new ShellState(), themes));
     }
 
+    private static final String OUTLINE_TAB = "9 Outline";
+
+    private static FakeToolWindow leftNotes() {
+        return new FakeToolWindow("fake.notes", "Notes", '8', 110, "left notes", false, ToolWindow.Anchor.LEFT);
+    }
+
+    private static FakeToolWindow leftOutline() {
+        return new FakeToolWindow("fake.outline", "Outline", '9', 120, "left outline", false, ToolWindow.Anchor.LEFT);
+    }
+
+    private static VintelliShell shellWithLeftWindows(ToolWindow... leftWindows) {
+        List<ToolWindow> windows = new ArrayList<>(defaultWindows());
+        windows.addAll(List.of(leftWindows));
+        return new VintelliShell(ShellConfig.of(new ToolWindowRegistry(windows).toolWindows(), new ShellState(),
+                defaultThemes()));
+    }
+
     private static VintelliShell shellWithFakeWindow(FakeToolWindow fake) {
         ShellThemes themes = defaultThemes();
         ToolWindowRegistry registry = new ToolWindowRegistry(List.of(
@@ -5553,6 +5650,16 @@ class VintelliShellTest {
             }
         }
         return -1;
+    }
+
+    private static int frameRowContaining(String frame, String text) {
+        String[] rows = frame.split("\n", -1);
+        for (int row = 0; row < rows.length; row++) {
+            if (rows[row].contains(text)) {
+                return row;
+            }
+        }
+        throw new AssertionError("no rendered row contains " + text + ": " + frame);
     }
 
     private static int lastFrameRowOf(String frame, int column, String text) {

@@ -77,6 +77,14 @@ final class ToolWindowPanel {
         return column;
     }
 
+    /**
+     * Drops the tab bar of an anchor that the current frame does not draw, so
+     * the click area of an earlier frame cannot answer a click.
+     */
+    void forgetTabs(ToolWindow.Anchor anchor) {
+        tabBars.remove(anchor);
+    }
+
     /** The tab under a click, looked up in every tab bar that is drawn. */
     Optional<ToolWindow> tabAt(int x, int y) {
         for (Map.Entry<ToolWindow.Anchor, ToolTabBarElement> entry : tabBars.entrySet()) {

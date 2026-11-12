@@ -78,6 +78,17 @@ class PaneLayoutControllerTest {
     }
 
     @Test
+    void aLeftWindowKeepsTheColumnAtTheProjectWidthWhileTheProjectPaneIsHidden() {
+        layout.setProjectVisible(false);
+        host.leftWindowsOpen = true;
+        int width = controller.sizedProjectWidth();
+
+        assertTrue(controller.leftColumnShown());
+        assertEquals(PaneLayoutController.TOOL_STRIP_WIDTH + width + PaneLayoutController.PANE_SEPARATOR_WIDTH,
+                controller.leftRegionWidth(width));
+    }
+
+    @Test
     void narrowerStopsAtTheMinimumProjectWidth() {
         controller.resizeProject(-1000);
 
@@ -178,6 +189,7 @@ class PaneLayoutControllerTest {
         private Area viewport = new Area(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
         private boolean layoutReady = true;
         private boolean bottomHidden;
+        private boolean leftWindowsOpen;
         private boolean rightRegistered;
         private boolean rightVisible;
         private boolean activeRightIsAgents;
@@ -241,6 +253,11 @@ class PaneLayoutControllerTest {
         @Override
         public int bottomRows(int availableHeight) {
             return Math.max(0, layout.bottomHeight(availableHeight) - 1);
+        }
+
+        @Override
+        public boolean leftWindowsOpen() {
+            return leftWindowsOpen;
         }
 
         @Override
