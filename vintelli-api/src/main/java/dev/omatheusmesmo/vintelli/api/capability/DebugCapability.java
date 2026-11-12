@@ -1,6 +1,7 @@
 package dev.omatheusmesmo.vintelli.api.capability;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
 
@@ -39,6 +40,35 @@ public interface DebugCapability extends ProviderDescriptor {
      */
     List<DebugSessionSnapshot> snapshot();
 
+    /**
+     * Replaces the complete breakpoint set for one source file in every live session.
+     * Lines use the DAP convention and are one based. The returned locations include
+     * adapter verification state; adapters that have not answered remain pending.
+     */
+    default CapabilityResult<List<SourceBreakpoint>> setBreakpoints(String sourcePath,
+            List<SourceBreakpoint> breakpoints) {
+        return CapabilityResult.failed(new CapabilityFailure("Source breakpoints are not supported", sourcePath));
+    }
+
+    /**
+     * Reconciles the provider's complete source snapshot. Sources previously
+     * known by the provider but omitted from this snapshot are cleared.
+     */
+    default CapabilityResult<Map<String, List<SourceBreakpoint>>> replaceBreakpoints(
+            Map<String, List<SourceBreakpoint>> completeSources) {
+        Map<String, List<SourceBreakpoint>> result = new java.util.TreeMap<>();
+        if (completeSources != null) {
+            for (Map.Entry<String, List<SourceBreakpoint>> source : completeSources.entrySet()) {
+                CapabilityResult<List<SourceBreakpoint>> applied = setBreakpoints(source.getKey(), source.getValue());
+                if (applied instanceof CapabilityResult.Failed<List<SourceBreakpoint>> failed) {
+                    return CapabilityResult.failed(failed.failure());
+                }
+                result.put(source.getKey(), ((CapabilityResult.Ok<List<SourceBreakpoint>>) applied).value());
+            }
+        }
+        return CapabilityResult.ok(Map.copyOf(result));
+    }
+
     enum State {
         STARTING,
         ATTACHING,
@@ -47,6 +77,36 @@ public interface DebugCapability extends ProviderDescriptor {
         TERMINATED,
         DISCONNECTED,
         FAILED
+    }
+
+    enum BreakpointState { PENDING, VERIFIED, REJECTED }
+
+    record SourceBreakpoint(String sourcePath, int line, BreakpointState state, String message,
+            Integer resolvedLine, String resolvedSourcePath) {
+        public SourceBreakpoint {
+            if (sourcePath == null || sourcePath.isBlank()) {
+                throw new IllegalArgumentException("Breakpoint source path is required");
+            }
+            sourcePath = sourcePath.trim();
+            if (line < 1) {
+                throw new IllegalArgumentException("Breakpoint lines are one based");
+            }
+            if (resolvedLine != null && resolvedLine < 1) {
+                throw new IllegalArgumentException("Resolved breakpoint lines are one based");
+            }
+            state = state == null ? BreakpointState.PENDING : state;
+            message = message == null ? "" : message;
+            resolvedSourcePath = resolvedSourcePath == null || resolvedSourcePath.isBlank()
+                    ? sourcePath : resolvedSourcePath.trim();
+        }
+
+        public SourceBreakpoint(String sourcePath, int line) {
+            this(sourcePath, line, BreakpointState.PENDING, "", null, sourcePath);
+        }
+
+        public SourceBreakpoint(String sourcePath, int line, BreakpointState state, String message) {
+            this(sourcePath, line, state, message, null, sourcePath);
+        }
     }
 
     record DebugRequest(RunCapability.RunRequest runRequest, String label) {

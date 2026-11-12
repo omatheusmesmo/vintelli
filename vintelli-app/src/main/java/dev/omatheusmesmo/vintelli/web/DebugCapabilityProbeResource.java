@@ -40,6 +40,7 @@ public final class DebugCapabilityProbeResource {
     private final boolean enabled;
     private final int attachPort;
     private volatile List<String> output = new CopyOnWriteArrayList<>();
+    private volatile List<DebugCapability.SourceBreakpoint> breakpoints = List.of();
     private DebugSession session;
     private String error = "";
 
@@ -56,7 +57,7 @@ public final class DebugCapabilityProbeResource {
     @POST
     public synchronized View start(@QueryParam("kind") @DefaultValue("attach") String kind) {
         checkEnabled();
-        if (!kind.equals("attach") && !kind.equals("launch")) {
+        if (!kind.equals("attach") && !kind.equals("launch") && !kind.equals("breakpoints")) {
             throw new BadRequestException("Unknown debug probe kind");
         }
         CapabilitySelection<DebugCapability> selection = registry.debug();
@@ -72,8 +73,9 @@ public final class DebugCapabilityProbeResource {
         List<String> sessionOutput = new CopyOnWriteArrayList<>();
         output = sessionOutput;
         error = "";
+        breakpoints = List.of();
         CapabilityResult<DebugSession> result;
-        if (kind.equals("attach")) {
+        if (!kind.equals("launch")) {
             result = provider.attach(new DebugCapability.AttachRequest(attachPort, "native probe attach"),
                     line -> append(sessionOutput, line));
         } else {
@@ -86,6 +88,16 @@ public final class DebugCapabilityProbeResource {
             return view(provider, true);
         }
         session = ((CapabilityResult.Ok<DebugSession>) result).value();
+        if (kind.equals("breakpoints")) {
+            String source = projectRoot.canonical().resolve("Main.java").toString();
+            CapabilityResult<List<DebugCapability.SourceBreakpoint>> applied = provider.setBreakpoints(source,
+                    List.of(new DebugCapability.SourceBreakpoint(source, 3)));
+            if (applied instanceof CapabilityResult.Ok<List<DebugCapability.SourceBreakpoint>> ok) {
+                breakpoints = ok.value();
+            } else {
+                error = applied.failureOf().orElseThrow().reason();
+            }
+        }
         CapabilityResult<List<DebugCapability.DebugThread>> threads = session.threads();
         if (threads instanceof CapabilityResult.Failed<List<DebugCapability.DebugThread>> failed) {
             error = failed.failure().reason();
@@ -98,7 +110,7 @@ public final class DebugCapabilityProbeResource {
         checkEnabled();
         CapabilitySelection<DebugCapability> selection = registry.debug();
         if (selection instanceof CapabilitySelection.Unavailable<DebugCapability> unavailable) {
-            return new View(false, unavailable.reason(), null, List.of(), List.copyOf(output));
+            return new View(false, unavailable.reason(), null, List.of(), List.copyOf(output), List.copyOf(breakpoints));
         }
         return view(((CapabilitySelection.Selected<DebugCapability>) selection).provider(), true);
     }
@@ -125,7 +137,7 @@ public final class DebugCapabilityProbeResource {
     private View view(DebugCapability provider, boolean available) {
         DebugSessionSnapshot snapshot = session == null ? null : session.snapshot();
         return new View(available, error, snapshot, provider == null ? List.of() : provider.snapshot(),
-                List.copyOf(output));
+                List.copyOf(output), List.copyOf(breakpoints));
     }
 
     private void append(List<String> target, String line) {
@@ -142,6 +154,7 @@ public final class DebugCapabilityProbeResource {
 
     /** Read-only result returned by the inspect-gated probe. */
     public record View(boolean available, String error, DebugSessionSnapshot snapshot,
-            List<DebugSessionSnapshot> sessions, List<String> output) {
+            List<DebugSessionSnapshot> sessions, List<String> output,
+            List<DebugCapability.SourceBreakpoint> breakpoints) {
     }
 }

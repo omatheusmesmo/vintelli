@@ -14,7 +14,7 @@ It runs with open tooling only. IntelliJ IDEA is an optional extra.
 - 🤖 **AI agents in a side panel.** Choose OpenCode, Claude Code or pi over ACP (`Alt+8`), with executable availability shown before starting a session. See [agent setup](docs/acp-agents.md).
 - 🔌 **Other agents can drive it.** The MCP server reads the shell state and pushes highlights and diffs into the TUI.
 - 🧠 **Language support over LSP.** Configurable profiles, with jdtls as the first one.
-- 🪲 **Optional Java debugging.** An experimental DAP provider uses Java Debug through jdtls; see [Java Debug Adapter setup](docs/language-servers.md#java-debug-adapter).
+- 🪲 **Optional Java debugging.** An experimental DAP provider uses Java Debug through jdtls. Toggle persistent source breakpoints from the editor gutter or with `Ctrl+B`; see [Java Debug Adapter setup](docs/language-servers.md#java-debug-adapter).
 - ⌨️ **Familiar keys and colors.** The `intellij` keymap is the default, and the themes come from IntelliJ IDEA's color files.
 
 ## Install
@@ -158,5 +158,6 @@ Debug supported Maven applications and tests from the toolbar, with a suspended
 loopback JDWP port and process-tree Stop: [debug launch](docs/debug-launch.md).
 
 The Java debugger architecture is recorded in [spike 385](docs/spikes/spike-385-native-java-debugger.md):
-typed DAP with Java Debug via jdtls. The provider is opt-in and experimental; breakpoints,
-stepping, the Debug window and evaluation have separate follow-up issues #387 through #390.
+typed DAP with Java Debug via jdtls. The provider is opt-in and experimental. Breakpoints are
+stored per project as line anchors; edits keep them on the same line, and truncating the file
+removes anchors beyond the new end. The adapter reports pending, verified and rejected state.

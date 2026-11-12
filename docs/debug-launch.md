@@ -25,10 +25,39 @@ The existing local process timeout applies to debug launches too.
 The Debug button is dimmed for unsupported configurations. Invoking it displays
 the reason in Run. Gradle, arbitrary exec goals and providers without an explicit
 debug launch contract are unavailable. Surefire must fork a test JVM; a project
-that disables forking cannot expose a test debug port. Breakpoints, stepping and
-variable inspection inside Vintelli are tracked separately in #387 through #390. The
-optional Java Debug Adapter provider is a separate integration through jdtls;
-see [language-server setup](language-servers.md#java-debug-adapter).
+that disables forking cannot expose a test debug port. The optional Java Debug
+Adapter provider is a separate integration through jdtls; see
+[language-server setup](language-servers.md#java-debug-adapter).
+
+The toolbar starts the run provider with the configured loopback debug port and
+attaches the selected Debug provider to that process. Stopping the run detaches
+the DAP session before cancelling the run handle; the run provider remains the
+owner of process cleanup. Before starting, the toolbar sends each complete source
+breakpoint set exposed by the selected editor to the Debug provider. This also
+loads persisted editor breakpoints into a newly attached session.
+
+## Source breakpoints
+
+Click a line's gutter marker or run **Toggle Line Breakpoint** (`Ctrl+B`) to
+toggle a breakpoint. Locations are stored per canonical project and source file
+as zero based line anchors. Text edits and undo keep an anchor on its current
+line; if an edit shortens the file past an anchor, that breakpoint is removed
+permanently, including after undo. Renames do not migrate anchors: the saved
+location remains associated with the old relative path, and the renamed file
+starts without those breakpoints. Deleted-file locations and empty source sets
+remain stored as tombstones. They are included in the toolbar's complete
+breakpoint snapshot so a provider can clear stale adapter state; locations for
+a deleted source are not rendered until that path is opened again. If the
+adapter rejects a missing source, its rejection is retained with the anchor.
+
+When no debug provider is available, stored locations remain pending. The Java
+DAP provider sends a complete replacement set for each source; adapter replies
+mark each location pending, verified, or rejected. Rejected locations remain
+visible so the user can identify and remove them. The gutter keeps the requested
+source and line as its persisted anchor; an adapter's resolved source and line
+are retained separately in the capability response. Across live sessions, a
+rejection takes precedence, otherwise any pending reply keeps the aggregate
+pending, and all verified replies make it verified.
 
 The existing inspect gate also enables `/tui/debug-launch-probe`: POST accepts
 only the fixed `kind=test|quarkus|spring` scenarios, GET reads bounded output and

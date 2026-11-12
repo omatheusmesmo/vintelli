@@ -32,6 +32,7 @@ Key actions in the `intellij` profile:
 | `SearchEverywhere` | `Ctrl+P` | `Double Shift` |
 | `KeymapHelp` | `F1` | `F1` |
 | `run.choose-configuration` | Palette: Choose Run Configuration; toolbar configuration name | - |
+| `editor_toggleBreakpoint` | `Ctrl+B` | `Ctrl+F8` |
 | `moveUp` / `moveDown` | arrow keys (`j/k` in the `vim` profile) | - |
 | `quit` | `Ctrl+C` | - |
 | `editor_copy`, `editor_cut`, `editor_paste` | `Ctrl+C` (copy, only with a selection), `Ctrl+X`, `Ctrl+V` | `Ctrl+C`, `Ctrl+X`, `Ctrl+V` |

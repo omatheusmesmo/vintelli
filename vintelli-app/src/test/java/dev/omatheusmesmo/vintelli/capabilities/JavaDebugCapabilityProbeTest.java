@@ -59,6 +59,22 @@ class JavaDebugCapabilityProbeTest {
     }
 
     @Test
+    void packagedProviderSynchronizesAndVerifiesSourceBreakpoints() throws Exception {
+        Process debuggee = startExternalDebuggee(JavaDebugCapabilityProbeResource.attachPort());
+        try {
+            assertTrue(debuggeeReady(debuggee), "the external JDWP debuggee did not start");
+            var response = given().queryParam("kind", "breakpoints").post(PROBE).then().statusCode(200).extract();
+            assertTrue(Boolean.TRUE.equals(response.path("available")));
+            assertEquals("VERIFIED", response.path("breakpoints[0].state"));
+            assertEquals(3, ((Number) response.path("breakpoints[0].line")).intValue());
+            assertEquals(List.of(3), JavaDebugCapabilityProbeResource.adapter().breakpointLines());
+        } finally {
+            given().delete(PROBE).then().statusCode(200);
+            destroy(debuggee);
+        }
+    }
+
+    @Test
     void launchOwnsTheDebuggeeAndFreesItsLoopbackPortOnDisconnect() throws Exception {
         try {
             var started = given().queryParam("kind", "launch").post(PROBE).then().statusCode(200).extract();

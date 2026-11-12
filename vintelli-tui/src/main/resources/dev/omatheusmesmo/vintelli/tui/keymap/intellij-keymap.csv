@@ -57,6 +57,7 @@ editor_previousTab,Alt+[,Alt+Left,different,"IntelliJ Select Previous Tab is Alt
 editor_definition,F12,Ctrl+B,different,"IntelliJ Go to Declaration is Ctrl+B; F12 is Jump to Last Tool Window there (#363)"
 editor_usages,Alt+U,Alt+F7,different,"IntelliJ Find Usages is Alt+F7 (#365)"
 editor_toggleImportFold,Alt+I,,vintelli-only,"Folds or unfolds imports; no IntelliJ chord confirmed"
+editor_toggleBreakpoint,Ctrl+B,Ctrl+F8,different,"Ctrl+B keeps F8 available for Next Problem"
 editor_nextProblem,F8,F2,different,"IntelliJ Next Highlighted Error is F2; F8 is Step Over there (#365)"
 navigation_goToFile,Ctrl+O,Ctrl+Shift+N,not-deliverable,"Ctrl+Shift+N sends the same bytes as Ctrl+N in a terminal; Ctrl+O is Override Methods in IntelliJ, kept until #365 decides"
 navigation_findInFiles,Alt+F,Ctrl+Shift+F,not-deliverable,"Ctrl+Shift+F sends the same bytes as Ctrl+F in a terminal; Alt+F is kept here"

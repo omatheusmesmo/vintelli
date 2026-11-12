@@ -2929,17 +2929,24 @@ class VintelliShellTest {
         try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
             Pilot pilot = test.pilot();
             Rect text = pilot.findElement(BuiltinEditor.TEXT_AREA_ID);
-            pilot.click(text.x() + 2, text.y() + 1);
+            pilot.mousePress(MouseButton.LEFT, text.x() + 1, text.y());
+            test.drag(MouseEvent.drag(MouseButton.LEFT, text.x() + 3, text.y() + 1));
+            pilot.mouseRelease(MouseButton.LEFT, text.x() + 3, text.y() + 1);
             settle(pilot);
             BuiltinEditor.PointerState before = fixture.editor().pointerState().orElseThrow();
+            assertFalse(before.selectedText().isEmpty(), "the setup has a real editor selection");
 
-            pilot.click(text.x() - 1, text.y() + 3);
+            Rect gutter = pilot.findElement("editor-gutter");
+            pilot.click(gutter.x() + 1, gutter.y() + 3);
             settle(pilot);
             pilot.click(text.x() + 4, text.y() - 1);
             settle(pilot);
 
             assertEquals(before, fixture.editor().pointerState().orElseThrow(),
-                    "gutter and bar presses leave the caret and the selection where they were");
+                    "a Pilot gutter click and bar press leave the caret and selection where they were");
+            String marker = test.renderedFrame().split("\n", -1)[gutter.y() + 3]
+                    .substring(gutter.x(), gutter.x() + 2);
+            assertTrue(marker.equals("o ") || marker.equals("◌ "), "the gutter click adds a pending marker: " + marker);
         }
     }
 

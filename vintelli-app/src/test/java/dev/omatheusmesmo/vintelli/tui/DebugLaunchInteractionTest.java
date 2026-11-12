@@ -13,6 +13,7 @@ import java.util.function.Consumer;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import dev.omatheusmesmo.vintelli.api.capability.RunCapability;
+import dev.omatheusmesmo.vintelli.tui.RunToolWindowInteractionContractTest.FakeDebugCapability;
 import dev.omatheusmesmo.vintelli.tui.RunToolWindowInteractionContractTest.FakeRegistry;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import dev.tamboui.layout.Size;
@@ -25,9 +26,10 @@ class DebugLaunchInteractionTest {
     void toolbarAndPaletteLaunchTheSameConfigurationAndStopClearsDebugState() throws Exception {
         for (boolean pointer : List.of(true, false)) {
             DebugProvider provider = new DebugProvider();
+            FakeDebugCapability debugCapability = new FakeDebugCapability();
             UiWorkQueue queue = new UiWorkQueue();
             ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
-            var registry = new FakeRegistry(provider);
+            var registry = new FakeRegistry(provider, debugCapability);
             RunToolWindow window = new RunToolWindow(() -> themes, registry, queue, ".", null, 5123);
             window.refreshConfigurations();
             await(queue, () -> !window.configurations().isEmpty());
@@ -52,11 +54,13 @@ class DebugLaunchInteractionTest {
                 await(queue, window::running);
                 assertEquals("maven:quarkus:dev", provider.started);
                 assertEquals(5123, provider.port);
+                assertEquals(5123, debugCapability.attachedPort.get());
                 assertTrue(window.debugging());
                 assertFalse(window.debugAvailable());
                 assertTrue(fixture.renderedText().contains("Debug |"), fixture.renderedText());
                 window.performAction(KeyActions.RUN_STOP);
                 await(queue, () -> !window.running());
+                await(queue, () -> debugCapability.disconnects.get() == 1);
                 assertFalse(window.debugging());
                 assertTrue(window.debugAvailable());
                 assertFalse(fixture.renderedText().contains("Debug |"));

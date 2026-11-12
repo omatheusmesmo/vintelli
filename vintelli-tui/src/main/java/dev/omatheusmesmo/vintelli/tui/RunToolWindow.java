@@ -18,6 +18,9 @@ import dev.omatheusmesmo.vintelli.api.capability.CapabilityRegistry;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilitySelection;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
+import dev.omatheusmesmo.vintelli.api.capability.DebugCapability;
+import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugSession;
+import dev.omatheusmesmo.vintelli.api.capability.EditorBridge;
 import dev.omatheusmesmo.vintelli.api.capability.RunCapability;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import dev.tamboui.layout.Rect;
@@ -63,6 +66,7 @@ public final class RunToolWindow implements ToolWindow {
     private volatile CapabilityStateLine.Summary capabilitySummary = CapabilityStateLine.checking(CapabilityType.RUN);
     private volatile String status = LOADING;
     private volatile RunCapability.RunHandle handle;
+    private volatile DebugSession debugSession;
     private volatile boolean starting;
     private volatile boolean running;
     private int selectedIndex;
@@ -551,6 +555,7 @@ public final class RunToolWindow implements ToolWindow {
         debugging = debug;
         running = true;
         handle = null;
+        debugSession = null;
         status = "Starting " + identifier;
         output.clear();
         append("Starting " + identifier + " via " + selected.identifier());
@@ -591,7 +596,55 @@ public final class RunToolWindow implements ToolWindow {
                 });
                 return;
             }
+            DebugCapability debugProvider = null;
+            EditorBridge debugEditor = null;
+            if (debug) {
+                CapabilitySelection<DebugCapability> debugSelection;
+                try {
+                    debugSelection = capabilities.debug();
+                } catch (RuntimeException failure) {
+                    uiWork.execute(() -> {
+                        if (sequence == runSequence.get()) {
+                            failRun("Debug provider selection failed: " + message(failure));
+                        }
+                    });
+                    return;
+                }
+                if (debugSelection instanceof CapabilitySelection.Unavailable<DebugCapability> unavailable) {
+                    uiWork.execute(() -> {
+                        if (sequence == runSequence.get()) {
+                            failRun("Debug unavailable: " + unavailable.reason());
+                        }
+                    });
+                    return;
+                }
+                debugProvider = ((CapabilitySelection.Selected<DebugCapability>) debugSelection).provider();
+                try {
+                    CapabilitySelection<EditorBridge> editorSelection = capabilities.editorBridge();
+                    if (editorSelection instanceof CapabilitySelection.Selected<EditorBridge> editor) {
+                        debugEditor = editor.provider();
+                    }
+                    CapabilityResult<Map<String, List<DebugCapability.SourceBreakpoint>>> synchronizedSources =
+                            synchronizeBreakpoints(debugProvider, debugEditor);
+                    if (synchronizedSources instanceof CapabilityResult.Failed<Map<String, List<DebugCapability.SourceBreakpoint>>> failed) {
+                        uiWork.execute(() -> {
+                            if (sequence == runSequence.get()) {
+                                failRun("Breakpoint synchronization failed: " + failed.failure().reason());
+                            }
+                        });
+                        return;
+                    }
+                } catch (RuntimeException failure) {
+                    uiWork.execute(() -> {
+                        if (sequence == runSequence.get()) {
+                            failRun("Breakpoint synchronization failed: " + message(failure));
+                        }
+                    });
+                    return;
+                }
+            }
             CapabilityResult<RunCapability.RunHandle> result;
+            DebugSession attachedSession = null;
             try {
                 var request = new RunCapability.RunRequest(identifier, workingDirectory, Map.of(), arguments);
                 Consumer<String> outputLines = line -> uiWork.execute(() -> {
@@ -605,6 +658,42 @@ public final class RunToolWindow implements ToolWindow {
                 };
                 result = debug ? selected.startDebug(request, debugPort, outputLines, ended)
                         : selected.start(request, outputLines, ended);
+                if (debug && result instanceof CapabilityResult.Ok<RunCapability.RunHandle> started) {
+                    CapabilityResult<DebugSession> attached;
+                    try {
+                        attached = debugProvider.attach(new DebugCapability.AttachRequest(debugPort, identifier), outputLines);
+                    } catch (RuntimeException failure) {
+                        started.value().cancel();
+                        uiWork.execute(() -> {
+                            if (sequence == runSequence.get()) {
+                                failRun("Debug attach failed: " + message(failure));
+                            }
+                        });
+                        return;
+                    }
+                    if (attached instanceof CapabilityResult.Failed<DebugSession> failed) {
+                        started.value().cancel();
+                        uiWork.execute(() -> {
+                            if (sequence == runSequence.get()) {
+                                failRun("Debug attach failed: " + failed.failure().reason());
+                            }
+                        });
+                        return;
+                    }
+                    attachedSession = ((CapabilityResult.Ok<DebugSession>) attached).value();
+                    CapabilityResult<Map<String, List<DebugCapability.SourceBreakpoint>>> synchronizedSources =
+                            synchronizeBreakpoints(debugProvider, debugEditor);
+                    if (synchronizedSources instanceof CapabilityResult.Failed<Map<String, List<DebugCapability.SourceBreakpoint>>> failed) {
+                        disconnect(attachedSession);
+                        started.value().cancel();
+                        uiWork.execute(() -> {
+                            if (sequence == runSequence.get()) {
+                                failRun("Breakpoint synchronization failed: " + failed.failure().reason());
+                            }
+                        });
+                        return;
+                    }
+                }
             } catch (RuntimeException failure) {
                 uiWork.execute(() -> {
                     if (sequence == runSequence.get()) {
@@ -613,8 +702,10 @@ public final class RunToolWindow implements ToolWindow {
                 });
                 return;
             }
+            DebugSession session = attachedSession;
             uiWork.execute(() -> {
                 if (sequence != runSequence.get()) {
+                    disconnectAsync(session);
                     return;
                 }
                 starting = false;
@@ -624,9 +715,11 @@ public final class RunToolWindow implements ToolWindow {
                     return;
                 }
                 if (completion.get() != null) {
+                    disconnectAsync(session);
                     completeRun(sequence, completion.get());
                 } else {
                     handle = ((CapabilityResult.Ok<RunCapability.RunHandle>) result).value();
+                    debugSession = session;
                     running = true;
                     status = (debug ? "Debug 127.0.0.1:" + debugPort + " · " : "Running ") + identifier;
                 }
@@ -644,9 +737,12 @@ public final class RunToolWindow implements ToolWindow {
             status = "Stop is unavailable for this provider";
             return;
         }
+        DebugSession activeDebugSession = debugSession;
+        debugSession = null;
         status = "Stop requested";
         Thread.ofVirtual().name("vintelli-run-stop").start(() -> {
             try {
+                disconnect(activeDebugSession);
                 active.cancel();
             } catch (RuntimeException failure) {
                 uiWork.execute(() -> status = "Could not stop run: " + message(failure));
@@ -655,6 +751,8 @@ public final class RunToolWindow implements ToolWindow {
     }
 
     private void failRun(String failure) {
+        disconnectAsync(debugSession);
+        debugSession = null;
         starting = false;
         running = false;
         debugging = false;
@@ -675,8 +773,52 @@ public final class RunToolWindow implements ToolWindow {
         starting = false;
         running = false;
         debugging = false;
+        disconnectAsync(debugSession);
+        debugSession = null;
         handle = null;
         status = completion.summary();
+    }
+
+    private static void disconnect(DebugSession session) {
+        if (session == null) {
+            return;
+        }
+        try {
+            session.disconnect();
+        } catch (RuntimeException ignored) {
+            // The run handle still owns process cleanup if the adapter has already disappeared.
+        }
+    }
+
+    private static CapabilityResult<Map<String, List<DebugCapability.SourceBreakpoint>>> synchronizeBreakpoints(
+            DebugCapability provider, EditorBridge editor) {
+        while (true) {
+            EditorBridge.SourceBreakpointSnapshot snapshot = editor == null
+                    ? new EditorBridge.SourceBreakpointSnapshot(0, Map.of())
+                    : editor.sourceBreakpointSnapshot();
+            Map<String, List<DebugCapability.SourceBreakpoint>> requested = new java.util.TreeMap<>();
+            snapshot.sources().forEach((source, points) -> requested.put(source.toString(), points));
+            CapabilityResult<Map<String, List<DebugCapability.SourceBreakpoint>>> result =
+                    provider.replaceBreakpoints(requested);
+            if (result instanceof CapabilityResult.Failed<Map<String, List<DebugCapability.SourceBreakpoint>>>) {
+                return result;
+            }
+            if (editor == null) {
+                return result;
+            }
+            Map<Path, List<DebugCapability.SourceBreakpoint>> updates = new java.util.HashMap<>();
+            ((CapabilityResult.Ok<Map<String, List<DebugCapability.SourceBreakpoint>>>) result).value()
+                    .forEach((source, points) -> updates.put(Path.of(source), points));
+            if (editor.updateSourceBreakpoints(snapshot.generation(), updates)) {
+                return result;
+            }
+        }
+    }
+
+    private static void disconnectAsync(DebugSession session) {
+        if (session != null) {
+            Thread.ofVirtual().name("vintelli-debug-detach").start(() -> disconnect(session));
+        }
     }
 
     private static boolean sameProvider(RunCapability first, RunCapability second) {

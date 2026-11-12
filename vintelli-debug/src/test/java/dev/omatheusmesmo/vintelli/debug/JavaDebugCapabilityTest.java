@@ -106,6 +106,65 @@ class JavaDebugCapabilityTest {
     }
 
     @Test
+    void setBreakpointsReplacesTheCompleteSourceSetAndReportsAdapterVerification() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.REJECT_BREAKPOINT)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            ok(capability.launch(new DebugCapability.DebugRequest(request(), "breakpoints"), ignored -> { }));
+
+            List<DebugCapability.SourceBreakpoint> applied = ok(capability.setBreakpoints("/project/Main.java",
+                    List.of(new DebugCapability.SourceBreakpoint("/project/Main.java", 9),
+                            new DebugCapability.SourceBreakpoint("/project/Main.java", 4))));
+
+            assertEquals(List.of(4, 9), twin.breakpointLines());
+            assertEquals(DebugCapability.BreakpointState.REJECTED, applied.getFirst().state());
+            assertEquals("Source line is not executable", applied.getFirst().message());
+            assertEquals(DebugCapability.BreakpointState.VERIFIED, applied.get(1).state());
+
+            ok(capability.setBreakpoints("/project/Main.java",
+                    List.of(new DebugCapability.SourceBreakpoint("/project/Main.java", 2))));
+            assertEquals(List.of(2), twin.breakpointLines());
+            ok(capability.replaceBreakpoints(Map.of()));
+            assertEquals(List.of(), twin.breakpointLines(), "omitted source sets are cleared during full reconciliation");
+        }
+    }
+
+    @Test
+    void preservesRequestedLineAndExposesAdapterResolvedSourceLocation() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.RESOLVE_BREAKPOINT)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "resolved breakpoint"), ignored -> { }));
+
+            DebugCapability.SourceBreakpoint applied = ok(capability.setBreakpoints("/project/Main.java",
+                    List.of(new DebugCapability.SourceBreakpoint("/project/Main.java", 7)))).getFirst();
+
+            assertEquals(7, applied.line(), "the persistent editor anchor remains the requested source line");
+            assertEquals(8, applied.resolvedLine());
+            assertEquals("/mapped/Main.java", applied.resolvedSourcePath());
+            session.disconnect();
+        }
+    }
+
+    @Test
+    void rejectsAnAggregateBreakpointWhenAnyLiveSessionRejectsIt() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.REJECT_SECOND_SESSION)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            DebugCapability.DebugSession first = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "first session"), ignored -> { }));
+            DebugCapability.DebugSession second = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5006, "second session"), ignored -> { }));
+
+            DebugCapability.SourceBreakpoint applied = ok(capability.setBreakpoints("/project/Main.java",
+                    List.of(new DebugCapability.SourceBreakpoint("/project/Main.java", 9)))).getFirst();
+
+            assertEquals(DebugCapability.BreakpointState.REJECTED, applied.state());
+            assertEquals("Source line is not executable", applied.message());
+            first.disconnect();
+            second.disconnect();
+        }
+    }
+
+    @Test
     void launchCancellationStopsTheOwnedRun() throws Exception {
         try (DapTwin twin = new DapTwin(DapTwin.Mode.NORMAL)) {
             FakeRun run = new FakeRun();

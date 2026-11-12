@@ -22,6 +22,7 @@ import dev.omatheusmesmo.vintelli.api.capability.CapabilitySelection;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityStatus;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
 import dev.omatheusmesmo.vintelli.api.capability.CodeActionCapability;
+import dev.omatheusmesmo.vintelli.api.capability.DebugCapability;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability;
 import dev.omatheusmesmo.vintelli.api.capability.EditorBridge;
@@ -43,6 +44,54 @@ import dev.tamboui.toolkit.element.DefaultRenderContext;
 import org.junit.jupiter.api.Test;
 
 class RunToolWindowTest {
+
+    @Test
+    void debugToolbarAttachesTheDebugCapabilityToTheStartedRunAndDetachesBeforeStop() throws Exception {
+        ShellThemes themes = themes();
+        UiWorkQueue uiWork = new UiWorkQueue();
+        FakeRunProvider runProvider = new FakeRunProvider();
+        FakeDebugProvider debugProvider = new FakeDebugProvider();
+        FakeRegistry registry = new FakeRegistry(runProvider);
+        registry.debugProvider = debugProvider;
+        FakeEditorBridge editorProvider = new FakeEditorBridge();
+        registry.editorProvider = editorProvider;
+        debugProvider.beforeFirstSync = editorProvider::changeBreakpointDuringReconcile;
+        RunToolWindow window = new RunToolWindow(() -> themes, registry, uiWork, ".");
+        window.refreshConfigurations();
+        assertTrue(runProvider.listed.await(5, TimeUnit.SECONDS));
+        awaitUi(uiWork, () -> window.configurations().size() == 2);
+
+        assertTrue(window.performAction(KeyActions.RUN_DEBUG));
+        assertTrue(runProvider.started.await(5, TimeUnit.SECONDS));
+        awaitUi(uiWork, () -> window.statusMessage().startsWith("Debug 127.0.0.1:"));
+
+        assertEquals(5005, runProvider.startedPort.get());
+        assertEquals(5005, debugProvider.attachedPort.get());
+        assertEquals(List.of(5), debugProvider.synchronizedLines.get());
+        assertEquals(DebugCapability.BreakpointState.VERIFIED,
+                editorProvider.sourceBreakpoints().values().iterator().next().getFirst().state());
+        assertTrue(window.debugging());
+        assertTrue(window.performAction(KeyActions.RUN_STOP));
+        assertTrue(runProvider.cancelled.await(5, TimeUnit.SECONDS));
+        assertTrue(debugProvider.disconnected.await(5, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void debugToolbarReportsAnUnavailableDebugProviderBeforeStartingTheProcess() throws Exception {
+        ShellThemes themes = themes();
+        UiWorkQueue uiWork = new UiWorkQueue();
+        FakeRunProvider runProvider = new FakeRunProvider();
+        RunToolWindow window = new RunToolWindow(() -> themes, new FakeRegistry(runProvider), uiWork, ".");
+        window.refreshConfigurations();
+        assertTrue(runProvider.listed.await(5, TimeUnit.SECONDS));
+        awaitUi(uiWork, () -> window.configurations().size() == 2);
+
+        assertTrue(window.performAction(KeyActions.RUN_DEBUG));
+        awaitUi(uiWork, () -> window.statusMessage().startsWith("Debug unavailable:"));
+
+        assertEquals(1L, runProvider.started.getCount(), "a missing DAP provider must not start a suspended process");
+        assertFalse(window.debugging());
+    }
 
     @Test
     void pilotSelectsConfigurationRunsItRendersOutputAndCanStopIt() throws Exception {
@@ -268,6 +317,8 @@ class RunToolWindowTest {
 
     private static final class FakeRegistry implements CapabilityRegistry {
         private volatile RunCapability provider;
+        private volatile DebugCapability debugProvider;
+        private volatile EditorBridge editorProvider;
         private String unavailableReason;
 
         private FakeRegistry(RunCapability provider) {
@@ -282,12 +333,25 @@ class RunToolWindowTest {
             return CapabilitySelection.selected(CapabilityType.RUN, provider);
         }
 
+        @Override
+        public CapabilitySelection<DebugCapability> debug() {
+            DebugCapability current = debugProvider;
+            return current == null ? unavailable(CapabilityType.DEBUG)
+                    : CapabilitySelection.selected(CapabilityType.DEBUG, current);
+        }
+
+        @Override
+        public CapabilitySelection<EditorBridge> editorBridge() {
+            EditorBridge current = editorProvider;
+            return current == null ? unavailable(CapabilityType.EDITOR_BRIDGE)
+                    : CapabilitySelection.selected(CapabilityType.EDITOR_BRIDGE, current);
+        }
+
         @Override public CapabilitySelection<TerminalCapability> terminal() { return unavailable(CapabilityType.TERMINAL); }
         @Override public CapabilitySelection<ReadFileCapability> readFile() { return unavailable(CapabilityType.READ_FILE); }
         @Override public CapabilitySelection<DiagnosticsCapability> diagnostics() { return unavailable(CapabilityType.DIAGNOSTICS); }
         @Override public CapabilitySelection<CallHierarchyCapability> callHierarchy() { return unavailable(CapabilityType.CALL_HIERARCHY); }
         @Override public CapabilitySelection<CodeActionCapability> codeActions() { return unavailable(CapabilityType.CODE_ACTION); }
-        @Override public CapabilitySelection<EditorBridge> editorBridge() { return unavailable(CapabilityType.EDITOR_BRIDGE); }
         @Override public CapabilitySelection<VersionControlCapability> versionControl() { return unavailable(CapabilityType.VERSION_CONTROL); }
         @Override public List<CapabilityStatus> snapshot() {
             if (unavailableReason != null) {
@@ -310,6 +374,7 @@ class RunToolWindowTest {
         private final CountDownLatch started = new CountDownLatch(1);
         private final CountDownLatch cancelled = new CountDownLatch(1);
         private final AtomicReference<String> startedConfiguration = new AtomicReference<>();
+        private final AtomicReference<Integer> startedPort = new AtomicReference<>();
         private volatile java.util.function.Consumer<String> output = ignored -> { };
         private volatile java.util.function.Consumer<RunCompletion> completion = ignored -> { };
         private volatile CapabilityResult<List<RunConfiguration>> listResult = CapabilityResult.ok(List.of(
@@ -319,6 +384,18 @@ class RunToolWindowTest {
         @Override public String identifier() { return "idea"; }
         @Override public ProviderHealth health() { return ProviderHealth.available(); }
         @Override public String provenance() { return "IDEA MCP"; }
+
+        @Override
+        public DebugSupport debugSupport(String configurationName) {
+            return new DebugSupport(true, "");
+        }
+
+        @Override
+        public CapabilityResult<RunHandle> startDebug(RunRequest request, int port,
+                java.util.function.Consumer<String> output, java.util.function.Consumer<RunCompletion> completion) {
+            startedPort.set(port);
+            return start(request, output, completion);
+        }
 
         @Override
         public CapabilityResult<List<RunConfiguration>> listConfigurations() {
@@ -343,6 +420,94 @@ class RunToolWindowTest {
                 cancelled.countDown();
                 completion.accept(new RunCompletion(RunOutcome.CANCELLED, Optional.empty()));
             });
+        }
+    }
+
+    private static final class FakeDebugProvider implements DebugCapability {
+        private final AtomicReference<Integer> attachedPort = new AtomicReference<>();
+        private final AtomicReference<List<Integer>> synchronizedLines = new AtomicReference<>(List.of());
+        private final CountDownLatch disconnected = new CountDownLatch(1);
+        private final java.util.concurrent.atomic.AtomicBoolean firstSync = new java.util.concurrent.atomic.AtomicBoolean(true);
+        private volatile Runnable beforeFirstSync = () -> { };
+
+        @Override public String identifier() { return "fake-dap"; }
+        @Override public ProviderHealth health() { return ProviderHealth.available(); }
+        @Override public String provenance() { return "fake DAP"; }
+        @Override public CapabilityResult<DebugSession> launch(DebugRequest request,
+                java.util.function.Consumer<String> outputLines) {
+            return CapabilityResult.failed(new CapabilityFailure("Not used", ""));
+        }
+
+        @Override
+        public CapabilityResult<DebugSession> attach(AttachRequest request,
+                java.util.function.Consumer<String> outputLines) {
+            attachedPort.set(request.port());
+            return CapabilityResult.ok(new DebugSession() {
+                @Override public DebugSessionSnapshot snapshot() {
+                    return new DebugSessionSnapshot("fake", request.label(), State.STOPPED, List.of(), "", "");
+                }
+                @Override public CapabilityResult<List<DebugThread>> threads() {
+                    return CapabilityResult.ok(List.of());
+                }
+                @Override public CapabilityResult<Boolean> disconnect() {
+                    disconnected.countDown();
+                    return CapabilityResult.ok(true);
+                }
+                @Override public void cancel() { disconnected.countDown(); }
+            });
+        }
+
+        @Override public List<DebugSessionSnapshot> snapshot() { return List.of(); }
+
+        @Override
+        public CapabilityResult<List<SourceBreakpoint>> setBreakpoints(String sourcePath,
+                List<SourceBreakpoint> breakpoints) {
+            if (firstSync.compareAndSet(true, false)) {
+                beforeFirstSync.run();
+            }
+            synchronizedLines.set(breakpoints.stream().map(SourceBreakpoint::line).toList());
+            DebugCapability.BreakpointState state = attachedPort.get() == null
+                    ? DebugCapability.BreakpointState.PENDING : DebugCapability.BreakpointState.VERIFIED;
+            return CapabilityResult.ok(breakpoints.stream().map(point -> new SourceBreakpoint(point.sourcePath(),
+                    point.line(), state, "")).toList());
+        }
+    }
+
+    private static final class FakeEditorBridge implements EditorBridge {
+        private volatile long generation;
+        private volatile java.util.Map<Path, List<DebugCapability.SourceBreakpoint>> currentBreakpoints =
+                java.util.Map.of(Path.of("/project/Main.java"), List.of(
+                        new DebugCapability.SourceBreakpoint("/project/Main.java", 4)));
+
+        @Override public String identifier() { return "fake-editor"; }
+        @Override public ProviderHealth health() { return ProviderHealth.available(); }
+        @Override public String provenance() { return "fake editor"; }
+        @Override public CapabilityResult<Opened> open(OpenRequest request) {
+            return CapabilityResult.ok(new Opened(request.file(), request.line()));
+        }
+        @Override public Optional<Path> currentFile() { return Optional.empty(); }
+        @Override public java.util.Map<Path, List<DebugCapability.SourceBreakpoint>> sourceBreakpoints() {
+            return currentBreakpoints;
+        }
+        @Override public SourceBreakpointSnapshot sourceBreakpointSnapshot() {
+            return new SourceBreakpointSnapshot(generation, currentBreakpoints);
+        }
+        @Override public void updateSourceBreakpoints(
+                java.util.Map<Path, List<DebugCapability.SourceBreakpoint>> results) {
+            currentBreakpoints = results;
+        }
+        @Override public boolean updateSourceBreakpoints(long expectedGeneration,
+                java.util.Map<Path, List<DebugCapability.SourceBreakpoint>> results) {
+            if (expectedGeneration != generation) {
+                return false;
+            }
+            currentBreakpoints = results;
+            return generation == expectedGeneration;
+        }
+        private void changeBreakpointDuringReconcile() {
+            generation++;
+            currentBreakpoints = java.util.Map.of(Path.of("/project/Main.java"), List.of(
+                    new DebugCapability.SourceBreakpoint("/project/Main.java", 5)));
         }
     }
 }

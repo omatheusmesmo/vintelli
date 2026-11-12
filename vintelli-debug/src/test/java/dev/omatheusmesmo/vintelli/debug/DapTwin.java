@@ -26,6 +26,11 @@ import org.eclipse.lsp4j.debug.StoppedEventArguments;
 import org.eclipse.lsp4j.debug.TerminatedEventArguments;
 import org.eclipse.lsp4j.debug.Thread;
 import org.eclipse.lsp4j.debug.ThreadsResponse;
+import org.eclipse.lsp4j.debug.SetBreakpointsArguments;
+import org.eclipse.lsp4j.debug.SetBreakpointsResponse;
+import org.eclipse.lsp4j.debug.SourceBreakpoint;
+import org.eclipse.lsp4j.debug.Breakpoint;
+import org.eclipse.lsp4j.debug.Source;
 import org.eclipse.lsp4j.debug.launch.DSPLauncher;
 import org.eclipse.lsp4j.debug.services.IDebugProtocolClient;
 import org.eclipse.lsp4j.debug.services.IDebugProtocolServer;
@@ -36,8 +41,10 @@ final class DapTwin implements AutoCloseable {
     private final ServerSocket listener;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final List<Connection> connections = new CopyOnWriteArrayList<>();
+    private final AtomicInteger connectionSequence = new AtomicInteger();
     private final AtomicBoolean closed = new AtomicBoolean();
     private final CountDownLatch firstConnection = new CountDownLatch(1);
+    private volatile List<Integer> breakpointLines = List.of();
 
     DapTwin(Mode mode) throws IOException {
         this.mode = mode;
@@ -51,6 +58,10 @@ final class DapTwin implements AutoCloseable {
 
     void drop() {
         connections.forEach(Connection::close);
+    }
+
+    List<Integer> breakpointLines() {
+        return breakpointLines;
     }
 
     Connection connection() {
@@ -68,7 +79,7 @@ final class DapTwin implements AutoCloseable {
         while (!listener.isClosed()) {
             try {
                 Socket socket = listener.accept();
-                Connection connection = new Connection(socket);
+                Connection connection = new Connection(socket, connectionSequence.incrementAndGet());
                 connections.add(connection);
                 firstConnection.countDown();
                 executor.submit(connection::serve);
@@ -101,12 +112,16 @@ final class DapTwin implements AutoCloseable {
         BLOCK_DISCONNECT,
         NEVER_ATTACH,
         UNSUPPORTED,
-        MALFORMED
+        MALFORMED,
+        REJECT_BREAKPOINT,
+        REJECT_SECOND_SESSION,
+        RESOLVE_BREAKPOINT
     }
 
     final class Connection {
 
         private final Socket socket;
+        private final int connectionNumber;
         private final TwinServer server = new TwinServer();
         private final AtomicInteger attachCalls = new AtomicInteger();
         private volatile CompletableFuture<Void> pendingAttach;
@@ -118,8 +133,9 @@ final class DapTwin implements AutoCloseable {
         private volatile String hostName;
         private volatile Integer targetPort;
 
-        private Connection(Socket socket) {
+        private Connection(Socket socket, int connectionNumber) {
             this.socket = socket;
+            this.connectionNumber = connectionNumber;
         }
 
         private void serve() {
@@ -248,6 +264,32 @@ final class DapTwin implements AutoCloseable {
                 thread.setName("main");
                 ThreadsResponse response = new ThreadsResponse();
                 response.setThreads(new Thread[] { thread });
+                return CompletableFuture.completedFuture(response);
+            }
+
+            @Override
+            public CompletableFuture<SetBreakpointsResponse> setBreakpoints(SetBreakpointsArguments arguments) {
+                List<SourceBreakpoint> requested = arguments.getBreakpoints() == null ? List.of()
+                        : List.of(arguments.getBreakpoints());
+                breakpointLines = requested.stream().map(SourceBreakpoint::getLine).toList();
+                SetBreakpointsResponse response = new SetBreakpointsResponse();
+                response.setBreakpoints(requested.stream().map(sourceBreakpoint -> {
+                    Breakpoint breakpoint = new Breakpoint();
+                    breakpoint.setLine(sourceBreakpoint.getLine());
+                    boolean verified = (mode != Mode.REJECT_BREAKPOINT || sourceBreakpoint.getLine() != 4)
+                            && (mode != Mode.REJECT_SECOND_SESSION || connectionNumber != 2);
+                    breakpoint.setVerified(verified);
+                    if (mode == Mode.RESOLVE_BREAKPOINT) {
+                        breakpoint.setLine(sourceBreakpoint.getLine() + 1);
+                        Source resolved = new Source();
+                        resolved.setPath("/mapped/Main.java");
+                        breakpoint.setSource(resolved);
+                    }
+                    if (!verified) {
+                        breakpoint.setMessage("Source line is not executable");
+                    }
+                    return breakpoint;
+                }).toArray(Breakpoint[]::new));
                 return CompletableFuture.completedFuture(response);
             }
 

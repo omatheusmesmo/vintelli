@@ -12,6 +12,7 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 import dev.omatheusmesmo.vintelli.api.capability.CallHierarchyCapability;
+import dev.omatheusmesmo.vintelli.api.capability.CapabilityFailure;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityRegistry;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilitySelection;
@@ -19,6 +20,7 @@ import dev.omatheusmesmo.vintelli.api.capability.CapabilityStatus;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
 import dev.omatheusmesmo.vintelli.api.capability.CodeActionCapability;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability;
+import dev.omatheusmesmo.vintelli.api.capability.DebugCapability;
 import dev.omatheusmesmo.vintelli.api.capability.EditorBridge;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import dev.omatheusmesmo.vintelli.api.capability.ReadFileCapability;
@@ -127,13 +129,23 @@ class RunToolWindowInteractionContractTest {
 
     static final class FakeRegistry implements CapabilityRegistry {
         private final RunCapability provider;
+        private final DebugCapability debugProvider;
 
         FakeRegistry(RunCapability provider) {
+            this(provider, null);
+        }
+
+        FakeRegistry(RunCapability provider, DebugCapability debugProvider) {
             this.provider = provider;
+            this.debugProvider = debugProvider;
         }
 
         @Override public CapabilitySelection<RunCapability> run() {
             return CapabilitySelection.selected(CapabilityType.RUN, provider);
+        }
+        @Override public CapabilitySelection<DebugCapability> debug() {
+            return debugProvider == null ? unavailable(CapabilityType.DEBUG)
+                    : CapabilitySelection.selected(CapabilityType.DEBUG, debugProvider);
         }
         @Override public CapabilitySelection<TerminalCapability> terminal() { return unavailable(CapabilityType.TERMINAL); }
         @Override public CapabilitySelection<ReadFileCapability> readFile() { return unavailable(CapabilityType.READ_FILE); }
@@ -150,6 +162,35 @@ class RunToolWindowInteractionContractTest {
         private static <T> CapabilitySelection<T> unavailable(CapabilityType type) {
             return CapabilitySelection.unavailable(type, "not configured");
         }
+    }
+
+    static final class FakeDebugCapability implements DebugCapability {
+        final AtomicInteger attachedPort = new AtomicInteger();
+        final AtomicInteger disconnects = new AtomicInteger();
+
+        @Override public String identifier() { return "fake-dap"; }
+        @Override public ProviderHealth health() { return ProviderHealth.available(); }
+        @Override public String provenance() { return "interaction DAP twin"; }
+        @Override public CapabilityResult<DebugSession> launch(DebugRequest request, Consumer<String> outputLines) {
+            return CapabilityResult.failed(new CapabilityFailure("Not used by the interaction test", ""));
+        }
+        @Override public CapabilityResult<DebugSession> attach(AttachRequest request, Consumer<String> outputLines) {
+            attachedPort.set(request.port());
+            return CapabilityResult.ok(new DebugSession() {
+                @Override public DebugSessionSnapshot snapshot() {
+                    return new DebugSessionSnapshot("interaction", request.label(), State.STOPPED, List.of(), "", "");
+                }
+                @Override public CapabilityResult<List<DebugThread>> threads() {
+                    return CapabilityResult.ok(List.of());
+                }
+                @Override public CapabilityResult<Boolean> disconnect() {
+                    disconnects.incrementAndGet();
+                    return CapabilityResult.ok(true);
+                }
+                @Override public void cancel() { disconnects.incrementAndGet(); }
+            });
+        }
+        @Override public List<DebugSessionSnapshot> snapshot() { return List.of(); }
     }
 
     private record RunContext(RunToolWindow window, FakeRunProvider provider, UiWorkQueue uiWork) {

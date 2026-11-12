@@ -193,6 +193,18 @@ EditorTabBarElement-overflow {
   color: $editor-fg;
 }
 
+.editor-breakpoint-verified {
+  color: $editor-string;
+}
+
+.editor-breakpoint-pending {
+  color: $editor-number;
+}
+
+.editor-breakpoint-rejected {
+  color: $editor-keyword;
+}
+
 .editor-caret {
   text-style: reversed;
 }

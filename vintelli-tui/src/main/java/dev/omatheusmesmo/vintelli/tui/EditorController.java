@@ -396,6 +396,14 @@ final class EditorController {
         }
     }
 
+    private void toggleBreakpoint() {
+        if (editor == null || !editor.toggleBreakpointAtCaret()) {
+            host.status("Open a project file to toggle a breakpoint");
+            return;
+        }
+        host.status("Breakpoint toggled at line " + (editor.activeDocument().orElseThrow().line() + 1));
+    }
+
     /**
      * Runs an editor action of the global keymap. The overlays close before the
      * action, as every shell command does. Returns false for every other action.
@@ -470,6 +478,11 @@ final class EditorController {
             case KeyActions.TOGGLE_IMPORT_FOLD -> {
                 closeOverlays.run();
                 toggleImportFold();
+                yield true;
+            }
+            case KeyActions.TOGGLE_BREAKPOINT -> {
+                closeOverlays.run();
+                toggleBreakpoint();
                 yield true;
             }
             case KeyActions.NEXT_PROBLEM -> {
