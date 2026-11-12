@@ -129,7 +129,7 @@ pane it is Next Problem in the `intellij` profile (see the alignment below).
 The `intellij` profile binds the following actions to the IntelliJ default
 chord, wherever a terminal can deliver that chord. There has been no release,
 so the chord each one replaces is removed, with no alias. The `vim` profile
-is unchanged and keeps the chords these actions had before.
+keeps the chords these actions had before, and gains the chords marked new.
 
 | Action | `intellij` (active) | IntelliJ | Replaced chord, kept by `vim` |
 |---|---|---|---|
@@ -137,6 +137,7 @@ is unchanged and keeps the chords these actions had before.
 | `editor_toggleBreakpoint` (Toggle Line Breakpoint) | `Ctrl+F8` | `Ctrl+F8` | `Ctrl+B` |
 | `editor_usages` (Find Usages) | `Alt+F7` | `Alt+F7` | `Alt+U` |
 | `editor_nextProblem` (Next Problem) | `F2` | `F2` (`Shift+F2` previous) | `F8` |
+| `editor_previousProblem` (Previous Problem) | `Shift+F2` | `Shift+F2` | none, `vim` binds `Shift+F8` (new) |
 | `editor_close` (Close Editor Tab) | `Ctrl+F4` | `Ctrl+F4` | `Ctrl+W` |
 | `editor_nextTab` (Next Editor Tab) | `Alt+Right` | `Alt+Right` | `Alt+]` |
 | `editor_previousTab` (Previous Editor Tab) | `Alt+Left` | `Alt+Left` | `Alt+[` |
@@ -149,11 +150,14 @@ is unchanged and keeps the chords these actions had before.
 Decisions behind the table:
 
 - **`F2` and `Shift+F2`**: F2 is Next Highlighted Error in IntelliJ, so it
-  moves to the editor action and Rename moves to `Shift+F6`. Shift+F2
-  (previous error) is not bound: the editor has no previous-problem action
-  yet, and a trigger without Shift also answers `Shift+F2` (the keymap only
-  checks Shift when a trigger asks for it), so `Shift+F2` currently reaches
-  Next Problem as well. Adding a previous action is a follow-up.
+  moves to the editor action and Rename moves to `Shift+F6`. Shift+F2 is
+  Previous Highlighted Error. A plain TamboUI key trigger answers Shift as
+  well, so the Next Problem trigger refuses Shift (`UnshiftedKeyTrigger`) and
+  `Shift+F2` reaches Previous Problem only. Both wrap around the file's
+  problems like each other, and the palette lists both.
+- **`vim` previous problem**: `vim` keeps `F8` for Next Problem, and binds
+  `Shift+F8` to Previous Problem, which was free in the `vim` preset. The
+  same Shift refusal keeps `F8` and `Shift+F8` apart there.
 - **`F12` and `F8` are left unbound** in `intellij`. IntelliJ's `F12` is Jump
   to Last Tool Window (#366, not bound yet), and `F8` is Step Over, a debugger
   key that stays free for the debugger work.

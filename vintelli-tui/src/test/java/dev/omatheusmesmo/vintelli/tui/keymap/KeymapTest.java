@@ -167,7 +167,7 @@ class KeymapTest {
                 "editor_open", "editor_save", "editor_undo", "editor_redo", "editor_find",
                 "editor_cut", "editor_copy", "editor_paste", "editor_duplicateLine", "editor_selectAll",
                 "editor_close", "editor_nextTab", "editor_previousTab", "editor_definition",
-                "editor_usages", "editor_nextProblem", "editor_toggleImportFold", "editor_toggleBreakpoint",
+                "editor_usages", "editor_nextProblem", "editor_previousProblem", "editor_toggleImportFold", "editor_toggleBreakpoint",
                 "navigation_goToFile", "navigation_findInFiles", "navigation_goToLine",
                 "navigation_focusBreadcrumbs",
                 "layout_project_wider", "layout_project_narrower", "layout_bottom_taller", "layout_bottom_shorter",
@@ -407,6 +407,38 @@ class KeymapTest {
     }
 
     @Test
+    void shiftF2GoesToPreviousProblemAndBareF2StaysOnNextProblemInTheIntellijProfile() {
+        Keymap keymap = Keymap.ofProfile(KeymapProfile.DEFAULT, WINDOWS);
+
+        assertTrue(keymap.matches(KeyEvent.ofKey(KeyCode.F2), KeyActions.NEXT_PROBLEM));
+        assertTrue(keymap.matches(KeyEvent.ofKey(KeyCode.F2, KeyModifiers.SHIFT), KeyActions.PREVIOUS_PROBLEM));
+        assertFalse(keymap.matches(KeyEvent.ofKey(KeyCode.F2, KeyModifiers.SHIFT), KeyActions.NEXT_PROBLEM),
+                "Shift+F2 must not reach Next Problem");
+        assertFalse(keymap.matches(KeyEvent.ofKey(KeyCode.F2), KeyActions.PREVIOUS_PROBLEM),
+                "bare F2 must not reach Previous Problem");
+        assertEquals(Set.of(KeyActions.NEXT_PROBLEM), answeringActions(keymap, KeyEvent.ofKey(KeyCode.F2)));
+        assertEquals(Set.of(KeyActions.PREVIOUS_PROBLEM),
+                answeringActions(keymap, KeyEvent.ofKey(KeyCode.F2, KeyModifiers.SHIFT)));
+        assertFalse(keymap.matches(KeyEvent.ofKey(KeyCode.F2, KeyModifiers.CTRL), KeyActions.NEXT_PROBLEM),
+                "Ctrl+F2 is no chord of Next Problem");
+        assertTrue(keymap.matches(KeyEvent.ofKey(KeyCode.F6, KeyModifiers.SHIFT), KeyActions.PROJECT_RENAME),
+                "Shift+F6 keeps renaming while Shift+F2 belongs to Previous Problem");
+    }
+
+    @Test
+    void shiftF8GoesToPreviousProblemAndBareF8StaysOnNextProblemInTheVimProfile() {
+        Keymap vim = Keymap.ofProfile(KeymapProfile.VIM, WINDOWS);
+
+        assertTrue(vim.matches(KeyEvent.ofKey(KeyCode.F8), KeyActions.NEXT_PROBLEM));
+        assertTrue(vim.matches(KeyEvent.ofKey(KeyCode.F8, KeyModifiers.SHIFT), KeyActions.PREVIOUS_PROBLEM));
+        assertFalse(vim.matches(KeyEvent.ofKey(KeyCode.F8, KeyModifiers.SHIFT), KeyActions.NEXT_PROBLEM),
+                "Shift+F8 must not reach Next Problem");
+        assertFalse(vim.matches(KeyEvent.ofKey(KeyCode.F8), KeyActions.PREVIOUS_PROBLEM),
+                "bare F8 must not reach Previous Problem");
+        assertEquals(Set.of(KeyActions.NEXT_PROBLEM), answeringActions(vim, KeyEvent.ofKey(KeyCode.F8)));
+    }
+
+    @Test
     void ctrlGGoesToLineInTheIntellijProfileAndAltGInVim() {
         Keymap intellij = Keymap.ofProfile(KeymapProfile.DEFAULT, WINDOWS);
         Keymap vim = Keymap.ofProfile(KeymapProfile.VIM, WINDOWS);
@@ -505,6 +537,16 @@ class KeymapTest {
             assertFalse(keymap.matches(event, action.id()),
                     description + " must not reach " + action.id() + " in the intellij profile");
         }
+    }
+
+    private static Set<String> answeringActions(Keymap keymap, KeyEvent event) {
+        Set<String> answering = new LinkedHashSet<>();
+        for (KeyAction action : keymap.actions()) {
+            if (keymap.matches(event, action.id())) {
+                answering.add(action.id());
+            }
+        }
+        return answering;
     }
 
     private static KeyAction actionById(Keymap keymap, String id) {
