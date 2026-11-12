@@ -15,6 +15,7 @@ It runs with open tooling only. IntelliJ IDEA is an optional extra.
 - 🤖 **AI agents in a side panel.** Choose OpenCode, Claude Code or pi over ACP (`Alt+8`), with executable availability shown before starting a session. See [agent setup](docs/acp-agents.md).
 - 🔌 **Other agents can drive it.** The MCP server reads the shell state and pushes highlights and diffs into the TUI.
 - 🧠 **Language support over LSP.** Configurable profiles, with jdtls as the first one.
+- 📚 **Trace Maven dependencies.** Expand `External Libraries` in the project tree to follow module dependencies, scopes and cached transitives; resolution stays offline and clearly marks metadata missing from `~/.m2`.
 - 🪲 **Optional Java debugging.** An experimental DAP provider uses Java Debug through jdtls. Toggle persistent source breakpoints from the editor gutter or with `Ctrl+F8`; see [Java Debug Adapter setup](docs/language-servers.md#java-debug-adapter).
 - ⌨️ **Familiar keys and colors.** The `intellij` keymap is the default, and the themes come from IntelliJ IDEA's color files.
 
@@ -196,3 +197,7 @@ The Java debugger architecture is recorded in [spike 385](docs/spikes/spike-385-
 typed DAP with Java Debug via jdtls. The provider is opt-in and experimental. Breakpoints are
 stored per project as line anchors; edits keep them on the same line, and truncating the file
 removes anchors beyond the new end. The adapter reports pending, verified and rejected state.
+
+Maven projects also expose a collapsed `External Libraries` node in the project tree. It resolves
+cached dependency metadata from `~/.m2` without invoking Maven or contacting remote repositories;
+missing POMs and artifacts leave the tree visible as incomplete.

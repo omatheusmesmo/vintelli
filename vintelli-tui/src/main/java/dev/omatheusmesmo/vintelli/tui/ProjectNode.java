@@ -3,6 +3,7 @@ package dev.omatheusmesmo.vintelli.tui;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import dev.omatheusmesmo.vintelli.api.dependencies.ProjectDependencyGraph.Disposition;
 
 /** One entry of the project tree: a file or a directory with its children and expansion state. */
 final class ProjectNode {
@@ -13,6 +14,13 @@ final class ProjectNode {
     List<ProjectNode> children = new ArrayList<>();
     ProjectNode parent;
     boolean expanded;
+    boolean externalLibraries;
+    boolean dependency;
+    String scope = "";
+    boolean optional;
+    Disposition disposition;
+    Path jar;
+    String status = "";
 
     ProjectNode(Path relative, String name, boolean directory) {
         this.relative = relative;
@@ -20,8 +28,14 @@ final class ProjectNode {
         this.directory = directory;
     }
 
+    static ProjectNode externalLibraries(Path relative, String label) {
+        ProjectNode node = new ProjectNode(relative, label, true);
+        node.externalLibraries = true;
+        return node;
+    }
+
     boolean compactsChild() {
-        return directory && children.size() == 1 && children.getFirst().directory;
+        return directory && !externalLibraries && children.size() == 1 && children.getFirst().directory;
     }
 
     ProjectNode compactEnd() {

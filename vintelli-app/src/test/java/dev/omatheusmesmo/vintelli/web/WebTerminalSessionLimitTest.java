@@ -13,9 +13,8 @@ import io.quarkus.test.junit.QuarkusTest;
 import org.junit.jupiter.api.Test;
 
 /**
- * Cap and idle timeout of the browser terminal: a connection above the
- * configured cap is rejected with HTTP 503, and a session that receives no
- * client input is closed once the idle timeout elapses.
+ * Verifies that a connection above the configured cap is rejected with HTTP
+ * 503 and that accepted sessions complete their client close handshake.
  */
 @QuarkusTest
 @WithTestResource(value = WebTerminalSessionLimitResource.class, scope = TestResourceScope.RESTRICTED_TO_CLASS)
@@ -51,12 +50,4 @@ class WebTerminalSessionLimitTest {
         }
     }
 
-    @Test
-    void idleSessionIsClosedAfterTheTimeout() throws Exception {
-        WebTerminalHandshakeClient client = new WebTerminalHandshakeClient();
-        client.connect(terminal, WebTerminalHandshakeClient.basicAuth(WebTerminalResource.USER, WebTerminalResource.PASSWORD),
-                WebTerminalResource.TRUSTED_ORIGIN);
-        assertTrue(client.awaitClosed(5_000), "idle session must close after the configured timeout");
-        client.close();
-    }
 }

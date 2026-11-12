@@ -27,6 +27,7 @@ import dev.omatheusmesmo.vintelli.tui.maven.MavenToolWindow;
 import dev.omatheusmesmo.vintelli.tui.keymap.ConfigDirectory;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
 import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
+import dev.omatheusmesmo.vintelli.tui.icons.JavaTypeKinds;
 import dev.omatheusmesmo.vintelli.tui.search.ProjectSearchModel;
 import dev.omatheusmesmo.vintelli.tui.search.ProjectSearchOverlay;
 import dev.omatheusmesmo.vintelli.api.search.ProjectSearch;
@@ -35,6 +36,8 @@ import dev.omatheusmesmo.vintelli.api.idea.IdeaMcpConnection;
 import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability;
 import dev.omatheusmesmo.vintelli.api.capability.ProjectFileOperations;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
+import dev.omatheusmesmo.vintelli.api.dependencies.ProjectDependencyGraph;
+import dev.omatheusmesmo.vintelli.api.dependencies.ProjectDependencyGraphProvider;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityStatus;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Diagnostic;
@@ -259,8 +262,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         } catch (IOException ignored) {
         }
         this.projectRoot = resolvedRoot.normalize();
+        ProjectDependencyGraphProvider dependencyGraphProvider = config.dependencyGraphProviders().stream()
+                .filter(provider -> provider.supports(this.projectRoot)).findFirst().orElse(null);
         this.projects = new ProjectTreeController(this.projectRoot, state, projectSearch, fileOperations,
-                message -> status = message, this::refreshProjectTree, this::refreshVcs);
+                message -> status = message, this::refreshProjectTree, this::refreshVcs,
+                JavaTypeKinds.ofFiles(), dependencyGraphProvider);
         this.projects.useMarquee(config.marquee());
         this.mavenWindows.forEach(window -> window.useMarquee(config.marquee()));
         this.ticker = new ShellTicker(Marquee.STEP, frameLock, this::animating, this::advanceAnimations);
@@ -311,6 +317,23 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         this.lockedRoot = new LockedElement(rootBase, frameLock, this, true);
         if (projectSearch != null) {
             Thread.ofVirtual().start(projectPanel::discoverFiles);
+        }
+        if (dependencyGraphProvider != null) {
+            Thread.ofVirtual().start(() -> {
+                ProjectDependencyGraph graph;
+                try {
+                    graph = dependencyGraphProvider.read(this.projectRoot);
+                } catch (RuntimeException failure) {
+                    graph = new ProjectDependencyGraph(List.of(), false,
+                            failure.getMessage() == null ? "Dependency graph unavailable" : failure.getMessage());
+                }
+                frameLock.lock();
+                try {
+                    projects.finishDependencyLoad(graph);
+                } finally {
+                    frameLock.unlock();
+                }
+            });
         }
         readFileSummary.refresh();
         vcsActions.refreshToolbarVcs();
