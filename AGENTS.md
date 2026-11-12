@@ -19,7 +19,12 @@ This is a Quarkus application. Follow these rules when working on this project.
 - Run builds and tests only through the Quarkus agent Dev MCP tools. The
   exception is integration tests and native builds, which the Dev MCP tools do
   not run: use `./mvnw verify` (JVM) or `./mvnw verify -Dnative
-  -Dquarkus.native.container-build` (native).
+  -Dquarkus.native.container-build` (native). The Dev MCP tools depend on dev
+  mode, and dev mode starts from the `vintelli-app` module directory, not from
+  the repository root (one-time setup in CONTRIBUTING.md). Without dev mode, a
+  single test class runs with
+  `./mvnw -pl vintelli-app -am package -Dtest=<Class>
+  -Dsurefire.failIfNoSpecifiedTests=false`; `test` fails for this module.
 - The JDK is pinned by `.sdkmanrc` (SDKMAN rules; mise does not manage Java);
   `mvnw` stays exactly as upstream ships it.
 
