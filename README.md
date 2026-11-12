@@ -155,3 +155,6 @@ Vintelli is licensed under the [Apache License, Version 2.0](LICENSE).
 
 Debug supported Maven applications and tests from the toolbar, with a suspended
 loopback JDWP port and process-tree Stop: [debug launch](docs/debug-launch.md).
+
+The Java debugger architecture is recorded in [spike 385](docs/spikes/spike-385-native-java-debugger.md):
+typed DAP with Java Debug via jdtls; the full provider and TUI workflow remain tracked in #276.
