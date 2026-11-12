@@ -21,9 +21,13 @@ final class ProblemRows {
 
     /**
      * One rendered line. {@code problemIndex} is the index of the problem the line belongs to, or -1 for a line that
-     * selects nothing (file names, states, skipped providers).
+     * selects no problem. {@code group} is the file of a group header line, or null for every other line.
      */
-    record Row(Line line, int problemIndex) {
+    record Row(Line line, int problemIndex, String group) {
+
+        Row(Line line, int problemIndex) {
+            this(line, problemIndex, null);
+        }
     }
 
     private static final int MIN_MESSAGE_WIDTH = 20;
@@ -65,6 +69,22 @@ final class ProblemRows {
                 rows.add(new Row(Line.from(Span.styled(" ".repeat(CONTINUATION_INDENT) + piece, messageStyle)),
                         index));
             }
+        }
+        return rows;
+    }
+
+    /**
+     * The header line of a file group: the selection marker, the disclosure arrow, the file and its problem count.
+     * Every line of a wrapped header belongs to the group.
+     */
+    static List<Row> group(String file, int count, boolean expanded, boolean selected, int width, IconMode mode,
+            Function<String, Style> roles) {
+        String marker = selected ? ">" : " ";
+        String text = marker + " " + disclosure(expanded, mode) + " " + file + " (" + count + ")";
+        Style style = roles.apply("tool-window-title");
+        List<Row> rows = new ArrayList<>();
+        for (String piece : wrap(text, width, width)) {
+            rows.add(new Row(Line.from(Span.styled(piece, style)), -1, file));
         }
         return rows;
     }
@@ -119,6 +139,13 @@ final class ProblemRows {
             case INFORMATION -> "INFO ";
             case HINT -> "HINT ";
         };
+    }
+
+    private static String disclosure(boolean expanded, IconMode mode) {
+        if (mode == IconMode.ASCII) {
+            return expanded ? "-" : "+";
+        }
+        return expanded ? "▾" : "▸";
     }
 
     private static String severityRole(Severity severity) {

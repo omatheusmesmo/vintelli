@@ -100,8 +100,13 @@ class ProblemsToolWindowTest {
         window.render(Frame.forTesting(buffer), area);
         assertTrue(rows(buffer, area).contains("problem 3"), rows(buffer, area));
         int problemThreeRow = rowContaining(rows(buffer, area), "problem 3");
+        assertNull(window.actionForMouse(MouseEvent.press(MouseButton.LEFT, 4, problemThreeRow)),
+                "a single click only selects the problem");
+        assertTrue(window.handleMouse(MouseEvent.press(MouseButton.LEFT, 4, problemThreeRow)));
+        assertEquals(5, editor.activeDocument().orElseThrow().line(), "a single click does not jump to the problem");
         assertEquals(KeyActions.PROBLEMS_NAVIGATE,
-                window.actionForMouse(MouseEvent.press(MouseButton.LEFT, 4, problemThreeRow)));
+                window.actionForMouse(MouseEvent.press(MouseButton.LEFT, 4, problemThreeRow)),
+                "a second click on the same problem within the double click window navigates to it");
         assertTrue(window.performAction(KeyActions.PROBLEMS_NAVIGATE));
         assertEquals(6, editor.activeDocument().orElseThrow().line());
         int selected = window.selectedIndex();

@@ -293,9 +293,13 @@ In Go to File, Find in Files and Search Everywhere, click a result to select it,
 press Enter or double-click to activate it, and use the mouse wheel to scroll.
 Clicking outside an overlay dismisses it without triggering controls underneath.
 The Problems window refreshes diagnostics for files open in the editor with
-`R`; `A`, `E`, and `W` show all, errors, or warnings. Arrow keys move through
-the list, Enter opens the selected file at its diagnostic line, clicking a row
-navigates there, and the mouse wheel scrolls the list. The window shows the
+`R`; `A`, `E`, and `W` show all, errors, or warnings, and clicking those labels
+in the header does the same. Arrow keys move through the list, a click selects
+the row under the pointer, and Enter or a double click opens the selected
+problem at its diagnostic line. Each file is a group header with its problem
+count: Left collapses it, Right expands it, and Enter or a click on the header
+toggles it. Collapsing a group with a problem selected moves the selection to
+its header, and the mouse wheel scrolls the list. The window shows the
 selected diagnostics provider and distinguishes loading, unavailable, error,
 and empty results. Each row shows a severity glyph, the line and column, the
 source and the message; long messages wrap under the message column, and the

@@ -109,6 +109,9 @@ public final class KeyActions {
     public static final String PROBLEMS_FILTER_ALL = "problems.filter-all";
     public static final String PROBLEMS_FILTER_ERRORS = "problems.filter-errors";
     public static final String PROBLEMS_FILTER_WARNINGS = "problems.filter-warnings";
+    public static final String PROBLEMS_EXPAND = "problems.expand";
+    public static final String PROBLEMS_COLLAPSE = "problems.collapse";
+    public static final String PROBLEMS_TOGGLE = "problems.toggle-group";
 
     public static List<KeyAction> shellActions() {
         return List.of(new KeyAction(MENU, "Open Menu", ""),
@@ -155,7 +158,10 @@ public final class KeyActions {
                 new KeyAction(PROBLEMS_SELECT_PREVIOUS, "Select Previous Problem", ""),
                 new KeyAction(PROBLEMS_FILTER_ALL, "Show All Problems", ""),
                 new KeyAction(PROBLEMS_FILTER_ERRORS, "Show Problem Errors", ""),
-                new KeyAction(PROBLEMS_FILTER_WARNINGS, "Show Problem Warnings", ""));
+                new KeyAction(PROBLEMS_FILTER_WARNINGS, "Show Problem Warnings", ""),
+                new KeyAction(PROBLEMS_EXPAND, "Expand Problem Group", ""),
+                new KeyAction(PROBLEMS_COLLAPSE, "Collapse Problem Group", ""),
+                new KeyAction(PROBLEMS_TOGGLE, "Toggle Problem Group", ""));
     }
 
     public static List<KeyAction> projectActions() {
