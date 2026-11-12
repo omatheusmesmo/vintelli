@@ -10,6 +10,7 @@ import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
 import dev.omatheusmesmo.vintelli.api.capability.CodeActionCapability;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Diagnostic;
+import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Severity;
 import dev.omatheusmesmo.vintelli.api.capability.EditorBridge;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import dev.omatheusmesmo.vintelli.api.capability.ReadFileCapability;
@@ -24,6 +25,7 @@ import dev.tamboui.terminal.Frame;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
 import dev.tamboui.tui.event.MouseButton;
+import dev.tamboui.style.Style;
 import dev.tamboui.tui.event.MouseEvent;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -37,6 +39,7 @@ import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -75,7 +78,7 @@ class ProblemsToolWindowTest {
         String rendered = rows(buffer, area);
 
         assertTrue(rendered.contains("Broken.java"), rendered);
-        assertTrue(rendered.contains("> ERROR L4 jdtls problem 0"), rendered);
+        assertTrue(rendered.contains("> x ERROR  L4:C3  jdtls  problem 0"), rendered);
         assertTrue(rendered.contains("jdtls over stdio"), rendered);
         assertTrue(window.handleKey(KeyEvent.ofChar('e')));
         buffer = Buffer.empty(area);
@@ -96,8 +99,9 @@ class ProblemsToolWindowTest {
         buffer = Buffer.empty(area);
         window.render(Frame.forTesting(buffer), area);
         assertTrue(rows(buffer, area).contains("problem 3"), rows(buffer, area));
+        int problemThreeRow = rowContaining(rows(buffer, area), "problem 3");
         assertEquals(KeyActions.PROBLEMS_NAVIGATE,
-                window.actionForMouse(MouseEvent.press(MouseButton.LEFT, 4, 2)));
+                window.actionForMouse(MouseEvent.press(MouseButton.LEFT, 4, problemThreeRow)));
         assertTrue(window.performAction(KeyActions.PROBLEMS_NAVIGATE));
         assertEquals(6, editor.activeDocument().orElseThrow().line());
         int selected = window.selectedIndex();
@@ -128,7 +132,8 @@ class ProblemsToolWindowTest {
 
         ProblemsToolWindow unavailable = new ProblemsToolWindow(new TestRegistry(null), editor, () -> themes);
         unavailable.refresh();
-        assertTrue(awaitRender(unavailable, area, "not available in test"));
+        assertTrue(awaitRender(unavailable, area, "Diagnostics unavailable: not available in test. Press R to retry."));
+        assertEquals(1, occurrences(render(unavailable, area), "not available in test"));
         empty.close();
         unavailable.close();
     }
@@ -147,6 +152,104 @@ class ProblemsToolWindowTest {
         assertTrue(awaitRender(window, new Rect(0, 0, 90, 6), "language server unavailable"));
         assertTrue(render(window, new Rect(0, 0, 90, 6)).contains("Error"));
         window.close();
+    }
+
+    @Test
+    void rowsShowSeverityLineColumnAndHeaderCounts() throws Exception {
+        Path file = Files.writeString(project.resolve("Broken.java"), "class Broken {}\n");
+        ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
+        BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
+        editor.open(new EditorBridge.OpenRequest(file, 0));
+        List<Diagnostic> diagnostics = List.of(
+                new Diagnostic(file, 3, 2, 3, 8, Severity.ERROR, "jdtls", "cannot find symbol"),
+                new Diagnostic(file, 6, 0, 6, 4, Severity.WARNING, "jdtls", "unused import"),
+                new Diagnostic(file, 7, 4, 7, 9, Severity.HINT, "jdtls", "consider final"));
+        ProblemsToolWindow window = new ProblemsToolWindow(new TestRegistry(new TestDiagnostics(diagnostics)),
+                editor, () -> themes);
+        window.refresh();
+        assertTrue(awaitDiagnostics(window, diagnostics.size()));
+        Rect area = new Rect(0, 0, 100, 10);
+        Buffer buffer = Buffer.empty(area);
+        window.render(Frame.forTesting(buffer), area);
+        String rendered = rows(buffer, area);
+
+        assertTrue(rendered.contains("1 error, 1 warning, 1 other"), rendered);
+        assertTrue(rendered.contains("L4:C3") && rendered.contains("cannot find symbol"), rendered);
+        assertTrue(rendered.lines().anyMatch(line -> line.contains("L7:C1") && line.contains("unused import")), rendered);
+        assertTrue(rendered.lines().anyMatch(line -> line.contains("L8:C5") && line.contains("consider final")), rendered);
+
+        int errorRow = rowContaining(rendered, "ERROR");
+        int errorColumn = rendered.lines().toList().get(errorRow).indexOf("ERROR");
+        Style errorStyle = buffer.get(errorColumn, errorRow).style();
+        assertEquals(themes.resolver("problem-error").toStyle().fg(), errorStyle.fg());
+        assertNotEquals(themes.resolver("tool-window").toStyle().fg(), errorStyle.fg());
+        window.close();
+    }
+
+    @Test
+    void longMessagesWrapUnderTheMessageColumnInsteadOfBeingCut() throws Exception {
+        String message = "incompatible types: String cannot be converted to int in the overloaded call";
+        Path file = Files.writeString(project.resolve("Broken.java"), "class Broken {}\n");
+        ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
+        BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
+        editor.open(new EditorBridge.OpenRequest(file, 0));
+        List<Diagnostic> diagnostics = List.of(new Diagnostic(file, 0, 0, 0, 1, Severity.ERROR, "jdtls", message));
+        ProblemsToolWindow window = new ProblemsToolWindow(new TestRegistry(new TestDiagnostics(diagnostics)),
+                editor, () -> themes);
+        window.refresh();
+        assertTrue(awaitDiagnostics(window, 1));
+        Rect area = new Rect(0, 0, 60, 10);
+
+        String rendered = render(window, area);
+
+        assertTrue(rendered.replaceAll("\\s+", " ").contains(message), rendered);
+        List<String> lines = rendered.lines().toList();
+        int first = rowContaining(rendered, "incompatible");
+        int messageColumn = lines.get(first).indexOf("incompatible");
+        String continuation = lines.get(first + 1);
+        assertEquals(messageColumn, continuation.length() - continuation.stripLeading().length(), rendered);
+        window.close();
+    }
+
+    @Test
+    void unavailableStateNamesTheReasonOnceAndTheHeaderOnlyTheStatus() throws Exception {
+        ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
+        BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
+        ProblemsToolWindow window = new ProblemsToolWindow(new TestRegistry(null), editor, () -> themes);
+        Rect area = new Rect(0, 0, 90, 6);
+        window.refresh();
+        assertTrue(awaitRender(window, area, "Diagnostics unavailable"));
+
+        String rendered = render(window, area);
+
+        assertEquals(1, occurrences(rendered, "not available in test"), rendered);
+        assertTrue(rendered.contains("Problems  Unavailable"), rendered);
+        assertEquals(0, occurrences(rendered, "Problems unavailable"), rendered);
+        window.close();
+    }
+
+    private static boolean awaitDiagnostics(ProblemsToolWindow window, int expected) throws InterruptedException {
+        long deadline = System.nanoTime() + 2_000_000_000L;
+        while (window.problems().size() != expected && System.nanoTime() < deadline) {
+            Thread.sleep(5);
+        }
+        return window.problems().size() == expected;
+    }
+
+    private static int rowContaining(String screen, String fragment) {
+        List<String> rows = screen.lines().toList();
+        for (int row = 0; row < rows.size(); row++) {
+            if (rows.get(row).contains(fragment)) return row;
+        }
+        return -1;
+    }
+
+    private static int occurrences(String text, String fragment) {
+        int count = 0;
+        for (int at = text.indexOf(fragment); at >= 0; at = text.indexOf(fragment, at + fragment.length())) {
+            count++;
+        }
+        return count;
     }
 
     private static void awaitProblems(ProblemsToolWindow window) throws InterruptedException {

@@ -131,7 +131,7 @@ class ProblemsToolWindowInteractionContractTest {
                 fixture.press(KeyCode.DOWN);
                 assertEquals(2 + step, window.selectedIndex(), "Down moves the selection by one problem");
                 String rendered = fixture.renderedText();
-                String marked = rendered.lines().filter(line -> line.contains("> ERROR")).findFirst()
+                String marked = rendered.lines().filter(line -> line.contains("> ") && line.contains("ERROR  L")).findFirst()
                         .orElseThrow(() -> new AssertionError("no selected row is visible after Down: " + rendered))
                         .replaceAll("[▘▝▖▗]", " ");
                 assertTrue(marked.strip().endsWith("problem " + (2 + step)),
@@ -199,7 +199,7 @@ class ProblemsToolWindowInteractionContractTest {
         Rect area = pilot.findElement("tool-problems");
         assertTrue(area.height() > 5, "Problems rows are not visible in the test viewport");
         String screen = fixture.renderedText();
-        int targetRow = rowContaining(screen, "ERROR L6", "broken target");
+        int targetRow = rowContaining(screen, "ERROR  L6", "broken target");
         assertTrue(targetRow >= area.y() && targetRow < area.bottom(), screen);
         pilot.click(area.x() + 2, targetRow);
     }
@@ -231,7 +231,7 @@ class ProblemsToolWindowInteractionContractTest {
                 : relative(Path.of(document.file()), editor.project()) + ":" + (document.line() + 1);
         String rendered = fixture.renderedText();
         boolean brokenProblemSelected = rendered.lines()
-                .anyMatch(line -> line.contains("> ERROR L6") && line.contains("broken target"));
+                .anyMatch(line -> line.contains("> ") && line.contains("ERROR  L6") && line.contains("broken target"));
         String renderedSelection = brokenProblemSelected ? "Broken.java:6" : "";
         // The production shell does not expose action telemetry; opening the exact target line proves that the
         // mapped named action reached its handler. Shell status is a transient VCS refresh surface.

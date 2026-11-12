@@ -16,7 +16,7 @@ import dev.omatheusmesmo.vintelli.api.capability.SkippedProvider;
  */
 final class CapabilityStateLine {
 
-    private static final String IDEA_PROVIDER = "idea";
+    static final String IDEA_PROVIDER = "idea";
 
     private CapabilityStateLine() {
     }

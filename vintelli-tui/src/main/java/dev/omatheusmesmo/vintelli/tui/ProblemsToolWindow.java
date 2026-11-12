@@ -8,10 +8,15 @@ import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Diagnostic;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Severity;
 import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
+import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
+import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.terminal.Frame;
 import dev.tamboui.style.Style;
+import dev.tamboui.text.CharWidth;
+import dev.tamboui.text.Line;
+import dev.tamboui.text.Span;
 import dev.tamboui.text.Text;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
@@ -27,36 +32,33 @@ import jakarta.inject.Singleton;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 /** Problems browser backed by the selected diagnostics capability. */
 @Singleton
 public final class ProblemsToolWindow implements ToolWindow {
 
     private static final String PROBLEMS_GLYPH = "";
+    private static final String REFRESH_HINT = "R:Refresh";
+    private static final Function<String, Style> NO_STYLE = role -> Style.EMPTY;
 
     private enum Filter { ALL, ERRORS, WARNINGS }
     private enum State { IDLE, LOADING, READY, EMPTY, UNAVAILABLE, ERROR }
 
-    private record DisplayRow(String text, int problemIndex) {}
-
     private final CapabilityRegistry registry;
     private final BuiltinEditor editor;
     private final Provider<ShellThemes> themes;
+    private final IconMode iconMode;
     private final ExecutorService worker = Executors.newSingleThreadExecutor(
             Thread.ofVirtual().name("problems-refresh-", 0).factory());
     private final AtomicLong refreshSequence = new AtomicLong();
     private final List<Diagnostic> problems = new ArrayList<>();
-    private final List<DisplayRow> displayRows = new ArrayList<>();
-    private final List<Integer> visibleProblems = new ArrayList<>();
     private Consumer<Diagnostic> navigateHandler;
     private State state = State.IDLE;
     private Filter filter = Filter.ALL;
@@ -65,19 +67,24 @@ public final class ProblemsToolWindow implements ToolWindow {
     private final boolean ideaConfigured;
     private int selectedIndex;
     private int scrollOffset;
-    private int viewportRows = 1;
     private Rect lastArea = new Rect(0, 0, 0, 0);
 
     public ProblemsToolWindow(CapabilityRegistry registry, BuiltinEditor editor, Provider<ShellThemes> themes) {
-        this(registry, editor, themes, Optional.empty());
+        this(registry, editor, themes, Optional.empty(), IconMode.ASCII);
     }
 
     @Inject
     public ProblemsToolWindow(CapabilityRegistry registry, BuiltinEditor editor, Provider<ShellThemes> themes,
             @ConfigProperty(name = "vintelli.idea.mcp.url") Optional<String> ideaUrl) {
+        this(registry, editor, themes, ideaUrl, FileIcons.resolve().mode());
+    }
+
+    ProblemsToolWindow(CapabilityRegistry registry, BuiltinEditor editor, Provider<ShellThemes> themes,
+            Optional<String> ideaUrl, IconMode iconMode) {
         this.registry = registry;
         this.editor = editor;
         this.themes = themes;
+        this.iconMode = iconMode;
         this.ideaConfigured = CapabilityStateLine.ideaConfigured(ideaUrl);
         this.capabilitySummary = registry == null
                 ? CapabilityStateLine.notConfigured(CapabilityType.DIAGNOSTICS)
@@ -122,9 +129,10 @@ public final class ProblemsToolWindow implements ToolWindow {
     @Override
     public synchronized String actionForMouse(MouseEvent event) {
         if (!event.isClick() || !event.isLeftButton() || !insideContent(event.x(), event.y())) return null;
-        int row = scrollOffset + event.y() - lastArea.y() - 1;
-        if (row < 0 || row >= displayRows.size()) return null;
-        int problemIndex = displayRows.get(row).problemIndex();
+        int rowIndex = visibleScroll(lastArea.width(), lastArea.height()) + event.y() - contentTop();
+        List<ProblemRows.Row> rows = buildRows(lastArea.width(), NO_STYLE);
+        if (rowIndex < 0 || rowIndex >= rows.size()) return null;
+        int problemIndex = rows.get(rowIndex).problemIndex();
         if (problemIndex < 0) return null;
         selectedIndex = problemIndex;
         return KeyActions.PROBLEMS_NAVIGATE;
@@ -155,34 +163,34 @@ public final class ProblemsToolWindow implements ToolWindow {
         if (event.kind() != MouseEventKind.SCROLL_UP && event.kind() != MouseEventKind.SCROLL_DOWN) return false;
         if (!inside(event.x(), event.y())) return false;
         int direction = event.kind() == MouseEventKind.SCROLL_UP ? -1 : 1;
-        scrollOffset = clamp(scrollOffset + direction * 3, 0, maxScroll());
+        scrollOffset = clamp(visibleScroll(lastArea.width(), lastArea.height()) + direction * 3, 0,
+                maxScroll(lastArea.width(), lastArea.height()));
         return true;
     }
 
+    /**
+     * Draws the header and the rows. Rendering only reads the state: the row layout is rebuilt from the problems for
+     * the pane width, and the geometry of the last frame is kept for pointer hit-testing.
+     */
     @Override
     public void render(Frame frame, Rect area) {
-        List<String> lines;
-        String title;
+        List<Line> lines = new ArrayList<>();
         Style style;
         synchronized (this) {
             lastArea = area;
-            if (state == State.IDLE) refresh();
-            rebuildRows();
-            viewportRows = Math.max(1, area.height() - 1);
-            scrollOffset = clamp(scrollOffset, 0, maxScroll());
-            lines = displayRows.stream().skip(scrollOffset).limit(viewportRows)
-                    .map(row -> singleLine(row.text())).toList();
-            if (lines.isEmpty()) lines = List.of(message);
-            title = capabilitySummary.headline() + "  " + stateLabel() + "  " + filterLabel() + "  R:Refresh";
-            ShellThemes activeThemes = themes == null ? null : themes.get();
-            style = activeThemes == null ? Style.EMPTY : activeThemes.resolver("tool-window").toStyle();
-            List<String> body = new ArrayList<>();
-            body.add(title);
-            body.addAll(lines);
-            frame.renderWidget(Paragraph.builder().text(Text.from(String.join("\n", body))).style(style)
-                    .build(), area);
-            return;
+            if (state == State.IDLE) {
+                worker.execute(this::refresh);
+            }
+            Function<String, Style> roles = roles();
+            style = roles.apply("tool-window");
+            List<String> header = header(area.width());
+            header.forEach(text -> lines.add(Line.from(Span.styled(text, roles.apply("tool-window")))));
+            List<ProblemRows.Row> rows = buildRows(area.width(), roles);
+            int viewport = Math.max(1, area.height() - header.size());
+            int scroll = clamp(scrollOffset, 0, maxScroll(area.width(), area.height()));
+            rows.stream().skip(scroll).limit(viewport).forEach(row -> lines.add(row.line()));
         }
+        frame.renderWidget(Paragraph.builder().text(Text.from(lines)).style(style).build(), area);
     }
 
     public void setNavigateHandler(Consumer<Diagnostic> handler) {
@@ -260,7 +268,7 @@ public final class ProblemsToolWindow implements ToolWindow {
                     collected.addAll(ok.value());
                 } else {
                     result.failureOf().ifPresent(failure -> failures.add(tab.file() + ": " + failure.reason()
-                            + (failure.detail().isBlank() ? "" : " — " + failure.detail())));
+                            + (failure.detail().isBlank() ? "" : ": " + failure.detail())));
                 }
             } catch (RuntimeException failure) {
                 failures.add(tab.file() + ": " + safeMessage(failure));
@@ -272,7 +280,7 @@ public final class ProblemsToolWindow implements ToolWindow {
             if (request != refreshSequence.get()) return;
             problems.clear();
             problems.addAll(collected);
-            selectedIndex = 0;
+            selectedIndex = firstVisibleIndex();
             scrollOffset = 0;
             if (!collected.isEmpty()) {
                 state = State.READY;
@@ -290,7 +298,7 @@ public final class ProblemsToolWindow implements ToolWindow {
     private synchronized void finishUnavailable(long request, String reason) {
         if (request != refreshSequence.get()) return;
         state = State.UNAVAILABLE;
-        message = reason;
+        message = ProblemsStatusText.unavailable(reason, ideaConfigured);
     }
 
     private synchronized void finishError(long request, String reason) {
@@ -299,56 +307,99 @@ public final class ProblemsToolWindow implements ToolWindow {
         message = "Diagnostics refresh failed: " + reason;
     }
 
-    private void rebuildRows() {
-        displayRows.clear();
-        visibleProblems.clear();
+    private List<ProblemRows.Row> buildRows(int width, Function<String, Style> roles) {
+        List<ProblemRows.Row> rows = new ArrayList<>();
         for (String skipped : capabilitySummary.skipped()) {
-            displayRows.add(new DisplayRow(skipped, -1));
+            rows.add(new ProblemRows.Row(Line.from(Span.styled(skipped, roles.apply("problem-skipped"))), -1));
         }
         if (state == State.LOADING || state == State.UNAVAILABLE || state == State.ERROR || state == State.IDLE) {
-            displayRows.add(new DisplayRow(message, -1));
-            return;
+            rows.addAll(ProblemRows.plain(message, width, roles.apply("tool-window")));
+            return rows;
         }
-        Map<String, List<Integer>> byFile = new LinkedHashMap<>();
-        for (int index = 0; index < problems.size(); index++) {
-            Diagnostic problem = problems.get(index);
-            if (filter == Filter.ERRORS && problem.severity() != Severity.ERROR) continue;
-            if (filter == Filter.WARNINGS && problem.severity() != Severity.WARNING) continue;
-            String file = relativePath(editor.project(), problem.filePath());
-            byFile.computeIfAbsent(file, ignored -> new ArrayList<>()).add(index);
-            visibleProblems.add(index);
+        List<Integer> visible = visibleProblems();
+        if (visible.isEmpty()) {
+            String empty = state == State.EMPTY ? message : "No problems match this filter";
+            rows.addAll(ProblemRows.plain(empty, width, roles.apply("tool-window")));
+            return rows;
         }
-        if (byFile.isEmpty()) {
-            displayRows.add(new DisplayRow(state == State.EMPTY ? message : "No problems match this filter", -1));
-            return;
+        if (!message.isBlank()) {
+            rows.addAll(ProblemRows.plain("! " + message, width, roles.apply("problem-warning")));
         }
-        if (!message.isBlank()) displayRows.add(new DisplayRow("! " + message, -1));
-        for (Map.Entry<String, List<Integer>> entry : byFile.entrySet()) {
-            displayRows.add(new DisplayRow(entry.getKey(), -1));
-            for (int index : entry.getValue()) {
-                Diagnostic diagnostic = problems.get(index);
-                String line = String.format(Locale.ROOT, "  %s  L%d  %s  %s",
-                        severityLabel(diagnostic.severity()), diagnostic.startLine() + 1,
-                        diagnostic.source().isBlank() ? "diagnostic" : diagnostic.source(), diagnostic.message());
-                if (index == selectedIndex) line = ">" + line.substring(1);
-                displayRows.add(new DisplayRow(line, index));
+        String currentFile = null;
+        for (int index : visible) {
+            Diagnostic diagnostic = problems.get(index);
+            String file = relativePath(editor.project(), diagnostic.filePath());
+            if (!file.equals(currentFile)) {
+                currentFile = file;
+                rows.addAll(ProblemRows.plain(file, width, roles.apply("tool-window-title")));
+            }
+            rows.addAll(ProblemRows.problem(index, diagnostic, index == selectedIndex, width, iconMode, roles));
+        }
+        return rows;
+    }
+
+    private List<String> header(int width) {
+        String headline = state == State.UNAVAILABLE
+                ? CapabilityStateLine.label(CapabilityType.DIAGNOSTICS)
+                : capabilitySummary.headline();
+        String status = headline + "  " + stateLabel();
+        if (state == State.READY || state == State.EMPTY) {
+            status += "  " + countsLabel();
+        }
+        String actions = state == State.UNAVAILABLE ? REFRESH_HINT : filterLabel() + "  " + REFRESH_HINT;
+        String single = status + "  " + actions;
+        if (CharWidth.of(single) <= width) {
+            return List.of(single);
+        }
+        List<String> lines = new ArrayList<>(ProblemRows.wrap(status, width, width));
+        lines.addAll(ProblemRows.wrap(actions, width, width));
+        return lines;
+    }
+
+    private String countsLabel() {
+        int errors = 0;
+        int warnings = 0;
+        int others = 0;
+        for (Diagnostic problem : problems) {
+            switch (problem.severity()) {
+                case ERROR -> errors++;
+                case WARNING -> warnings++;
+                case INFORMATION, HINT -> others++;
             }
         }
-        if (!visibleProblems.isEmpty() && !visibleProblems.contains(selectedIndex)) {
-            selectedIndex = visibleProblems.getFirst();
+        return ProblemsStatusText.counts(errors, warnings, others);
+    }
+
+    private List<Integer> visibleProblems() {
+        List<Integer> visible = new ArrayList<>();
+        for (int index = 0; index < problems.size(); index++) {
+            Severity severity = problems.get(index).severity();
+            if (filter == Filter.ERRORS && severity != Severity.ERROR) continue;
+            if (filter == Filter.WARNINGS && severity != Severity.WARNING) continue;
+            visible.add(index);
         }
+        return visible;
+    }
+
+    private int firstVisibleIndex() {
+        return visibleProblems().stream().findFirst().orElse(0);
     }
 
     private void moveSelection(int delta) {
-        rebuildRows();
-        if (visibleProblems.isEmpty()) return;
-        int current = visibleProblems.indexOf(selectedIndex);
-        int target = clamp(current + delta, 0, visibleProblems.size() - 1);
-        selectedIndex = visibleProblems.get(target);
-        rebuildRows();
-        int row = rowForProblem(selectedIndex);
-        if (row < scrollOffset) scrollOffset = row;
-        else if (row >= scrollOffset + viewportRows) scrollOffset = row - viewportRows + 1;
+        List<Integer> visible = visibleProblems();
+        if (visible.isEmpty()) return;
+        int current = Math.max(0, visible.indexOf(selectedIndex));
+        selectedIndex = visible.get(clamp(current + delta, 0, visible.size() - 1));
+        int row = rowForProblem(buildRows(lastArea.width(), NO_STYLE), selectedIndex);
+        int viewport = Math.max(1, lastArea.height() - header(lastArea.width()).size());
+        int scroll = visibleScroll(lastArea.width(), lastArea.height());
+        if (row < scroll) {
+            scrollOffset = row;
+        } else if (row >= scroll + viewport) {
+            scrollOffset = row - viewport + 1;
+        } else {
+            scrollOffset = scroll;
+        }
     }
 
     private boolean navigateSelected() {
@@ -362,35 +413,52 @@ public final class ProblemsToolWindow implements ToolWindow {
     private void setFilter(Filter next) {
         filter = next;
         scrollOffset = 0;
-        rebuildRows();
+        if (!visibleProblems().contains(selectedIndex)) {
+            selectedIndex = firstVisibleIndex();
+        }
     }
 
-    private int rowForProblem(int index) {
-        for (int row = 0; row < displayRows.size(); row++) {
-            if (displayRows.get(row).problemIndex() == index) return row;
+    private static int rowForProblem(List<ProblemRows.Row> rows, int index) {
+        for (int row = 0; row < rows.size(); row++) {
+            if (rows.get(row).problemIndex() == index) return row;
         }
         return 0;
     }
 
-    private int maxScroll() { return Math.max(0, displayRows.size() - viewportRows); }
+    private int visibleScroll(int width, int height) {
+        return clamp(scrollOffset, 0, maxScroll(width, height));
+    }
+
+    private int maxScroll(int width, int height) {
+        int viewport = Math.max(1, height - header(width).size());
+        return Math.max(0, buildRows(width, NO_STYLE).size() - viewport);
+    }
+
+    private int contentTop() {
+        return lastArea.y() + header(lastArea.width()).size();
+    }
+
     private boolean inside(int x, int y) {
         return x >= lastArea.x() && x < lastArea.x() + lastArea.width()
                 && y > lastArea.y() && y < lastArea.y() + lastArea.height();
     }
+
     private boolean insideContent(int x, int y) {
         return x >= lastArea.x() && x < lastArea.x() + lastArea.width()
-                && y > lastArea.y() && y < lastArea.y() + lastArea.height();
+                && y >= contentTop() && y < lastArea.y() + lastArea.height();
     }
+
+    private Function<String, Style> roles() {
+        ShellThemes active = themes == null ? null : themes.get();
+        return role -> active == null ? Style.EMPTY : active.resolver(role).toStyle();
+    }
+
     private String filterLabel() { return switch (filter) { case ALL -> "[A]ll  E:Err  W:Warn"; case ERRORS -> "A:All  [E]rr  W:Warn"; case WARNINGS -> "A:All  E:Err  [W]arn"; }; }
     private String stateLabel() { return switch (state) { case IDLE -> "Idle"; case LOADING -> "Loading…"; case READY -> "Ready"; case EMPTY -> "Empty"; case UNAVAILABLE -> "Unavailable"; case ERROR -> "Error"; }; }
-    private static String severityLabel(Severity severity) { return switch (severity) { case ERROR -> "ERROR"; case WARNING -> "WARN "; case INFORMATION -> "INFO "; case HINT -> "HINT "; }; }
     private static String relativePath(Path root, Path file) {
         Path normalized = file.isAbsolute() ? file.normalize() : root.resolve(file).normalize();
         return normalized.startsWith(root.normalize()) ? root.normalize().relativize(normalized).toString().replace('\\', '/') : normalized.toString().replace('\\', '/');
     }
     private static int clamp(int value, int min, int max) { return Math.max(min, Math.min(max, value)); }
     private static String safeMessage(RuntimeException failure) { return failure.getMessage() == null ? failure.toString() : failure.getMessage(); }
-    private static String singleLine(String value) {
-        return value.replaceAll("\\R", " ").replaceAll("\\p{Cc}", " ").replaceAll("\\s+", " ").strip();
-    }
 }

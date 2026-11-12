@@ -77,7 +77,7 @@ class CapabilityStateInteractionContractTest {
         try (ToolWindowPilotFixture fixture = open(List.of(new ProblemsToolWindow(registry, editor, () -> themes)),
                 themes, registry, uiWork)) {
             fixture.press('6', KeyModifiers.ALT);
-            assertTrue(fixture.await(() -> fixture.renderedText().contains("Problems unavailable: " + NO_PROVIDER),
+            assertTrue(fixture.await(() -> fixture.renderedText().contains("Diagnostics unavailable: " + NO_PROVIDER),
                     Duration.ofSeconds(3)), fixture.renderedText());
         }
     }
@@ -211,7 +211,7 @@ class CapabilityStateInteractionContractTest {
 
         try (ToolWindowPilotFixture fixture = open(List.of(new ProblemsToolWindow(registry, editor, () -> themes)),
                 themes, registry, uiWork)) {
-            assertTrue(fixture.await(() -> fixture.renderedText().contains("Problems unavailable: " + NO_PROVIDER),
+            assertTrue(fixture.await(() -> fixture.renderedText().contains("Diagnostics unavailable: " + NO_PROVIDER),
                     Duration.ofSeconds(3)), fixture.renderedText());
 
             registry.diagnostics = new FakeDiagnostics(List.of(broken("broken target")));
