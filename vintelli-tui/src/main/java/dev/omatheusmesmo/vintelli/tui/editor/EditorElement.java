@@ -378,13 +378,23 @@ final class EditorElement implements Element {
             // before the first render or immediately after a tab switch.
             textArea.state(document.state());
             document.requestReveal();
+            if (EditorSelectionKeys.handleClipboardChord(event, editor.keymap(), document, editor)) {
+                return EventResult.HANDLED;
+            }
             int rowBefore = document.row();
             int columnBefore = document.column();
+            boolean hadSelection = document.hasSelection();
+            boolean removesSelection = hadSelection && EditorSelectionKeys.removesOnly(event);
+            boolean replacesSelection = hadSelection && EditorSelectionKeys.replacesSelection(event);
             EventResult[] resultHolder = { EventResult.UNHANDLED };
             document.mutate(() -> {
+                if (removesSelection || replacesSelection) {
+                    document.deleteSelectionWithinEdit();
+                    textArea.state(document.state());
+                }
                 // The widget edits TextAreaState directly, so wrap the event itself
                 // to keep undo history and diagnostic locations in sync.
-                resultHolder[0] = textArea.handleKeyEvent(event, focused);
+                resultHolder[0] = removesSelection ? EventResult.HANDLED : textArea.handleKeyEvent(event, focused);
             });
             boolean handled = resultHolder[0].isHandled();
             if (rowBefore != document.row() || columnBefore != document.column()) {

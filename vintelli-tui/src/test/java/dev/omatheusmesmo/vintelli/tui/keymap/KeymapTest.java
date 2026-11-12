@@ -158,6 +158,7 @@ class KeymapTest {
                 "problems.navigate", "problems.refresh", "problems.select-next", "problems.select-previous",
                 "problems.filter-all", "problems.filter-errors", "problems.filter-warnings",
                 "editor_open", "editor_save", "editor_undo", "editor_redo", "editor_find",
+                "editor_cut", "editor_copy", "editor_paste",
                 "editor_close", "editor_nextTab", "editor_previousTab", "editor_definition",
                 "editor_usages", "editor_nextProblem", "editor_toggleImportFold", "navigation_goToFile", "navigation_findInFiles",
                 "navigation_focusBreadcrumbs",

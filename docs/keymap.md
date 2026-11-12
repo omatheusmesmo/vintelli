@@ -34,6 +34,7 @@ Key actions in the `intellij` profile:
 | `run.choose-configuration` | Palette: Choose Run Configuration; toolbar configuration name | - |
 | `moveUp` / `moveDown` | arrow keys (`j/k` in the `vim` profile) | - |
 | `quit` | `Ctrl+C` | - |
+| `editor_copy`, `editor_cut`, `editor_paste` | `Ctrl+C` (copy, only with a selection), `Ctrl+X`, `Ctrl+V` | `Ctrl+C`, `Ctrl+X`, `Ctrl+V` |
 
 The command palette lists every action with its active chord and, when it
 differs, the real IntelliJ shortcut, filters by label or action id, and runs
@@ -42,6 +43,38 @@ the picked action with `Enter`; the help overlay lists the active keymap
 `q` and `Q` no longer quit in any profile (text input stays safe); `j/k`
 are reserved for the `vim` profile and the registry never assigns them as
 tool window shortcuts.
+
+### Copy, cut and paste
+
+- `Ctrl+C` copies while the editor text has focus and text is selected. With
+  no selection, in the project pane, and in every other window it keeps its
+  `quit` meaning, and the ACP window keeps it to cancel a turn. Unsaved work
+  is therefore not lost to an accidental quit while you are editing a
+  selection. Terminal emulators and IDE terminals use the same convention.
+- `Ctrl+X` cuts and `Ctrl+V` pastes the selection in the editor. Both are one
+  undo step each and mark the document dirty. Copy changes neither the text
+  nor the dirty state.
+- Typing a character, `Enter`, `Backspace` or `Delete` over a selection
+  replaces or removes it as one undo step.
+- The menu (Edit) and the command palette run the same actions on the active
+  editor document, whichever pane has the focus.
+- Copy sends the text to the terminal with OSC 52, and to the system clipboard
+  when a tool exists: `wl-copy` and `wl-paste` (Wayland), `xclip` or `xsel`
+  (X11), `pbcopy` and `pbpaste` (macOS), and `clip.exe` (Windows and WSL, which
+  can only write). Paste reads the system clipboard first and falls back to the
+  editor's own clipboard, which always works. The status line states which one
+  is in use: when no tool is found it says the text went to the editor
+  clipboard and the terminal, and that no system clipboard was found.
+- Ctrl+Shift+V (bracketed paste) is not covered. TamboUI delivers a pasted
+  block as one paste event only to the focused element, and enabling it would
+  drop pastes into the terminal and chat windows. Pasting with the terminal
+  shortcut still arrives as typed keys and lands in the editor.
+- Keyboard selection (Shift+arrows) is tracked in #272. Until then a selection
+  comes from the mouse only.
+
+Migration: `Ctrl+C` used to quit in every window, the editor included. Now it
+copies when editor text is selected. There has been no release, so no alias is
+kept. With no selection, `Ctrl+C` quits as before.
 
 Project pane header actions (active while the project panel has the focus; the
 palette runs them from anywhere):

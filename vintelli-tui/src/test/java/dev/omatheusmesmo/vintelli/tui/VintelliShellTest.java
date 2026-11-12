@@ -6,6 +6,7 @@ import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeymapProfile;
 import dev.omatheusmesmo.vintelli.tui.menu.MenuPopup;
 import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
+import dev.omatheusmesmo.vintelli.tui.editor.SystemClipboard;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
 import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
 import dev.omatheusmesmo.vintelli.tui.maven.MavenToolWindow;
@@ -54,6 +55,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -4701,7 +4703,210 @@ class VintelliShellTest {
         @Override public String provenance() { return "temporary branch test provider"; }
     }
 
-    private record EditorShell(VintelliShell shell, BuiltinEditor editor) {
+    @Test
+    void pilotCopiesAndPastesAMultiLineSelectionWithWideUnicode() throws Exception {
+        EditorShell fixture = openEditorShell("Clip.txt", "ab\n漢字 ok\nend\n", 0);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect text = pilot.findElement(BuiltinEditor.TEXT_AREA_ID);
+            selectWithMouse(test, text, 0, 0, 1, 5);
+            settle(pilot);
+            assertEquals("ab\n漢字 ", fixture.editor().pointerState().orElseThrow().selectedText());
+
+            pressCtrl(pilot, 'c');
+            settle(pilot);
+            assertEquals("ab\n漢字 ", fixture.clipboard().stored());
+            assertEquals("Copied to the system clipboard", fixture.editor().status());
+
+            pilot.click(text.x(), text.y() + 3);
+            settle(pilot);
+            pressCtrl(pilot, 'v');
+            settle(pilot);
+            assertEquals("ab\n漢字 ok\nend\nab\n漢字 ", fixture.editor().activeDocument().orElseThrow().text());
+            assertTrue(fixture.editor().activeDocument().orElseThrow().dirty());
+        }
+    }
+
+    @Test
+    void pilotCutAndPasteAreSingleUndoStepsThatMarkTheDocumentDirty() throws Exception {
+        EditorShell fixture = openEditorShell("Cut.txt", "alpha beta\n", 0);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect text = pilot.findElement(BuiltinEditor.TEXT_AREA_ID);
+            selectWithMouse(test, text, 0, 6, 0, 10);
+            settle(pilot);
+
+            pressCtrl(pilot, 'x');
+            settle(pilot);
+            assertEquals("alpha \n", fixture.editor().activeDocument().orElseThrow().text());
+            assertEquals("beta", fixture.clipboard().stored());
+            assertTrue(fixture.editor().activeDocument().orElseThrow().dirty());
+
+            pressCtrl(pilot, 'v');
+            settle(pilot);
+            assertEquals("alpha beta\n", fixture.editor().activeDocument().orElseThrow().text());
+
+            pressCtrl(pilot, 'z');
+            settle(pilot);
+            assertEquals("alpha \n", fixture.editor().activeDocument().orElseThrow().text(),
+                    "one undo reverts the paste alone");
+            assertTrue(fixture.editor().activeDocument().orElseThrow().dirty());
+
+            pressCtrl(pilot, 'z');
+            settle(pilot);
+            assertEquals("alpha beta\n", fixture.editor().activeDocument().orElseThrow().text(),
+                    "one undo reverts the cut alone");
+            assertFalse(fixture.editor().activeDocument().orElseThrow().dirty());
+        }
+    }
+
+    @Test
+    void pilotCopyLeavesTheDocumentCleanAndAddsNoUndoStep() throws Exception {
+        EditorShell fixture = openEditorShell("Quiet.txt", "alpha beta\n", 0);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect text = pilot.findElement(BuiltinEditor.TEXT_AREA_ID);
+            selectWithMouse(test, text, 0, 6, 0, 10);
+            settle(pilot);
+
+            pressCtrl(pilot, 'c');
+            settle(pilot);
+            assertEquals("alpha beta\n", fixture.editor().activeDocument().orElseThrow().text());
+            assertFalse(fixture.editor().activeDocument().orElseThrow().dirty());
+            assertEquals("beta", fixture.clipboard().stored());
+
+            pressCtrl(pilot, 'z');
+            settle(pilot);
+            assertEquals("Nothing to undo", fixture.shell().status(), "copy did not record an undo step");
+        }
+    }
+
+    @Test
+    void pilotTypingAndBackspaceReplaceOrRemoveTheSelectionAsOneUndoStep() throws Exception {
+        EditorShell fixture = openEditorShell("Replace.txt", "alpha beta\n", 0);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect text = pilot.findElement(BuiltinEditor.TEXT_AREA_ID);
+            selectWithMouse(test, text, 0, 6, 0, 10);
+            settle(pilot);
+
+            pilot.press('X');
+            settle(pilot);
+            assertEquals("alpha X\n", fixture.editor().activeDocument().orElseThrow().text());
+
+            pressCtrl(pilot, 'z');
+            settle(pilot);
+            assertEquals("alpha beta\n", fixture.editor().activeDocument().orElseThrow().text(),
+                    "one undo reverts the typed replacement");
+            pressCtrl(pilot, 'z');
+            settle(pilot);
+            assertEquals("Nothing to undo", fixture.shell().status());
+
+            selectWithMouse(test, text, 0, 6, 0, 10);
+            settle(pilot);
+            pilot.press(KeyCode.BACKSPACE);
+            settle(pilot);
+            assertEquals("alpha \n", fixture.editor().activeDocument().orElseThrow().text(),
+                    "Backspace removes the selection and nothing more");
+        }
+    }
+
+    @Test
+    void pilotCtrlCQuitsWithoutASelection() throws Exception {
+        EditorShell fixture = openEditorShell("Chord.txt", "alpha beta\n", 0);
+        try (ToolkitTestRunner test = runShell(fixture.shell())) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+            fixture.editor().requestFocus();
+            settle(pilot);
+            pressCtrl(pilot, 'c');
+            settle(pilot);
+            assertFalse(test.runner().isRunning(), "Ctrl+C with no selection quits as before");
+        }
+    }
+
+    @Test
+    void pilotCtrlCWithASelectionCopiesAndKeepsTheShellRunning() throws Exception {
+        EditorShell fixture = openEditorShell("Keep.txt", "alpha beta\n", 0);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect text = pilot.findElement(BuiltinEditor.TEXT_AREA_ID);
+            selectWithMouse(test, text, 0, 6, 0, 10);
+            settle(pilot);
+
+            pressCtrl(pilot, 'c');
+            settle(pilot);
+            assertTrue(test.running(), "Ctrl+C over a selection copies instead of quitting");
+            assertEquals("beta", fixture.clipboard().stored());
+        }
+    }
+
+    @Test
+    void pilotClipboardStatesTheEditorOnlyFallbackWithoutASystemClipboard() throws Exception {
+        EditorShell fixture = openEditorShell("Local.txt", "alpha beta\n", 0);
+        fixture.clipboard().available = false;
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect text = pilot.findElement(BuiltinEditor.TEXT_AREA_ID);
+            selectWithMouse(test, text, 0, 6, 0, 10);
+            settle(pilot);
+
+            pressCtrl(pilot, 'c');
+            settle(pilot);
+            assertEquals("Copied to the editor clipboard and the terminal (OSC 52): no system clipboard found",
+                    fixture.editor().status());
+
+            pilot.click(text.x(), text.y() + 1);
+            settle(pilot);
+            pressCtrl(pilot, 'v');
+            settle(pilot);
+            assertEquals("alpha beta\nbeta", fixture.editor().activeDocument().orElseThrow().text());
+            assertEquals("Pasted from the editor clipboard only: no system clipboard found", fixture.editor().status());
+        }
+    }
+
+    private static void selectWithMouse(MouseShellRunner test, Rect text, int startRow, int startCell, int endRow,
+            int endCell) {
+        Pilot pilot = test.pilot();
+        int startX = text.x() + startCell;
+        int startY = text.y() + startRow;
+        int endX = text.x() + endCell;
+        int endY = text.y() + endRow;
+        pilot.mousePress(MouseButton.LEFT, startX, startY);
+        test.drag(MouseEvent.drag(MouseButton.LEFT, endX, endY));
+        pilot.mouseRelease(MouseButton.LEFT, endX, endY);
+    }
+
+    private static void pressCtrl(Pilot pilot, char key) {
+        pilot.press(key, KeyModifiers.CTRL);
+    }
+
+    private static final class FakeClipboard implements SystemClipboard {
+        private boolean available = true;
+        private String stored = "";
+
+        @Override
+        public boolean available() {
+            return available;
+        }
+
+        @Override
+        public boolean write(String value) {
+            stored = value;
+            return available;
+        }
+
+        @Override
+        public Optional<String> read() {
+            return available ? Optional.of(stored) : Optional.empty();
+        }
+
+        String stored() {
+            return stored;
+        }
+    }
+
+    private record EditorShell(VintelliShell shell, BuiltinEditor editor, FakeClipboard clipboard) {
     }
 
     private EditorShell openEditorShell(String name, String text, int row) throws IOException {
@@ -4712,7 +4917,8 @@ class VintelliShellTest {
             throws IOException {
         Path file = project.resolve(name);
         Files.writeString(file, text);
-        BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
+        FakeClipboard clipboard = new FakeClipboard();
+        BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette, clipboard, sequence -> { });
         assertFalse(editor.open(new OpenRequest(file, row)).isFailure());
         List<ToolWindow> windows = new ArrayList<>(defaultWindows());
         windows.add(editor);
@@ -4720,7 +4926,7 @@ class VintelliShellTest {
         if (projectSearch) {
             config = config.withProjectSearch(new IdleProjectSearch());
         }
-        return new EditorShell(new VintelliShell(config), editor);
+        return new EditorShell(new VintelliShell(config), editor, clipboard);
     }
 
     private static String numberedLines(int count) {
@@ -4853,6 +5059,10 @@ class VintelliShellTest {
         private void drag(MouseEvent event) {
             runner.tuiRunner().dispatch(event);
             awaitSettled();
+        }
+
+        private boolean running() {
+            return runner.isRunning();
         }
 
         private void resize(int width, int height) {

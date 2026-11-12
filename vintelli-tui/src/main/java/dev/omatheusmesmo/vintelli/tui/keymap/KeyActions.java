@@ -28,6 +28,10 @@ public final class KeyActions {
     public static final String UNDO = "editor_undo";
     public static final String REDO = "editor_redo";
     public static final String FIND = "editor_find";
+    public static final String CUT = "editor_cut";
+    public static final String COPY = "editor_copy";
+    public static final String PASTE = "editor_paste";
+    private static final Set<String> CLIPBOARD_ACTIONS = Set.of(CUT, COPY, PASTE);
     public static final String CLOSE_TAB = "editor_close";
     public static final String NEXT_TAB = "editor_nextTab";
     public static final String PREVIOUS_TAB = "editor_previousTab";
@@ -103,6 +107,8 @@ public final class KeyActions {
                 new KeyAction(OPEN_FILE, "Open Selected File", ""),
                 new KeyAction(SAVE, "Save File", ""), new KeyAction(UNDO, "Undo", ""),
                 new KeyAction(REDO, "Redo", ""), new KeyAction(FIND, "Find in Editor", ""),
+                new KeyAction(CUT, "Cut", "Ctrl+X"), new KeyAction(COPY, "Copy", "Ctrl+C"),
+                new KeyAction(PASTE, "Paste", "Ctrl+V"),
                 new KeyAction(CLOSE_TAB, "Close Editor Tab", ""),
                 new KeyAction(NEXT_TAB, "Next Editor Tab", ""),
                 new KeyAction(PREVIOUS_TAB, "Previous Editor Tab", ""),
@@ -178,7 +184,9 @@ public final class KeyActions {
      */
     public static Set<String> reservedActionIds(List<ToolWindow> toolWindows) {
         Set<String> reserved = new LinkedHashSet<>(List.of(SEARCH_EVERYWHERE, KEYMAP_HELP));
-        shellActions().stream().map(KeyAction::id).filter(id -> !OPEN_FILE.equals(id)).forEach(reserved::add);
+        shellActions().stream().map(KeyAction::id)
+                .filter(id -> !OPEN_FILE.equals(id) && !CLIPBOARD_ACTIONS.contains(id))
+                .forEach(reserved::add);
         for (ToolWindow toolWindow : toolWindows) {
             reserved.add(activateToolWindow(toolWindow.id()));
             reserved.add(toggleToolWindow(toolWindow.id()));

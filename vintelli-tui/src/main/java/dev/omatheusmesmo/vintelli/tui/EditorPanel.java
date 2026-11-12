@@ -42,6 +42,9 @@ final class EditorPanel {
         this.editor = editor;
         this.themes = themes;
         this.startScreen = new EditorStartScreen(projectRoot, keymap, themes);
+        if (editor != null) {
+            editor.bindKeymap(keymap);
+        }
     }
 
     /**

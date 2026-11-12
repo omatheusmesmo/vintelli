@@ -40,6 +40,7 @@ class IntellijKeymapTableTest {
     private static final Map<String, Set<String>> ACTIONS_BY_CHORD = actionsByChord();
     private static final Map<String, Set<String>> SHARED_CHORDS_BY_DESIGN = Map.of(
             "enter", Set.of("select", "confirm", "editor_open"),
+            "ctrl+c", Set.of("quit", "editor_copy"),
             "delete", Set.of("deleteForward", "project_delete"),
             "mouse.scroll_up", Set.of("scroll", "scrollUp"),
             "mouse.scroll_down", Set.of("scroll", "scrollDown"),

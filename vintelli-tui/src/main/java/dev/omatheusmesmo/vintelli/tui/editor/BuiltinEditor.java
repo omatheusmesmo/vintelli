@@ -11,6 +11,8 @@ import dev.omatheusmesmo.vintelli.tui.ShellThemes;
 import dev.omatheusmesmo.vintelli.tui.ToolWindow;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
 import dev.omatheusmesmo.vintelli.tui.keymap.ConfigDirectory;
+import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
+import dev.omatheusmesmo.vintelli.tui.keymap.KeymapProfile;
 import dev.tamboui.buffer.Buffer;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.terminal.Frame;
@@ -39,6 +41,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /** Built-in adapter. All document, element and external inspection access shares this monitor. */
@@ -59,6 +62,7 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     public static final int TAB_BAR_ROWS = EditorTabBarElement.ROWS;
     public static final String TEXT_AREA_ID = "editor-text-area";
     private static final long MAX_FILE_BYTES = 4L * 1024 * 1024;
+    private static final Keymap DEFAULT_KEYMAP = Keymap.ofProfile(KeymapProfile.DEFAULT, List.of());
     private final List<EditorDocument> documents = new ArrayList<>();
     private final Supplier<ShellEditorPalette> palette;
     private final EditorElement element;
@@ -73,6 +77,8 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     private Map<String, VersionControlCapability.State> vcsStates = Map.of();
     private Map<String, Set<Integer>> vcsChangedLines = Map.of();
     private FileIcons icons;
+    private final EditorClipboard clipboard;
+    private Supplier<Keymap> keymap;
 
     @Inject
     public BuiltinEditor(@ConfigProperty(name = "vintelli.local.project-root") Optional<String> configuredRoot,
@@ -88,6 +94,15 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
 
     /** Explicit root and private session path for tests and embedding; null disables persistence. */
     public BuiltinEditor(Path project, Path sessionFile, Supplier<ShellEditorPalette> palette) {
+        this(project, sessionFile, palette, new NativeSystemClipboard(System.getenv("PATH")), BuiltinEditor::writeTerminal);
+    }
+
+    /**
+     * Explicit clipboard and terminal output for tests and embedding. The terminal receives the
+     * OSC 52 sequence of each copy; the system clipboard is the platform tool access.
+     */
+    public BuiltinEditor(Path project, Path sessionFile, Supplier<ShellEditorPalette> palette,
+            SystemClipboard systemClipboard, Consumer<String> terminal) {
         Path absoluteProject = project.toAbsolutePath().normalize();
         try {
             this.project = absoluteProject.toRealPath();
@@ -96,7 +111,13 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
         }
         this.palette = palette;
         sessionStore = sessionFile == null ? null : new EditorSessionStore(sessionFile);
+        clipboard = new EditorClipboard(systemClipboard, terminal);
         element = new EditorElement(this);
+    }
+
+    private static void writeTerminal(String sequence) {
+        System.out.print(sequence);
+        System.out.flush();
     }
 
     @Override public String identifier() { return "builtin"; }
@@ -310,6 +331,54 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
         document().mutate(() -> document().state().insert(text.replace("\r\n", "\n")));
         persist();
     }
+    /**
+     * Keymap the editor reads its copy, cut and paste chords from. The shell binds its
+     * keymap here; without a binding the default profile applies.
+     */
+    public void bindKeymap(Supplier<Keymap> bound) {
+        keymap = bound;
+    }
+
+    Keymap keymap() {
+        return keymap == null ? DEFAULT_KEYMAP : keymap.get();
+    }
+
+    public synchronized void copySelection() {
+        EditorDocument document = document();
+        if (document == null || !document.hasSelection()) {
+            status = "No selection to copy";
+            return;
+        }
+        status = clipboard.copy(document.selectedText());
+    }
+
+    public synchronized void cutSelection() {
+        EditorDocument document = document();
+        if (document == null || !document.hasSelection()) {
+            status = "No selection to cut";
+            return;
+        }
+        status = clipboard.copy(document.selectedText());
+        document.replaceSelection("");
+        persist();
+    }
+
+    public synchronized void pasteClipboard() {
+        EditorDocument document = document();
+        if (document == null) {
+            status = "No file is open";
+            return;
+        }
+        Optional<EditorClipboard.Paste> paste = clipboard.paste();
+        if (paste.isEmpty() || paste.get().text().isEmpty()) {
+            status = "Nothing to paste";
+            return;
+        }
+        document.replaceSelection(paste.get().text().replace("\r\n", "\n").replace('\r', '\n'));
+        persist();
+        status = "Pasted from " + paste.get().origin();
+    }
+
     public synchronized boolean toggleImportFold() {
         EditorDocument document = document();
         boolean toggled = document != null && document.toggleImportFold();

@@ -157,6 +157,9 @@ public final class Keymap {
         builder.bind(KeyTrigger.ctrl('s'), KeyActions.SAVE);
         builder.bind(KeyTrigger.ctrl('z'), KeyActions.UNDO);
         builder.bind(KeyTrigger.ctrl('y'), KeyActions.REDO);
+        builder.bind(KeyTrigger.ctrl('x'), KeyActions.CUT);
+        builder.bind(KeyTrigger.ctrl('c'), KeyActions.COPY);
+        builder.bind(KeyTrigger.ctrl('v'), KeyActions.PASTE);
         builder.bind(KeyTrigger.ctrl('f'), KeyActions.FIND);
         builder.bind(KeyTrigger.ctrl('w'), KeyActions.CLOSE_TAB);
         builder.bind(KeyTrigger.alt(']'), KeyActions.NEXT_TAB);
@@ -413,7 +416,7 @@ public final class Keymap {
         for (String action : new TreeSet<>(mentioned)) {
             for (InputTrigger trigger : layered.triggersFor(bindingName(action))) {
                 for (String other : new TreeSet<>(knownIds)) {
-                    if (other.equals(action)) {
+                    if (other.equals(action) || sharesCtrlC(action, other)) {
                         continue;
                     }
                     for (InputTrigger otherTrigger : layered.triggersFor(bindingName(other))) {
@@ -427,6 +430,14 @@ public final class Keymap {
                 }
             }
         }
+    }
+
+    /**
+     * Ctrl+C is quit everywhere and copy inside an editor selection. The editor takes it only while
+     * text is selected, so the pair is the one chord both actions may share.
+     */
+    private static boolean sharesCtrlC(String action, String other) {
+        return Set.of(QUIT, KeyActions.COPY).equals(Set.of(action, other));
     }
 
     /**
