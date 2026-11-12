@@ -38,7 +38,7 @@ loads persisted editor breakpoints into a newly attached session.
 
 ## Source breakpoints
 
-Click a line's gutter marker or run **Toggle Line Breakpoint** (`Ctrl+B`) to
+Click a line's gutter marker or run **Toggle Line Breakpoint** (`Ctrl+F8`) to
 toggle a breakpoint. Locations are stored per canonical project and source file
 as zero based line anchors. Text edits and undo keep an anchor on its current
 line; if an edit shortens the file past an anchor, that breakpoint is removed

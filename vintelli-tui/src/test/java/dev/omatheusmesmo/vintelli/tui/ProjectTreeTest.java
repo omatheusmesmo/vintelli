@@ -16,6 +16,7 @@ import dev.tamboui.terminal.Frame;
 import dev.tamboui.toolkit.app.ToolkitTestRunner;
 import dev.tamboui.toolkit.element.DefaultRenderContext;
 import dev.tamboui.tui.event.KeyCode;
+import dev.tamboui.tui.event.KeyModifiers;
 import dev.tamboui.tui.pilot.Pilot;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -198,7 +199,7 @@ class ProjectTreeTest {
             pilot.pause(Duration.ofMillis(100));
             assertTrue(Files.exists(project.resolve("src/main/New.java")), shell.status());
 
-            pilot.press(KeyCode.F2);
+            pilot.press(KeyCode.F6, KeyModifiers.SHIFT);
             for (char ch : "Renamed.java".toCharArray()) { pilot.press(ch); }
             pilot.press(KeyCode.ENTER);
             pilot.pause(Duration.ofMillis(100));
