@@ -33,6 +33,7 @@ public final class JavaDebugCapabilityProbeResource implements QuarkusTestResour
                     </project>
                     """);
             Files.writeString(projectRoot.resolve("Main.java"), "class Main {\n  void run() {}\n}\n");
+            adapter.sourcePath(projectRoot.resolve("Main.java"));
             Path java = Path.of(System.getProperty("java.home"), "bin",
                     System.getProperty("os.name", "").startsWith("Windows") ? "java.exe" : "java");
             Path classpath = Path.of(JavaDebugTwin.class.getProtectionDomain().getCodeSource().getLocation().toURI());

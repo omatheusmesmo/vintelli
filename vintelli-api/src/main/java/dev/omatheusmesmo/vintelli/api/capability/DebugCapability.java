@@ -72,11 +72,43 @@ public interface DebugCapability extends ProviderDescriptor {
     enum State {
         STARTING,
         ATTACHING,
+        EXECUTING,
         STOPPED,
         RUNNING,
         TERMINATED,
         DISCONNECTED,
         FAILED
+    }
+
+    enum SteppingAction { RESUME, PAUSE, STEP_OVER, STEP_INTO, STEP_OUT }
+
+    record DebugFrame(String name, String sourcePath, int line, int column) {
+        public DebugFrame {
+            name = name == null ? "" : name;
+            sourcePath = sourcePath == null ? "" : sourcePath;
+            if (line < 1 || column < 1) throw new IllegalArgumentException("DAP frame locations are one based");
+        }
+    }
+
+    record DebugCapabilities(boolean resume, boolean pause, boolean stepOver, boolean stepInto, boolean stepOut,
+            boolean pauseKnown) {
+        public DebugCapabilities(boolean resume, boolean pause, boolean stepOver, boolean stepInto, boolean stepOut) {
+            this(resume, pause, stepOver, stepInto, stepOut, true);
+        }
+
+        public boolean supports(SteppingAction action) {
+            return switch (action) {
+                case RESUME -> resume;
+                case PAUSE -> pauseKnown && pause;
+                case STEP_OVER -> stepOver;
+                case STEP_INTO -> stepInto;
+                case STEP_OUT -> stepOut;
+            };
+        }
+
+        public boolean known(SteppingAction action) {
+            return action != SteppingAction.PAUSE || pauseKnown;
+        }
     }
 
     enum BreakpointState { PENDING, VERIFIED, REJECTED }
@@ -135,7 +167,8 @@ public interface DebugCapability extends ProviderDescriptor {
     }
 
     record DebugSessionSnapshot(String id, String configurationName, State state,
-            List<DebugThread> threads, String reason, String stoppedReason) {
+            List<DebugThread> threads, String reason, String stoppedReason,
+            int stoppedThreadId, DebugFrame currentFrame, DebugCapabilities capabilities) {
 
         public DebugSessionSnapshot {
             Objects.requireNonNull(id, "id");
@@ -144,6 +177,13 @@ public interface DebugCapability extends ProviderDescriptor {
             threads = threads == null ? List.of() : List.copyOf(threads);
             reason = reason == null ? "" : reason;
             stoppedReason = stoppedReason == null ? "" : stoppedReason;
+            capabilities = capabilities == null ? new DebugCapabilities(false, false, false, false, false, true) : capabilities;
+        }
+
+        public DebugSessionSnapshot(String id, String configurationName, State state,
+                List<DebugThread> threads, String reason, String stoppedReason) {
+            this(id, configurationName, state, threads, reason, stoppedReason, 0, null,
+                    new DebugCapabilities(false, false, false, false, false, true));
         }
     }
 
@@ -152,6 +192,16 @@ public interface DebugCapability extends ProviderDescriptor {
         DebugSessionSnapshot snapshot();
 
         CapabilityResult<List<DebugThread>> threads();
+
+        default CapabilityResult<Boolean> resume() { return unsupported("Resume"); }
+        default CapabilityResult<Boolean> pause() { return unsupported("Pause"); }
+        default CapabilityResult<Boolean> stepOver() { return unsupported("Step over"); }
+        default CapabilityResult<Boolean> stepInto() { return unsupported("Step into"); }
+        default CapabilityResult<Boolean> stepOut() { return unsupported("Step out"); }
+
+        private static CapabilityResult<Boolean> unsupported(String action) {
+            return CapabilityResult.failed(new CapabilityFailure(action + " is not supported", ""));
+        }
 
         /**
          * Detaches from the adapter. A launch-owned run is cancelled as part of

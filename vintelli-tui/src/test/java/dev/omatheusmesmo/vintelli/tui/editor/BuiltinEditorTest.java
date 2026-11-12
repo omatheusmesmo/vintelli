@@ -425,6 +425,39 @@ class BuiltinEditorTest {
     }
 
     @Test
+    void executionMarkerIsIndependentFromBreakpointsInAsciiAndUnicodeModes() throws IOException {
+        String previous = System.getProperty("vintelli.icons");
+        String sourceText = "class Stepping {\n  void run() {}\n}\n";
+        Path source = write("Stepping.java", sourceText);
+        try {
+            System.setProperty("vintelli.icons", "ascii");
+            BuiltinEditor ascii = editor(null);
+            ascii.open(new OpenRequest(source, 0));
+            ascii.toggleBreakpoint(1);
+            ascii.updateExecutionLocation(new DebugCapability.DebugFrame("main", source.toString(), 2, 1));
+            assertTrue(row(render(ascii, 30, 4), 1).startsWith("o>2"));
+            assertEquals(sourceText, ascii.activeDocument().orElseThrow().text());
+            assertEquals(1, ascii.activeDocument().orElseThrow().line());
+            ascii.updateExecutionLocation(null);
+            assertTrue(row(render(ascii, 30, 4), 1).startsWith("o 2"));
+
+            System.setProperty("vintelli.icons", "nerd");
+            BuiltinEditor unicode = editor(null);
+            unicode.open(new OpenRequest(source, 0));
+            unicode.toggleBreakpoint(1);
+            unicode.updateExecutionLocation(new DebugCapability.DebugFrame("main", source.toString(), 2, 1));
+            assertTrue(row(render(unicode, 30, 4), 1).startsWith("◌▶2"));
+            assertEquals(sourceText, unicode.activeDocument().orElseThrow().text());
+            assertEquals(1, unicode.activeDocument().orElseThrow().line());
+            unicode.updateExecutionLocation(null);
+            assertTrue(row(render(unicode, 30, 4), 1).startsWith("◌ 2"));
+        } finally {
+            if (previous == null) System.clearProperty("vintelli.icons");
+            else System.setProperty("vintelli.icons", previous);
+        }
+    }
+
+    @Test
     void restoresDirtyRecoveryWhenBackingFileHasDisappeared() throws IOException {
         Path file = write("Missing.java", "class Missing {}\n");
         Path session = project.resolve("editor.properties");

@@ -56,6 +56,7 @@ final class EditorElement implements Element {
     private static final String VERIFIED_BREAKPOINT_ROLE = "editor-breakpoint-verified";
     private static final String PENDING_BREAKPOINT_ROLE = "editor-breakpoint-pending";
     private static final String REJECTED_BREAKPOINT_ROLE = "editor-breakpoint-rejected";
+    private static final String EXECUTION_LINE_ROLE = "editor-execution-line";
     private static final String CARET_ROLE = "editor-caret";
     private static final List<String> TYPING_FOCUS_IDS = List.of(BuiltinEditor.TEXT_AREA_ID, "editor-panel", "editor-content");
     private static final int WHEEL_STEP = 3;
@@ -288,9 +289,13 @@ final class EditorElement implements Element {
             } else {
                 marker = diagnostic ? "! " : editor.vcsChangedLine(row) ? "+ " : "  ";
             }
+            boolean executing = editor.executionLine(document, document.documentRow(row));
+            if (executing) marker = marker.substring(0, 1) + (ascii ? ">" : "▶");
             String digits = Integer.toString(document.documentRow(row) + 1);
             String padding = " ".repeat(width - 3 - digits.length());
-            lines.add(Line.from(Span.styled(marker, markerStyle), Span.styled(padding + digits, row == caret ? current : number),
+            lines.add(Line.from(Span.styled(marker.substring(0, 1), markerStyle),
+                    Span.styled(marker.substring(1), executing ? roleStyle(context, EXECUTION_LINE_ROLE) : markerStyle),
+                    Span.styled(padding + digits, row == caret ? current : number),
                     Span.raw(" ")));
         }
         return Text.from(lines);

@@ -43,6 +43,9 @@ public interface EditorBridge extends ProviderDescriptor {
      */
     Optional<Path> currentFile();
 
+    /** Updates the transient stopped-frame marker; null clears it. */
+    default void updateExecutionLocation(DebugCapability.DebugFrame frame) { }
+
     /**
      * @return the editor's complete source breakpoint sets, keyed by absolute source path
      */

@@ -6,6 +6,7 @@ import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.List;
 import java.util.Set;
@@ -13,17 +14,31 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import com.sun.jdi.Bootstrap;
 import com.sun.jdi.VirtualMachine;
+import com.sun.jdi.ThreadReference;
 import com.sun.jdi.connect.AttachingConnector;
 import com.sun.jdi.connect.Connector;
 import org.eclipse.lsp4j.debug.Capabilities;
 import org.eclipse.lsp4j.debug.ConfigurationDoneArguments;
+import org.eclipse.lsp4j.debug.ContinueArguments;
+import org.eclipse.lsp4j.debug.ContinueResponse;
+import org.eclipse.lsp4j.debug.ContinuedEventArguments;
 import org.eclipse.lsp4j.debug.DisconnectArguments;
 import org.eclipse.lsp4j.debug.InitializeRequestArguments;
+import org.eclipse.lsp4j.debug.NextArguments;
+import org.eclipse.lsp4j.debug.PauseArguments;
+import org.eclipse.lsp4j.debug.StackFrame;
+import org.eclipse.lsp4j.debug.StackTraceArguments;
+import org.eclipse.lsp4j.debug.StackTraceResponse;
+import org.eclipse.lsp4j.debug.StepInArguments;
+import org.eclipse.lsp4j.debug.StepOutArguments;
+import org.eclipse.lsp4j.debug.StoppedEventArguments;
+import org.eclipse.lsp4j.debug.Source;
 import org.eclipse.lsp4j.debug.Thread;
 import org.eclipse.lsp4j.debug.ThreadsResponse;
 import org.eclipse.lsp4j.debug.SetBreakpointsArguments;
@@ -53,7 +68,9 @@ final class JavaDebugAdapterTwin implements AutoCloseable {
     private final Map<Long, Integer> threadIds = new ConcurrentHashMap<>();
     private final AtomicInteger nextThreadId = new AtomicInteger(1);
     private final AtomicReference<List<Integer>> breakpointLines = new AtomicReference<>(List.of());
+    private final List<String> executionActions = new CopyOnWriteArrayList<>();
     private final AtomicReference<Mode> mode = new AtomicReference<>(Mode.HEALTHY);
+    private volatile String sourcePath = "";
     private volatile ServerSocket listener;
     private volatile VirtualMachine virtualMachine;
     private volatile int lastTargetPort;
@@ -77,6 +94,9 @@ final class JavaDebugAdapterTwin implements AutoCloseable {
     List<Integer> breakpointLines() {
         return breakpointLines.get();
     }
+
+    List<String> executionActions() { return List.copyOf(executionActions); }
+    void sourcePath(Path path) { sourcePath = path.toString(); }
 
     void mode(Mode requested) {
         mode.set(requested);
@@ -257,6 +277,80 @@ final class JavaDebugAdapterTwin implements AutoCloseable {
             } catch (RuntimeException failure) {
                 return CompletableFuture.failedFuture(failure);
             }
+        }
+
+        @Override
+        public CompletableFuture<StackTraceResponse> stackTrace(StackTraceArguments arguments) {
+            VirtualMachine current = virtualMachine;
+            try {
+                ThreadReference target = current.allThreads().stream()
+                        .filter(thread -> threadIds.getOrDefault(thread.uniqueID(), -1) == arguments.getThreadId())
+                        .findFirst().orElseGet(() -> current.allThreads().getFirst());
+                var location = target.frame(0).location();
+                StackFrame frame = new StackFrame();
+                frame.setId(1);
+                frame.setName(location.method().name());
+                frame.setLine(Math.max(1, location.lineNumber()));
+                frame.setColumn(1);
+                Source source = new Source();
+                source.setPath(sourcePath.isBlank() ? location.sourceName() : sourcePath);
+                frame.setSource(source);
+                StackTraceResponse response = new StackTraceResponse();
+                response.setStackFrames(new StackFrame[] { frame });
+                return CompletableFuture.completedFuture(response);
+            } catch (Exception failure) {
+                return CompletableFuture.failedFuture(failure);
+            }
+        }
+
+        @Override public CompletableFuture<Void> next(NextArguments arguments) {
+            executionActions.add("stepOver");
+            continueAndStop(arguments.getThreadId());
+            return CompletableFuture.completedFuture(null);
+        }
+        @Override public CompletableFuture<Void> stepIn(StepInArguments arguments) {
+            executionActions.add("stepInto");
+            continueAndStop(arguments.getThreadId());
+            return CompletableFuture.completedFuture(null);
+        }
+        @Override public CompletableFuture<Void> stepOut(StepOutArguments arguments) {
+            executionActions.add("stepOut");
+            continueAndStop(arguments.getThreadId());
+            return CompletableFuture.completedFuture(null);
+        }
+        @Override public CompletableFuture<ContinueResponse> continue_(ContinueArguments arguments) {
+            executionActions.add("resume");
+            client.continued(new ContinuedEventArguments());
+            return CompletableFuture.completedFuture(new ContinueResponse());
+        }
+        @Override public CompletableFuture<Void> pause(PauseArguments arguments) {
+            executionActions.add("pause");
+            try {
+                thread(arguments.getThreadId()).suspend();
+            } catch (Exception failure) {
+                return CompletableFuture.failedFuture(failure);
+            }
+            stopped(arguments.getThreadId());
+            return CompletableFuture.completedFuture(null);
+        }
+
+        private ThreadReference thread(int threadId) {
+            VirtualMachine current = virtualMachine;
+            return current.allThreads().stream()
+                    .filter(target -> threadIds.getOrDefault(target.uniqueID(), -1) == threadId)
+                    .findFirst().orElseGet(() -> current.allThreads().getFirst());
+        }
+
+        private void continueAndStop(int threadId) {
+            client.continued(new ContinuedEventArguments());
+            stopped(threadId);
+        }
+
+        private void stopped(int threadId) {
+            StoppedEventArguments event = new StoppedEventArguments();
+            event.setReason("step");
+            event.setThreadId(threadId);
+            client.stopped(event);
         }
 
         @Override

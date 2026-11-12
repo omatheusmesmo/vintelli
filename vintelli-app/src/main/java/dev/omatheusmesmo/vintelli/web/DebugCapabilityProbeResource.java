@@ -3,6 +3,7 @@ package dev.omatheusmesmo.vintelli.web;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
 
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityRegistry;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
@@ -57,7 +58,8 @@ public final class DebugCapabilityProbeResource {
     @POST
     public synchronized View start(@QueryParam("kind") @DefaultValue("attach") String kind) {
         checkEnabled();
-        if (!kind.equals("attach") && !kind.equals("launch") && !kind.equals("breakpoints")) {
+        if (!kind.equals("attach") && !kind.equals("launch") && !kind.equals("breakpoints")
+                && !kind.equals("stepping")) {
             throw new BadRequestException("Unknown debug probe kind");
         }
         CapabilitySelection<DebugCapability> selection = registry.debug();
@@ -101,6 +103,22 @@ public final class DebugCapabilityProbeResource {
         CapabilityResult<List<DebugCapability.DebugThread>> threads = session.threads();
         if (threads instanceof CapabilityResult.Failed<List<DebugCapability.DebugThread>> failed) {
             error = failed.failure().reason();
+        }
+        if (kind.equals("stepping")) {
+            CapabilityResult<Boolean> paused = session.pause();
+            if (paused instanceof CapabilityResult.Failed<Boolean> failed) error = failed.failure().reason();
+            for (CapabilityResult<Boolean> action : List.of(session.stepOver(), session.stepInto(), session.stepOut())) {
+                if (action instanceof CapabilityResult.Failed<Boolean> failed) error = failed.failure().reason();
+            }
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+            while (session.snapshot().currentFrame() == null && System.nanoTime() < deadline) {
+                try { Thread.sleep(10); }
+                catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    error = "Interrupted while reading the stopped frame";
+                    break;
+                }
+            }
         }
         return view(provider, true);
     }

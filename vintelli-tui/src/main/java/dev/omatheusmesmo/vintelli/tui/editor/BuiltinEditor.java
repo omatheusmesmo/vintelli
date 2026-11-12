@@ -77,6 +77,7 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     private EditorSessionStore sessionStore;
     private BreakpointStore breakpointStore;
     private final Map<Path, Map<Integer, DebugCapability.SourceBreakpoint>> breakpoints = new HashMap<>();
+    private final Map<Path, Integer> executionLines = new HashMap<>();
     private final Map<Path, Object> breakpointSyncLocks = new HashMap<>();
     private long breakpointGeneration;
     private int active = -1;
@@ -225,6 +226,33 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
 
     synchronized Map<Integer, DebugCapability.SourceBreakpoint> breakpoints(EditorDocument document) {
         return Map.copyOf(breakpoints.getOrDefault(document.file(), Map.of()));
+    }
+
+    synchronized boolean executionLine(EditorDocument document, int row) {
+        return executionLines.getOrDefault(document.file(), -1) == row;
+    }
+
+    @Override public synchronized void updateExecutionLocation(DebugCapability.DebugFrame frame) {
+        executionLines.clear();
+        if (frame == null || frame.sourcePath().isBlank()) return;
+        try {
+            Path source = Path.of(frame.sourcePath()).toAbsolutePath().normalize();
+            if (Files.exists(source)) source = source.toRealPath();
+            if (project != null && source.startsWith(project.toAbsolutePath().normalize())) {
+                CapabilityResult<EditorBridge.Opened> opened = open(new EditorBridge.OpenRequest(source, frame.line() - 1));
+                if (opened instanceof CapabilityResult.Failed<EditorBridge.Opened> failed) {
+                    status = "Cannot reveal debugger frame: " + failed.failure().reason();
+                    return;
+                }
+                source = ((CapabilityResult.Ok<EditorBridge.Opened>) opened).value().file();
+            } else {
+                status = "Stopped frame is outside the project; the built-in editor cannot reveal it";
+            }
+            executionLines.put(source, frame.line() - 1);
+        } catch (IOException | RuntimeException failure) {
+            status = "Cannot reveal debugger frame: " + (failure.getMessage() == null
+                    ? failure.getClass().getSimpleName() : failure.getMessage());
+        }
     }
 
     synchronized boolean toggleBreakpoint(int line) {
