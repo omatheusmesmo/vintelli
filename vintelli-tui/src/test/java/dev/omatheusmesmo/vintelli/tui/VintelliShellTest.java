@@ -1898,7 +1898,7 @@ class VintelliShellTest {
     }
 
     @Test
-    void paletteShowsTheActiveChordAndTheIntellijShortcutPerAction() throws Exception {
+    void paletteShowsTheActiveChordAndTheIntellijShortcutOnlyWhereItDiffers() throws Exception {
         VintelliShell shell = defaultShell();
         try (ToolkitTestRunner test = runShell(shell)) {
             Pilot pilot = test.pilot();
@@ -1914,7 +1914,7 @@ class VintelliShellTest {
         String palette = helpText(buffer);
         assertTrue(palette.contains("Search Everywhere"), palette);
         assertTrue(palette.contains("Ctrl+p"), palette);
-        assertTrue(palette.contains("Double Shift"), palette);
+        assertFalse(palette.contains("Double Shift"), "a chord a terminal cannot send is not a palette hint: " + palette);
     }
 
     @Test

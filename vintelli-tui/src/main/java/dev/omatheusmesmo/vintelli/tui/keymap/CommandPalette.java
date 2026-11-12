@@ -19,10 +19,10 @@ import java.util.Optional;
  * IntelliJ-like Find Action overlay: Search Everywhere reachable through the
  * {@code SearchEverywhere} action, the fallback for every chord the terminal
  * cannot deliver, such as Double Shift and Ctrl+Shift+letter. Lists the whole
- * keymap catalog with the active shortcut next to each action, and the real
- * IntelliJ shortcut as a second reference column whenever it differs, filters
- * as the user types, moves with the arrow keys and confirms with Enter; the
- * shell dispatches the picked action.
+ * keymap catalog with the active shortcut next to each action, and the IntelliJ
+ * chord in parentheses only while it differs from the active one and a terminal
+ * can send it, filters as the user types, moves with the arrow keys and confirms
+ * with Enter; the shell dispatches the picked action.
  *
  * <p>While the palette is open it captures the whole keyboard, bare letters
  * included, so filter text never reaches the keymap; the shell keeps the quit
@@ -118,18 +118,16 @@ public final class CommandPalette {
 
     private Line actionRow(KeyAction action, boolean selectedRow, int width) {
         String shortcut = keymap.describeBindings(action.id());
-        boolean withHint = !action.intellijShortcut().isEmpty() && !action.intellijShortcut().equals(shortcut);
-        String hint = withHint ? "(IntelliJ: " + action.intellijShortcut() + ")" : "";
-        String label = OverlayPanel.truncate(action.label(), width - shortcut.length() - hint.length() - 2);
-        String filler = " ".repeat(Math.max(1, width - label.length() - shortcut.length() - hint.length() - 2));
+        OverlayPanel.ChordRow row = OverlayPanel.ChordRow.fit(action.label(), shortcut,
+                IntellijReference.paletteHint(keymap, action.id()), width);
         Style style = selectedRow ? SELECTION_STYLE : LABEL_STYLE;
         Style cushion = selectedRow ? style : SHORTCUT_STYLE;
         List<Span> spans = new ArrayList<>();
-        spans.add(Span.styled(" " + label, style));
-        spans.add(Span.styled(filler, cushion));
-        spans.add(Span.styled(shortcut, selectedRow ? style : SHORTCUT_STYLE));
-        if (withHint) {
-            spans.add(Span.styled(" " + hint, selectedRow ? style : HINT_STYLE));
+        spans.add(Span.styled(" " + row.label(), style));
+        spans.add(Span.styled(row.filler(), cushion));
+        spans.add(Span.styled(row.chord(), selectedRow ? style : SHORTCUT_STYLE));
+        if (!row.hint().isEmpty()) {
+            spans.add(Span.styled(" " + row.hint(), selectedRow ? style : HINT_STYLE));
         }
         return Line.from(spans);
     }

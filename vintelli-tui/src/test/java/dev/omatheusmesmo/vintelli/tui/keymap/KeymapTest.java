@@ -100,15 +100,19 @@ class KeymapTest {
     }
 
     @Test
-    void paletteShowsTheIntelliJChordOfEachWindowItMirrors() {
+    void theIntellijReferenceOfEachWindowComesFromTheComparisonTable() {
         Keymap keymap = Keymap.ofProfile(KeymapProfile.DEFAULT, WINDOWS);
 
-        assertEquals("Alt+4", actionById(keymap, KeyActions.activateToolWindow("run")).intellijShortcut());
-        assertEquals("Alt+6", actionById(keymap, KeyActions.activateToolWindow("problems")).intellijShortcut());
-        assertEquals("Alt+F12", actionById(keymap, KeyActions.activateToolWindow("terminal")).intellijShortcut());
-        assertEquals("", actionById(keymap, KeyActions.activateToolWindow("acp.agents")).intellijShortcut(),
-                "ACP Agents has no IntelliJ window, so the palette shows no reference");
-        assertEquals("Alt+1", actionById(keymap, KeyActions.ACTIVATE_PROJECT).intellijShortcut());
+        assertEquals("(IntelliJ: Alt+4)", IntellijReference.helpText(KeyActions.activateToolWindow("run")));
+        assertEquals("(IntelliJ: Alt+6)", IntellijReference.helpText(KeyActions.activateToolWindow("problems")));
+        assertEquals("(IntelliJ: Alt+F12)", IntellijReference.helpText(KeyActions.activateToolWindow("terminal")));
+        assertEquals("", IntellijReference.helpText(KeyActions.activateToolWindow("acp.agents")),
+                "ACP Agents has no IntelliJ window, so the help shows no reference");
+        assertEquals("(IntelliJ: Alt+1)", IntellijReference.helpText(KeyActions.ACTIVATE_PROJECT));
+        assertEquals("", IntellijReference.paletteHint(keymap, KeyActions.activateToolWindow("run")),
+                "Run answers to Alt+4 already, so the palette shows nothing extra");
+        assertEquals("(IntelliJ: Alt+F12)", IntellijReference.paletteHint(keymap, KeyActions.activateToolWindow("terminal")),
+                "Terminal also answers to Alt+2, so the palette shows the IntelliJ chord");
     }
 
     @Test
@@ -178,13 +182,12 @@ class KeymapTest {
                 "ActivateProjectToolWindow", "ActivateRunToolWindow", "ActivateTerminalToolWindow",
                 "ActivateProblemsToolWindow", "ActivateAcpAgentsToolWindow");
         assertEquals(expected, ids);
-        KeyAction searchEverywhere = actionById(keymap, SEARCH_EVERYWHERE);
-        assertEquals("Double Shift", searchEverywhere.intellijShortcut());
-        KeyAction keymapHelp = actionById(keymap, KEYMAP_HELP);
-        assertEquals("F1", keymapHelp.intellijShortcut(),
-                "the IntelliJ reference of the help overlay has to match the row of docs/keymap.md");
-        KeyAction run = actionById(keymap, "ActivateRunToolWindow");
-        assertEquals("Alt+4", run.intellijShortcut());
+        assertEquals("(IntelliJ: Double Shift, not sent by terminals)", IntellijReference.helpText(SEARCH_EVERYWHERE));
+        assertEquals("", IntellijReference.paletteHint(keymap, SEARCH_EVERYWHERE),
+                "a chord a terminal cannot send is never a palette hint");
+        assertEquals("", IntellijReference.helpText(KEYMAP_HELP),
+                "F1 has no IntelliJ chord in the comparison table, the help overlay shows none");
+        assertEquals("(IntelliJ: Alt+4)", IntellijReference.helpText("ActivateRunToolWindow"));
         for (KeyAction action : keymap.actions()) {
             assertFalse(keymap.describeBindings(action.id()).isBlank(),
                     "every shipped action must bind at least one chord: " + action.id());
@@ -547,13 +550,6 @@ class KeymapTest {
             }
         }
         return answering;
-    }
-
-    private static KeyAction actionById(Keymap keymap, String id) {
-        return keymap.actions().stream()
-                .filter(action -> action.id().equals(id))
-                .findFirst()
-                .orElseThrow();
     }
 
     private static KeyEvent actionChord(char shortcut) {

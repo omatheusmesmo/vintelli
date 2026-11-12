@@ -30,7 +30,7 @@ Key actions in the `intellij` profile:
 |---|---|---|
 | `Activate<Name>ToolWindow` | `Alt+1` Project, `Alt+4` Run, `Alt+6` Problems, `Alt+7` Structure, `Alt+F12` Terminal (`Alt+2` too), `Alt+8` ACP Agents, `Alt+9` Maven. Each tool window also takes its bare digit when no input has focus | `Alt+1` Project, `Alt+4` Run, `Alt+6` Problems, `Alt+7` Structure, `Alt+F12` Terminal; none for ACP Agents and Maven |
 | `SearchEverywhere` | `Ctrl+P` | `Double Shift` |
-| `KeymapHelp` | `F1` | `F1` |
+| `KeymapHelp` | `F1` | - |
 | `run.choose-configuration` | Palette: Choose Run Configuration; toolbar configuration name | - |
 | `editor_toggleBreakpoint` | `Ctrl+F8` (`Ctrl+B` in the `vim` profile) | `Ctrl+F8` |
 | `moveUp` / `moveDown` | arrow keys (`j/k` in the `vim` profile) | - |
@@ -38,10 +38,11 @@ Key actions in the `intellij` profile:
 | `editor_copy`, `editor_cut`, `editor_paste` | `Ctrl+C` (copy, only with a selection), `Ctrl+X`, `Ctrl+V` | `Ctrl+C`, `Ctrl+X`, `Ctrl+V` |
 | `editor_selectAll` (Select All), Shift+arrows | `Ctrl+A` (`Ctrl+E` in the `vim` profile); `Shift` with the arrows, Home, End, PageUp and PageDown extend the selection | `Ctrl+A`, `Shift+arrows` |
 
-The command palette lists every action with its active chord and, when it
-differs, the real IntelliJ shortcut, filters by label or action id, and runs
-the picked action with `Enter`; the help overlay lists the active keymap
-(source plus shortcuts). Both stay reachable while an input has focus. Bare
+The command palette lists every action with its active chord and, when the
+IntelliJ chord differs and a terminal can send it, that chord too; it filters by
+label or action id, and runs the picked action with `Enter`. The help overlay
+lists the active keymap (source plus shortcuts) with the IntelliJ chord in its
+own column. Both stay reachable while an input has focus. Bare
 `q` and `Q` no longer quit in any profile (text input stays safe); `j/k`
 are reserved for the `vim` profile and the registry never assigns them as
 tool window shortcuts.
@@ -266,13 +267,20 @@ expands the block to reach it.
 
 ## IntelliJ comparison table
 
-The file
-`vintelli-tui/src/main/resources/dev/omatheusmesmo/vintelli/tui/keymap/intellij-keymap.csv`
-lists every action the `intellij` profile binds, with its active chords, the
-IntelliJ Windows/Linux default chords of the same action, and a status. It is
-packaged with the native image through `quarkus.native.resources.includes` in
-`vintelli-app/src/main/resources/application.properties`, and it is read by
-`KeymapTable` (JDK only). Chords are separated by ` | `, and the chord text is
+The file `vintelli-tui/src/main/resources/dev/omatheusmesmo/vintelli/tui/keymap/intellij-keymap.csv`
+is the one source of the IntelliJ reference. It has a row for every action of
+the keymap catalog: the chords the default `intellij` profile binds to it (`-`
+when the profile leaves it unbound), the IntelliJ Windows/Linux default chords of
+the same action, a status and a reason. The keymap reads it once. The command
+palette shows the IntelliJ chord only while it differs from the chords bound now
+and a terminal can send it, and the keymap help overlay shows it in its own
+column. The file is packaged with the native image through
+`quarkus.native.resources.includes` in
+`vintelli-app/src/main/resources/application.properties`, and `KeymapTable`
+reads it with the JDK only, with no reflection. The table below states the same
+rows: `IntellijKeymapDocsTableTest` fails when the two differ.
+
+In the CSV chords are separated by ` | `, in this table by ` \| `. Chord text is
 compared case-insensitively.
 
 Statuses:
@@ -300,6 +308,118 @@ wheel for `scroll` and its directions, all set by the TamboUI presets and the
 focus), and when a non-`same` row has no reason. Adding a shared chord means
 adding it to that test on purpose.
 
+| Action ID | Keys (active) | IntelliJ | Status | Reason |
+|---|---|---|---|---|
+| cancel | Escape | - | vintelli-only | Closes overlays and inputs here; IntelliJ uses Escape to return focus from a tool window to the editor (#366), an action we do not bind yet |
+| click | Mouse.LEFT.PRESS | - | vintelli-only | Mouse click of the TamboUI preset; IntelliJ has no keyboard chord for it |
+| rightClick | Mouse.RIGHT.PRESS | - | vintelli-only | Mouse click of the TamboUI preset; IntelliJ has no keyboard chord for it |
+| scroll | Mouse.SCROLL_UP \| Mouse.SCROLL_DOWN \| Mouse.SCROLL_LEFT \| Mouse.SCROLL_RIGHT | - | vintelli-only | Mouse wheel of the TamboUI preset; IntelliJ has no keyboard chord for it |
+| scrollUp | Mouse.SCROLL_UP | - | vintelli-only | Mouse wheel of the TamboUI preset; IntelliJ has no keyboard chord for it |
+| scrollDown | Mouse.SCROLL_DOWN | - | vintelli-only | Mouse wheel of the TamboUI preset; IntelliJ has no keyboard chord for it |
+| scrollLeft | Mouse.SCROLL_LEFT | - | vintelli-only | Mouse wheel of the TamboUI preset; IntelliJ has no keyboard chord for it |
+| scrollRight | Mouse.SCROLL_RIGHT | - | vintelli-only | Mouse wheel of the TamboUI preset; IntelliJ has no keyboard chord for it |
+| confirm | Enter | - | vintelli-only | Confirms a choice in TamboUI widgets; shares Enter with select and editor_open, the focus decides |
+| select | Enter \| Space | - | vintelli-only | Selects in TamboUI widgets; shares Enter with confirm and editor_open, the focus decides; Space names no IntelliJ action here |
+| deleteBackward | Backspace | - | vintelli-only | Text editing in capturing inputs; the reference names no chord for it |
+| deleteForward | Delete | - | vintelli-only | Text editing in capturing inputs; shares Delete with project_delete, the focus decides |
+| focusNext | Tab | - | vintelli-only | Moves focus between panes here; IntelliJ binds Tab to Indent Selection in the editor |
+| focusPrevious | Shift+Tab | - | vintelli-only | Moves focus back here; IntelliJ binds Shift+Tab to Unindent in the editor |
+| home | Home \| Ctrl+Home | Home \| Ctrl+Home | same | Move Caret to Line Start (Home) and to Text Start (Ctrl+Home) |
+| end | End \| Ctrl+End | End \| Ctrl+End | same | Move Caret to Line End (End) and to Text End (Ctrl+End) |
+| pageUp | PageUp | PageUp | same | Page Up |
+| pageDown | PageDown | PageDown | same | Page Down |
+| moveUp | Up | Up | same | Move Caret Up on the arrow keys; the reference page does not list arrows, the chord is the editor one |
+| moveDown | Down | Down | same | Move Caret Down on the arrow keys; the reference page does not list arrows, the chord is the editor one |
+| moveLeft | Left | Left | same | Move Caret Left on the arrow keys; the reference page does not list arrows, the chord is the editor one |
+| moveRight | Right | Right | same | Move Caret Right on the arrow keys; the reference page does not list arrows, the chord is the editor one |
+| quit | Ctrl+C | - | vintelli-only | Terminal interrupt and the only quit chord; IntelliJ has no quit chord and Ctrl+C is Copy there (#365) |
+| toggleDebugOverlay | Ctrl+Shift+F12 | - | vintelli-only | TamboUI debug overlay; IntelliJ binds Ctrl+Shift+F12 to Hide All Tool Windows, which a terminal cannot deliver (#363) |
+| SearchEverywhere | Ctrl+P | Double Shift | not-deliverable | Double Shift needs key release events, which a terminal does not send; Ctrl+P is the command palette stand-in |
+| KeymapHelp | F1 | - | vintelli-only | F1 is not on the IntelliJ default keymap page (it lists Ctrl+F1 for Error Description and Ctrl+Q for Quick Documentation); here it opens the keymap help |
+| shell_menu | F10 | - | vintelli-only | Opens the shell menu; no IntelliJ chord confirmed against the reference page |
+| navigation_focusBreadcrumbs | Alt+Home | - | vintelli-only | Focus the navigation bar; no IntelliJ chord confirmed against the reference page |
+| project_new_file | F7 | - | vintelli-only | New project file; IntelliJ binds F7 to Step Into in the debugger, and no New File chord is confirmed here |
+| project_new_directory | F9 | - | vintelli-only | New project directory; IntelliJ binds F9 to Resume Program, and no new-directory chord is confirmed here |
+| project_rename | Shift+F6 | Shift+F6 | same | Rename in the project pane; F2 is Next Highlighted Error in IntelliJ, so F2 moved to the editor action |
+| project_delete | Delete | - | vintelli-only | Deletes the project entry; no IntelliJ chord confirmed; shares Delete with deleteForward, the pane scope decides |
+| project_refresh | F5 | - | vintelli-only | Refreshes the project tree; IntelliJ's F5 is Synchronize in the project view, not confirmed against the reference page |
+| project_select_opened_file | Alt+F1 | Alt+F1 | same | Reveals the open file in the project pane (crosshair); the nearest IntelliJ chord, since IntelliJ's Alt+F1 opens the Select In list instead |
+| project_expand_all | F4 | Ctrl+Shift+NumPad + | not-deliverable | Ctrl+Shift+NumPad + cannot be told apart from a plain key in a terminal; F4 expands the project tree here |
+| project_collapse_all | Alt+C | Ctrl+Shift+NumPad - | not-deliverable | Ctrl+Shift+NumPad - cannot be told apart from a plain key in a terminal; Alt+C collapses the project tree here |
+| project_view_menu | Alt+V | - | vintelli-only | Pane header view menu; no IntelliJ chord confirmed |
+| project_new_menu | Alt+N | - | vintelli-only | Pane header New menu; no IntelliJ chord confirmed |
+| project_options_menu | Alt+O | - | vintelli-only | Pane header options menu; no IntelliJ chord confirmed |
+| project_hide | Alt+P | Alt+1 | different | IntelliJ toggles the Project window with Alt+1, which is ActivateProjectToolWindow here (#364); Alt+P hides the pane |
+| editor_open | Enter | - | vintelli-only | Opens the selected file in the project pane; no IntelliJ chord confirmed; shares Enter with confirm and select, the focus decides |
+| editor_save | Ctrl+S | Ctrl+S | same | IntelliJ Save All is Ctrl+S; our action saves the open file |
+| editor_undo | Ctrl+Z | Ctrl+Z | same | Undo |
+| editor_redo | Ctrl+Y | Ctrl+Shift+Z | not-deliverable | Ctrl+Shift+Z sends the same bytes as Ctrl+Z in a terminal; Ctrl+Y is Delete Line in IntelliJ and stays here (docs/keymap.md) |
+| editor_find | Ctrl+F | Ctrl+F | same | Find |
+| editor_cut | Ctrl+X | Ctrl+X | same | Cut the selection to the clipboard; with no selection it reports that nothing is selected |
+| editor_copy | Ctrl+C | Ctrl+C | same | Copy the selection; in the editor Ctrl+C quits only when no text is selected (see docs/keymap.md) |
+| editor_paste | Ctrl+V | Ctrl+V | same | Paste from the clipboard, replacing the selection |
+| editor_duplicateLine | Ctrl+D | Ctrl+D | same | Duplicate Line; with a selection it duplicates the caret line only and clears the selection, IntelliJ duplicates the selected text (docs/keymap.md) |
+| editor_selectAll | Ctrl+A | Ctrl+A | same | Select All; the vim profile uses Ctrl+E because Ctrl+A is the Vim increment (docs/keymap.md) |
+| editor_close | Ctrl+F4 | Ctrl+F4 | same | Closes the editor tab; Ctrl+W is Extend Selection in IntelliJ, so it is not bound here |
+| editor_nextTab | Alt+Right | Alt+Right | same | Select Next Tab |
+| editor_previousTab | Alt+Left | Alt+Left | same | Select Previous Tab |
+| editor_definition | Ctrl+B | Ctrl+B | same | Go to Declaration; F12 is Jump to Last Tool Window in IntelliJ, so F12 is left unbound (#366) |
+| editor_usages | Alt+F7 | Alt+F7 | same | Find Usages |
+| editor_toggleImportFold | Alt+I | - | vintelli-only | Folds or unfolds imports; no IntelliJ chord confirmed |
+| editor_toggleBreakpoint | Ctrl+F8 | Ctrl+F8 | same | Toggle Line Breakpoint; Ctrl+B is Go to Declaration |
+| editor_nextProblem | F2 | F2 | same | Next Highlighted Error; the bare F2 trigger refuses Shift, and F8 is left unbound (docs/keymap.md) |
+| editor_previousProblem | Shift+F2 | Shift+F2 | same | Previous Highlighted Error on its own Shift+F2 trigger (docs/keymap.md) |
+| navigation_goToFile | Ctrl+O | Ctrl+Shift+N | not-deliverable | Ctrl+Shift+N sends the same bytes as Ctrl+N in a terminal; Ctrl+O is Override Methods in IntelliJ and stays here (docs/keymap.md) |
+| navigation_findInFiles | Alt+F | Ctrl+Shift+F | not-deliverable | Ctrl+Shift+F sends the same bytes as Ctrl+F in a terminal; Alt+F is kept here |
+| navigation_goToLine | Ctrl+G | Ctrl+G | same | Go to Line with the IntelliJ chord; the vim profile binds Alt+G instead (docs/keymap.md) |
+| layout_project_wider | Alt+= | - | vintelli-only | Widens the project panel; no IntelliJ chord confirmed |
+| layout_project_narrower | Alt+- | - | vintelli-only | Narrows the project panel; no IntelliJ chord confirmed |
+| layout_bottom_taller | Alt+. | - | vintelli-only | Grows the bottom tool window; no IntelliJ chord confirmed |
+| layout_bottom_shorter | Alt+, | - | vintelli-only | Shrinks the bottom tool window; no IntelliJ chord confirmed |
+| shell.theme.switch | Ctrl+T | - | vintelli-only | Switches the shell theme; Ctrl+T is Update Project in IntelliJ and stays here as the theme switch (docs/keymap.md) |
+| ActivateProjectToolWindow | Alt+1 | Alt+1 | same |  |
+| ActivateRunToolWindow | Alt+4 \| 4 | Alt+4 | same |  |
+| ActivateTerminalToolWindow | Alt+F12 \| Alt+2 \| 2 | Alt+F12 | different | IntelliJ uses Alt+F12 for Terminal (#364); Alt+2 stays as a second binding because the owner kept it, and the bare 2 is the shortcut while no input has focus |
+| ActivateProblemsToolWindow | Alt+6 \| 6 | Alt+6 | same |  |
+| ActivateStructureToolWindow | Alt+7 \| 7 | Alt+7 | same |  |
+| ActivateMavenToolWindow | Alt+9 \| 9 | - | vintelli-only | IntelliJ gives Maven no number; 9 is a number IntelliJ gives Version Control, which we do not have (#364) |
+| ActivateAcpAgentsToolWindow | Alt+8 \| 8 | - | vintelli-only | IntelliJ gives no number to ACP Agents; 8 is a number IntelliJ gives Services, which we do not have (#364) |
+| shell.settings | - | Ctrl+Alt+S | different | Open Settings is Ctrl+Alt+S in IntelliJ; it opens from the toolbar and the palette, and no chord is bound here yet |
+| idea-mcp.connect | - | - | vintelli-only | Connects to a running IntelliJ IDEA; no IntelliJ chord confirmed on the reference page |
+| run.execute | - | Shift+F10 | different | Run is Shift+F10 in IntelliJ; unbound here, the toolbar and the palette start the selected configuration |
+| run.debug | - | Shift+F9 | different | Debug is Shift+F9 in IntelliJ; unbound here, the toolbar and the palette start the debug session |
+| run.stop | - | Ctrl+F2 | different | Stop is Ctrl+F2 in IntelliJ; unbound here, the palette stops the current run |
+| run.refresh | - | - | vintelli-only | Refreshes the run configurations; no IntelliJ chord confirmed on the reference page |
+| run.choose-configuration | - | - | vintelli-only | Chooses the run configuration; no IntelliJ chord confirmed on the reference page |
+| debug.resume | - | F9 | different | Resume Program is F9 in IntelliJ; F9 is New Directory in the project pane, so the debugger keeps its own keys |
+| debug.pause | - | - | vintelli-only | Pause Program is not on the IntelliJ reference page; the debugger keeps its own keys |
+| debug.step-over | - | F8 | different | Step Over is F8 in IntelliJ; F8 stays free for the debugger work (docs/keymap.md) |
+| debug.step-into | - | F7 | different | Step Into is F7 in IntelliJ; F7 is New Project File in the project pane |
+| debug.step-out | - | Shift+F8 | different | Step Out is Shift+F8 in IntelliJ; unbound here, the debugger work decides |
+| terminal.execute | - | - | vintelli-only | Runs the typed command in the terminal window; IntelliJ has no chord for it |
+| problems.navigate | - | - | vintelli-only | Opens the selected problem; no IntelliJ chord confirmed on the reference page for the Problems window |
+| problems.refresh | - | - | vintelli-only | Refreshes the problems; no IntelliJ chord confirmed on the reference page for the Problems window |
+| problems.select-next | - | - | vintelli-only | Selects the next row of the window; no IntelliJ chord confirmed on the reference page for the Problems window |
+| problems.select-previous | - | - | vintelli-only | Selects the previous row of the window; no IntelliJ chord confirmed on the reference page for the Problems window |
+| problems.filter-all | - | - | vintelli-only | Shows all problems; no IntelliJ chord confirmed on the reference page for the Problems window |
+| problems.filter-errors | - | - | vintelli-only | Shows only the problem errors; no IntelliJ chord confirmed on the reference page for the Problems window |
+| problems.filter-warnings | - | - | vintelli-only | Shows only the problem warnings; no IntelliJ chord confirmed on the reference page for the Problems window |
+| problems.expand | - | - | vintelli-only | Expands the selected problem group; no IntelliJ chord confirmed on the reference page for the Problems window |
+| problems.collapse | - | - | vintelli-only | Collapses the selected problem group; no IntelliJ chord confirmed on the reference page for the Problems window |
+| problems.toggle-group | - | - | vintelli-only | Toggles the selected problem group; no IntelliJ chord confirmed on the reference page for the Problems window |
+| project_show_hidden | - | - | vintelli-only | Shows hidden files from the project options menu; no IntelliJ chord confirmed on the reference page |
+
+### Palette and help layout
+
+Both overlays keep the action name and the active chord on every row. A row that
+does not fit its panel drops the IntelliJ text first. The help panel is at most
+78 columns wide, so at 80 columns every row fits unless the name, the active
+chord and the reference together need more room; then the reference is cut, and
+the name is shortened only when the name and the active chord alone do not fit.
+The active chord is never cut. The IntelliJ reference of a chord that a terminal
+cannot send (Double Shift) is shown in the help with the note `not sent by
+terminals`, and it is never a palette hint. The full reason of every row is in
+the table above.
 
 `run.debug` (**Debug Selected Configuration**) starts a supported selected run
 configuration waiting for an external debugger; it is available in the palette.
