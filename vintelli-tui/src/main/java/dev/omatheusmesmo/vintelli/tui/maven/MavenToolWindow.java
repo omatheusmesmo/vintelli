@@ -10,6 +10,7 @@ import java.util.function.LongSupplier;
 
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
+import dev.omatheusmesmo.vintelli.tui.Marquee;
 import dev.omatheusmesmo.vintelli.tui.ShellThemes;
 import dev.omatheusmesmo.vintelli.tui.ToolWindow;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
@@ -18,6 +19,7 @@ import dev.omatheusmesmo.vintelli.tui.maven.MavenProjectController.RowKind;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.style.Style;
 import dev.tamboui.terminal.Frame;
+import dev.tamboui.text.CharWidth;
 import dev.tamboui.text.Text;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
@@ -45,7 +47,7 @@ public final class MavenToolWindow implements ToolWindow {
     private final Provider<ShellThemes> themes;
     private final Path projectRoot;
     private final LongSupplier nanos;
-    private final MavenProjectController controller = new MavenProjectController();
+    private final MavenProjectController controller;
     private final AtomicLong loadSequence = new AtomicLong();
     private volatile Consumer<MavenGoal> runHandler;
     private volatile Rect lastArea = Rect.ZERO;
@@ -65,6 +67,28 @@ public final class MavenToolWindow implements ToolWindow {
         this.themes = themes;
         this.projectRoot = projectRoot.toAbsolutePath().normalize();
         this.nanos = nanos;
+        this.controller = new MavenProjectController(nanos);
+    }
+
+    public void useMarquee(boolean enabled) {
+        controller.useMarquee(enabled);
+    }
+
+    public void onMarqueeChange(Runnable listener) {
+        controller.onMarqueeChange(listener);
+    }
+
+    public void tickMarquee() {
+        controller.tickMarquee();
+    }
+
+    public boolean marqueeMoving() {
+        return controller.marqueeMoving();
+    }
+
+    /** The full text of the selected row or the status line while the marquee scrolls it, or empty. */
+    public Optional<String> clippedText() {
+        return controller.marqueeMoving() ? controller.selectionText() : Optional.empty();
     }
 
     @PostConstruct
@@ -215,13 +239,21 @@ public final class MavenToolWindow implements ToolWindow {
         List<String> lines = new ArrayList<>();
         Optional<String> status = controller.statusMessage();
         if (status.isPresent()) {
-            lines.add(status.get());
+            controller.fitSelected(area.width(), 0, CharWidth.of(status.get()));
+            lines.add(scrolled(status.get(), area.width()));
         } else {
             List<Row> rows = controller.rows();
             int selected = controller.selected();
             int first = controller.scrollOffset();
+            fitSelectedRow(rows, selected, area.width());
             for (int index = first; index < Math.min(rows.size(), first + area.height()); index++) {
-                lines.add((index == selected ? "› " : "  ") + text(rows.get(index)));
+                Row row = rows.get(index);
+                if (index != selected) {
+                    lines.add("  " + prefix(row) + label(row));
+                    continue;
+                }
+                String marker = "› " + prefix(row);
+                lines.add(marker + scrolled(label(row), area.width() - CharWidth.of(marker)));
             }
         }
         frame.renderWidget(Paragraph.builder()
@@ -237,12 +269,32 @@ public final class MavenToolWindow implements ToolWindow {
         }
     }
 
-    private static String text(Row row) {
+    private void fitSelectedRow(List<Row> rows, int selected, int width) {
+        if (selected < 0 || selected >= rows.size()) {
+            controller.fitSelected(width, 0, 0);
+            return;
+        }
+        Row row = rows.get(selected);
+        controller.fitSelected(width, CharWidth.of("› " + prefix(row)), CharWidth.of(label(row)));
+    }
+
+    private String scrolled(String text, int columns) {
+        if (!controller.marqueeMoving() || columns <= 0) {
+            return text;
+        }
+        return Marquee.window(text, controller.marqueeOffset(), columns);
+    }
+
+    private static String prefix(Row row) {
         String indent = "  ".repeat(row.depth());
         if (row.kind() == RowKind.PHASE) {
-            return indent + row.phase();
+            return indent;
         }
-        return indent + (row.expanded() ? "▾ " : "▸ ") + row.label();
+        return indent + (row.expanded() ? "▾ " : "▸ ");
+    }
+
+    private static String label(Row row) {
+        return row.kind() == RowKind.PHASE ? row.phase() : row.label();
     }
 
     private boolean inside(MouseEvent event) {

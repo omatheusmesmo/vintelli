@@ -26,7 +26,8 @@ final class ShellConfigProducer {
             @All List<StatusBarWidgetContributor> statusBarContributors,
             @All List<VersionControlCapability> vcsProviders, @All List<ProjectFileOperations> fileOperations,
             Instance<IdeaMcpConnection> ideaMcpConnections,
-            @ConfigProperty(name = "vintelli.idea.mcp.url") Optional<String> ideaUrl) {
+            @ConfigProperty(name = "vintelli.idea.mcp.url") Optional<String> ideaUrl,
+            @ConfigProperty(name = "vintelli.tui.marquee", defaultValue = "true") boolean marquee) {
         IdeaMcpConnection ideaMcpConnection = ideaMcpConnections.isResolvable() ? ideaMcpConnections.get() : null;
         return ShellConfig.of(registry.toolWindows(), state, themes.get())
                 .withKeymapSupplier(keymapRegistry::get)
@@ -38,6 +39,7 @@ final class ShellConfigProducer {
                 .withStatusBarContributors(statusBarContributors)
                 .withFileOperations(fileOperations.isEmpty() ? null : fileOperations.getFirst())
                 .withIdeaMcpConnection(ideaMcpConnection)
-                .withIdeaStatus(IdeaStatusBadge.of(ideaUrl, ideaMcpConnection));
+                .withIdeaStatus(IdeaStatusBadge.of(ideaUrl, ideaMcpConnection))
+                .withMarquee(marquee);
     }
 }

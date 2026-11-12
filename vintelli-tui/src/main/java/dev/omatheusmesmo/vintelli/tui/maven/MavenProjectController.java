@@ -5,9 +5,11 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.LongSupplier;
 
 import dev.omatheusmesmo.vintelli.api.maven.MavenLifecycle;
 import dev.omatheusmesmo.vintelli.tui.DoubleClickTracker;
+import dev.omatheusmesmo.vintelli.tui.Marquee;
 
 /**
  * Tree state of the Maven window: which module nodes are expanded, which row
@@ -31,9 +33,59 @@ public final class MavenProjectController {
     private MavenProjectLoad load;
     private final Set<String> expanded = new HashSet<>(Set.of(ROOT));
     private final DoubleClickTracker clicks = new DoubleClickTracker();
+    private final Marquee marquee;
     private int selected;
     private int scrollOffset;
     private int viewport;
+
+    public MavenProjectController() {
+        this(System::nanoTime);
+    }
+
+    public MavenProjectController(LongSupplier clock) {
+        this.marquee = new Marquee(clock);
+    }
+
+    public synchronized void useMarquee(boolean enabled) {
+        marquee.enable(enabled);
+    }
+
+    public synchronized void onMarqueeChange(Runnable listener) {
+        marquee.onChange(listener);
+    }
+
+    public synchronized boolean marqueeMoving() {
+        return marquee.moving();
+    }
+
+    public synchronized int marqueeOffset() {
+        return marquee.offset();
+    }
+
+    /** Advances the marquee of the selected row or of the status line by one tick; the shell calls it, never a render. */
+    public synchronized void tickMarquee() {
+        marquee.follow(selectionKey());
+        marquee.tick();
+    }
+
+    /**
+     * Records the width of the selected row, or of the status line, against the
+     * columns the line can show after its fixed prefix. The name scrolls only when
+     * the prefix leaves room for it.
+     */
+    public synchronized void fitSelected(int width, int prefixWidth, int labelWidth) {
+        marquee.fit(width - prefixWidth > 0 ? prefixWidth + labelWidth - width : 0);
+    }
+
+    /** The full text of the line the marquee tracks: the status message, or else the selected row. */
+    public synchronized Optional<String> selectionText() {
+        return statusMessage().or(() -> selectedRow().map(Row::label));
+    }
+
+    private Object selectionKey() {
+        Optional<String> status = statusMessage();
+        return status.isPresent() ? status.get() : selectedRow().orElse(null);
+    }
 
     public synchronized void startLoading() {
         load = null;
@@ -110,6 +162,9 @@ public final class MavenProjectController {
 
     public synchronized void select(int index) {
         if (index >= 0 && index < rows().size()) {
+            if (index != selected) {
+                marquee.restart();
+            }
             selected = index;
             keepSelectionVisible();
         }

@@ -2454,6 +2454,124 @@ class VintelliShellTest {
     private static final String DEEP_TUI = "src/main/java/dev/omatheusmesmo/vintelli/tui";
     private static final String LONG_FILE = "AVeryLongNameForTheProjectPaneScrollTest.java";
 
+    @Test
+    void theSelectedLongNameScrollsAtEachTickOfTheClockAndTheRowKeepsItsIcon() throws Exception {
+        AtomicLong now = new AtomicLong();
+        VintelliShell shell = marqueeShell(List.of("README.md", LONG_FILE));
+        shell.useClock(now::get);
+        assertEquals(LONG_FILE, shell.projectFiles().getFirst(), "the long name is the selected first row");
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            shell.bindRedraw(() -> test.runner().tuiRunner().dispatch(TickEvent.of(0)));
+            settle(pilot);
+            Rect list = pilot.findElement("project-panel");
+            String start = test.renderedFrame();
+            assertTrue(projectRowOf(start, list, "AVeryLongNameFor") >= 0, start);
+            shell.tickAnimations();
+
+            now.set(TimeUnit.MILLISECONDS.toNanos(1150));
+            shell.tickAnimations();
+            String stepped = awaitProjectRow(pilot, test, list, "TheProjec");
+            assertTrue(projectRowOf(stepped, list, "VeryLongNameFor") >= 0, stepped);
+            assertEquals(-1, projectRowOf(stepped, list, "AVeryLong"), stepped);
+
+            now.set(TimeUnit.MILLISECONDS.toNanos(4500));
+            shell.tickAnimations();
+            String end = awaitProjectRow(pilot, test, list, "ScrollTest.java");
+            assertTrue(projectRowOf(end, list, "ScrollTest.java") >= 0, end);
+        }
+    }
+
+    @Test
+    void aShellWithNothingClippedRequestsNoFrameOnItsTick() throws Exception {
+        VintelliShell shell = marqueeShell(List.of("README.md", "pom.xml"));
+        AtomicInteger redraws = new AtomicInteger();
+        shell.bindRedraw(redraws::incrementAndGet);
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            settle(pilot);
+            for (int tick = 0; tick < 3; tick++) {
+                shell.tickAnimations();
+                pause(pilot, Duration.ofMillis(200));
+            }
+
+            assertEquals(0, redraws.get(), "a tick with nothing clipped requests no frame");
+        }
+    }
+
+    @Test
+    void theStatusLineShowsTheFullNameOfTheClippedSelectedRow() throws Exception {
+        VintelliShell shell = marqueeShell(List.of("README.md", LONG_FILE));
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            shell.bindRedraw(() -> test.runner().tuiRunner().dispatch(TickEvent.of(0)));
+            settle(pilot);
+
+            String frame = awaitRenderedFrame(pilot, test, "Selected: " + LONG_FILE);
+
+            assertTrue(frame.contains("Selected: " + LONG_FILE), frame);
+        }
+    }
+
+    @Test
+    void withTheMarqueeOffTheSelectedNameDoesNotMoveAtATick() throws Exception {
+        AtomicLong now = new AtomicLong();
+        VintelliShell shell = projectTreeShell(defaultThemes(), null, null, List.of("README.md", LONG_FILE),
+                List.of());
+        awaitProjectTree(shell);
+        shell.useUiWorkQueue(new UiWorkQueue());
+        shell.useClock(now::get);
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            shell.bindRedraw(() -> test.runner().tuiRunner().dispatch(TickEvent.of(0)));
+            settle(pilot);
+            Rect list = pilot.findElement("project-panel");
+            String before = paneText(test.renderedFrame(), list);
+
+            now.set(TimeUnit.MILLISECONDS.toNanos(2500));
+            shell.tickAnimations();
+            pause(pilot, Duration.ofMillis(100));
+
+            assertEquals(before, paneText(test.renderedFrame(), list),
+                    "with the marquee off the selected name does not move");
+        }
+    }
+
+    @Test
+    void aClickAfterTheSelectedNameScrollsSelectsTheRowItHits() throws Exception {
+        AtomicLong now = new AtomicLong();
+        VintelliShell shell = marqueeShell(List.of("README.md", LONG_FILE));
+        shell.useClock(now::get);
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            shell.bindRedraw(() -> test.runner().tuiRunner().dispatch(TickEvent.of(0)));
+            settle(pilot);
+            Rect list = pilot.findElement("project-panel");
+            shell.tickAnimations();
+            now.set(TimeUnit.MILLISECONDS.toNanos(4500));
+            shell.tickAnimations();
+            awaitProjectRow(pilot, test, list, "ScrollTest.java");
+
+            pilot.click(list.x() + 4, list.y() + 1);
+            settle(pilot);
+
+            String frame = test.renderedFrame();
+            assertEquals(1, shell.fileIndex(), "the click on the second row selects it");
+            assertEquals(projectRowOf(frame, list, "README.md"), highlightedProjectRow(frame, list), frame);
+        }
+    }
+
+    private VintelliShell marqueeShell(List<String> files) {
+        List<ToolWindow> registered = new ToolWindowRegistry(defaultWindows()).toolWindows();
+        VintelliShell shell = new VintelliShell(ShellConfig.of(registered, new ShellState(), defaultThemes())
+                .withKeymapSupplier(() -> Keymap.defaultKeymap(registered))
+                .withProjectSearch(new FixedProjectSearch(files, List.of()))
+                .withMarquee(true));
+        shell.useUiWorkQueue(new UiWorkQueue());
+        awaitProjectTree(shell);
+        return shell;
+    }
+
     private VintelliShell deepJavaShell(List<String> files) {
         List<String> directories = new ArrayList<>();
         String prefix = "";
@@ -5083,6 +5201,17 @@ class VintelliShellTest {
         MouseShellRunner test = new MouseShellRunner(shell, size);
         settleStrategy = pilot -> test.awaitSettled();
         return test;
+    }
+
+    /** Waits for a frame whose project list draws {@code text}; the status line repeats the selected name, so the whole frame is not enough. */
+    private static String awaitProjectRow(Pilot pilot, MouseShellRunner test, Rect list, String text) {
+        long deadline = System.nanoTime() + SETTLE_TIMEOUT.toNanos();
+        String rendered = test.renderedFrame();
+        while (projectRowOf(rendered, list, text) < 0 && System.nanoTime() < deadline) {
+            pause(pilot, Duration.ofMillis(30));
+            rendered = test.renderedFrame();
+        }
+        return rendered;
     }
 
     private static String awaitRenderedFrame(Pilot pilot, MouseShellRunner test, String text) {

@@ -2,6 +2,7 @@ package dev.omatheusmesmo.vintelli.tui;
 
 import dev.omatheusmesmo.vintelli.api.search.ProjectSearch;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
+import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
 import dev.omatheusmesmo.vintelli.tui.icons.JavaTypeKind;
 import dev.omatheusmesmo.vintelli.tui.icons.JavaTypeKinds;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
@@ -22,6 +23,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 
@@ -36,6 +38,7 @@ class ProjectPanelTest {
     private static final String DEEP_DIRECTORY = "docs/guide/api";
     private static final String DEEP_FILE = DEEP_DIRECTORY + "/deep-clipping-test-file-name-here.txt";
     private static final String DEEP_SIBLING = DEEP_DIRECTORY + "/other.txt";
+    private static final String DEEP_NAME = "deep-clipping-test-file-name-here.txt";
 
     @TempDir
     Path root;
@@ -124,6 +127,104 @@ class ProjectPanelTest {
 
         assertFalse(controller.files().contains("docs/guide/api"), "the guide marker collapses the guide row");
         assertTrue(controller.files().contains("docs/other.md"), "the docs row stays expanded");
+    }
+
+    @Test
+    void theSelectedNameScrollsAtEachTickAndTheIndentAndTheIconStayPut() throws IOException {
+        AtomicLong now = new AtomicLong();
+        ProjectTreeController controller = marqueeController(now);
+        ProjectPanel panel = panel(controller);
+        FileIcons icons = FileIcons.resolve();
+
+        assertScrollsAtTicks(controller, panel, now, icons);
+    }
+
+    @Test
+    void theAsciiFaceScrollsTheSameWayAtEachTick() throws IOException {
+        String previous = System.getProperty(IconMode.CONFIG_PROPERTY);
+        System.setProperty(IconMode.CONFIG_PROPERTY, "ascii");
+        try {
+            AtomicLong now = new AtomicLong();
+            ProjectTreeController controller = marqueeController(now);
+            ProjectPanel panel = panel(controller);
+            FileIcons icons = FileIcons.resolve();
+
+            assertEquals(IconMode.ASCII, icons.mode());
+            assertScrollsAtTicks(controller, panel, now, icons);
+        } finally {
+            restoreProperty(previous);
+        }
+    }
+
+    @Test
+    void aSelectedNameThatFitsDoesNotMove() throws IOException {
+        AtomicLong now = new AtomicLong();
+        ProjectTreeController controller = marqueeController(now);
+        controller.selectPath("README.md");
+        ProjectPanel panel = panel(controller);
+        render(panel);
+
+        now.set(60_000_000_000L);
+        controller.tickMarquee();
+
+        assertFalse(controller.marqueeMoving());
+        assertEquals(0, controller.marqueeOffset());
+        assertTrue(render(panel).contains("README.md"));
+    }
+
+    @Test
+    void aDisclosureMarkerStillTogglesItsRowWhileTheSelectedNameScrolls() throws IOException {
+        AtomicLong now = new AtomicLong();
+        ProjectTreeController controller = marqueeController(now);
+        ProjectPanel panel = panel(controller);
+        render(panel);
+        controller.tickMarquee();
+        now.set(2_500_000_000L);
+        controller.tickMarquee();
+        render(panel);
+        assertTrue(controller.marqueeOffset() > 0, "the selected name has scrolled");
+
+        panel.clicked(MouseEvent.press(MouseButton.LEFT, 4, 1));
+
+        assertFalse(controller.files().contains("docs/guide/api"), "the guide marker collapses the guide row");
+        assertTrue(controller.files().contains("docs/other.md"), "the docs row stays expanded");
+    }
+
+    private void assertScrollsAtTicks(ProjectTreeController controller, ProjectPanel panel, AtomicLong now,
+            FileIcons icons) {
+        String prefix = icons.iconFor(DEEP_NAME, null).symbol(icons.mode()) + " ";
+        controller.tickMarquee();
+
+        String start = render(panel);
+        assertTrue(start.contains(prefix + "deep-clip"), start);
+        assertFalse(start.contains(ELLIPSIS), "the marquee replaces the end ellipsis: " + start);
+
+        now.set(1_150_000_000L);
+        controller.tickMarquee();
+        String second = render(panel);
+        assertTrue(second.contains(prefix + "eep-clipping"), second);
+        assertFalse(second.contains(prefix + "deep-clip"), second);
+
+        now.set(2_500_000_000L);
+        controller.tickMarquee();
+        String end = render(panel);
+        assertTrue(end.contains("here.txt"), end);
+        assertTrue(end.contains(prefix), "the icon stays in place at the end: " + end);
+    }
+
+    private ProjectTreeController marqueeController(AtomicLong now) throws IOException {
+        ProjectTreeController controller = revealedDeepFile(new ArrayList<>());
+        controller.useClock(now::get);
+        controller.useMarquee(true);
+        return controller;
+    }
+
+    private static void restoreProperty(String previous) {
+        if (previous == null) {
+            System.clearProperty(IconMode.CONFIG_PROPERTY);
+        } else {
+            System.setProperty(IconMode.CONFIG_PROPERTY, previous);
+        }
     }
 
     private ProjectTreeController revealedDeepFile(List<Runnable> scans) throws IOException {

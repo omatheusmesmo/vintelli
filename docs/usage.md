@@ -33,6 +33,17 @@ the `serve` surface never write them. Some terminals ignore or mishandle OSC 11:
 set `vintelli.tui.terminal-background=false` (or the environment variable
 `VINTELLI_TUI_TERMINAL_BACKGROUND=false`) to leave the terminal background alone.
 
+A name wider than its pane cannot be read in full. The selected row of the
+project tree scrolls its name, and the phases, modules and status line of the
+Maven window scroll their selected line, like a marquee: the name waits one
+second, moves one cell every 150 ms, waits at its end, moves back and waits
+again. Only the selected row that is cut moves, and a name that fits never does.
+The status line shows the full text of that selected row while it is cut. The
+frames for the motion are requested only while a name moves, so an idle shell
+stays idle. Set `vintelli.tui.marquee=false` (or `VINTELLI_TUI_MARQUEE=false`) to
+turn the motion off; the project tree then cuts the selected name with an
+ellipsis at the end.
+
 Headless server (HTTP, MCP endpoint, web terminal):
 
 ```bash

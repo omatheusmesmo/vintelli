@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Predicate;
 
 import org.junit.jupiter.api.Test;
@@ -252,6 +253,56 @@ class MavenProjectControllerTest {
     void aGoalNamesOnlyALifecyclePhase() {
         assertThrows(IllegalArgumentException.class, () -> new MavenGoal("dependency:tree", ""));
         assertEquals("maven:deploy", new MavenGoal("deploy", "").identifier());
+    }
+
+    @Test
+    void aSelectedRowThatOverflowsScrollsOnTheTicksAndRestartsWhenTheSelectionMoves() {
+        AtomicLong now = new AtomicLong();
+        MavenProjectController controller = new MavenProjectController(now::get);
+        controller.finishLoading(new MavenProjectLoad.Loaded(ROOT));
+        controller.useMarquee(true);
+        selectRow(controller, phaseOf("", "validate"));
+        controller.fitSelected(12, 4, 20);
+        assertTrue(controller.marqueeMoving());
+        controller.tickMarquee();
+
+        now.set(1_150_000_000L);
+        controller.tickMarquee();
+        assertEquals(1, controller.marqueeOffset());
+
+        controller.select(0);
+        controller.tickMarquee();
+        assertEquals(0, controller.marqueeOffset());
+    }
+
+    @Test
+    void aRowThatFitsOrAMarqueeThatIsOffDoesNotMove() {
+        MavenProjectController controller = loaded();
+        selectRow(controller, phaseOf("", "validate"));
+
+        controller.fitSelected(40, 4, 20);
+        assertFalse(controller.marqueeMoving(), "the default is off");
+
+        controller.useMarquee(true);
+        controller.fitSelected(40, 4, 20);
+        assertFalse(controller.marqueeMoving(), "a row that fits does not move");
+    }
+
+    @Test
+    void theStatusLineScrollsItsMessageWhenTheMessageIsWiderThanTheWindow() {
+        AtomicLong now = new AtomicLong();
+        MavenProjectController controller = new MavenProjectController(now::get);
+        controller.useMarquee(true);
+        controller.finishLoading(new MavenProjectLoad.Missing("no pom.xml under the project root"));
+        controller.fitSelected(12, 0, controller.selectionText().orElseThrow().length());
+        controller.tickMarquee();
+
+        now.set(1_150_000_000L);
+        controller.tickMarquee();
+
+        assertTrue(controller.marqueeMoving());
+        assertEquals(1, controller.marqueeOffset());
+        assertEquals("No Maven project: no pom.xml under the project root", controller.selectionText().orElseThrow());
     }
 
     private static MavenProjectController loaded() {
