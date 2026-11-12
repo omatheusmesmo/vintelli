@@ -196,6 +196,7 @@ public final class Keymap {
                 builder.bind(KeyTrigger.key(KeyCode.F8, true, false, false), KeyActions.TOGGLE_BREAKPOINT);
                 builder.bind(KeyTrigger.key(KeyCode.F7, false, true, false), KeyActions.USAGES);
                 builder.bind(KeyTrigger.ctrl('d'), KeyActions.DUPLICATE_LINE);
+                builder.bind(KeyTrigger.ctrl('g'), KeyActions.GO_TO_LINE);
             }
             case VIM -> {
                 builder.bind(KeyTrigger.key(KeyCode.F3), KeyActions.PROJECT_SELECT_OPENED_FILE);
@@ -207,6 +208,7 @@ public final class Keymap {
                 builder.bind(KeyTrigger.alt('u'), KeyActions.USAGES);
                 builder.bind(KeyTrigger.key(KeyCode.F8), KeyActions.NEXT_PROBLEM);
                 builder.bind(KeyTrigger.ctrl('b'), KeyActions.TOGGLE_BREAKPOINT);
+                builder.bind(KeyTrigger.alt('g'), KeyActions.GO_TO_LINE);
             }
         }
     }

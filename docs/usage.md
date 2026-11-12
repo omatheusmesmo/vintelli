@@ -278,7 +278,7 @@ With no file open, the editor shows a start screen with the project name and the
 main shortcuts (Go to File, Find in Files, Search Everywhere, the menu and the keymap
 help). Its keys come from the active keymap, so a custom keymap file shows its own
 chords, and an action without a chord has no row.
-`Ctrl+O` opens Go to File, `Alt+F` searches file contents, `Ctrl+B` requests a
+`Ctrl+O` opens Go to File, `Ctrl+G` goes to a line (`line` or `line:column`), `Alt+F` searches file contents, `Ctrl+B` requests a
 definition, `Alt+F7` requests references, and `F2` moves to the next diagnostic, and `Alt+I` folds or unfolds the import block.
 In the editor, a left click places the caret on the character under the pointer
 and focuses the editor. Drag with the left button to select text; releasing ends

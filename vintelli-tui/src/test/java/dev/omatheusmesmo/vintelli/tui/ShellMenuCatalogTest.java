@@ -115,6 +115,15 @@ class ShellMenuCatalogTest {
     }
 
     @Test
+    void goToLineInTheNavigateMenuNeedsAnOpenDocument() {
+        assertEquals("Open a project file first", reasonOf(entries(), KeyActions.GO_TO_LINE));
+
+        host.documentOpen = true;
+
+        assertEquals("", reasonOf(entries(), KeyActions.GO_TO_LINE));
+    }
+
+    @Test
     void vcsWritesAreBlockedByAGitOperationAndByDirtyTabsForBranches() {
         host.documentOpen = true;
         host.vcsWriteInProgress = true;

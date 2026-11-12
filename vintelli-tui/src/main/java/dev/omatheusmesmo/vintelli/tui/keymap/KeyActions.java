@@ -42,6 +42,7 @@ public final class KeyActions {
     public static final String TOGGLE_BREAKPOINT = "editor_toggleBreakpoint";
     public static final String DUPLICATE_LINE = "editor_duplicateLine";
     public static final String GO_TO_FILE = "navigation_goToFile";
+    public static final String GO_TO_LINE = "navigation_goToLine";
     public static final String FOCUS_NAVIGATION_BAR = "navigation_focusBreadcrumbs";
     public static final String FIND_IN_FILES = "navigation_findInFiles";
     public static final String PROJECT_WIDER = "layout_project_wider";
@@ -121,6 +122,7 @@ public final class KeyActions {
                 new KeyAction(TOGGLE_IMPORT_FOLD, "Fold or Unfold Imports", ""),
                 new KeyAction(TOGGLE_BREAKPOINT, "Toggle Line Breakpoint", "Ctrl+F8"),
                 new KeyAction(GO_TO_FILE, "Go to File", ""),
+                new KeyAction(GO_TO_LINE, "Go to Line", ""),
                 new KeyAction(FOCUS_NAVIGATION_BAR, "Focus Navigation Bar", "Alt+Home"),
                 new KeyAction(FIND_IN_FILES, "Find in Files", ""),
                 new KeyAction(PROJECT_WIDER, "Widen Project Panel", ""),

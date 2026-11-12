@@ -413,7 +413,7 @@ final class EditorElement implements Element {
                 if (event.isCharIgnoreCase('y')) { editor.confirmClose(true); return EventResult.HANDLED; }
                 if (event.isCharIgnoreCase('n') || event.isKey(KeyCode.ESCAPE)) { editor.confirmClose(false); return EventResult.HANDLED; }
             }
-            if (editor.menuNavigationActive()) { return EventResult.UNHANDLED; }
+            if (editor.menuNavigationActive() || editor.overlayInputActive()) { return EventResult.UNHANDLED; }
             if (reserved(event)) { return EventResult.UNHANDLED; }
             EditorDocument document = editor.document();
             if (document == null) { return EventResult.UNHANDLED; }
@@ -454,7 +454,7 @@ final class EditorElement implements Element {
 
     private static boolean reserved(KeyEvent event) {
         if (event.hasAlt()) { return true; }
-        if (event.hasCtrl() && "sz yf bwopd".replace(" ", "").indexOf(Character.toLowerCase(event.character())) >= 0) { return true; }
+        if (event.hasCtrl() && "szg yf bwopd".replace(" ", "").indexOf(Character.toLowerCase(event.character())) >= 0) { return true; }
         return event.isKey(KeyCode.F1) || event.isKey(KeyCode.F2) || event.isKey(KeyCode.F4) || event.isKey(KeyCode.F8)
                 || event.isKey(KeyCode.F10) || event.isKey(KeyCode.F12);
     }

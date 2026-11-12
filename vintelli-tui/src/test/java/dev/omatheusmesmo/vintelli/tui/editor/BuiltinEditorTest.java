@@ -120,6 +120,98 @@ class BuiltinEditorTest {
     }
 
     @Test
+    void goToLineMovesTheCaretAndTheStatusBarPositionTogether() throws IOException {
+        BuiltinEditor editor = editor(null);
+        editor.open(new OpenRequest(write("Target.txt", "alpha\nbeta\ngamma\n"), 0));
+
+        assertTrue(editor.goToLine(3, 2));
+
+        assertEquals(2, editor.document().row());
+        assertEquals(1, editor.document().column());
+        BuiltinEditor.StatusBarInfo bar = editor.statusBarInfo().orElseThrow();
+        assertEquals(3, bar.line());
+        assertEquals(2, bar.column());
+        assertEquals("Line 3, column 2", editor.status());
+    }
+
+    @Test
+    void goToLineClampsPastTheLastLineAndItsLength() throws IOException {
+        BuiltinEditor editor = editor(null);
+        editor.open(new OpenRequest(write("Clamp.txt", "alpha\nbeta"), 0));
+
+        editor.goToLine(999, 999);
+
+        assertEquals(1, editor.document().row());
+        assertEquals(4, editor.document().column());
+        assertEquals(2, editor.statusBarInfo().orElseThrow().line());
+        assertEquals(5, editor.statusBarInfo().orElseThrow().column());
+    }
+
+    @Test
+    void goToLineClampsTheColumnToItsOwnLine() throws IOException {
+        BuiltinEditor editor = editor(null);
+        editor.open(new OpenRequest(write("Column.txt", "ab\nlonger line\n"), 0));
+
+        editor.goToLine(1, 50);
+
+        assertEquals(0, editor.document().row());
+        assertEquals(2, editor.document().column());
+    }
+
+    @Test
+    void goToLineWithoutAnOpenFileSaysSoAndMovesNothing() {
+        BuiltinEditor editor = editor(null);
+
+        assertFalse(editor.goToLine(4, 1));
+        assertEquals("No file is open", editor.status());
+    }
+
+    @Test
+    void goToLineBelowAFoldedImportBlockKeepsTheBlockFoldedAndPlacesTheView() throws IOException {
+        BuiltinEditor editor = foldedEditor();
+
+        editor.goToLine(9, 5);
+
+        assertTrue(editor.document().importsFolded());
+        assertEquals(8, editor.document().row());
+        assertEquals(4, editor.document().column());
+        assertEquals(editor.document().viewRow(8), editor.document().state().cursorRow());
+        assertEquals(9, editor.statusBarInfo().orElseThrow().line());
+        assertEquals(5, editor.statusBarInfo().orElseThrow().column());
+    }
+
+    @Test
+    void goToLineInsideAFoldedImportBlockExpandsTheBlockToReachIt() throws IOException {
+        BuiltinEditor editor = foldedEditor();
+
+        editor.goToLine(4, 1);
+
+        assertFalse(editor.document().importsFolded());
+        assertEquals(3, editor.document().row());
+        assertEquals(4, editor.statusBarInfo().orElseThrow().line());
+    }
+
+    @Test
+    void goToLineScrollsTheViewToTheTargetRow() throws IOException {
+        StringBuilder text = new StringBuilder();
+        for (int line = 1; line <= 80; line++) {
+            text.append("line ").append(line).append('\n');
+        }
+        BuiltinEditor editor = editor(null);
+        editor.open(new OpenRequest(write("Long.txt", text.toString()), 0));
+        render(editor, 50, 6);
+
+        editor.goToLine(60, 1);
+        Buffer scrolled = render(editor, 50, 6);
+
+        boolean targetVisible = false;
+        for (int y = 0; y < 6; y++) {
+            targetVisible |= row(scrolled, y).contains("60 line 60");
+        }
+        assertTrue(targetVisible, "the target row is brought into view");
+    }
+
+    @Test
     void cursorMovesBetweenViewRowsAndDocumentRows() throws IOException {
         BuiltinEditor editor = foldedEditor();
         editor.document().position(8, 4);

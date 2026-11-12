@@ -139,6 +139,13 @@ public final class EditorDocument {
         revealPending = true;
     }
 
+    /** Moves the caret to a document row and column, clamped to the text, and drops a selection the move leaves behind. */
+    void goTo(int row, int column) {
+        int targetRow = Math.clamp(row, 0, state.lineCount() - 1);
+        position(targetRow, Math.clamp(column, 0, state.getLine(targetRow).length()));
+        dropPointerSelection();
+    }
+
     /** Places the caret at a row and character column of the widget-facing view, as a pointer click does. */
     void placeView(int viewRow, int viewColumn) {
         if (fold == null) {

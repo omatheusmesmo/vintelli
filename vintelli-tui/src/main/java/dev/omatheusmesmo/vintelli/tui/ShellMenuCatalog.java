@@ -69,6 +69,7 @@ final class ShellMenuCatalog {
         String searchUnavailable = host.projectSearchAvailable() ? "" : "Project search unavailable";
         addMenu(entries, "Navigate", KeyActions.GO_TO_FILE, "Go to File", searchUnavailable);
         addMenu(entries, "Navigate", KeyActions.FIND_IN_FILES, "Find in Files", searchUnavailable);
+        addMenu(entries, "Navigate", KeyActions.GO_TO_LINE, "Go to Line", canEdit ? "" : editorUnavailable);
         String navigationUnavailable = host.navigationUnavailableReason();
         addMenu(entries, "Navigate", KeyActions.DEFINITION, "Go to Definition",
                 canEdit ? navigationUnavailable : editorUnavailable);

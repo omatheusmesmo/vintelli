@@ -24,6 +24,7 @@ final class OverlayStack {
         MENU(false),
         RUN_CONFIGURATION(false),
         PROJECT_SEARCH(false),
+        GO_TO_LINE(false),
         PROJECT_DELETE(true),
         EDITOR_CLOSE(true),
         VCS_PROMPT(true);
