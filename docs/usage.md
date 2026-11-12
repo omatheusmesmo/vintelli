@@ -210,9 +210,11 @@ last. Provider selections are read from the live capability registry.
 Capability states: the Run, Terminal and Problems tool windows use the same
 wording as the provider popup, and the project pane footer shows the Read File
 state. The text is read from the registry snapshot off the render thread. The
-active provider reads `Problems: jdtls (jdtls over stdio)`, and an unavailable
-capability reads `Problems unavailable: <reason>` with the registry reason as
-is. Each higher ranked provider that was passed over reads `skipped idea: not
+active provider reads `Problems: jdtls (jdtls over stdio)`. An unavailable Problems
+window shows one line instead of the registry wording, with the reason and the
+next step, for example `No diagnostics provider configured. Set
+vintelli.lsp.profiles.jdtls.command=jdtls, then restart Vintelli
+(docs/language-servers.md).`. Each higher ranked provider that was passed over reads `skipped idea: not
 connected`: in Problems and Run it is its own line, in Terminal it is its own
 line while no session runs, and in the project pane footer the skipped entries
 share one line. The first state appears asynchronously after start. Problems
@@ -284,7 +286,9 @@ The Problems window refreshes diagnostics for files open in the editor with
 the list, Enter opens the selected file at its diagnostic line, clicking a row
 navigates there, and the mouse wheel scrolls the list. The window shows the
 selected diagnostics provider and distinguishes loading, unavailable, error,
-and empty results.
+and empty results. Each row shows a severity glyph, the line and column, the
+source and the message; long messages wrap under the message column, and the
+header counts errors, warnings and others.
 In Structure, click a symbol row to select it, press Enter to navigate to its
 file and line, and use the mouse wheel to scroll long outlines.
 In the project panel, a left click selects the row under the pointer and focuses

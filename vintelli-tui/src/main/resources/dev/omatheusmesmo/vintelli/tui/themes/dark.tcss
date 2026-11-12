@@ -259,6 +259,31 @@ EditorTabBarElement-overflow {
   color: $chrome-fg;
 }
 
+.problem-error {
+  color: $editor-keyword;
+  text-style: bold;
+}
+
+.problem-warning {
+  color: $editor-constant;
+}
+
+.problem-info {
+  color: $muted;
+}
+
+.problem-location {
+  color: $muted;
+}
+
+.problem-source {
+  color: $soft;
+}
+
+.problem-skipped {
+  color: $muted;
+}
+
 .tool-window-title {
   color: $chrome-fg-strong;
 }
