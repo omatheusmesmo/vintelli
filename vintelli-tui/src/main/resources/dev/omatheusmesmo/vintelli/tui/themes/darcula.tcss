@@ -193,6 +193,10 @@ EditorTabBarElement-overflow {
   color: $editor-fg;
 }
 
+.editor-quick-fix {
+  color: $editor-constant;
+}
+
 .editor-breakpoint-verified {
   color: $editor-string;
 }

@@ -13,7 +13,9 @@ import dev.omatheusmesmo.vintelli.tui.maven.MavenToolWindow;
 import dev.omatheusmesmo.vintelli.tui.icons.JavaTypeKind;
 import dev.omatheusmesmo.vintelli.tui.layout.ShellLayoutStore;
 import dev.omatheusmesmo.vintelli.tui.layout.ShellLayout;
+import dev.omatheusmesmo.vintelli.api.capability.CapabilityRegistry;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
+import dev.omatheusmesmo.vintelli.api.capability.CapabilitySelection;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityStatus;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Diagnostic;
@@ -6602,6 +6604,183 @@ class VintelliShellTest {
             }
         }
         return 13;
+    }
+
+    @Test
+    void pilotLightbulbMarksTheCaretLineOnlyWhenItHasADiagnostic() throws Exception {
+        EditorShell fixture = openEditorShell("Bulb.txt", numberedLines(10), 2);
+        Path file = project.resolve("Bulb.txt").toRealPath();
+        fixture.editor().setDiagnostics(List.of(problemAt(file, 2), problemAt(file, 6)));
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            fixture.editor().requestFocus();
+            settle(pilot);
+            String frame = awaitRenderedFrame(pilot, test, "line 7");
+            String caretLine = rowOf(frame, "line 3");
+            assertTrue(caretLine.contains(QuickFixFixtures.LIGHTBULB) || caretLine.contains("* "),
+                    "the caret line with a diagnostic shows the lightbulb: " + caretLine);
+            assertFalse(rowOf(frame, "line 7").contains(QuickFixFixtures.LIGHTBULB),
+                    "a diagnostic line away from the caret keeps its problem marker: " + rowOf(frame, "line 7"));
+            assertTrue(rowOf(frame, "line 7").contains("!"), rowOf(frame, "line 7"));
+            assertFalse(rowOf(frame, "line 1").contains(QuickFixFixtures.LIGHTBULB),
+                    "a line without a diagnostic shows no lightbulb: " + rowOf(frame, "line 1"));
+        }
+    }
+
+    @Test
+    void pilotAltEnterListsTheQuickFixesOfTheCaretLine() throws Exception {
+        EditorShell fixture = openQuickFixShell("List.txt", numberedLines(10), 2,
+                QuickFixFixtures.registryWith(QuickFixFixtures.answering(file -> CapabilityResult.ok(
+                        List.of(QuickFixFixtures.replaceCaretLine(file),
+                                QuickFixFixtures.suppressWithCommand())))));
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            fixture.editor().requestFocus();
+            settle(pilot);
+            pilot.press(KeyCode.ENTER, KeyModifiers.ALT);
+            settle(pilot);
+            String frame = awaitRenderedFrame(pilot, test, "Replace line with fixed text");
+            assertTrue(frame.contains("Replace line with fixed text"), frame);
+            assertTrue(frame.contains("Suppress with a comment"), frame);
+        }
+    }
+
+    @Test
+    void pilotEnterAppliesTheQuickFixAsOneUndoStepAndMarksTheDocumentDirty() throws Exception {
+        EditorShell fixture = openQuickFixShell("Apply.txt", numberedLines(10), 2,
+                QuickFixFixtures.registryWith(QuickFixFixtures.answering(file -> CapabilityResult.ok(
+                        List.of(QuickFixFixtures.replaceCaretLine(file))))));
+        String original = numberedLines(10);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            fixture.editor().requestFocus();
+            settle(pilot);
+            pilot.press(KeyCode.ENTER, KeyModifiers.ALT);
+            settle(pilot);
+            awaitRenderedFrame(pilot, test, "Replace line with fixed text");
+            pilot.press(KeyCode.ENTER);
+            settle(pilot);
+            assertEquals(original.replace("line 3", "fixed"), fixture.editor().activeDocument().orElseThrow().text(),
+                    "Enter applies the workspace edit to the open document");
+            assertTrue(fixture.editor().activeDocument().orElseThrow().dirty(), "the applied fix marks the document dirty");
+            pressCtrl(pilot, 'z');
+            settle(pilot);
+            assertEquals(original, fixture.editor().activeDocument().orElseThrow().text(),
+                    "one Ctrl+Z reverts the whole quick fix");
+            assertFalse(fixture.editor().activeDocument().orElseThrow().dirty(), "undo returns to the saved text");
+            assertFalse(fixture.editor().undo(), "the quick fix is a single undo step");
+        }
+    }
+
+    @Test
+    void pilotQuickFixShowsTheLookingStateThenAnExplicitEmptyList() throws Exception {
+        CountDownLatch release = new CountDownLatch(1);
+        EditorShell fixture = openQuickFixShell("Empty.txt", numberedLines(10), 2,
+                QuickFixFixtures.registryWith(QuickFixFixtures.answering(file -> {
+                    try {
+                        release.await();
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                    }
+                    return CapabilityResult.ok(List.of());
+                })));
+        UiWorkQueue uiWork = new UiWorkQueue();
+        fixture.shell().useUiWorkQueue(uiWork);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            fixture.shell().bindRedraw(() -> test.runner().tuiRunner().dispatch(TickEvent.of(0)));
+            Pilot pilot = test.pilot();
+            fixture.editor().requestFocus();
+            settle(pilot);
+            pilot.press(KeyCode.ENTER, KeyModifiers.ALT);
+            settle(pilot);
+            assertTrue(awaitRenderedFrame(pilot, test, "Looking for quick fixes").contains("Looking for quick fixes"),
+                    "the popup says it is looking while the language server answers");
+            release.countDown();
+            String frame = awaitRenderedFrame(pilot, test, "No quick fixes available");
+            assertTrue(frame.contains("No quick fixes available"), frame);
+        }
+    }
+
+    @Test
+    void pilotQuickFixShowsTheUnavailableReasonAndEscapeClosesIt() throws Exception {
+        EditorShell fixture = openQuickFixShell("Unavailable.txt", numberedLines(10), 2,
+                QuickFixFixtures.registryWith(CapabilitySelection.unavailable(CapabilityType.CODE_ACTION,
+                        "no language server profile is configured")));
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            fixture.editor().requestFocus();
+            settle(pilot);
+            pilot.press(KeyCode.ENTER, KeyModifiers.ALT);
+            settle(pilot);
+            String frame = awaitRenderedFrame(pilot, test, "no language server profile is configured");
+            assertTrue(frame.contains("Quick fixes unavailable: no language server profile is configured"), frame);
+            pilot.press(KeyCode.ESCAPE);
+            settle(pilot);
+            assertFalse(test.renderedFrame().contains("Quick fixes unavailable"), "Escape closes the popup");
+        }
+    }
+
+    @Test
+    void pilotQuickFixFailureIsReportedAndTheShellKeepsWorking() throws Exception {
+        EditorShell fixture = openQuickFixShell("Failure.txt", numberedLines(10), 2,
+                QuickFixFixtures.registryWith(QuickFixFixtures.answering(
+                        file -> QuickFixFixtures.failure("malformed", "bad code action payload"))));
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            fixture.editor().requestFocus();
+            settle(pilot);
+            pilot.press(KeyCode.ENTER, KeyModifiers.ALT);
+            settle(pilot);
+            String frame = awaitRenderedFrame(pilot, test, "Quick fixes failed");
+            assertTrue(frame.contains("Quick fixes failed: malformed: bad code action payload"), frame);
+            pilot.press(KeyCode.ESCAPE);
+            settle(pilot);
+            pressCtrl(pilot, 'p');
+            settle(pilot);
+            assertTrue(awaitRenderedFrame(pilot, test, "Search Everywhere").contains("Search Everywhere"),
+                    "the command palette still opens after a failed quick fix");
+        }
+    }
+
+    @Test
+    void pilotCommandOnlyQuickFixIsReportedAndNothingIsApplied() throws Exception {
+        EditorShell fixture = openQuickFixShell("Command.txt", numberedLines(10), 2,
+                QuickFixFixtures.registryWith(QuickFixFixtures.answering(file -> CapabilityResult.ok(
+                        List.of(QuickFixFixtures.replaceCaretLine(file),
+                                QuickFixFixtures.suppressWithCommand())))));
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            fixture.editor().requestFocus();
+            settle(pilot);
+            pilot.press(KeyCode.ENTER, KeyModifiers.ALT);
+            settle(pilot);
+            awaitRenderedFrame(pilot, test, "Suppress with a comment");
+            pilot.press(KeyCode.UP);
+            settle(pilot);
+            pilot.press(KeyCode.ENTER);
+            settle(pilot);
+            String frame = awaitRenderedFrame(pilot, test, "does not run yet");
+            assertTrue(frame.contains("needs a command Vintelli does not run yet"), frame);
+            assertTrue(frame.contains("Suppress with a comment"), "the popup stays open to pick another action");
+            assertEquals(numberedLines(10), fixture.editor().activeDocument().orElseThrow().text(),
+                    "a command-only action changes nothing");
+            assertFalse(fixture.editor().activeDocument().orElseThrow().dirty());
+        }
+    }
+
+    private EditorShell openQuickFixShell(String name, String text, int row, CapabilityRegistry registry)
+            throws IOException {
+        Path file = project.resolve(name);
+        Files.writeString(file, text);
+        ShellThemes themes = defaultThemes();
+        FakeClipboard clipboard = new FakeClipboard();
+        BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette, clipboard, sequence -> { });
+        assertFalse(editor.open(new OpenRequest(file, row)).isFailure());
+        List<ToolWindow> windows = new ArrayList<>(defaultWindows());
+        windows.add(editor);
+        ShellConfig config = ShellConfig.of(new ToolWindowRegistry(windows).toolWindows(), new ShellState(), themes)
+                .withCapabilityRegistry(registry);
+        return new EditorShell(new VintelliShell(config), editor, clipboard);
     }
 
     private static int firstForegroundColumn(Buffer buffer, int row, Color foreground) {

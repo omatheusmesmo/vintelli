@@ -40,6 +40,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 
 /** Toolkit view for the built-in editor. Calls into document state are serialized by its owner. */
 final class EditorElement implements Element {
@@ -58,6 +59,9 @@ final class EditorElement implements Element {
     private static final String REJECTED_BREAKPOINT_ROLE = "editor-breakpoint-rejected";
     private static final String EXECUTION_LINE_ROLE = "editor-execution-line";
     private static final String CARET_ROLE = "editor-caret";
+    private static final String QUICK_FIX_ROLE = "editor-quick-fix";
+    private static final String QUICK_FIX = "☼ ";
+    private static final String QUICK_FIX_ASCII = "* ";
     private static final List<String> TYPING_FOCUS_IDS = List.of(BuiltinEditor.TEXT_AREA_ID, "editor-panel", "editor-content");
     private static final int WHEEL_STEP = 3;
 
@@ -71,6 +75,7 @@ final class EditorElement implements Element {
     private Rect bodyArea = Rect.ZERO;
     private Rect textBody = Rect.ZERO;
     private EditorDocument dragDocument;
+    private Rect caretCell;
 
     EditorElement(BuiltinEditor editor) {
         this.editor = editor;
@@ -122,6 +127,7 @@ final class EditorElement implements Element {
                 findRow.paintMatches(frame.buffer(), area, document, context);
             }
             paintCaretRow(frame.buffer(), area);
+            caretCell = caretCellOf(area);
             if (!find.isOpenOn(document) && TYPING_FOCUS_IDS.stream().anyMatch(context::isFocused)) {
                 paintCaret(frame.buffer(), area, context);
             }
@@ -206,6 +212,21 @@ final class EditorElement implements Element {
         return Style.EMPTY.reversed().patch(roleStyle(context, CARET_ROLE));
     }
 
+    private Rect caretCellOf(Rect area) {
+        TextAreaState state = textArea.getState();
+        int row = state.cursorRow() - state.scrollRow();
+        int column = caretColumn(state);
+        if (area.isEmpty() || row < 0 || row >= area.height() || column < 0 || column >= area.width()) {
+            return null;
+        }
+        return new Rect(area.x() + column, area.y() + row, 1, 1);
+    }
+
+    /** The screen cell of the caret as the last frame drew it, empty when the caret was scrolled out of view. */
+    Optional<Rect> caretCell() {
+        return Optional.ofNullable(caretCell);
+    }
+
     @Override public String id() { return "editor-content"; }
     @Override public boolean isFocusable() { return true; }
     @Override public Rect renderedArea() { return renderedArea; }
@@ -286,6 +307,9 @@ final class EditorElement implements Element {
                     case REJECTED -> { marker = ascii ? "! " : "× "; markerStyle = roleStyle(context, REJECTED_BREAKPOINT_ROLE); }
                     default -> { marker = ascii ? "o " : "◌ "; markerStyle = roleStyle(context, PENDING_BREAKPOINT_ROLE); }
                 }
+            } else if (diagnostic && row == caret) {
+                marker = ascii ? QUICK_FIX_ASCII : QUICK_FIX;
+                markerStyle = roleStyle(context, QUICK_FIX_ROLE);
             } else {
                 marker = diagnostic ? "! " : editor.vcsChangedLine(row) ? "+ " : "  ";
             }

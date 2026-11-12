@@ -37,6 +37,7 @@ Key actions in the `intellij` profile:
 | `quit` | `Ctrl+C` | - |
 | `editor_copy`, `editor_cut`, `editor_paste` | `Ctrl+C` (copy, only with a selection), `Ctrl+X`, `Ctrl+V` | `Ctrl+C`, `Ctrl+X`, `Ctrl+V` |
 | `editor_selectAll` (Select All), Shift+arrows | `Ctrl+A` (`Ctrl+E` in the `vim` profile); `Shift` with the arrows, Home, End, PageUp and PageDown extend the selection | `Ctrl+A`, `Shift+arrows` |
+| `editor_quickFix` | `Alt+Enter` | `Alt+Enter` |
 
 The command palette lists every action with its active chord and, when the
 IntelliJ chord differs and a terminal can send it, that chord too; it filters by
@@ -369,6 +370,7 @@ adding it to that test on purpose.
 | editor_toggleBreakpoint | Ctrl+F8 | Ctrl+F8 | same | Toggle Line Breakpoint; Ctrl+B is Go to Declaration |
 | editor_nextProblem | F2 | F2 | same | Next Highlighted Error; the bare F2 trigger refuses Shift, and F8 is left unbound (docs/keymap.md) |
 | editor_previousProblem | Shift+F2 | Shift+F2 | same | Previous Highlighted Error on its own Shift+F2 trigger (docs/keymap.md) |
+| editor_quickFix | Alt+Enter | Alt+Enter | same | Quick fixes from the language server for the selection or caret, offered in a popup (docs/keymap.md) |
 | navigation_goToFile | Ctrl+O | Ctrl+Shift+N | not-deliverable | Ctrl+Shift+N sends the same bytes as Ctrl+N in a terminal; Ctrl+O is Override Methods in IntelliJ and stays here (docs/keymap.md) |
 | navigation_findInFiles | Alt+F | Ctrl+Shift+F | not-deliverable | Ctrl+Shift+F sends the same bytes as Ctrl+F in a terminal; Alt+F is kept here |
 | navigation_goToLine | Ctrl+G | Ctrl+G | same | Go to Line with the IntelliJ chord; the vim profile binds Alt+G instead (docs/keymap.md) |

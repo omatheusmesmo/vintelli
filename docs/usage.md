@@ -280,6 +280,15 @@ help). Its keys come from the active keymap, so a custom keymap file shows its o
 chords, and an action without a chord has no row.
 `Ctrl+O` opens Go to File, `Ctrl+G` goes to a line (`line` or `line:column`), `Alt+F` searches file contents, `Ctrl+B` requests a
 definition, `Alt+F7` requests references, and `F2` moves to the next diagnostic, and `Alt+I` folds or unfolds the import block.
+Alt+Enter asks the language server for quick fixes at the selection or the caret. A
+lightbulb (`*` in ASCII mode) marks the caret line when it has a diagnostic. The
+popup lists the actions with their kinds: Up and Down move through them (wrapping at the
+ends), Enter applies the chosen action as one undo step (Ctrl+Z reverts it), a click selects a row
+and a second click applies it, and Escape closes the popup. An action that only runs a
+server command is listed with a note, because Vintelli does not run commands yet, and nothing is
+changed for it. The language server reads the file as it was when the server opened it, not the
+unsaved text in the editor, so an edit can be out of line with changes not yet saved.
+
 In the editor, a left click places the caret on the character under the pointer
 and focuses the editor. Drag with the left button to select text; releasing ends
 the drag. Shift with the arrows, Home, End, PageUp or PageDown selects from the
