@@ -1,6 +1,7 @@
 package dev.omatheusmesmo.vintelli.core.acp;
 
 import com.agentclientprotocol.sdk.spec.AcpSchema;
+import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -10,6 +11,7 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -161,31 +163,28 @@ class AcpTerminalRegistryTest {
         registry.release(terminalId);
     }
 
-    @Test
+    @RepeatedTest(10)
     void releaseAllKillsEveryTerminalAndRemovesThem() throws Exception {
         Path root = Files.createDirectories(tempDir.resolve("root"));
         AcpTerminalRegistry registry = new AcpTerminalRegistry(root);
 
-        boolean windows = System.getProperty("os.name", "").toLowerCase().contains("win");
-        String command;
-        List<String> args;
-        if (windows) {
-            command = "cmd";
-            args = List.of("/c", "ping -n 61 127.0.0.1 > nul");
-        } else {
-            command = "sh";
-            args = List.of("-c", "sleep 60");
-        }
+        String java = ProcessHandle.current().info().command().orElseThrow();
+        String classpath = System.getProperty("surefire.test.class.path", System.getProperty("java.class.path"));
+        List<String> args = List.of("-cp", classpath, ProcessTreeFixture.class.getName(), "parent");
         String first = registry.create(new AcpSchema.CreateTerminalRequest(
-                "session-1", command, args, null, List.of(), null)).terminalId();
+                "session-1", java, args, null, List.of(), null)).terminalId();
         String second = registry.create(new AcpSchema.CreateTerminalRequest(
-                "session-1", command, args, null, List.of(), null)).terminalId();
+                "session-1", java, args, null, List.of(), null)).terminalId();
 
         Process firstProcess = registry.process(first);
         Process secondProcess = registry.process(second);
+        List<ProcessHandle> firstDescendants = awaitDescendants(firstProcess);
+        List<ProcessHandle> secondDescendants = awaitDescendants(secondProcess);
 
         assertTrue(firstProcess.isAlive(), "first process should be alive before releaseAll");
         assertTrue(secondProcess.isAlive(), "second process should be alive before releaseAll");
+        assertFalse(firstDescendants.isEmpty(), "first terminal should have a child process");
+        assertFalse(secondDescendants.isEmpty(), "second terminal should have a child process");
 
         registry.releaseAll();
 
@@ -193,8 +192,43 @@ class AcpTerminalRegistryTest {
         assertTrue(secondProcess.waitFor(5, TimeUnit.SECONDS), "second process should exit");
         assertFalse(firstProcess.isAlive());
         assertFalse(secondProcess.isAlive());
+        assertTrue(firstDescendants.stream().noneMatch(ProcessHandle::isAlive),
+                "releaseAll should wait for the first terminal's descendants to exit");
+        assertTrue(secondDescendants.stream().noneMatch(ProcessHandle::isAlive),
+                "releaseAll should wait for the second terminal's descendants to exit");
         assertThrows(IllegalArgumentException.class, () -> registry.output(first));
         assertThrows(IllegalArgumentException.class, () -> registry.output(second));
+    }
+
+    private static List<ProcessHandle> awaitDescendants(Process process) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        List<ProcessHandle> descendants = List.of();
+        while (descendants.isEmpty() && process.isAlive() && System.nanoTime() < deadline) {
+            descendants = process.descendants().toList();
+            if (descendants.isEmpty()) {
+                process.waitFor(10, TimeUnit.MILLISECONDS);
+            }
+        }
+        return descendants;
+    }
+
+    public static final class ProcessTreeFixture {
+
+        public static void main(String[] args) throws Exception {
+            if ("child".equals(args[0])) {
+                new CountDownLatch(1).await();
+                return;
+            }
+            String java = ProcessHandle.current().info().command().orElseThrow();
+            String classpath = System.getProperty("surefire.test.class.path", System.getProperty("java.class.path"));
+            Process child = new ProcessBuilder(java, "-cp", classpath, ProcessTreeFixture.class.getName(), "child")
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                    .redirectError(ProcessBuilder.Redirect.DISCARD)
+                    .start();
+            System.out.println("child pid=" + child.pid());
+            System.out.flush();
+            child.waitFor();
+        }
     }
 
     @Test
