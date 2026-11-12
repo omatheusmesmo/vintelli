@@ -2,6 +2,7 @@ package dev.omatheusmesmo.vintelli.tui;
 
 import static dev.omatheusmesmo.vintelli.tui.ToolWindowInteractionAssertions.assertActivationParity;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -13,7 +14,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
+import java.util.function.LongSupplier;
 import java.util.stream.IntStream;
 
 import dev.omatheusmesmo.vintelli.api.capability.CallHierarchyCapability;
@@ -34,6 +37,7 @@ import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Diagnostic;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Severity;
 import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
+import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.layout.Size;
@@ -45,6 +49,10 @@ import org.junit.jupiter.api.io.TempDir;
 class ProblemsToolWindowInteractionContractTest {
 
     private static final Size VIEWPORT = new Size(100, 20);
+    private static final Size TALL = new Size(100, 60);
+    private static final Duration WAIT = Duration.ofSeconds(3);
+    private static final String BROKEN_MESSAGE = "broken target";
+    private static final String LONG_MESSAGE = "incompatible types: String cannot be converted to int in the overloaded call";
 
     @TempDir
     Path project;
@@ -84,9 +92,14 @@ class ProblemsToolWindowInteractionContractTest {
                     .filter(problem -> edgeRow.strip().endsWith(problem.message()))
                     .findFirst().orElseThrow(() -> new AssertionError("No diagnostic on rendered edge row: " + edgeRow));
 
+            String openedBefore = context.editor().activeDocument().orElseThrow().file();
             fixture.pilot().click(area.x(), bottomRow);
 
             assertEquals(target, context.window().problems().get(context.window().selectedIndex()), edgeRow);
+            assertEquals(openedBefore, context.editor().activeDocument().orElseThrow().file(),
+                    "a single click selects the edge problem and does not open it");
+            fixture.pilot().doubleClick(area.x(), bottomRow);
+
             assertEquals(target.startLine(), context.editor().activeDocument().orElseThrow().line(), edgeRow);
         }
     }
@@ -106,7 +119,7 @@ class ProblemsToolWindowInteractionContractTest {
         TestRegistry registry = new TestRegistry(new TestDiagnostics(diagnostics),
                 List.of(new SkippedProvider("idea", "not connected")));
         ProblemsToolWindow window = new ProblemsToolWindow(registry, editor, () -> themes,
-                Optional.of("http://127.0.0.1:64342/stream"));
+                Optional.of("http://127.0.0.1:64342/stream"), IconMode.ASCII, steppingClock());
         window.refresh();
         assertTrue(await(() -> window.problems().size() == diagnostics.size()), "diagnostics did not load");
         VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window, editor), new ShellState(), themes)
@@ -123,8 +136,10 @@ class ProblemsToolWindowInteractionContractTest {
             assertTrue(row >= area.y() && row < area.bottom(), beforeClick);
             fixture.pilot().click(area.x() + 2, row);
             assertEquals(2, window.selectedIndex(), "a click on the problem 2 row selects problem 2");
+            assertEquals(0, editor.activeDocument().orElseThrow().line(), "a single click does not jump to the problem");
+            fixture.pilot().doubleClick(area.x() + 2, row);
             assertEquals(2, editor.activeDocument().orElseThrow().line(),
-                    "the click navigates to the line of the clicked problem");
+                    "a double click navigates to the line of the clicked problem");
 
             fixture.press('6', KeyModifiers.ALT);
             for (int step = 1; step <= 6; step++) {
@@ -140,11 +155,239 @@ class ProblemsToolWindowInteractionContractTest {
         }
     }
 
+    @Test
+    void aSingleClickSelectsTheProblemWithoutJumpingToIt() throws Exception {
+        try (ToolWindowInteractionAssertions.Session session = newSession()) {
+            ToolWindowPilotFixture fixture = session.fixture();
+            ProblemsContext context = session.context(ProblemsContext.class);
+            fixture.press('6', KeyModifiers.ALT);
+            Rect area = fixture.pilot().findElement("tool-problems");
+            int row = rowContaining(fixture.renderedText(), "ERROR  L6", BROKEN_MESSAGE);
+            String openedBefore = context.editor().activeDocument().orElseThrow().file();
+
+            fixture.pilot().click(area.x() + 2, row);
+
+            assertEquals(1, context.window().selectedIndex(), "a single click selects the broken target");
+            assertTrue(selectedRow(fixture).contains(BROKEN_MESSAGE), fixture.renderedText());
+            assertEquals(openedBefore, context.editor().activeDocument().orElseThrow().file(),
+                    "a single click does not open the problem");
+        }
+    }
+
+    @Test
+    void aDoubleClickAndEnterJumpToTheSameProblem() throws Exception {
+        String byKeyboard;
+        try (ToolWindowInteractionAssertions.Session session = newSession()) {
+            ToolWindowPilotFixture fixture = session.fixture();
+            ProblemsContext context = session.context(ProblemsContext.class);
+            fixture.press('6', KeyModifiers.ALT);
+            fixture.press(KeyCode.DOWN);
+            fixture.press(KeyCode.ENTER);
+            byKeyboard = openedPosition(context.editor());
+        }
+        String byPointer;
+        try (ToolWindowInteractionAssertions.Session session = newSession()) {
+            ToolWindowPilotFixture fixture = session.fixture();
+            ProblemsContext context = session.context(ProblemsContext.class);
+            fixture.press('6', KeyModifiers.ALT);
+            Rect area = fixture.pilot().findElement("tool-problems");
+            int row = rowContaining(fixture.renderedText(), "ERROR  L6", BROKEN_MESSAGE);
+            String openedBefore = openedPosition(context.editor());
+            fixture.pilot().click(area.x() + 2, row);
+            assertEquals(openedBefore, openedPosition(context.editor()), "a single click does not jump");
+            fixture.pilot().doubleClick(area.x() + 2, row);
+            byPointer = openedPosition(context.editor());
+        }
+
+        assertEquals("Broken.java:6", byKeyboard);
+        assertEquals(byKeyboard, byPointer, "a double click opens the same line that Enter opens");
+    }
+
+    @Test
+    void leftAndRightCollapseAndExpandTheSelectedGroup() throws Exception {
+        try (ToolWindowInteractionAssertions.Session session = newSession()) {
+            ToolWindowPilotFixture fixture = session.fixture();
+            fixture.press('6', KeyModifiers.ALT);
+            fixture.press(KeyCode.UP);
+            assertEquals("> - Broken.java (2)", selectedRow(fixture), fixture.renderedText());
+
+            fixture.press(KeyCode.LEFT);
+            assertEquals("> + Broken.java (2)", selectedRow(fixture), fixture.renderedText());
+            assertFalse(paneText(fixture).contains("first problem"), paneText(fixture));
+
+            fixture.press(KeyCode.RIGHT);
+            assertEquals("> - Broken.java (2)", selectedRow(fixture), fixture.renderedText());
+            assertTrue(paneText(fixture).contains("first problem"), paneText(fixture));
+        }
+    }
+
+    @Test
+    void enterOnAHeaderAndAClickOnItLeaveTheSamePane() throws Exception {
+        String byKeyboard;
+        try (ToolWindowInteractionAssertions.Session session = newSession()) {
+            ToolWindowPilotFixture fixture = session.fixture();
+            fixture.press('6', KeyModifiers.ALT);
+            fixture.press(KeyCode.UP);
+            fixture.press(KeyCode.ENTER);
+            byKeyboard = paneText(fixture);
+            assertEquals("> + Broken.java (2)", selectedRow(fixture), byKeyboard);
+        }
+        String byPointer;
+        try (ToolWindowInteractionAssertions.Session session = newSession()) {
+            ToolWindowPilotFixture fixture = session.fixture();
+            fixture.press('6', KeyModifiers.ALT);
+            Rect area = fixture.pilot().findElement("tool-problems");
+            int header = rowContaining(fixture.renderedText(), "Broken.java (2)");
+            assertTrue(header >= area.y() && header < area.bottom(), fixture.renderedText());
+            fixture.pilot().click(area.x() + 2, header);
+            byPointer = paneText(fixture);
+            assertEquals("> + Broken.java (2)", selectedRow(fixture), byPointer);
+        }
+
+        assertEquals(byKeyboard, byPointer, "Enter on the header and a click on it collapse the same group");
+    }
+
+    @Test
+    void collapsingFromAProblemMovesTheSelectionToItsHeaderAndDownSkipsHiddenRows() throws Exception {
+        try (ToolWindowInteractionAssertions.Session session = newSession()) {
+            ToolWindowPilotFixture fixture = session.fixture();
+            fixture.press('6', KeyModifiers.ALT);
+            fixture.press(KeyCode.DOWN);
+            assertTrue(selectedRow(fixture).contains(BROKEN_MESSAGE), fixture.renderedText());
+
+            fixture.press(KeyCode.LEFT);
+
+            assertEquals("> + Broken.java (2)", selectedRow(fixture), fixture.renderedText());
+            assertFalse(paneText(fixture).contains(BROKEN_MESSAGE), paneText(fixture));
+            assertTrue(paneText(fixture).contains("Other.java (1)"), paneText(fixture));
+            fixture.press(KeyCode.DOWN);
+            assertEquals("> - Other.java (1)", selectedRow(fixture), fixture.renderedText());
+        }
+    }
+
+    @Test
+    void theCollapsedGroupStaysCollapsedAcrossARefresh() throws Exception {
+        try (ToolWindowInteractionAssertions.Session session = newSession()) {
+            ToolWindowPilotFixture fixture = session.fixture();
+            ProblemsContext context = session.context(ProblemsContext.class);
+            fixture.press('6', KeyModifiers.ALT);
+            fixture.press(KeyCode.UP);
+            fixture.press(KeyCode.LEFT);
+            assertEquals("> + Broken.java (2)", selectedRow(fixture), fixture.renderedText());
+
+            fixture.press('r');
+
+            assertTrue(fixture.await(() -> context.window().problems().size() == 3
+                    && paneText(fixture).contains("+ Broken.java (2)"), WAIT), fixture.renderedText());
+            assertEquals("> + Broken.java (2)", selectedRow(fixture), fixture.renderedText());
+            assertFalse(paneText(fixture).contains("first problem"), paneText(fixture));
+        }
+    }
+
+    @Test
+    void clickingAFilterLabelAppliesTheSameFilterAsItsKey() throws Exception {
+        String byKey;
+        try (ToolWindowInteractionAssertions.Session session = newSession()) {
+            ToolWindowPilotFixture fixture = session.fixture();
+            fixture.press('6', KeyModifiers.ALT);
+            assertTrue(fixture.await(() -> paneText(fixture).contains("other target"), WAIT), fixture.renderedText());
+            fixture.press('e');
+            byKey = paneText(fixture);
+            assertFalse(byKey.contains("other target"), byKey);
+            assertTrue(byKey.contains("first problem"), byKey);
+        }
+        try (ToolWindowInteractionAssertions.Session session = newSession()) {
+            ToolWindowPilotFixture fixture = session.fixture();
+            fixture.press('6', KeyModifiers.ALT);
+            assertTrue(fixture.await(() -> paneText(fixture).contains("other target"), WAIT), fixture.renderedText());
+
+            clickText(fixture, "E:Err");
+
+            assertEquals(byKey, paneText(fixture), "the E:Err label filters like the E key");
+            clickText(fixture, "A:All");
+            assertTrue(paneText(fixture).contains("other target"), paneText(fixture));
+        }
+    }
+
+    @Test
+    void hitAreasMatchTheDrawnRowsAfterWrappingAndCollapsing() throws Exception {
+        try (ToolWindowInteractionAssertions.Session session = newSession(TALL, false, LONG_MESSAGE)) {
+            ToolWindowPilotFixture fixture = session.fixture();
+            ProblemsContext context = session.context(ProblemsContext.class);
+            fixture.press('6', KeyModifiers.ALT);
+            Rect area = fixture.pilot().findElement("tool-problems");
+            assertTrue(fixture.await(() -> paneText(fixture).contains("overloaded call"), WAIT), fixture.renderedText());
+            assertTrue(selectedRow(fixture).contains("L2:C3"), "the first problem starts selected");
+
+            int continuation = rowContaining(fixture.renderedText(), "overloaded call");
+            assertTrue(continuation >= area.y() && continuation < area.bottom(), fixture.renderedText());
+            fixture.pilot().click(area.x() + 6, continuation);
+
+            assertTrue(selectedRow(fixture).contains("L6:C3"), fixture.renderedText());
+            assertEquals(1, context.window().selectedIndex(), "the wrapped continuation row selects its problem");
+
+            int brokenHeader = rowContaining(fixture.renderedText(), "Broken.java (2)");
+            fixture.pilot().click(area.x() + 2, brokenHeader);
+            assertTrue(paneText(fixture).contains("+ Broken.java (2)"), fixture.renderedText());
+            assertFalse(paneText(fixture).contains("overloaded call"), paneText(fixture));
+
+            int otherHeader = rowContaining(fixture.renderedText(), "Other.java (1)");
+            assertTrue(otherHeader > brokenHeader, fixture.renderedText());
+            fixture.pilot().click(area.x() + 2, otherHeader);
+            assertEquals("> + Other.java (1)", selectedRow(fixture), fixture.renderedText());
+            assertTrue(paneText(fixture).contains("+ Broken.java (2)"), paneText(fixture));
+            assertFalse(paneText(fixture).contains("other target"), paneText(fixture));
+        }
+    }
+
+    private static String selectedRow(ToolWindowPilotFixture fixture) {
+        return paneLines(fixture).stream().filter(line -> line.startsWith("> ")).findFirst()
+                .orElseThrow(() -> new AssertionError("no selected row in:\n" + fixture.renderedText()))
+                .strip();
+    }
+
+    private static String paneText(ToolWindowPilotFixture fixture) {
+        return String.join("\n", paneLines(fixture));
+    }
+
+    private static List<String> paneLines(ToolWindowPilotFixture fixture) {
+        Rect area = fixture.pilot().findElement("tool-problems");
+        List<String> screen = fixture.renderedText().lines().toList();
+        List<String> lines = new ArrayList<>();
+        for (int y = area.y(); y < area.bottom() && y < screen.size(); y++) {
+            String row = screen.get(y);
+            lines.add(row.substring(Math.min(area.x(), row.length()), Math.min(area.x() + area.width(), row.length())));
+        }
+        return lines;
+    }
+
+    private static void clickText(ToolWindowPilotFixture fixture, String text) {
+        int row = rowContaining(fixture.renderedText(), text);
+        assertTrue(row >= 0, fixture.renderedText());
+        int column = fixture.renderedText().lines().toList().get(row).indexOf(text);
+        fixture.pilot().click(column + 1, row);
+    }
+
+    private static String openedPosition(BuiltinEditor editor) {
+        BuiltinEditor.DocumentView document = editor.activeDocument().orElseThrow();
+        return Path.of(document.file()).getFileName() + ":" + (document.line() + 1);
+    }
+
+    private static LongSupplier steppingClock() {
+        AtomicLong nanos = new AtomicLong();
+        return () -> nanos.addAndGet(1_000_000L);
+    }
+
     private ToolWindowInteractionAssertions.Session newSession() throws Exception {
-        return newSession(false);
+        return newSession(VIEWPORT, false, BROKEN_MESSAGE);
     }
 
     private ToolWindowInteractionAssertions.Session newSession(boolean fillPane) throws Exception {
+        return newSession(VIEWPORT, fillPane, BROKEN_MESSAGE);
+    }
+
+    private ToolWindowInteractionAssertions.Session newSession(Size size, boolean fillPane, String brokenMessage)
+            throws Exception {
         project = project.toRealPath();
         Path brokenFile = Files.writeString(project.resolve("Broken.java"), String.join("\n",
                 "class Broken {", "  void first() {}", "  void second() {}", "  void third() {}",
@@ -158,7 +401,7 @@ class ProblemsToolWindowInteractionContractTest {
 
         List<Diagnostic> diagnostics = new ArrayList<>(List.of(
                 new Diagnostic(brokenFile, 1, 2, 1, 8, Severity.ERROR, "jdtls", "first problem"),
-                new Diagnostic(brokenFile, 5, 2, 5, 8, Severity.ERROR, "jdtls", "broken target"),
+                new Diagnostic(brokenFile, 5, 2, 5, 8, Severity.ERROR, "jdtls", brokenMessage),
                 new Diagnostic(otherFile, 1, 2, 1, 8, Severity.WARNING, "jdtls", "other target")));
         if (fillPane) {
             for (int index = 0; index < 30; index++) {
@@ -169,14 +412,15 @@ class ProblemsToolWindowInteractionContractTest {
         }
         TestDiagnostics provider = new TestDiagnostics(diagnostics);
         TestRegistry registry = new TestRegistry(provider, List.of());
-        ProblemsToolWindow window = new ProblemsToolWindow(registry, editor, () -> themes);
+        ProblemsToolWindow window = new ProblemsToolWindow(registry, editor, () -> themes, Optional.empty(),
+                IconMode.ASCII, steppingClock());
         window.refresh();
         assertTrue(await(() -> window.problems().size() == diagnostics.size()), "diagnostics did not load");
 
         ShellState state = new ShellState();
         VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window, editor), state, themes)
                 .withCapabilityRegistry(registry));
-        ToolWindowPilotFixture fixture = ToolWindowPilotFixture.open(shell, VIEWPORT);
+        ToolWindowPilotFixture fixture = ToolWindowPilotFixture.open(shell, size);
         ToolWindowInteractionAssertions.Session session = new ToolWindowInteractionAssertions.Session(fixture,
                 () -> observe(window, editor, state, fixture), new ProblemsContext(window, editor));
         fixture.pilot().pause(Duration.ofMillis(100));
@@ -201,7 +445,7 @@ class ProblemsToolWindowInteractionContractTest {
         String screen = fixture.renderedText();
         int targetRow = rowContaining(screen, "ERROR  L6", "broken target");
         assertTrue(targetRow >= area.y() && targetRow < area.bottom(), screen);
-        pilot.click(area.x() + 2, targetRow);
+        pilot.doubleClick(area.x() + 2, targetRow);
     }
 
     private static int rowContaining(String screen, String... fragments) {

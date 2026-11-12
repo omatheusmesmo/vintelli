@@ -32,13 +32,19 @@ import jakarta.inject.Singleton;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.LongSupplier;
 
 /** Problems browser backed by the selected diagnostics capability. */
 @Singleton
@@ -50,6 +56,23 @@ public final class ProblemsToolWindow implements ToolWindow {
 
     private enum Filter { ALL, ERRORS, WARNINGS }
     private enum State { IDLE, LOADING, READY, EMPTY, UNAVAILABLE, ERROR }
+
+    /**
+     * The row the keyboard and the pointer act on: the header of a file group when {@code group} is set, otherwise
+     * the problem at index {@code problem} of the problems list.
+     */
+    private record Selection(String group, int problem) {
+        static Selection ofProblem(int index) {
+            return new Selection(null, index);
+        }
+
+        static Selection ofGroup(String file) {
+            return new Selection(file, -1);
+        }
+    }
+
+    private record Group(String file, List<Integer> problems) {
+    }
 
     private final CapabilityRegistry registry;
     private final BuiltinEditor editor;
@@ -65,7 +88,10 @@ public final class ProblemsToolWindow implements ToolWindow {
     private String message = "Open one or more files in the editor, then refresh";
     private CapabilityStateLine.Summary capabilitySummary;
     private final boolean ideaConfigured;
-    private int selectedIndex;
+    private final LongSupplier nanos;
+    private final DoubleClickTracker clicks = new DoubleClickTracker();
+    private final Set<String> collapsedGroups = new HashSet<>();
+    private Selection selection = Selection.ofProblem(0);
     private int scrollOffset;
     private Rect lastArea = new Rect(0, 0, 0, 0);
 
@@ -81,10 +107,17 @@ public final class ProblemsToolWindow implements ToolWindow {
 
     ProblemsToolWindow(CapabilityRegistry registry, BuiltinEditor editor, Provider<ShellThemes> themes,
             Optional<String> ideaUrl, IconMode iconMode) {
+        this(registry, editor, themes, ideaUrl, iconMode, System::nanoTime);
+    }
+
+    /** Takes the clock the double click is timed with, so a test does not depend on how fast the frames render. */
+    ProblemsToolWindow(CapabilityRegistry registry, BuiltinEditor editor, Provider<ShellThemes> themes,
+            Optional<String> ideaUrl, IconMode iconMode, LongSupplier nanos) {
         this.registry = registry;
         this.editor = editor;
         this.themes = themes;
         this.iconMode = iconMode;
+        this.nanos = nanos;
         this.ideaConfigured = CapabilityStateLine.ideaConfigured(ideaUrl);
         this.capabilitySummary = registry == null
                 ? CapabilityStateLine.notConfigured(CapabilityType.DIAGNOSTICS)
@@ -115,7 +148,11 @@ public final class ProblemsToolWindow implements ToolWindow {
     public String actionForKey(KeyEvent event) {
         if (event.isKey(KeyCode.UP)) return KeyActions.PROBLEMS_SELECT_PREVIOUS;
         if (event.isKey(KeyCode.DOWN)) return KeyActions.PROBLEMS_SELECT_NEXT;
-        if (event.isKey(KeyCode.ENTER)) return KeyActions.PROBLEMS_NAVIGATE;
+        if (event.isKey(KeyCode.RIGHT)) return KeyActions.PROBLEMS_EXPAND;
+        if (event.isKey(KeyCode.LEFT)) return KeyActions.PROBLEMS_COLLAPSE;
+        if (event.isKey(KeyCode.ENTER)) {
+            return headerSelected() ? KeyActions.PROBLEMS_TOGGLE : KeyActions.PROBLEMS_NAVIGATE;
+        }
         if (event.code() != KeyCode.CHAR || event.hasCtrl() || event.hasAlt()) return null;
         return switch (Character.toLowerCase(event.codePoint())) {
             case 'r' -> KeyActions.PROBLEMS_REFRESH;
@@ -126,15 +163,27 @@ public final class ProblemsToolWindow implements ToolWindow {
         };
     }
 
+    /**
+     * A click on a group header selects it and toggles it; a click on a problem selects it, and a second click on the
+     * same problem within the double click window opens it, as Enter does. A click on a filter label applies that
+     * filter, as its key does.
+     */
     @Override
     public synchronized String actionForMouse(MouseEvent event) {
-        if (!event.isClick() || !event.isLeftButton() || !insideContent(event.x(), event.y())) return null;
-        int rowIndex = visibleScroll(lastArea.width(), lastArea.height()) + event.y() - contentTop();
-        List<ProblemRows.Row> rows = buildRows(lastArea.width(), NO_STYLE);
-        if (rowIndex < 0 || rowIndex >= rows.size()) return null;
-        int problemIndex = rows.get(rowIndex).problemIndex();
-        if (problemIndex < 0) return null;
-        selectedIndex = problemIndex;
+        if (!event.isClick() || !event.isLeftButton()) return null;
+        if (inHeader(event.x(), event.y())) return filterActionAt(event.x(), event.y()).orElse(null);
+        if (!insideContent(event.x(), event.y())) return null;
+        Optional<ProblemRows.Row> hit = rowAt(event.y());
+        if (hit.isEmpty()) return null;
+        ProblemRows.Row row = hit.get();
+        if (row.group() != null) {
+            clicks.reset();
+            selection = Selection.ofGroup(row.group());
+            return KeyActions.PROBLEMS_TOGGLE;
+        }
+        if (row.problemIndex() < 0) return null;
+        if (!clicks.register(row.problemIndex(), nanos.getAsLong())) return null;
+        selection = Selection.ofProblem(row.problemIndex());
         return KeyActions.PROBLEMS_NAVIGATE;
     }
 
@@ -148,6 +197,9 @@ public final class ProblemsToolWindow implements ToolWindow {
             case KeyActions.PROBLEMS_FILTER_ALL -> { setFilter(Filter.ALL); yield true; }
             case KeyActions.PROBLEMS_FILTER_ERRORS -> { setFilter(Filter.ERRORS); yield true; }
             case KeyActions.PROBLEMS_FILTER_WARNINGS -> { setFilter(Filter.WARNINGS); yield true; }
+            case KeyActions.PROBLEMS_EXPAND -> expandSelectedGroup();
+            case KeyActions.PROBLEMS_COLLAPSE -> collapseSelected();
+            case KeyActions.PROBLEMS_TOGGLE -> toggleSelectedGroup();
             default -> false;
         };
     }
@@ -157,14 +209,21 @@ public final class ProblemsToolWindow implements ToolWindow {
         return performAction(actionId);
     }
 
+    /** A single click selects the problem under the pointer. {@link #actionForMouse} opens it on the second click. */
     @Override
     public synchronized boolean handleMouse(MouseEvent event) {
-        if (!event.isScroll()) return false;
-        if (event.kind() != MouseEventKind.SCROLL_UP && event.kind() != MouseEventKind.SCROLL_DOWN) return false;
-        if (!inside(event.x(), event.y())) return false;
-        int direction = event.kind() == MouseEventKind.SCROLL_UP ? -1 : 1;
-        scrollOffset = clamp(visibleScroll(lastArea.width(), lastArea.height()) + direction * 3, 0,
-                maxScroll(lastArea.width(), lastArea.height()));
+        if (event.isScroll()) {
+            if (event.kind() != MouseEventKind.SCROLL_UP && event.kind() != MouseEventKind.SCROLL_DOWN) return false;
+            if (!inside(event.x(), event.y())) return false;
+            int direction = event.kind() == MouseEventKind.SCROLL_UP ? -1 : 1;
+            scrollOffset = clamp(visibleScroll(lastArea.width(), lastArea.height()) + direction * 3, 0,
+                    maxScroll(lastArea.width(), lastArea.height()));
+            return true;
+        }
+        if (!event.isClick() || !event.isLeftButton() || !insideContent(event.x(), event.y())) return false;
+        Optional<ProblemRows.Row> hit = rowAt(event.y());
+        if (hit.isEmpty() || hit.get().group() != null || hit.get().problemIndex() < 0) return false;
+        selection = Selection.ofProblem(hit.get().problemIndex());
         return true;
     }
 
@@ -207,7 +266,7 @@ public final class ProblemsToolWindow implements ToolWindow {
         state = State.LOADING;
         message = "Refreshing diagnostics…";
         problems.clear();
-        selectedIndex = 0;
+        selection = Selection.ofProblem(0);
         scrollOffset = 0;
         worker.execute(() -> load(request));
     }
@@ -216,7 +275,8 @@ public final class ProblemsToolWindow implements ToolWindow {
         return List.copyOf(problems);
     }
 
-    public synchronized int selectedIndex() { return selectedIndex; }
+    /** The index of the selected problem, or -1 when a file header is selected. */
+    public synchronized int selectedIndex() { return selection.problem(); }
 
     @PreDestroy
     void close() {
@@ -240,12 +300,12 @@ public final class ProblemsToolWindow implements ToolWindow {
 
     private void loadDiagnostics(long request) {
         if (request != refreshSequence.get()) return;
-        CapabilitySelection<DiagnosticsCapability> selection = registry.diagnostics();
-        if (selection instanceof CapabilitySelection.Unavailable<DiagnosticsCapability> unavailable) {
+        CapabilitySelection<DiagnosticsCapability> chosen = registry.diagnostics();
+        if (chosen instanceof CapabilitySelection.Unavailable<DiagnosticsCapability> unavailable) {
             finishUnavailable(request, unavailable.reason());
             return;
         }
-        DiagnosticsCapability provider = ((CapabilitySelection.Selected<DiagnosticsCapability>) selection).provider();
+        DiagnosticsCapability provider = ((CapabilitySelection.Selected<DiagnosticsCapability>) chosen).provider();
         List<BuiltinEditor.TabView> tabs = editor.tabs();
         if (tabs.isEmpty()) {
             synchronized (this) {
@@ -280,7 +340,7 @@ public final class ProblemsToolWindow implements ToolWindow {
             if (request != refreshSequence.get()) return;
             problems.clear();
             problems.addAll(collected);
-            selectedIndex = firstVisibleIndex();
+            selection = defaultSelection();
             scrollOffset = 0;
             if (!collected.isEmpty()) {
                 state = State.READY;
@@ -325,17 +385,41 @@ public final class ProblemsToolWindow implements ToolWindow {
         if (!message.isBlank()) {
             rows.addAll(ProblemRows.plain("! " + message, width, roles.apply("problem-warning")));
         }
-        String currentFile = null;
-        for (int index : visible) {
-            Diagnostic diagnostic = problems.get(index);
-            String file = relativePath(editor.project(), diagnostic.filePath());
-            if (!file.equals(currentFile)) {
-                currentFile = file;
-                rows.addAll(ProblemRows.plain(file, width, roles.apply("tool-window-title")));
+        for (Group group : visibleGroups()) {
+            boolean expanded = !collapsedGroups.contains(group.file());
+            rows.addAll(ProblemRows.group(group.file(), group.problems().size(), expanded,
+                    group.file().equals(selection.group()), width, iconMode, roles));
+            if (!expanded) continue;
+            for (int index : group.problems()) {
+                rows.addAll(ProblemRows.problem(index, problems.get(index), index == selection.problem(), width,
+                        iconMode, roles));
             }
-            rows.addAll(ProblemRows.problem(index, diagnostic, index == selectedIndex, width, iconMode, roles));
         }
         return rows;
+    }
+
+    private List<Group> visibleGroups() {
+        Map<String, List<Integer>> grouped = new LinkedHashMap<>();
+        for (int index : visibleProblems()) {
+            grouped.computeIfAbsent(groupOf(index), file -> new ArrayList<>()).add(index);
+        }
+        return grouped.entrySet().stream().map(entry -> new Group(entry.getKey(), entry.getValue())).toList();
+    }
+
+    /** The rows keyboard navigation can reach, in order: each visible header, then its problems while it is open. */
+    private List<Selection> visibleEntries() {
+        List<Selection> entries = new ArrayList<>();
+        for (Group group : visibleGroups()) {
+            entries.add(Selection.ofGroup(group.file()));
+            if (!collapsedGroups.contains(group.file())) {
+                group.problems().forEach(index -> entries.add(Selection.ofProblem(index)));
+            }
+        }
+        return entries;
+    }
+
+    private String groupOf(int index) {
+        return relativePath(editor.project(), problems.get(index).filePath());
     }
 
     private List<String> header(int width) {
@@ -381,16 +465,74 @@ public final class ProblemsToolWindow implements ToolWindow {
         return visible;
     }
 
-    private int firstVisibleIndex() {
-        return visibleProblems().stream().findFirst().orElse(0);
+    /** The first visible problem, or its file header when that problem sits in a collapsed group. */
+    private Selection defaultSelection() {
+        List<Integer> visible = visibleProblems();
+        if (visible.isEmpty()) return Selection.ofProblem(0);
+        int first = visible.getFirst();
+        String group = groupOf(first);
+        return collapsedGroups.contains(group) ? Selection.ofGroup(group) : Selection.ofProblem(first);
     }
 
     private void moveSelection(int delta) {
-        List<Integer> visible = visibleProblems();
-        if (visible.isEmpty()) return;
-        int current = Math.max(0, visible.indexOf(selectedIndex));
-        selectedIndex = visible.get(clamp(current + delta, 0, visible.size() - 1));
-        int row = rowForProblem(buildRows(lastArea.width(), NO_STYLE), selectedIndex);
+        List<Selection> entries = visibleEntries();
+        if (entries.isEmpty()) return;
+        int current = Math.max(0, entries.indexOf(selection));
+        selection = entries.get(clamp(current + delta, 0, entries.size() - 1));
+        revealSelection();
+    }
+
+    private boolean navigateSelected() {
+        int index = selection.problem();
+        if (index < 0 || index >= problems.size()) return false;
+        Consumer<Diagnostic> handler = navigateHandler;
+        if (handler == null) return false;
+        handler.accept(problems.get(index));
+        return true;
+    }
+
+    private void setFilter(Filter next) {
+        filter = next;
+        scrollOffset = 0;
+        if (!visibleEntries().contains(selection)) {
+            selection = defaultSelection();
+        }
+    }
+
+    private boolean expandSelectedGroup() {
+        String group = selection.group();
+        if (group == null || !collapsedGroups.remove(group)) return false;
+        revealSelection();
+        return true;
+    }
+
+    /**
+     * Collapses the group of the selected header, or of the selected problem, which moves the selection to that
+     * header so that it never rests on a row the collapse hides.
+     */
+    private boolean collapseSelected() {
+        if (selection.group() == null) {
+            if (selection.problem() < 0 || selection.problem() >= problems.size()) return false;
+            selection = Selection.ofGroup(groupOf(selection.problem()));
+        }
+        if (!collapsedGroups.add(selection.group())) return false;
+        revealSelection();
+        return true;
+    }
+
+    private boolean toggleSelectedGroup() {
+        String group = selection.group();
+        if (group == null) return false;
+        if (!collapsedGroups.remove(group)) {
+            collapsedGroups.add(group);
+        }
+        revealSelection();
+        return true;
+    }
+
+    /** Moves the viewport the least needed to show the selected row. */
+    private void revealSelection() {
+        int row = rowForSelection(buildRows(lastArea.width(), NO_STYLE));
         int viewport = Math.max(1, lastArea.height() - header(lastArea.width()).size());
         int scroll = visibleScroll(lastArea.width(), lastArea.height());
         if (row < scroll) {
@@ -402,27 +544,51 @@ public final class ProblemsToolWindow implements ToolWindow {
         }
     }
 
-    private boolean navigateSelected() {
-        if (selectedIndex < 0 || selectedIndex >= problems.size()) return false;
-        Consumer<Diagnostic> handler = navigateHandler;
-        if (handler == null) return false;
-        handler.accept(problems.get(selectedIndex));
-        return true;
-    }
-
-    private void setFilter(Filter next) {
-        filter = next;
-        scrollOffset = 0;
-        if (!visibleProblems().contains(selectedIndex)) {
-            selectedIndex = firstVisibleIndex();
-        }
-    }
-
-    private static int rowForProblem(List<ProblemRows.Row> rows, int index) {
+    private int rowForSelection(List<ProblemRows.Row> rows) {
         for (int row = 0; row < rows.size(); row++) {
-            if (rows.get(row).problemIndex() == index) return row;
+            ProblemRows.Row candidate = rows.get(row);
+            boolean sameGroup = Objects.equals(candidate.group(), selection.group());
+            if (sameGroup && candidate.problemIndex() == selection.problem()) {
+                return row;
+            }
         }
         return 0;
+    }
+
+    private Optional<ProblemRows.Row> rowAt(int y) {
+        int rowIndex = visibleScroll(lastArea.width(), lastArea.height()) + y - contentTop();
+        List<ProblemRows.Row> rows = buildRows(lastArea.width(), NO_STYLE);
+        return rowIndex >= 0 && rowIndex < rows.size() ? Optional.of(rows.get(rowIndex)) : Optional.empty();
+    }
+
+    private boolean headerSelected() {
+        return selection.group() != null;
+    }
+
+    private Optional<String> filterActionAt(int x, int y) {
+        List<String> header = header(lastArea.width());
+        int line = y - lastArea.y();
+        if (line < 0 || line >= header.size()) return Optional.empty();
+        String text = header.get(line);
+        int column = x - lastArea.x();
+        for (Filter option : Filter.values()) {
+            String label = filterToken(option);
+            int start = text.indexOf(label);
+            if (start < 0) continue;
+            int from = CharWidth.of(text.substring(0, start));
+            if (column >= from && column < from + CharWidth.of(label)) {
+                return Optional.of(filterAction(option));
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static String filterAction(Filter option) {
+        return switch (option) {
+            case ALL -> KeyActions.PROBLEMS_FILTER_ALL;
+            case ERRORS -> KeyActions.PROBLEMS_FILTER_ERRORS;
+            case WARNINGS -> KeyActions.PROBLEMS_FILTER_WARNINGS;
+        };
     }
 
     private int visibleScroll(int width, int height) {
@@ -448,12 +614,28 @@ public final class ProblemsToolWindow implements ToolWindow {
                 && y >= contentTop() && y < lastArea.y() + lastArea.height();
     }
 
+    private boolean inHeader(int x, int y) {
+        return x >= lastArea.x() && x < lastArea.x() + lastArea.width()
+                && y >= lastArea.y() && y < contentTop();
+    }
+
     private Function<String, Style> roles() {
         ShellThemes active = themes == null ? null : themes.get();
         return role -> active == null ? Style.EMPTY : active.resolver(role).toStyle();
     }
 
-    private String filterLabel() { return switch (filter) { case ALL -> "[A]ll  E:Err  W:Warn"; case ERRORS -> "A:All  [E]rr  W:Warn"; case WARNINGS -> "A:All  E:Err  [W]arn"; }; }
+    private String filterLabel() {
+        return filterToken(Filter.ALL) + "  " + filterToken(Filter.ERRORS) + "  " + filterToken(Filter.WARNINGS);
+    }
+
+    /** The label of one filter as the header draws it: bracketed when it is the active filter. */
+    private String filterToken(Filter option) {
+        return switch (option) {
+            case ALL -> filter == Filter.ALL ? "[A]ll" : "A:All";
+            case ERRORS -> filter == Filter.ERRORS ? "[E]rr" : "E:Err";
+            case WARNINGS -> filter == Filter.WARNINGS ? "[W]arn" : "W:Warn";
+        };
+    }
     private String stateLabel() { return switch (state) { case IDLE -> "Idle"; case LOADING -> "Loading…"; case READY -> "Ready"; case EMPTY -> "Empty"; case UNAVAILABLE -> "Unavailable"; case ERROR -> "Error"; }; }
     private static String relativePath(Path root, Path file) {
         Path normalized = file.isAbsolute() ? file.normalize() : root.resolve(file).normalize();

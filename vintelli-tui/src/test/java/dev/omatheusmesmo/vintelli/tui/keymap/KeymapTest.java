@@ -161,6 +161,7 @@ class KeymapTest {
                 "run.debug", "run.execute", "run.refresh", "run.stop", "run.choose-configuration", "terminal.execute",
                 "problems.navigate", "problems.refresh", "problems.select-next", "problems.select-previous",
                 "problems.filter-all", "problems.filter-errors", "problems.filter-warnings",
+                "problems.expand", "problems.collapse", "problems.toggle-group",
                 "editor_open", "editor_save", "editor_undo", "editor_redo", "editor_find",
                 "editor_cut", "editor_copy", "editor_paste",
                 "editor_close", "editor_nextTab", "editor_previousTab", "editor_definition",
