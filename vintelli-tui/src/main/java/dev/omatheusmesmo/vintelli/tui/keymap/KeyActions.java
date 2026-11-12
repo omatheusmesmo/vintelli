@@ -38,6 +38,7 @@ public final class KeyActions {
     public static final String DEFINITION = "editor_definition";
     public static final String USAGES = "editor_usages";
     public static final String NEXT_PROBLEM = "editor_nextProblem";
+    public static final String PREVIOUS_PROBLEM = "editor_previousProblem";
     public static final String TOGGLE_IMPORT_FOLD = "editor_toggleImportFold";
     public static final String TOGGLE_BREAKPOINT = "editor_toggleBreakpoint";
     public static final String DUPLICATE_LINE = "editor_duplicateLine";
@@ -129,6 +130,7 @@ public final class KeyActions {
                 new KeyAction(DEFINITION, "Go to Definition", ""),
                 new KeyAction(USAGES, "Find Usages", ""),
                 new KeyAction(NEXT_PROBLEM, "Next Problem", ""),
+                new KeyAction(PREVIOUS_PROBLEM, "Previous Problem", ""),
                 new KeyAction(TOGGLE_IMPORT_FOLD, "Fold or Unfold Imports", ""),
                 new KeyAction(TOGGLE_BREAKPOINT, "Toggle Line Breakpoint", "Ctrl+F8"),
                 new KeyAction(GO_TO_FILE, "Go to File", ""),

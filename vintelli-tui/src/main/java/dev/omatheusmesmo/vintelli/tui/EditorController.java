@@ -56,7 +56,7 @@ final class EditorController {
     private List<StatusBar.Breadcrumb> navigationPaths = List.of();
     private Path navigationSymbolsFile;
     private List<NavigationCapability.DocumentSymbol> navigationSymbols = List.of();
-    private int nextDiagnosticIndex;
+    private int lastDiagnosticIndex = -1;
 
     EditorController(Path projectRoot, BuiltinEditor editor, ProjectTreeController projects, Host host) {
         this.projectRoot = projectRoot;
@@ -505,7 +505,12 @@ final class EditorController {
             }
             case KeyActions.NEXT_PROBLEM -> {
                 closeOverlays.run();
-                nextProblem();
+                moveToProblem(1);
+                yield true;
+            }
+            case KeyActions.PREVIOUS_PROBLEM -> {
+                closeOverlays.run();
+                moveToProblem(-1);
                 yield true;
             }
             case KeyActions.DUPLICATE_LINE -> {
@@ -522,13 +527,18 @@ final class EditorController {
         };
     }
 
-    private void nextProblem() {
+    private void moveToProblem(int step) {
         if (editor == null || editor.diagnostics().isEmpty()) {
             host.status("No problems in the active file");
             return;
         }
-        nextDiagnosticIndex = Math.floorMod(nextDiagnosticIndex, editor.diagnostics().size());
-        editor.jumpToDiagnostic(nextDiagnosticIndex++);
+        int size = editor.diagnostics().size();
+        int from = lastDiagnosticIndex;
+        if (from < 0) {
+            from = step > 0 ? -1 : size;
+        }
+        lastDiagnosticIndex = Math.floorMod(from + step, size);
+        editor.jumpToDiagnostic(lastDiagnosticIndex);
         host.status(editor.status());
     }
 }

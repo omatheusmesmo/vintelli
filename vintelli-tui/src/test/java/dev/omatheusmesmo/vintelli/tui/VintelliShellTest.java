@@ -21,6 +21,8 @@ import dev.omatheusmesmo.vintelli.api.capability.ProjectFileOperations;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
 import dev.omatheusmesmo.vintelli.api.search.ProjectSearch;
+import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Diagnostic;
+import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Severity;
 import dev.omatheusmesmo.vintelli.api.capability.EditorBridge.OpenRequest;
 import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability.DocumentSymbol;
 import dev.tamboui.buffer.Buffer;
@@ -5519,6 +5521,39 @@ class VintelliShellTest {
         pilot.mousePress(MouseButton.LEFT, startX, startY);
         test.drag(MouseEvent.drag(MouseButton.LEFT, endX, endY));
         pilot.mouseRelease(MouseButton.LEFT, endX, endY);
+    }
+
+    @Test
+    void pilotShiftF2AndF2CycleThePreviousAndNextProblemWithWrapAround() throws Exception {
+        EditorShell fixture = openEditorShell("Problems.txt", numberedLines(10), 0);
+        Path file = project.resolve("Problems.txt").toRealPath();
+        fixture.editor().setDiagnostics(List.of(problemAt(file, 2), problemAt(file, 6)));
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            fixture.editor().requestFocus();
+            settle(pilot);
+
+            pilot.press(KeyCode.F2, KeyModifiers.SHIFT);
+            settle(pilot);
+            assertEquals(6, caretRow(fixture), "Shift+F2 from the start wraps to the last problem");
+            pilot.press(KeyCode.F2);
+            settle(pilot);
+            assertEquals(2, caretRow(fixture), "F2 from the last problem wraps to the first");
+            pilot.press(KeyCode.F2);
+            settle(pilot);
+            assertEquals(6, caretRow(fixture), "F2 moves forward to the next problem");
+            pilot.press(KeyCode.F2, KeyModifiers.SHIFT);
+            settle(pilot);
+            assertEquals(2, caretRow(fixture), "Shift+F2 moves back to the previous problem");
+        }
+    }
+
+    private static int caretRow(EditorShell fixture) {
+        return fixture.editor().activeDocument().orElseThrow().line();
+    }
+
+    private static Diagnostic problemAt(Path file, int line) {
+        return new Diagnostic(file, line, 0, line, 1, Severity.ERROR, "test", "problem at " + line);
     }
 
     @Test

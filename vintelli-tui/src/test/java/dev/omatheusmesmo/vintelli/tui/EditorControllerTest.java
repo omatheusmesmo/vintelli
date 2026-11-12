@@ -1,5 +1,7 @@
 package dev.omatheusmesmo.vintelli.tui;
 
+import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Diagnostic;
+import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Severity;
 import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability;
 import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
@@ -134,6 +136,42 @@ class EditorControllerTest {
 
         assertTrue(controller.handle(KeyActions.NEXT_PROBLEM, () -> { }));
         assertEquals("No problems in the active file", lastStatus());
+    }
+
+    @Test
+    void previousProblemReportsAnActiveFileWithoutProblems() {
+        controller.openFile(project.resolve("src/Main.java"), 0);
+
+        assertTrue(controller.handle(KeyActions.PREVIOUS_PROBLEM, () -> { }));
+        assertEquals("No problems in the active file", lastStatus());
+    }
+
+    @Test
+    void problemActionsCycleInBothDirectionsAndWrapAtTheEnds() throws IOException {
+        Path file = project.resolve("src/Lines.java");
+        Files.writeString(file, "one\ntwo\nthree\nfour\n");
+        Path realFile = file.toRealPath();
+        controller.openFile(realFile, 0);
+        editor.setDiagnostics(List.of(problemAt(realFile, 0), problemAt(realFile, 1), problemAt(realFile, 3)));
+
+        assertTrue(controller.handle(KeyActions.PREVIOUS_PROBLEM, () -> { }));
+        assertEquals(3, caretLine(), "previous from the start wraps to the last problem");
+        assertTrue(lastStatus().contains("problem at 3"));
+        assertTrue(controller.handle(KeyActions.PREVIOUS_PROBLEM, () -> { }));
+        assertEquals(1, caretLine());
+        assertTrue(controller.handle(KeyActions.NEXT_PROBLEM, () -> { }));
+        assertEquals(3, caretLine(), "next after previous returns to the problem previous left");
+        assertTrue(controller.handle(KeyActions.NEXT_PROBLEM, () -> { }));
+        assertEquals(0, caretLine(), "next from the last problem wraps to the first");
+        assertTrue(lastStatus().contains("problem at 0"));
+    }
+
+    private int caretLine() {
+        return editor.activeDocument().orElseThrow().line();
+    }
+
+    private static Diagnostic problemAt(Path file, int line) {
+        return new Diagnostic(file, line, 0, line, 1, Severity.ERROR, "test", "problem at " + line);
     }
 
     @Test

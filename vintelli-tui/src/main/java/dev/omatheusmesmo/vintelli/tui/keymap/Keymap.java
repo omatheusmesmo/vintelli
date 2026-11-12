@@ -180,13 +180,15 @@ public final class Keymap {
 
     /**
      * Chords of the actions that the {@code intellij} profile aligns with the IntelliJ default keymap,
-     * and the chords the {@code vim} profile keeps for the same actions. A trigger for Shift matches
-     * with or without Shift unless the trigger requires it, so {@code F2} also answers {@code Shift+F2}.
+     * and the chords the {@code vim} profile keeps for the same actions. A bare key trigger matches
+     * with or without Shift, so the next-problem chords refuse Shift and {@code Shift+F2} and
+     * {@code Shift+F8} reach the previous-problem action.
      */
     private static void bindProfileChords(Bindings.Builder builder, KeymapProfile profile) {
         switch (profile) {
             case INTELLIJ -> {
-                builder.bind(KeyTrigger.key(KeyCode.F2), KeyActions.NEXT_PROBLEM);
+                builder.bind(new UnshiftedKeyTrigger(KeyTrigger.key(KeyCode.F2)), KeyActions.NEXT_PROBLEM);
+                builder.bind(KeyTrigger.key(KeyCode.F2, false, false, true), KeyActions.PREVIOUS_PROBLEM);
                 builder.bind(KeyTrigger.key(KeyCode.F6, false, false, true), KeyActions.PROJECT_RENAME);
                 builder.bind(KeyTrigger.key(KeyCode.F1, false, true, false), KeyActions.PROJECT_SELECT_OPENED_FILE);
                 builder.bind(KeyTrigger.key(KeyCode.F4, true, false, false), KeyActions.CLOSE_TAB);
@@ -207,7 +209,8 @@ public final class Keymap {
                 builder.bind(KeyTrigger.alt('['), KeyActions.PREVIOUS_TAB);
                 builder.bind(KeyTrigger.key(KeyCode.F12), KeyActions.DEFINITION);
                 builder.bind(KeyTrigger.alt('u'), KeyActions.USAGES);
-                builder.bind(KeyTrigger.key(KeyCode.F8), KeyActions.NEXT_PROBLEM);
+                builder.bind(new UnshiftedKeyTrigger(KeyTrigger.key(KeyCode.F8)), KeyActions.NEXT_PROBLEM);
+                builder.bind(KeyTrigger.key(KeyCode.F8, false, false, true), KeyActions.PREVIOUS_PROBLEM);
                 builder.bind(KeyTrigger.ctrl('b'), KeyActions.TOGGLE_BREAKPOINT);
                 builder.bind(KeyTrigger.alt('g'), KeyActions.GO_TO_LINE);
                 builder.bind(KeyTrigger.ctrl('e'), KeyActions.SELECT_ALL);

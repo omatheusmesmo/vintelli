@@ -77,6 +77,7 @@ final class ShellMenuCatalog {
         addMenu(entries, "Navigate", KeyActions.USAGES, "Find Usages",
                 canEdit ? navigationUnavailable : editorUnavailable);
         addMenu(entries, "Code", KeyActions.NEXT_PROBLEM, "Next Problem", canEdit ? "" : editorUnavailable);
+        addMenu(entries, "Code", KeyActions.PREVIOUS_PROBLEM, "Previous Problem", canEdit ? "" : editorUnavailable);
         for (ToolWindow window : host.toolWindows()) {
             entries.addAll(window.menuEntries());
         }
