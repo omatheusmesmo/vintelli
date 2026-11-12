@@ -41,6 +41,7 @@ import dev.tamboui.tui.event.KeyModifiers;
 import dev.tamboui.tui.event.KeyEvent;
 import dev.tamboui.tui.event.MouseButton;
 import dev.tamboui.tui.event.MouseEvent;
+import dev.tamboui.tui.event.TickEvent;
 import dev.tamboui.tui.pilot.Pilot;
 import dev.tamboui.tui.TuiConfig;
 import org.junit.jupiter.api.Test;
@@ -56,6 +57,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -156,6 +158,25 @@ class VintelliShellTest {
         assertFalse(shell.isToolWindowVisible("acp.agents"), "a fresh layout starts with the right windows hidden");
         assertTrue(shell.isToolWindowVisible("run"), "the bottom windows start visible");
         assertNotEquals(-1, findRow(buffer, VIEWPORT.width() - 1, "A"), "the hidden window keeps its stripe icon");
+    }
+
+    @Test
+    void queuedBackgroundWorkReachesTheScreenWithoutAnyInput() throws Exception {
+        VintelliShell shell = defaultShell();
+        UiWorkQueue uiWork = new UiWorkQueue();
+        shell.useUiWorkQueue(uiWork);
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            shell.bindRedraw(() -> test.runner().tuiRunner().dispatch(TickEvent.of(0)));
+            for (int round = 1; round <= 2; round++) {
+                AtomicBoolean applied = new AtomicBoolean();
+                new Thread(() -> uiWork.execute(() -> applied.set(true))).start();
+                long deadline = System.nanoTime() + SETTLE_TIMEOUT.toNanos();
+                while (!applied.get() && System.nanoTime() < deadline) {
+                    pause(test.pilot(), SETTLE_STEP);
+                }
+                assertTrue(applied.get(), "queued update " + round + " was not drawn without input");
+            }
+        }
     }
 
     @Test

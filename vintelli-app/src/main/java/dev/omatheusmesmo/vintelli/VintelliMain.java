@@ -1,5 +1,6 @@
 package dev.omatheusmesmo.vintelli;
 
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -13,6 +14,8 @@ import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeymapRegistry;
 import dev.omatheusmesmo.vintelli.tui.terminal.TerminalBackground;
 import dev.tamboui.toolkit.app.ToolkitRunner;
+import dev.tamboui.tui.TuiConfig;
+import dev.tamboui.tui.event.TickEvent;
 import io.quarkus.runtime.Quarkus;
 import io.quarkus.runtime.QuarkusApplication;
 import jakarta.enterprise.inject.Instance;
@@ -22,6 +25,15 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 @Singleton
 public final class VintelliMain implements QuarkusApplication {
+
+    /**
+     * Idle redraw cadence. Background work that bypasses the UI work queue is only
+     * picked up on the next frame, so this bounds that delay while the shell is idle;
+     * queued work wakes the loop at once through {@link VintelliShell#bindRedraw}.
+     */
+    static final Duration IDLE_TICK = Duration.ofMillis(250);
+    /** The scheduler period is the smaller of the tick and this grace, so resize detection keeps its latency. */
+    static final Duration RESIZE_CHECK = Duration.ofMillis(40);
 
     private final Instance<VintelliShell> shell;
     private final Instance<KeymapRegistry> keymapRegistry;
@@ -72,6 +84,10 @@ public final class VintelliMain implements QuarkusApplication {
                 VintelliShell tuiShell = shell.get();
                 Keymap keymap = keymapRegistry.get().get();
                 try (ToolkitRunner runner = ToolkitRunner.builder()
+                        .config(TuiConfig.defaults().toBuilder()
+                                .tickRate(IDLE_TICK)
+                                .resizeGracePeriod(RESIZE_CHECK)
+                                .build())
                         .bindings(keymap.bindings())
                         .styleEngine(shellThemes.engine())
                         .mouseCapture(true)
@@ -79,6 +95,7 @@ public final class VintelliMain implements QuarkusApplication {
                         .build()) {
                     runner.eventRouter().addGlobalHandler(tuiShell);
                     tuiShell.bindQuit(runner::quit);
+                    tuiShell.bindRedraw(() -> runner.tuiRunner().dispatch(TickEvent.of(0)));
                     try (TerminalBackground background = attachBackground(runner, shellThemes).orElse(null)) {
                         runner.run(tuiShell::root);
                     }

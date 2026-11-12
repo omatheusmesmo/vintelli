@@ -1371,6 +1371,14 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         quitAction = action;
     }
 
+    /**
+     * Lets a background update wake the render loop, so queued work reaches the
+     * screen without waiting for the idle tick or an input event.
+     */
+    public void bindRedraw(Runnable redraw) {
+        uiWorkQueue.bindWake(redraw);
+    }
+
     private void dispatch(KeymapParts parts, String actionId) {
         dispatch(parts, actionId, null);
     }
