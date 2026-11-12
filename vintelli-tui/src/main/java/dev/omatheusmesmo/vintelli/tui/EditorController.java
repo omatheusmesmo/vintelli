@@ -362,6 +362,15 @@ final class EditorController {
         host.status(editor.status());
     }
 
+    private void runClipboardAction(Runnable action) {
+        if (editor == null) {
+            host.status("Built-in editor unavailable");
+            return;
+        }
+        action.run();
+        host.status(editor.status());
+    }
+
     void editorUndo() {
         if (editor == null || !editor.undo()) {
             host.status(editor == null ? "Built-in editor unavailable" : "Nothing to undo");
@@ -416,6 +425,21 @@ final class EditorController {
             case KeyActions.REDO -> {
                 closeOverlays.run();
                 editorRedo();
+                yield true;
+            }
+            case KeyActions.CUT -> {
+                closeOverlays.run();
+                runClipboardAction(editor == null ? null : editor::cutSelection);
+                yield true;
+            }
+            case KeyActions.COPY -> {
+                closeOverlays.run();
+                runClipboardAction(editor == null ? null : editor::copySelection);
+                yield true;
+            }
+            case KeyActions.PASTE -> {
+                closeOverlays.run();
+                runClipboardAction(editor == null ? null : editor::pasteClipboard);
                 yield true;
             }
             case KeyActions.CLOSE_TAB -> {

@@ -56,6 +56,9 @@ final class ShellMenuCatalog {
         addMenu(entries, "File", KeyActions.QUIT, "Quit", "");
         addMenu(entries, "Edit", KeyActions.UNDO, "Undo", canEdit ? "" : editorUnavailable);
         addMenu(entries, "Edit", KeyActions.REDO, "Redo", canEdit ? "" : editorUnavailable);
+        addMenu(entries, "Edit", KeyActions.CUT, "Cut", canEdit ? "" : editorUnavailable);
+        addMenu(entries, "Edit", KeyActions.COPY, "Copy", canEdit ? "" : editorUnavailable);
+        addMenu(entries, "Edit", KeyActions.PASTE, "Paste", canEdit ? "" : editorUnavailable);
         addMenu(entries, "Edit", KeyActions.FIND, "Find", canEdit ? "" : editorUnavailable);
         addMenu(entries, "View", KeyActions.PROJECT_WIDER, "Widen Project Panel", "");
         addMenu(entries, "View", KeyActions.PROJECT_NARROWER, "Narrow Project Panel", "");

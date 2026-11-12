@@ -165,6 +165,45 @@ public final class EditorDocument {
         return text.toString();
     }
 
+    boolean hasSelection() {
+        return selection != null && !selection.isEmpty();
+    }
+
+    /** Replaces the selection, or inserts at the caret when nothing is selected, as one undoable step. */
+    void replaceSelection(String replacement) {
+        mutate(() -> splice(replacement));
+    }
+
+    /**
+     * Removes the selected text inside an edit that is already a single undo step, so a typed
+     * character or Backspace applies to the selection instead of the characters around the caret.
+     */
+    void deleteSelectionWithinEdit() {
+        if (hasSelection()) { splice(""); }
+    }
+
+    private void splice(String replacement) {
+        SelectionCursor range = hasSelection() ? selection : SelectionCursor.collapsed(row(), column());
+        int start = offsetOf(range.startRow(), range.startCol());
+        int end = offsetOf(range.endRow(), range.endCol());
+        String text = state.text();
+        String updated = text.substring(0, start) + replacement + text.substring(end);
+        int caret = start + replacement.length();
+        int caretRow = (int) updated.substring(0, caret).chars().filter(c -> c == '\n').count();
+        int caretColumn = caret - (updated.lastIndexOf('\n', caret - 1) + 1);
+        boolean folded = fold != null;
+        dropFold();
+        state.setText(updated);
+        position(caretRow, caretColumn);
+        if (folded) { foldImports(); }
+    }
+
+    private int offsetOf(int row, int column) {
+        int offset = 0;
+        for (int line = 0; line < row; line++) { offset += state.getLine(line).length() + 1; }
+        return offset + Math.min(column, state.getLine(row).length());
+    }
+
     void clearSelection() {
         selection = null;
         pushSelection();
