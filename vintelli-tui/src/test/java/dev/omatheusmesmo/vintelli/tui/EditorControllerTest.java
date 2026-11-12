@@ -31,6 +31,7 @@ class EditorControllerTest {
     private final List<String> statuses = new ArrayList<>();
     private final List<String> focusTargets = new ArrayList<>();
     private int vcsRefreshes;
+    private int diagnosticsRefreshes;
 
     @BeforeEach
     void setUp() throws IOException {
@@ -175,6 +176,18 @@ class EditorControllerTest {
     }
 
     @Test
+    void openingSavingAndClosingAFileAskForAFreshDiagnosticsRead() {
+        controller.openFile(project.resolve("src/Main.java"), 0);
+        assertEquals(1, diagnosticsRefreshes);
+
+        controller.saveActiveFile();
+        assertEquals(2, diagnosticsRefreshes);
+
+        controller.closeActiveTab();
+        assertEquals(3, diagnosticsRefreshes);
+    }
+
+    @Test
     void namedBreakpointActionClosesOverlaysAndTargetsTheCaretLine() {
         controller.openFile(project.resolve("src/Main.java"), 0);
         List<Boolean> focusedWhenClosed = new ArrayList<>();
@@ -205,6 +218,11 @@ class EditorControllerTest {
 
             @Override
             public void refreshProjectTree() {
+            }
+
+            @Override
+            public void refreshDiagnostics() {
+                diagnosticsRefreshes++;
             }
 
             @Override

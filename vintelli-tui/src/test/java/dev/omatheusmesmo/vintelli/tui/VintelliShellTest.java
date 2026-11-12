@@ -16,6 +16,8 @@ import dev.omatheusmesmo.vintelli.tui.layout.ShellLayout;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityStatus;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
+import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Diagnostic;
+import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Severity;
 import dev.omatheusmesmo.vintelli.api.idea.IdeaMcpConnection;
 import dev.omatheusmesmo.vintelli.api.capability.ProjectFileOperations;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
@@ -569,6 +571,86 @@ class VintelliShellTest {
     }
 
     @Test
+    void pilotProblemsRefreshPaintsTheProviderProblemsAndF2WalksThemInTheWindowOrder() throws Exception {
+        ProblemsShell fixture = openProblemsShell();
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), WIDE)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+            refreshProblemsWindow(pilot, fixture);
+            awaitProblemCount(pilot, fixture.window(), 3);
+
+            assertEquals(problemsOf(fixture.window(), fixture.main()), fixture.editor().diagnostics(),
+                    "the editor of the file holds the problems the window lists for it, in the window order");
+            String firstRow = awaitRenderedRow(pilot, test, "3 line 3");
+            assertTrue(firstRow.indexOf('!') >= 0 && firstRow.indexOf('!') < firstRow.indexOf("3 line 3"), firstRow);
+            String secondRow = awaitRenderedRow(pilot, test, "5 line 5");
+            assertTrue(secondRow.indexOf('!') >= 0 && secondRow.indexOf('!') < secondRow.indexOf("5 line 5"), secondRow);
+            assertFalse(rowOf(test.renderedFrame(), "2 line 2").contains("!"), test.renderedFrame());
+
+            fixture.editor().requestFocus();
+            settle(pilot);
+            pressF2(pilot);
+            assertEquals(2, fixture.editor().activeDocument().orElseThrow().line(), "F2 moves to the first problem");
+            assertEquals("ERROR: first", fixture.shell().status());
+            pressF2(pilot);
+            assertEquals(4, fixture.editor().activeDocument().orElseThrow().line(), "F2 moves to the next problem");
+            assertEquals("WARNING: second", fixture.shell().status());
+            pressF2(pilot);
+            assertEquals(2, fixture.editor().activeDocument().orElseThrow().line(), "F2 wraps to the first problem");
+            fixture.window().close();
+        }
+    }
+
+    @Test
+    void pilotProviderSwitchClearsThePaintedProblemsOnTheNextRefresh() throws Exception {
+        ProblemsShell fixture = openProblemsShell();
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), WIDE)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+            refreshProblemsWindow(pilot, fixture);
+            awaitProblemCount(pilot, fixture.window(), 3);
+            assertEquals(2, fixture.editor().diagnostics().size());
+
+            fixture.registry().select(null);
+            pilot.press('r');
+            settle(pilot);
+            awaitRenderedFrame(pilot, test, "Diagnostics unavailable");
+            assertEquals(List.of(), fixture.editor().diagnostics(),
+                    "problems of the provider that is no longer selected leave the editor");
+
+            fixture.editor().requestFocus();
+            settle(pilot);
+            pressF2(pilot);
+            assertEquals("No problems in the active file", fixture.shell().status());
+            fixture.window().close();
+        }
+    }
+
+    @Test
+    void pilotClosingTheFileRemovesItsPaintedProblemsAndTheWindowDropsThem() throws Exception {
+        ProblemsShell fixture = openProblemsShell();
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), WIDE)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+            refreshProblemsWindow(pilot, fixture);
+            awaitProblemCount(pilot, fixture.window(), 3);
+            assertEquals(2, fixture.editor().diagnostics().size());
+
+            fixture.editor().requestFocus();
+            settle(pilot);
+            pilot.press(KeyCode.F4, KeyModifiers.CTRL);
+            settle(pilot);
+            awaitProblemCount(pilot, fixture.window(), 1);
+            assertEquals(List.of("other"), fixture.window().problems().stream().map(Diagnostic::message).toList());
+
+            fixture.editor().open(new OpenRequest(fixture.main(), 0));
+            assertEquals(List.of(), fixture.editor().diagnostics(),
+                    "a file that is opened again does not bring its closed problems back");
+            fixture.window().close();
+        }
+    }
+
+    @Test
     void asciiModeDrawsTheStripsAndTheBottomTabsWithoutNonAsciiGlyphs() throws Exception {
         String previous = System.getProperty(IconMode.CONFIG_PROPERTY);
         System.setProperty(IconMode.CONFIG_PROPERTY, "ascii");
@@ -873,6 +955,73 @@ class VintelliShellTest {
             assertFalse(test.renderedFrame().contains("Terminal: unavailable"), test.renderedFrame());
             pressCtrlC(pilot);
         }
+    }
+
+    private record ProblemsShell(VintelliShell shell, BuiltinEditor editor, ProblemsToolWindow window,
+            ProblemsToolWindowTest.TestRegistry registry, Path main, Path other, int tabRow, int problemsX) {
+    }
+
+    private ProblemsShell openProblemsShell() throws IOException {
+        Path main = project.resolve("Main.txt");
+        Files.writeString(main, numberedLines(10));
+        Path other = project.resolve("Other.txt");
+        Files.writeString(other, "other\n");
+        ShellThemes themes = defaultThemes();
+        BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette, new FakeClipboard(),
+                sequence -> { });
+        editor.open(new OpenRequest(other, 0));
+        editor.open(new OpenRequest(main, 0));
+        ProblemsToolWindowTest.TestRegistry registry = new ProblemsToolWindowTest.TestRegistry(
+                new ProblemsToolWindowTest.TestDiagnostics(List.of(
+                        new Diagnostic(main, 4, 0, 4, 6, Severity.WARNING, "jdtls", "second"),
+                        new Diagnostic(main, 2, 2, 2, 6, Severity.ERROR, "jdtls", "first"),
+                        new Diagnostic(other, 0, 0, 0, 5, Severity.ERROR, "jdtls", "other"))));
+        ProblemsToolWindow window = new ProblemsToolWindow(registry, editor, () -> themes);
+        List<ToolWindow> windows = new ToolWindowRegistry(List.of(new RunToolWindow(() -> themes),
+                new TerminalToolWindow(() -> themes), window, editor)).toolWindows();
+        VintelliShell shell = new VintelliShell(ShellConfig.of(windows, new ShellState(), themes));
+        Buffer buffer = offlineFrame(shell, WIDE);
+        int tabRow = findBottomTabRow(buffer);
+        int problemsX = rowText(buffer, tabRow).indexOf("6 Problems") + 1;
+        return new ProblemsShell(shell, editor, window, registry, main, other, tabRow, problemsX);
+    }
+
+    private void refreshProblemsWindow(Pilot pilot, ProblemsShell fixture) {
+        pilot.click(fixture.problemsX(), fixture.tabRow() + 1);
+        settle(pilot);
+        pilot.press('r');
+        settle(pilot);
+    }
+
+    private void pressF2(Pilot pilot) {
+        pilot.press(KeyCode.F2);
+        settle(pilot);
+    }
+
+    private static void awaitProblemCount(Pilot pilot, ProblemsToolWindow window, int expected) {
+        long deadline = System.nanoTime() + SETTLE_TIMEOUT.toNanos();
+        while (window.problems().size() != expected && System.nanoTime() < deadline) {
+            pause(pilot, Duration.ofMillis(10));
+        }
+        assertEquals(expected, window.problems().size(), "the Problems window lists " + expected + " problems");
+    }
+
+    private static List<Diagnostic> problemsOf(ProblemsToolWindow window, Path file) {
+        return window.problems().stream().filter(problem -> problem.filePath().equals(file)).toList();
+    }
+
+    private static String awaitRenderedRow(Pilot pilot, MouseShellRunner test, String fragment) {
+        long deadline = System.nanoTime() + SETTLE_TIMEOUT.toNanos();
+        String row = rowOf(test.renderedFrame(), fragment);
+        while (!row.contains("!") && System.nanoTime() < deadline) {
+            pause(pilot, Duration.ofMillis(30));
+            row = rowOf(test.renderedFrame(), fragment);
+        }
+        return row;
+    }
+
+    private static String rowOf(String frame, String fragment) {
+        return frame.lines().filter(line -> line.contains(fragment)).findFirst().orElse("");
     }
 
     private VintelliShell shellWithRegistry(FixedStatusRegistry registry) {

@@ -697,17 +697,27 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
         persist();
     }
 
+    /**
+     * Replaces the problems of every open document with the ones in {@code diagnostics} that name its file, so a
+     * document the list does not name is cleared. The list is the complete picture of the open files, as the
+     * Problems window refresh produces it.
+     */
     public synchronized void setDiagnostics(List<Diagnostic> diagnostics) {
-        EditorDocument document = document();
-        if (document != null) {
-            document.diagnostics(diagnostics.stream().filter(value -> {
-                Path path = value.filePath().isAbsolute() ? value.filePath() : project.resolve(value.filePath());
-                try {
-                    return path.toRealPath().equals(document.file());
-                } catch (IOException unavailable) {
-                    return path.toAbsolutePath().normalize().equals(document.file());
-                }
-            }).toList());
+        Map<Path, List<Diagnostic>> byFile = new HashMap<>();
+        for (Diagnostic diagnostic : diagnostics) {
+            byFile.computeIfAbsent(resolvedFile(diagnostic.filePath()), ignored -> new ArrayList<>()).add(diagnostic);
+        }
+        for (EditorDocument document : documents) {
+            document.diagnostics(byFile.getOrDefault(document.file(), List.of()));
+        }
+    }
+
+    private Path resolvedFile(Path file) {
+        Path path = file.isAbsolute() ? file : project.resolve(file);
+        try {
+            return path.toRealPath();
+        } catch (IOException unavailable) {
+            return path.toAbsolutePath().normalize();
         }
     }
 
