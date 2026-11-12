@@ -6,13 +6,11 @@ Start Vintelli, run its commands and use the TUI shell (run, terminal and capabi
 
 Backend (headless, dev mode with live reload):
 
-Dev mode only starts from the `vintelli-app` module directory. The `mkdir` line
-is a one-time setup after a fresh clone (see CONTRIBUTING.md for the reason):
+Dev mode only starts from the `vintelli-app` module directory:
 
 ```bash
 sdk env            # honors .sdkmanrc (Java 25)
 ./mvnw -pl vintelli-app -am install -DskipTests
-mkdir -p vintelli-jsonrpc/target/classes vintelli-acp/target/classes
 cd vintelli-app && ../mvnw quarkus:dev -Dquarkus.analytics.disabled=true -Dquarkus.args=serve
 ```
 
