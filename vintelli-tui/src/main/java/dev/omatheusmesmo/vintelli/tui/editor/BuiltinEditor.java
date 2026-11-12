@@ -2,6 +2,8 @@ package dev.omatheusmesmo.vintelli.tui.editor;
 
 import dev.omatheusmesmo.vintelli.api.ShellEditorPalette;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityFailure;
+import dev.omatheusmesmo.vintelli.api.capability.CodeActionCapability.SourceRange;
+import dev.omatheusmesmo.vintelli.api.capability.CodeActionCapability.WorkspaceEdit;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityRegistry;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilitySelection;
@@ -730,6 +732,48 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     }
 
     public synchronized List<Diagnostic> diagnostics() { return document() == null ? List.of() : document().diagnostics(); }
+
+    /**
+     * The quick fix request of the active document: its selection, or the caret when nothing is selected, and
+     * the diagnostics that overlap the rows of that range. Empty when no file is open.
+     */
+    public synchronized Optional<QuickFixRequest> quickFixRequest() {
+        EditorDocument document = document();
+        if (document == null) {
+            return Optional.empty();
+        }
+        SelectionCursor selection = document.selection();
+        SourceRange range = new SourceRange(selection.startRow(), selection.startCol(), selection.endRow(),
+                selection.endCol());
+        List<Diagnostic> overlapping = document.diagnostics().stream()
+                .filter(problem -> problem.startLine() <= range.endLine() && problem.endLine() >= range.startLine())
+                .toList();
+        return Optional.of(new QuickFixRequest(document.file(), range, overlapping));
+    }
+
+    /**
+     * Applies the edit of a quick fix to the document the request was made for, as one undoable step that
+     * marks the document dirty. A document that changed since the request, or an edit the applier cannot
+     * apply, leaves the text untouched and says why.
+     */
+    public synchronized WorkspaceEditApplier.Result applyQuickFix(QuickFixRequest request, WorkspaceEdit edit) {
+        EditorDocument document = document();
+        if (document == null) {
+            return new WorkspaceEditApplier.Rejected("no file is open");
+        }
+        if (!document.file().equals(request.file())) {
+            return new WorkspaceEditApplier.Rejected("the active file changed since the quick fix was asked for");
+        }
+        WorkspaceEditApplier.Result result = WorkspaceEditApplier.apply(document, edit);
+        if (result instanceof WorkspaceEditApplier.Applied) {
+            changed();
+        }
+        return result;
+    }
+
+    public synchronized Optional<Rect> caretCell() {
+        return element.caretCell();
+    }
 
     private EditorDocument.Breakpoints breakpointsOf(Path file) {
         return new EditorDocument.Breakpoints() {

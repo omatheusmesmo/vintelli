@@ -15,6 +15,9 @@ import dev.omatheusmesmo.vintelli.tui.keymap.KeymapRegistry;
 import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
 import dev.omatheusmesmo.vintelli.tui.editor.GoToLine;
 import dev.omatheusmesmo.vintelli.tui.editor.GoToLineOverlay;
+import dev.omatheusmesmo.vintelli.tui.editor.QuickFixController;
+import dev.omatheusmesmo.vintelli.tui.editor.QuickFixOverlay;
+import dev.omatheusmesmo.vintelli.tui.editor.QuickFixRequest;
 import dev.omatheusmesmo.vintelli.tui.menu.MenuPopup;
 import dev.omatheusmesmo.vintelli.tui.OverlayStack.Kind;
 import dev.omatheusmesmo.vintelli.tui.layout.ShellLayout;
@@ -173,6 +176,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private final ProjectPanel projectPanel;
     private final EditorController editorController;
     private final EditorPanel editorPanel;
+    private final QuickFixController quickFix;
+    private final QuickFixOverlay quickFixOverlay;
     private Column centerPanel;
     private Column paneSeparatorVertical;
     private Column paneSeparatorHorizontal;
@@ -265,6 +270,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 projects, editor);
         this.editorController = new EditorController(this.projectRoot, editor, projects, editorHost());
         this.editorPanel = new EditorPanel(editorController, editor, themes, () -> overlays().keymap(), this.projectRoot);
+        this.quickFix = new QuickFixController(capabilityRegistry, editor, this::deliverToRenderThread);
+        this.quickFixOverlay = new QuickFixOverlay(quickFix);
         this.fileIcons = FileIcons.resolve();
         Path projectRoot = editor == null ? Path.of("").toAbsolutePath().normalize() : editor.project();
         Path configRoot = persistLayout ? ConfigDirectory.configRoot(ConfigDirectory.sharedConfigDir(),
@@ -353,6 +360,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         stack.registerOverlay(Kind.MENU, menuPopup::isOpen, () -> closeMenu(built));
         stack.registerOverlay(Kind.RUN_CONFIGURATION, runConfigurations::isOpen, runConfigurations::close);
         stack.registerOverlay(Kind.GO_TO_LINE, goToLine::isOpen, () -> closeGoToLine(goToLine));
+        stack.registerOverlay(Kind.QUICK_FIX, quickFix::isOpen, this::releaseQuickFix);
         if (searchModel != null) {
             stack.registerOverlay(Kind.PROJECT_SEARCH, searchModel::isOpen, searchModel::close);
         }
@@ -1043,6 +1051,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                     (frame, area) -> parts.runConfigurations().render(frame, area, mainToolbar.configurationColumn()));
             case PROJECT_SEARCH -> new OverlayElement("project-search", parts.searchOverlay()::render);
             case GO_TO_LINE -> new OverlayElement("go-to-line", parts.goToLine()::render);
+            case QUICK_FIX -> new OverlayElement("quick-fix", (frame, area) -> quickFixOverlay.render(frame, area,
+                    editor == null ? Optional.empty() : editor.caretCell()));
             default -> throw new IllegalStateException("Not a drawn overlay: " + kind);
         };
     }
@@ -1089,6 +1099,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             return EventResult.HANDLED;
         }
         if (top == Kind.GO_TO_LINE) {
+            return EventResult.HANDLED;
+        }
+        if (top == Kind.QUICK_FIX) {
+            handleQuickFixPointer(mouse);
             return EventResult.HANDLED;
         }
         if (top == Kind.RUN_CONFIGURATION) {
@@ -1236,6 +1250,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             case PROJECT_SEARCH -> parts.searchOverlay().handleKey(key)
                     .ifPresent(target -> editorController.openRevealed(target.file(), target.line()));
             case GO_TO_LINE -> handleGoToLineKey(parts, key);
+            case QUICK_FIX -> handleQuickFixKey(key);
             default -> throw new IllegalStateException("Not a drawn overlay: " + overlay);
         }
     }
@@ -1524,6 +1539,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 parts.stack().closeOverlays();
                 openGoToLine(parts);
             }
+            case KeyActions.QUICK_FIX -> {
+                parts.stack().closeOverlays();
+                openQuickFix(parts);
+            }
             case KeyActions.PROJECT_WIDER -> {
                 parts.stack().closeOverlays();
                 paneLayout.resizeProject(2);
@@ -1624,6 +1643,56 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         editor.requestFocus();
         inputCaptured = false;
         status = target.isPresent() ? editor.status() : "Go to Line closed";
+    }
+
+    private void openQuickFix(KeymapParts parts) {
+        Optional<QuickFixRequest> request = editor == null || !editor.hasDocument() ? Optional.empty()
+                : editor.quickFixRequest();
+        if (request.isEmpty()) {
+            status = "Open a file to find quick fixes in";
+            return;
+        }
+        inputCaptured = false;
+        parts.stack().open(Kind.QUICK_FIX, () -> {
+            editor.overlayInputActive(true);
+            quickFix.open(request.get());
+        });
+        status = "Looking for quick fixes...";
+    }
+
+    private void deliverToRenderThread(Runnable update) {
+        if (uiWorkQueue != null) {
+            uiWorkQueue.execute(update);
+        } else {
+            update.run();
+        }
+    }
+
+    private void handleQuickFixKey(KeyEvent key) {
+        afterQuickFixInput(quickFix.press(OverlayInput.key(key)));
+    }
+
+    private void handleQuickFixPointer(MouseEvent mouse) {
+        afterQuickFixInput(quickFix.pointer(mouse.x(), mouse.y(), mouse.isClick(),
+                OverlayInput.scrollDirection(mouse), System.nanoTime()));
+    }
+
+    private void afterQuickFixInput(String message) {
+        if (!message.isEmpty()) {
+            status = message;
+        }
+        if (!quickFix.isOpen()) {
+            releaseQuickFix();
+            inputCaptured = false;
+            editor.requestFocus();
+        }
+    }
+
+    private void releaseQuickFix() {
+        quickFix.close();
+        if (editor != null) {
+            editor.overlayInputActive(false);
+        }
     }
 
     private void focusProjectPanel() {

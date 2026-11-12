@@ -162,6 +162,7 @@ public final class Keymap {
         builder.bind(KeyTrigger.alt('i'), KeyActions.TOGGLE_IMPORT_FOLD);
         builder.bind(KeyTrigger.ctrl('o'), KeyActions.GO_TO_FILE);
         builder.bind(KeyTrigger.alt('f'), KeyActions.FIND_IN_FILES);
+        builder.bind(KeyTrigger.key(KeyCode.ENTER, false, true, false), KeyActions.QUICK_FIX);
         builder.bind(KeyTrigger.alt('='), KeyActions.PROJECT_WIDER);
         builder.bind(KeyTrigger.alt('-'), KeyActions.PROJECT_NARROWER);
         builder.bind(KeyTrigger.alt('.'), KeyActions.BOTTOM_TALLER);

@@ -171,7 +171,8 @@ class KeymapTest {
                 "editor_open", "editor_save", "editor_undo", "editor_redo", "editor_find",
                 "editor_cut", "editor_copy", "editor_paste", "editor_duplicateLine", "editor_selectAll",
                 "editor_close", "editor_nextTab", "editor_previousTab", "editor_definition",
-                "editor_usages", "editor_nextProblem", "editor_previousProblem", "editor_toggleImportFold", "editor_toggleBreakpoint",
+                "editor_usages", "editor_nextProblem", "editor_previousProblem", "editor_quickFix", "editor_toggleImportFold",
+                "editor_toggleBreakpoint",
                 "navigation_goToFile", "navigation_findInFiles", "navigation_goToLine",
                 "navigation_focusBreadcrumbs",
                 "layout_project_wider", "layout_project_narrower", "layout_bottom_taller", "layout_bottom_shorter",
@@ -192,6 +193,17 @@ class KeymapTest {
             assertFalse(keymap.describeBindings(action.id()).isBlank(),
                     "every shipped action must bind at least one chord: " + action.id());
         }
+    }
+
+    @Test
+    void altEnterOffersQuickFixesInBothProfilesAndPlainEnterStillOpensTheFile() {
+        Keymap intellij = Keymap.ofProfile(KeymapProfile.DEFAULT, WINDOWS);
+        Keymap vim = Keymap.ofProfile(KeymapProfile.VIM, WINDOWS);
+
+        assertTrue(intellij.matches(KeyEvent.ofKey(KeyCode.ENTER, KeyModifiers.ALT), KeyActions.QUICK_FIX));
+        assertTrue(vim.matches(KeyEvent.ofKey(KeyCode.ENTER, KeyModifiers.ALT), KeyActions.QUICK_FIX));
+        assertFalse(intellij.matches(KeyEvent.ofKey(KeyCode.ENTER), KeyActions.QUICK_FIX));
+        assertTrue(intellij.matches(KeyEvent.ofKey(KeyCode.ENTER), KeyActions.OPEN_FILE));
     }
 
     @Test
