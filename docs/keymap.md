@@ -36,6 +36,7 @@ Key actions in the `intellij` profile:
 | `moveUp` / `moveDown` | arrow keys (`j/k` in the `vim` profile) | - |
 | `quit` | `Ctrl+C` | - |
 | `editor_copy`, `editor_cut`, `editor_paste` | `Ctrl+C` (copy, only with a selection), `Ctrl+X`, `Ctrl+V` | `Ctrl+C`, `Ctrl+X`, `Ctrl+V` |
+| `editor_selectAll` (Select All), Shift+arrows | `Ctrl+A` (`Ctrl+E` in the `vim` profile); `Shift` with the arrows, Home, End, PageUp and PageDown extend the selection | `Ctrl+A`, `Shift+arrows` |
 
 The command palette lists every action with its active chord and, when it
 differs, the real IntelliJ shortcut, filters by label or action id, and runs
@@ -70,12 +71,38 @@ tool window shortcuts.
   block as one paste event only to the focused element, and enabling it would
   drop pastes into the terminal and chat windows. Pasting with the terminal
   shortcut still arrives as typed keys and lands in the editor.
-- Keyboard selection (Shift+arrows) is tracked in #272. Until then a selection
-  comes from the mouse only.
 
 Migration: `Ctrl+C` used to quit in every window, the editor included. Now it
 copies when editor text is selected. There has been no release, so no alias is
 kept. With no selection, `Ctrl+C` quits as before.
+
+### Selecting text
+
+The mouse and the keyboard make the same selection: the same highlight, the
+same copy, cut and paste, and typing over it replaces it as one undo step. The
+anchor is where the selection started: the caret when the first Shift key was
+pressed, or the press of a mouse drag.
+
+- `Shift+Left`, `Shift+Right`, `Shift+Up` and `Shift+Down` move the caret one
+  character or one row and extend the selection. `Shift+Home` and `Shift+End`
+  go to the start and end of the line, and `Shift+PageUp` and `Shift+PageDown`
+  move by one page of visible rows. Shift in the opposite direction shrinks
+  the selection.
+- A caret key without `Shift` (arrows, `Home`, `End`) moves the caret and ends
+  the selection. Plain `PageUp` and `PageDown` do not move the caret in the
+  editor yet, so they do not change the selection either.
+- `Ctrl+A` selects the whole document in the `intellij` profile. Edit > Select
+  All and the command palette run the same action.
+- A selection crosses folded import blocks: the hidden rows are part of the
+  selection and go to the clipboard with the rest.
+- Terminals: `Shift` with the arrow keys is sent by essentially every terminal
+  emulator. `Shift+Home`, `Shift+End`, `Shift+PageUp`, `Shift+PageDown` and
+  `Ctrl+A` have not been checked in a live terminal yet. Ctrl+Shift chords (for
+  example `Ctrl+Shift+Left`) cannot be delivered: the terminal sends the same
+  bytes as the chord without Shift, so no Ctrl+Shift chord is bound for
+  selection. A terminal window that captures the keyboard (terminal, chat)
+  keeps `Ctrl+A` for itself, and a multiplexer that uses `Ctrl+A` as its prefix
+  takes it before the editor sees it.
 
 Project pane header actions (active while the project panel has the focus; the
 palette runs them from anywhere):
@@ -117,6 +144,7 @@ is unchanged and keeps the chords these actions had before.
 | `project_select_opened_file` (Select Opened File) | `Alt+F1` | `Alt+F1` | `F3` |
 | `editor_duplicateLine` (Duplicate Line) | `Ctrl+D` | `Ctrl+D` | none, the `vim` profile binds nothing here |
 | `navigation_goToLine` (Go to Line) | `Ctrl+G` | `Ctrl+G` | none, `vim` binds `Alt+G` (new) |
+| `editor_selectAll` (Select All) | `Ctrl+A` | `Ctrl+A` | `Ctrl+E` |
 
 Decisions behind the table:
 
@@ -149,6 +177,9 @@ Decisions behind the table:
   did) and with folded imports. Known gap: with a selection, IntelliJ
   duplicates the selected text, while Vintelli duplicates the caret line only
   and clears the selection. Duplicating the selected text is not done yet.
+- **`Ctrl+A`** (Select All) is IntelliJ's chord and is free in both profiles.
+  The `vim` profile uses `Ctrl+E` instead: Vim gives `Ctrl+A` to the increment
+  command, which this editor does not have, so the chord stays free for it.
 
 Terminal caveats, from the captures in `docs/spikes/spike-27-keyboard-and-colors.md`
 and `docs/spikes/spike-49-per-terminal-capture.md`:
@@ -160,6 +191,8 @@ and `docs/spikes/spike-49-per-terminal-capture.md`:
 - `Ctrl+F4`, `Alt+F7`, `Alt+F1`, `Shift+F6` and `Shift+F2` have not been
   checked in a live terminal yet. The TamboUI key parser reads the F-key
   modifiers (spike 27), but each sequence is unverified on each terminal.
+- `Shift+Home`, `Shift+End`, `Shift+PageUp`, `Shift+PageDown` and `Ctrl+A` are
+  the keyboard selection chords that have not been checked in a live terminal.
 
 Chords a terminal cannot deliver, and their alternatives:
 

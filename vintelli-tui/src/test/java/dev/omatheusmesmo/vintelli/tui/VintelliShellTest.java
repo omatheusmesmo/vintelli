@@ -5363,6 +5363,129 @@ class VintelliShellTest {
     }
 
     @Test
+    void pilotShiftArrowsSelectFromTheKeyboardAndCopyTheSameTextAsAMouseSelection() throws Exception {
+        EditorShell fixture = openEditorShell("Keys.txt", "alpha\nbravo\n", 0);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            focusEditor(pilot, fixture);
+
+            pressShift(pilot, KeyCode.RIGHT, 3);
+            assertEquals("alp", selectedText(fixture));
+            pressShift(pilot, KeyCode.DOWN, 1);
+            assertEquals("alpha\nbra", selectedText(fixture), "Shift+Down extends across the line break");
+            pressShift(pilot, KeyCode.LEFT, 1);
+            assertEquals("alpha\nbr", selectedText(fixture), "Shift+Left shrinks the selection");
+            assertFalse(fixture.editor().activeDocument().orElseThrow().dirty(), "selecting does not dirty the document");
+
+            pressCtrl(pilot, 'c');
+            settle(pilot);
+            assertEquals("alpha\nbr", fixture.clipboard().stored());
+            assertTrue(test.running(), "Ctrl+C over a keyboard selection copies instead of quitting");
+        }
+    }
+
+    @Test
+    void pilotTypingOverAKeyboardSelectionReplacesItAsOneUndoStep() throws Exception {
+        EditorShell fixture = openEditorShell("Typed.txt", "alpha beta\n", 0);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            focusEditor(pilot, fixture);
+
+            pressShift(pilot, KeyCode.RIGHT, 5);
+            pilot.press('X');
+            settle(pilot);
+            assertEquals("X beta\n", fixture.editor().activeDocument().orElseThrow().text());
+
+            pressCtrl(pilot, 'z');
+            settle(pilot);
+            assertEquals("alpha beta\n", fixture.editor().activeDocument().orElseThrow().text(),
+                    "one undo reverts the typed replacement of the keyboard selection");
+        }
+    }
+
+    @Test
+    void pilotPlainCaretKeyClearsTheKeyboardSelectionBeforeTyping() throws Exception {
+        EditorShell fixture = openEditorShell("Plain.txt", "alpha beta\n", 0);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            focusEditor(pilot, fixture);
+
+            pressShift(pilot, KeyCode.RIGHT, 2);
+            assertEquals("al", selectedText(fixture));
+            pilot.press(KeyCode.RIGHT);
+            settle(pilot);
+            assertEquals("", selectedText(fixture), "a caret key without Shift ends the selection");
+
+            pilot.press('X');
+            settle(pilot);
+            assertEquals("alpXha beta\n", fixture.editor().activeDocument().orElseThrow().text(),
+                    "typing inserts at the caret, not over the old selection");
+        }
+    }
+
+    @Test
+    void pilotShiftPageDownAndShiftPageUpExtendAndShrinkByTheVisibleRows() throws Exception {
+        EditorShell fixture = openEditorShell("Pages.txt", numberedLines(40), 0);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            focusEditor(pilot, fixture);
+            int page = pilot.findElement(BuiltinEditor.TEXT_AREA_ID).height();
+
+            pilot.press(KeyCode.PAGE_DOWN, KeyModifiers.SHIFT);
+            settle(pilot);
+            assertEquals(page, fixture.editor().pointerState().orElseThrow().line(), "one page of rows");
+            assertTrue(selectedText(fixture).startsWith("line 1\nline 2\n"), selectedText(fixture));
+
+            pilot.press(KeyCode.PAGE_UP, KeyModifiers.SHIFT);
+            settle(pilot);
+            assertEquals("", selectedText(fixture), "Shift+PageUp back to the anchor leaves nothing selected");
+        }
+    }
+
+    @Test
+    void pilotShiftKeysSelectAcrossAFoldedImportBlockAndCopyTheHiddenLines() throws Exception {
+        String source = "package demo;\n\nimport java.util.List;\nimport java.util.Map;\n\nclass A {}\n";
+        EditorShell fixture = openEditorShell("Fold.java", source, 1);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            focusEditor(pilot, fixture);
+            press(pilot, 'i', KeyModifiers.ALT);
+            assertEquals(source, fixture.editor().activeDocument().orElseThrow().text(), "folding changes no text");
+
+            pressShift(pilot, KeyCode.DOWN, 3);
+            String expected = "\nimport java.util.List;\nimport java.util.Map;\n\n";
+            assertEquals(expected, selectedText(fixture), "the folded rows are selected and copied");
+
+            pressCtrl(pilot, 'c');
+            settle(pilot);
+            assertEquals(expected, fixture.clipboard().stored());
+        }
+    }
+
+    @Test
+    void pilotCtrlASelectsTheWholeDocumentAndCutTakesIt() throws Exception {
+        EditorShell fixture = openEditorShell("All.txt", "alpha\nbeta\n", 0);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            focusEditor(pilot, fixture);
+
+            pressCtrl(pilot, 'a');
+            settle(pilot);
+            assertEquals("alpha\nbeta\n", selectedText(fixture));
+
+            pressCtrl(pilot, 'x');
+            settle(pilot);
+            assertEquals("", fixture.editor().activeDocument().orElseThrow().text());
+            assertEquals("alpha\nbeta\n", fixture.clipboard().stored());
+
+            pressCtrl(pilot, 'z');
+            settle(pilot);
+            assertEquals("alpha\nbeta\n", fixture.editor().activeDocument().orElseThrow().text(),
+                    "one undo reverts the cut of the whole document");
+        }
+    }
+
+    @Test
     void pilotClipboardStatesTheEditorOnlyFallbackWithoutASystemClipboard() throws Exception {
         EditorShell fixture = openEditorShell("Local.txt", "alpha beta\n", 0);
         fixture.clipboard().available = false;
@@ -5536,6 +5659,23 @@ class VintelliShellTest {
             fixture.editor().toggleBreakpointAtCaret();
         }
         fixture.editor().open(new OpenRequest(file, caret));
+    }
+
+    private void pressShift(Pilot pilot, KeyCode key, int times) {
+        for (int index = 0; index < times; index++) {
+            pilot.press(key, KeyModifiers.SHIFT);
+            settle(pilot);
+        }
+    }
+
+    private void focusEditor(Pilot pilot, EditorShell fixture) {
+        pilot.pause(STARTUP);
+        fixture.editor().requestFocus();
+        settle(pilot);
+    }
+
+    private static String selectedText(EditorShell fixture) {
+        return fixture.editor().pointerState().orElseThrow().selectedText();
     }
 
     private static final class FakeClipboard implements SystemClipboard {

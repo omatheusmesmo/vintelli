@@ -158,6 +158,10 @@ public final class EditorDocument {
 
     void position(int row, int column) {
         if (fold != null && fold.hides(row)) { dropFold(); }
+        placeCaret(row, column);
+    }
+
+    private void placeCaret(int row, int column) {
         place(state, row, column);
         if (fold != null) { place(view, fold.toView(row), fold.viewColumn(row, column)); }
         revealPending = true;
@@ -191,6 +195,40 @@ public final class EditorDocument {
         placeView(viewRow, viewColumn);
         SelectionCursor anchored = selection == null ? SelectionCursor.collapsed(row(), column()) : selection;
         selection = anchored.extendTo(row(), column());
+        pushSelection();
+    }
+
+    /**
+     * Runs a caret movement on the widget-facing state and extends the selection to the new caret,
+     * keeping the anchor where the selection started. The move is not an edit: no undo step.
+     */
+    void extendSelection(Runnable move) {
+        SelectionCursor anchored = selection == null ? SelectionCursor.collapsed(row(), column()) : selection;
+        move.run();
+        if (fold != null) { syncFold(); }
+        selection = anchored.extendTo(row(), column());
+        revealPending = true;
+        pushSelection();
+    }
+
+    void extendSelectionByPage(boolean down, int rows) {
+        extendSelection(() -> {
+            for (int step = 0; step < rows; step++) {
+                if (down) {
+                    state().moveCursorDown();
+                } else {
+                    state().moveCursorUp();
+                }
+            }
+        });
+    }
+
+    /** Selects the whole document: the anchor is the start of the text and the caret rests at its end. */
+    void selectAll() {
+        int last = state.lineCount() - 1;
+        int lastColumn = state.getLine(last).length();
+        selection = new SelectionCursor(0, 0, last, lastColumn);
+        placeCaret(last, lastColumn);
         pushSelection();
     }
 

@@ -630,6 +630,17 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
         return true;
     }
 
+    public synchronized void selectAll() {
+        EditorDocument document = document();
+        if (document == null) {
+            status = "No file is open";
+            return;
+        }
+        document.selectAll();
+        changed();
+        status = "All text selected";
+    }
+
     public synchronized boolean toggleImportFold() {
         EditorDocument document = document();
         boolean toggled = document != null && document.toggleImportFold();
