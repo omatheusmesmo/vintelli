@@ -165,6 +165,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private final StackElement rootBase;
     private final Element lockedRoot;
     private final ProjectTreeController projects;
+    private final List<MavenToolWindow> mavenWindows;
+    private final ShellTicker ticker;
     private final VcsActions vcsActions;
     private final ProjectPanel projectPanel;
     private final EditorController editorController;
@@ -239,6 +241,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         this.toolWindows.stream().filter(MavenToolWindow.class::isInstance)
                 .map(MavenToolWindow.class::cast)
                 .forEach(window -> window.setRunHandler(this::runMavenGoal));
+        this.mavenWindows = this.toolWindows.stream().filter(MavenToolWindow.class::isInstance)
+                .map(MavenToolWindow.class::cast)
+                .toList();
         Path resolvedRoot = editor == null ? Path.of("").toAbsolutePath().normalize() : editor.project();
         try {
             if (Files.exists(resolvedRoot)) {
@@ -249,6 +254,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         this.projectRoot = resolvedRoot.normalize();
         this.projects = new ProjectTreeController(this.projectRoot, state, projectSearch, fileOperations,
                 message -> status = message, this::refreshProjectTree, this::refreshVcs);
+        this.projects.useMarquee(config.marquee());
+        this.mavenWindows.forEach(window -> window.useMarquee(config.marquee()));
+        this.ticker = new ShellTicker(Marquee.STEP, frameLock, this::animating, this::advanceAnimations);
+        this.projects.onMarqueeChange(ticker::sync);
+        this.mavenWindows.forEach(window -> window.onMarqueeChange(ticker::sync));
         this.vcsActions = new VcsActions(vcsProviders, frameLock, message -> status = message, this::show,
                 projects, editor);
         this.editorController = new EditorController(this.projectRoot, editor, projects, editorHost());
@@ -283,7 +293,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         this.toolWindowPanel = new ToolWindowPanel(toolWindowHost, fileIcons.mode(), () -> themes, this::focusMark,
                 toolWindowElementHost());
         this.toolStripes = new ToolStripes(toolWindowHost.windowsByAnchor(), fileIcons.mode(), stripHost());
-        this.statusBar = new StatusBar(() -> runWindow != null && runWindow.debugging() ? "Debug | " + status : status, () -> projects.inputActive() || vcsActions.promptOpen()
+        this.statusBar = new StatusBar(this::statusLine, () -> projects.inputActive() || vcsActions.promptOpen()
                 || projects.deletePending(), capabilityRegistry, editor, statusBarContributors,
                 new StatusBar.Glyphs(ProjectTreeGlyphs.supportsUnicode(), fileIcons.mode()),
                 editorController::statusNavigation, config.ideaStatus());
@@ -420,6 +430,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         if (uiWorkQueue != null) {
             uiWorkQueue.drain();
         }
+        ticker.sync();
         boolean customized = paneLayout.isSizeCustomized();
         Constraint projectWidth = Constraint.length(paneLayout.leftRegionWidth(customized
                 ? paneLayout.sizedProjectWidth() : PROJECT_PANEL_WIDTH));
@@ -1388,6 +1399,40 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
      */
     public void bindRedraw(Runnable redraw) {
         uiWorkQueue.bindWake(redraw);
+        ticker.bindRedraw(redraw);
+    }
+
+    /** One tick of the animations, as the shared tick runs it; a test drives it without waiting for the period. */
+    void tickAnimations() {
+        ticker.beat();
+    }
+
+    private void advanceAnimations() {
+        projects.tickMarquee();
+        mavenWindows.forEach(MavenToolWindow::tickMarquee);
+    }
+
+    private boolean animating() {
+        return treeClipVisible() || mavenWindows.stream().anyMatch(this::mavenClipVisible);
+    }
+
+    private boolean treeClipVisible() {
+        return shellLayout.isProjectVisible() && projects.marqueeMoving();
+    }
+
+    private boolean mavenClipVisible(MavenToolWindow window) {
+        return toolWindowHost.activeWindow(window.anchor()) == window && window.marqueeMoving();
+    }
+
+    private String statusLine() {
+        Optional<String> clipped = treeClipVisible()
+                ? projects.selectedRelative().map(relative -> "Selected: " + relative)
+                : mavenWindows.stream().filter(this::mavenClipVisible).findFirst()
+                        .flatMap(MavenToolWindow::clippedText);
+        if (clipped.isPresent()) {
+            return clipped.get();
+        }
+        return runWindow != null && runWindow.debugging() ? "Debug | " + status : status;
     }
 
     private void dispatch(KeymapParts parts, String actionId) {

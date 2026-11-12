@@ -53,6 +53,7 @@ final class ProjectTreeController {
     private final DoubleClickTracker doubleClick = new DoubleClickTracker();
     private final StringBuilder input = new StringBuilder();
     private final List<ProjectNode> rootNodes = new ArrayList<>();
+    private final Marquee marquee = new Marquee(System::nanoTime);
     private LongSupplier clock = System::nanoTime;
     private volatile List<ProjectNode> visibleNodes = List.of();
     private volatile List<String> files;
@@ -99,6 +100,33 @@ final class ProjectTreeController {
 
     void useClock(LongSupplier clock) {
         this.clock = clock;
+        marquee.useClock(clock);
+    }
+
+    void useMarquee(boolean enabled) {
+        marquee.enable(enabled);
+    }
+
+    void onMarqueeChange(Runnable listener) {
+        marquee.onChange(listener);
+    }
+
+    boolean marqueeEnabled() {
+        return marquee.enabled();
+    }
+
+    boolean marqueeMoving() {
+        return marquee.moving();
+    }
+
+    int marqueeOffset() {
+        return marquee.offset();
+    }
+
+    /** Advances the marquee of the selected name by one tick; the shell calls it, never a render. */
+    void tickMarquee() {
+        marquee.follow(selectedRelative().orElse(""));
+        marquee.tick();
     }
 
     List<String> files() {
@@ -199,6 +227,9 @@ final class ProjectTreeController {
     }
 
     void setSelection(int index) {
+        if (index != selected) {
+            marquee.restart();
+        }
         selected = index;
     }
 
@@ -232,6 +263,7 @@ final class ProjectTreeController {
         int target = Math.clamp(selected + delta, 0, files.size() - 1);
         if (target != selected) {
             selected = target;
+            marquee.restart();
             syncSelection();
         }
     }
@@ -257,7 +289,9 @@ final class ProjectTreeController {
     }
 
     /**
-     * Fits the selected row to the view. A name that fits the view, whose row
+     * Fits the selected row to the view. With the marquee on, the indent and the
+     * icon stay in place and the name of the selected row scrolls, so the view keeps
+     * its leading columns. With the marquee off, a name that fits the view, whose row
      * overflows by less than the name keeps one column of it, is cut at the end
      * with an ellipsis, so the leading columns of every row stay. Otherwise the
      * offset moves to show the end of the row, which cuts the leading columns of
@@ -265,6 +299,13 @@ final class ProjectTreeController {
      */
     void trackColumn(int selectedWidth, int viewWidth, int nameWidth) {
         int overflow = Math.max(0, selectedWidth - viewWidth);
+        if (marquee.enabled()) {
+            boolean prefixVisible = selectedWidth - nameWidth < viewWidth;
+            leftColumn = prefixVisible ? 0 : overflow;
+            marquee.fit(prefixVisible ? overflow : 0);
+            selectedClipped = prefixVisible && overflow > 0;
+            return;
+        }
         boolean nameHidden = nameWidth > viewWidth || overflow >= nameWidth - 1;
         leftColumn = nameHidden ? overflow : 0;
         selectedClipped = overflow > 0 && !nameHidden;

@@ -99,6 +99,7 @@ final class ProjectPanel implements Element {
     private int pushedLeft;
     private int pushedSelected = -1;
     private boolean pushedClipped;
+    private int pushedOffset;
     private int pushedView = -1;
     private int viewColumns;
     private volatile Rect headerRow = Rect.ZERO;
@@ -503,7 +504,8 @@ final class ProjectPanel implements Element {
         if (pushedRevision != controller.revision() || pushedUnicode != unicodeTree
                 || pushedLeft != controller.leftColumn() || pushedJavaKinds != controller.javaKindVersion()
                 || pushedView != viewColumns || pushedClipped != clipped
-                || (clipped && pushedSelected != controller.selected())) {
+                || (clipped && pushedSelected != controller.selected())
+                || (clipped && pushedOffset != controller.marqueeOffset())) {
             long kinds = controller.javaKindVersion();
             list.items(rows());
             pushedRevision = controller.revision();
@@ -513,6 +515,7 @@ final class ProjectPanel implements Element {
             pushedView = viewColumns;
             pushedClipped = clipped;
             pushedSelected = controller.selected();
+            pushedOffset = controller.marqueeOffset();
         }
         if (list.selected() != controller.selected()) {
             list.selected(controller.selected());
@@ -543,7 +546,8 @@ final class ProjectPanel implements Element {
         for (int index = 0; index < nodes.size(); index++) {
             String label = dropColumns(nodeLabel(nodes.get(index)), left);
             if (clipped && index == selectedIndex) {
-                label = clipEnd(label, viewColumns);
+                label = controller.marqueeEnabled() ? scrolledLabel(nodes.get(index), label)
+                        : clipEnd(label, viewColumns);
             }
             labels.add(label);
         }
@@ -560,6 +564,12 @@ final class ProjectPanel implements Element {
         FileIcon icon = node.directory ? fileIcons.folderIconFor(node.name)
                 : fileIcons.iconFor(node.name, controller.javaKind(node));
         return label.append(icon.symbol(fileIcons.mode())).append(' ').append(node.compactName()).toString();
+    }
+
+    private String scrolledLabel(ProjectNode node, String label) {
+        String name = node.compactName();
+        String prefix = label.substring(0, label.length() - name.length());
+        return prefix + Marquee.window(name, controller.marqueeOffset(), viewColumns - CharWidth.of(prefix));
     }
 
     private int selectedLabelWidth() {
