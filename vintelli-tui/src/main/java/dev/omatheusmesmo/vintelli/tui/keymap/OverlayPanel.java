@@ -48,10 +48,27 @@ final class OverlayPanel {
     }
 
     /**
-     * Shortens a value to the column width; at least one character stays so a
-     * truncated row never collapses to nothing.
+     * One row of an overlay: the action name, the filler that pushes the chord
+     * to the right edge, the active chord and the optional IntelliJ hint.
      */
-    static String truncate(String value, int maxWidth) {
+    record ChordRow(String label, String filler, String chord, String hint) {
+
+        /**
+         * Lays out one row within the width. The IntelliJ hint is dropped first
+         * when the row does not fit with it, and the name is shortened only when
+         * the name and the active chord alone do not fit, so the chord always
+         * survives.
+         */
+        static ChordRow fit(String label, String chord, String hint, int width) {
+            int room = width - 2;
+            boolean withHint = !hint.isEmpty() && label.length() + chord.length() + 1 + hint.length() <= room;
+            String name = label.length() + chord.length() <= room ? label : truncate(label, room - chord.length());
+            int used = 1 + name.length() + chord.length() + (withHint ? 1 + hint.length() : 0);
+            return new ChordRow(name, " ".repeat(Math.max(1, width - used)), chord, withHint ? hint : "");
+        }
+    }
+
+    private static String truncate(String value, int maxWidth) {
         if (maxWidth <= 0) {
             return "";
         }

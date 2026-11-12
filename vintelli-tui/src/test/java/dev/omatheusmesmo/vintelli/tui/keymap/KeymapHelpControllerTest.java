@@ -12,10 +12,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class KeymapHelpControllerTest {
 
     private final KeymapHelpController help = new KeymapHelpController(List.of(
-            new KeyAction("One", "One", ""),
-            new KeyAction("Two", "Two", ""),
-            new KeyAction("Three", "Three", ""),
-            new KeyAction("Four", "Four", "")));
+            new KeyAction("One", "One"),
+            new KeyAction("Two", "Two"),
+            new KeyAction("Three", "Three"),
+            new KeyAction("Four", "Four")));
 
     @Test
     void openAndCloseSwitchTheStateWithoutAnyKey() {

@@ -1,8 +1,8 @@
 package dev.omatheusmesmo.vintelli.tui;
 
-import dev.omatheusmesmo.vintelli.tui.keymap.KeyAction;
 import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeymapProfile;
+import dev.omatheusmesmo.vintelli.tui.keymap.KeymapTable;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -61,12 +61,15 @@ class ReadmeKeymapTableTest {
     }
 
     private static String intellijReference(Keymap keymap, String actionId) {
-        return keymap.actions().stream()
-                .filter(action -> action.id().equals(actionId))
-                .map(KeyAction::intellijShortcut)
-                .findFirst()
-                .orElseThrow(() -> new AssertionError(
-                        "docs/keymap.md documents '" + actionId + "', which is not in the action catalog"));
+        if (keymap.actions().stream().noneMatch(action -> action.id().equals(actionId))) {
+            throw new AssertionError("docs/keymap.md documents '" + actionId + "', which is not in the action catalog");
+        }
+        KeymapTable.Row row = KeymapTable.load().rowOf(actionId);
+        if (row == null) {
+            throw new AssertionError("docs/keymap.md documents '" + actionId + "', which has no row in "
+                    + KeymapTable.RESOURCE);
+        }
+        return String.join(" | ", row.intellijChords());
     }
 
     private static List<Row> readmeRows() {

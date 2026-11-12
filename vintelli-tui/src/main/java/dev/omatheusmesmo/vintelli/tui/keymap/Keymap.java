@@ -220,34 +220,19 @@ public final class Keymap {
 
     private static List<KeyAction> buildCatalog(List<ToolWindow> toolWindows) {
         List<KeyAction> catalog = new ArrayList<>();
-        catalog.add(new KeyAction(QUIT, "Quit", ""));
-        catalog.add(new KeyAction(MOVE_UP, "Move Selection Up", ""));
-        catalog.add(new KeyAction(MOVE_DOWN, "Move Selection Down", ""));
-        catalog.add(new KeyAction(SEARCH_EVERYWHERE, "Search Everywhere", "Double Shift"));
-        catalog.add(new KeyAction(KEYMAP_HELP, "Keymap Help", "F1"));
+        catalog.add(new KeyAction(QUIT, "Quit"));
+        catalog.add(new KeyAction(MOVE_UP, "Move Selection Up"));
+        catalog.add(new KeyAction(MOVE_DOWN, "Move Selection Down"));
+        catalog.add(new KeyAction(SEARCH_EVERYWHERE, "Search Everywhere"));
+        catalog.add(new KeyAction(KEYMAP_HELP, "Keymap Help"));
         catalog.addAll(KeyActions.shellActions());
         catalog.addAll(KeyActions.projectActions());
         for (ToolWindow toolWindow : toolWindows) {
             catalog.add(new KeyAction(activateToolWindow(toolWindow.id()),
-                    "Activate " + toolWindow.title() + " Tool Window",
-                    intellijShortcutOf(toolWindow)));
+                    "Activate " + toolWindow.title() + " Tool Window"));
         }
         catalog.sort(Comparator.comparing(KeyAction::label).thenComparing(KeyAction::id));
         return catalog;
-    }
-
-    /**
-     * The shortcut IntelliJ itself binds for tools this application mirrors;
-     * shown by the palette as a reference for users switching from IntelliJ.
-     */
-    private static String intellijShortcutOf(ToolWindow toolWindow) {
-        return switch (toolWindow.id()) {
-            case "run" -> "Alt+4";
-            case "problems" -> "Alt+6";
-            case "structure" -> "Alt+7";
-            case "terminal" -> "Alt+F12";
-            default -> "";
-        };
     }
 
     private static Set<String> knownActionIds(List<KeyAction> catalog, Bindings base) {

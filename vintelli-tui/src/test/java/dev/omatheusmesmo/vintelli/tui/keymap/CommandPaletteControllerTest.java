@@ -15,10 +15,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CommandPaletteControllerTest {
 
     private static final List<KeyAction> ACTIONS = List.of(
-            new KeyAction("Alpha", "Alpha action", ""),
-            new KeyAction("Beta", "Beta action", ""),
-            new KeyAction("Gamma", "Gamma action", ""),
-            new KeyAction("Delta", "Delta action", ""));
+            new KeyAction("Alpha", "Alpha action"),
+            new KeyAction("Beta", "Beta action"),
+            new KeyAction("Gamma", "Gamma action"),
+            new KeyAction("Delta", "Delta action"));
 
     private static final OverlayRegion PANEL = new OverlayRegion(0, 0, 20, 6);
     private static final OverlayRegion INNER = PANEL.inset(1);
@@ -176,7 +176,7 @@ class CommandPaletteControllerTest {
     private static List<KeyAction> tenActions() {
         List<KeyAction> actions = new ArrayList<>();
         for (int index = 0; index < 10; index++) {
-            actions.add(new KeyAction("Action" + index, "Action " + index, ""));
+            actions.add(new KeyAction("Action" + index, "Action " + index));
         }
         return actions;
     }

@@ -13,10 +13,11 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The table that pins the {@code intellij} profile against IntelliJ's default
- * keymap: one row per action the profile binds, with the active chords, the
- * IntelliJ chords and a status. The table ships as the classpath resource
- * {@value #RESOURCE} next to this class and is read with the JDK only.
+ * The table that pins the keymap catalog against IntelliJ's default keymap:
+ * one row per catalog action, with the chords the {@code intellij} profile
+ * binds (empty when unbound), the IntelliJ chords, a status and a reason. The
+ * table ships as the classpath resource {@value #RESOURCE} next to this class
+ * and is read with the JDK only.
  */
 public record KeymapTable(List<Row> rows) {
 

@@ -16,9 +16,11 @@ import java.util.List;
 /**
  * Help overlay listing the active keymap: every named action of the catalog
  * with the shortcuts the active profile (plus user file, when layered)
- * currently binds, and the real IntelliJ shortcut as a reference column
- * whenever it differs. Reachable through the {@code KeymapHelp} action
- * ({@code F1} in every shipped profile); Escape or F1 closes it.
+ * currently binds, and the IntelliJ chord of the action from the comparison
+ * table as a reference column. A row that does not fit the panel drops the
+ * IntelliJ column first, then shortens the action name, and never cuts the
+ * active chord. Reachable through the {@code KeymapHelp} action ({@code F1} in
+ * every shipped profile); Escape or F1 closes it.
  */
 public final class KeymapHelpOverlay {
 
@@ -88,18 +90,15 @@ public final class KeymapHelpOverlay {
 
     private Line row(KeyAction action, int width) {
         String shortcut = keymap.describeBindings(action.id());
-        String chord = shortcut.isEmpty() ? "unbound" : shortcut;
-        boolean withHint = !action.intellijShortcut().isEmpty();
-        String hint = withHint ? "(IntelliJ: " + action.intellijShortcut() + ")" : "";
-        String label = OverlayPanel.truncate(action.label(), width - chord.length() - hint.length() - 2);
-        String filler = " ".repeat(Math.max(1, width - label.length() - chord.length() - hint.length() - 2));
+        OverlayPanel.ChordRow row = OverlayPanel.ChordRow.fit(action.label(), shortcut,
+                IntellijReference.helpText(action.id()), width);
         Style chordStyle = shortcut.isEmpty() ? HINT_STYLE : SHORTCUT_STYLE;
         List<Span> spans = new ArrayList<>();
-        spans.add(Span.styled(" " + label, LABEL_STYLE));
-        spans.add(Span.styled(filler, chordStyle));
-        spans.add(Span.styled(chord, chordStyle));
-        if (withHint) {
-            spans.add(Span.styled(" " + hint, HINT_STYLE));
+        spans.add(Span.styled(" " + row.label(), LABEL_STYLE));
+        spans.add(Span.styled(row.filler(), chordStyle));
+        spans.add(Span.styled(row.chord(), chordStyle));
+        if (!row.hint().isEmpty()) {
+            spans.add(Span.styled(" " + row.hint(), HINT_STYLE));
         }
         return Line.from(spans);
     }

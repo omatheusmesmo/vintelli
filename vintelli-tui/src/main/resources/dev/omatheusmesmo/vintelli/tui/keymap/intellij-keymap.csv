@@ -1,4 +1,4 @@
-# Every action the default intellij profile binds, compared with the IntelliJ Windows/Linux default keymap.
+# Every action of the keymap catalog, compared with the IntelliJ Windows/Linux default keymap. An unbound action has no active chord.
 # active_chords and intellij_chords list chords separated by " | ". Chord text is compared case-insensitively.
 # status: same, different (reason required), not-deliverable (reason required), vintelli-only.
 # A binding change must update this table; IntellijKeymapTableTest enforces it. See docs/keymap.md.
@@ -37,8 +37,8 @@ project_rename,Shift+F6,Shift+F6,same,"Rename in the project pane; F2 is Next Hi
 project_delete,Delete,,vintelli-only,"Deletes the project entry; no IntelliJ chord confirmed; shares Delete with deleteForward, the pane scope decides"
 project_refresh,F5,,vintelli-only,"Refreshes the project tree; IntelliJ's F5 is Synchronize in the project view, not confirmed against the reference page"
 project_select_opened_file,Alt+F1,Alt+F1,same,"Reveals the open file in the project pane (crosshair); the nearest IntelliJ chord, since IntelliJ's Alt+F1 opens the Select In list instead"
-project_expand_all,F4,,vintelli-only,"Expands the project tree; F4 is Edit Source in IntelliJ and no Expand All chord is confirmed"
-project_collapse_all,Alt+C,,vintelli-only,"Pane header button; no IntelliJ chord confirmed"
+project_expand_all,F4,Ctrl+Shift+NumPad +,not-deliverable,Ctrl+Shift+NumPad + cannot be told apart from a plain key in a terminal; F4 expands the project tree here
+project_collapse_all,Alt+C,Ctrl+Shift+NumPad -,not-deliverable,Ctrl+Shift+NumPad - cannot be told apart from a plain key in a terminal; Alt+C collapses the project tree here
 project_view_menu,Alt+V,,vintelli-only,"Pane header view menu; no IntelliJ chord confirmed"
 project_new_menu,Alt+N,,vintelli-only,"Pane header New menu; no IntelliJ chord confirmed"
 project_options_menu,Alt+O,,vintelli-only,"Pane header options menu; no IntelliJ chord confirmed"
@@ -77,3 +77,27 @@ ActivateProblemsToolWindow,Alt+6 | 6,Alt+6,same,""
 ActivateStructureToolWindow,Alt+7 | 7,Alt+7,same,""
 ActivateMavenToolWindow,Alt+9 | 9,,vintelli-only,"IntelliJ gives Maven no number; 9 is a number IntelliJ gives Version Control, which we do not have (#364)"
 ActivateAcpAgentsToolWindow,Alt+8 | 8,,vintelli-only,"IntelliJ gives no number to ACP Agents; 8 is a number IntelliJ gives Services, which we do not have (#364)"
+shell.settings,,Ctrl+Alt+S,different,"Open Settings is Ctrl+Alt+S in IntelliJ; it opens from the toolbar and the palette, and no chord is bound here yet"
+idea-mcp.connect,,,vintelli-only,Connects to a running IntelliJ IDEA; no IntelliJ chord confirmed on the reference page
+run.execute,,Shift+F10,different,"Run is Shift+F10 in IntelliJ; unbound here, the toolbar and the palette start the selected configuration"
+run.debug,,Shift+F9,different,"Debug is Shift+F9 in IntelliJ; unbound here, the toolbar and the palette start the debug session"
+run.stop,,Ctrl+F2,different,"Stop is Ctrl+F2 in IntelliJ; unbound here, the palette stops the current run"
+run.refresh,,,vintelli-only,Refreshes the run configurations; no IntelliJ chord confirmed on the reference page
+run.choose-configuration,,,vintelli-only,Chooses the run configuration; no IntelliJ chord confirmed on the reference page
+debug.resume,,F9,different,"Resume Program is F9 in IntelliJ; F9 is New Directory in the project pane, so the debugger keeps its own keys"
+debug.pause,,,vintelli-only,Pause Program is not on the IntelliJ reference page; the debugger keeps its own keys
+debug.step-over,,F8,different,Step Over is F8 in IntelliJ; F8 stays free for the debugger work (docs/keymap.md)
+debug.step-into,,F7,different,Step Into is F7 in IntelliJ; F7 is New Project File in the project pane
+debug.step-out,,Shift+F8,different,"Step Out is Shift+F8 in IntelliJ; unbound here, the debugger work decides"
+terminal.execute,,,vintelli-only,Runs the typed command in the terminal window; IntelliJ has no chord for it
+problems.navigate,,,vintelli-only,Opens the selected problem; no IntelliJ chord confirmed on the reference page for the Problems window
+problems.refresh,,,vintelli-only,Refreshes the problems; no IntelliJ chord confirmed on the reference page for the Problems window
+problems.select-next,,,vintelli-only,Selects the next row of the window; no IntelliJ chord confirmed on the reference page for the Problems window
+problems.select-previous,,,vintelli-only,Selects the previous row of the window; no IntelliJ chord confirmed on the reference page for the Problems window
+problems.filter-all,,,vintelli-only,Shows all problems; no IntelliJ chord confirmed on the reference page for the Problems window
+problems.filter-errors,,,vintelli-only,Shows only the problem errors; no IntelliJ chord confirmed on the reference page for the Problems window
+problems.filter-warnings,,,vintelli-only,Shows only the problem warnings; no IntelliJ chord confirmed on the reference page for the Problems window
+problems.expand,,,vintelli-only,Expands the selected problem group; no IntelliJ chord confirmed on the reference page for the Problems window
+problems.collapse,,,vintelli-only,Collapses the selected problem group; no IntelliJ chord confirmed on the reference page for the Problems window
+problems.toggle-group,,,vintelli-only,Toggles the selected problem group; no IntelliJ chord confirmed on the reference page for the Problems window
+project_show_hidden,,,vintelli-only,Shows hidden files from the project options menu; no IntelliJ chord confirmed on the reference page

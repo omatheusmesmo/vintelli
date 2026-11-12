@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -36,6 +37,8 @@ class IntellijKeymapTableTest {
     private static final List<ToolWindow> WINDOWS = windowList();
     private static final Keymap KEYMAP = Keymap.ofProfile(KeymapProfile.DEFAULT, WINDOWS);
     private static final KeymapTable TABLE = KeymapTable.load();
+    private static final Set<String> CATALOG_IDS = KEYMAP.actions().stream().map(KeyAction::id)
+            .collect(Collectors.toSet());
     private static final Map<String, Set<String>> BOUND_CHORDS = boundChordsByAction();
     private static final Map<String, Set<String>> ACTIONS_BY_CHORD = actionsByChord();
     private static final Map<String, Set<String>> SHARED_CHORDS_BY_DESIGN = Map.of(
@@ -63,12 +66,32 @@ class IntellijKeymapTableTest {
     }
 
     @Test
-    void everyRowNamesABoundActionWithTheChordsTheProfileBinds() {
+    void everyCatalogActionHasARow() {
+        for (KeyAction action : KEYMAP.actions()) {
+            assertNotNull(TABLE.rowOf(action.id()), "catalog action '" + action.id() + "' has no row in "
+                    + KeymapTable.RESOURCE + "; add one with its IntelliJ chord and status");
+        }
+    }
+
+    @Test
+    void everyRowNamesAKnownActionWithTheChordsTheProfileBinds() {
         for (KeymapTable.Row row : TABLE.rows()) {
-            Set<String> bound = BOUND_CHORDS.get(row.actionId());
-            assertNotNull(bound, "row '" + row.actionId() + "' names an action the default profile does not bind");
+            assertTrue(CATALOG_IDS.contains(row.actionId()) || BOUND_CHORDS.containsKey(row.actionId()),
+                    "row '" + row.actionId() + "' names an action neither the catalog nor the profile has");
+            Set<String> bound = BOUND_CHORDS.getOrDefault(row.actionId(), new TreeSet<>());
             assertEquals(normalized(bound), normalized(row.activeChords()), "row '" + row.actionId()
-                    + "' lists chords " + row.activeChords() + " but the profile binds " + bound);
+                    + "' lists chords " + row.activeChords() + " but the profile binds " + bound
+                    + " (no chords when the profile leaves the action unbound)");
+        }
+    }
+
+    @Test
+    void vintelliOnlyRowsHaveNoIntellijChord() {
+        for (KeymapTable.Row row : TABLE.rows()) {
+            if (row.status() == KeymapTable.Status.VINTELLI_ONLY) {
+                assertTrue(row.intellijChords().isEmpty(), "row '" + row.actionId() + "' is vintelli-only but lists "
+                        + row.intellijChords());
+            }
         }
     }
 
