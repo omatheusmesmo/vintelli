@@ -32,7 +32,7 @@ Key actions in the `intellij` profile:
 | `SearchEverywhere` | `Ctrl+P` | `Double Shift` |
 | `KeymapHelp` | `F1` | `F1` |
 | `run.choose-configuration` | Palette: Choose Run Configuration; toolbar configuration name | - |
-| `editor_toggleBreakpoint` | `Ctrl+B` | `Ctrl+F8` |
+| `editor_toggleBreakpoint` | `Ctrl+F8` (`Ctrl+B` in the `vim` profile) | `Ctrl+F8` |
 | `moveUp` / `moveDown` | arrow keys (`j/k` in the `vim` profile) | - |
 | `quit` | `Ctrl+C` | - |
 | `editor_copy`, `editor_cut`, `editor_paste` | `Ctrl+C` (copy, only with a selection), `Ctrl+X`, `Ctrl+V` | `Ctrl+C`, `Ctrl+X`, `Ctrl+V` |
@@ -82,13 +82,76 @@ palette runs them from anywhere):
 
 | Action | Keys | Button |
 |---|---|---|
-| `project_select_opened_file` | `F3` | Select Opened File (crosshair) |
+| `project_select_opened_file` | `Alt+F1` | Select Opened File (crosshair) |
 | `project_expand_all` | `F4` | Expand All |
 | `project_collapse_all` | `Alt+c` | Collapse All |
 | `project_new_menu` | `Alt+n` | New, a menu with New File (`F7`) and New Directory (`F9`) |
 | `project_view_menu` | `Alt+v` | The `Project ▾` title, the view menu |
 | `project_options_menu` | `Alt+o` | Options, a menu with Show Hidden Files |
 | `project_hide` | `Alt+p` | Hide, like the Project icon on the left strip |
+
+The pane-scoped keys `F4` (Expand All), `F5` (Refresh), `F7` (New File),
+`F9` (New Directory) and `Delete` stay bound to their actions. Pane scope is
+enough to keep them: they are active only while the project panel has the
+focus, and IntelliJ also reuses these keys inside its own project tree, so
+no other action needs them. `F2` is not one of them any more: in the project
+pane it is Next Problem in the `intellij` profile (see the alignment below).
+
+## IntelliJ alignment
+
+The `intellij` profile binds the following actions to the IntelliJ default
+chord, wherever a terminal can deliver that chord. There has been no release,
+so the chord each one replaces is removed, with no alias. The `vim` profile
+is unchanged and keeps the chords these actions had before.
+
+| Action | `intellij` (active) | IntelliJ | Replaced chord, kept by `vim` |
+|---|---|---|---|
+| `editor_definition` (Go to Definition) | `Ctrl+B` | `Ctrl+B` | `F12` |
+| `editor_toggleBreakpoint` (Toggle Line Breakpoint) | `Ctrl+F8` | `Ctrl+F8` | `Ctrl+B` |
+| `editor_usages` (Find Usages) | `Alt+F7` | `Alt+F7` | `Alt+U` |
+| `editor_nextProblem` (Next Problem) | `F2` | `F2` (`Shift+F2` previous) | `F8` |
+| `editor_close` (Close Editor Tab) | `Ctrl+F4` | `Ctrl+F4` | `Ctrl+W` |
+| `editor_nextTab` (Next Editor Tab) | `Alt+Right` | `Alt+Right` | `Alt+]` |
+| `editor_previousTab` (Previous Editor Tab) | `Alt+Left` | `Alt+Left` | `Alt+[` |
+| `project_rename` (Rename Project Entry) | `Shift+F6` | `Shift+F6` | `F2` |
+| `project_select_opened_file` (Select Opened File) | `Alt+F1` | `Alt+F1` | `F3` |
+
+Decisions behind the table:
+
+- **`F2` and `Shift+F2`**: F2 is Next Highlighted Error in IntelliJ, so it
+  moves to the editor action and Rename moves to `Shift+F6`. Shift+F2
+  (previous error) is not bound: the editor has no previous-problem action
+  yet, and a trigger without Shift also answers `Shift+F2` (the keymap only
+  checks Shift when a trigger asks for it), so `Shift+F2` currently reaches
+  Next Problem as well. Adding a previous action is a follow-up.
+- **`F12` and `F8` are left unbound** in `intellij`. IntelliJ's `F12` is Jump
+  to Last Tool Window (#366, not bound yet), and `F8` is Step Over, a debugger
+  key that stays free for the debugger work.
+- **`Ctrl+W`** is Extend Selection in IntelliJ, so it is not bound in
+  `intellij`. The ACP Agents window keeps its own `Ctrl+W`, which closes the
+  conversation, because that window handles its keys itself.
+- **`Alt+F1`** is Select In in IntelliJ, which opens a list of targets. The
+  project pane crosshair is the nearest action. The row is `same` in the
+  comparison table, and its reason records the difference.
+- **`Ctrl+Y`, `Ctrl+O` and `Ctrl+T` stay.** IntelliJ binds `Ctrl+Y` to Delete
+  Line and `Ctrl+O` to Override Methods, and `Ctrl+T` to Update Project. Ours
+  are Redo, Go to File and the shell theme switch. Redo keeps `Ctrl+Y` because
+  its IntelliJ chord `Ctrl+Shift+Z` cannot be delivered, and Go to File keeps
+  `Ctrl+O` for the same reason with `Ctrl+Shift+N`. The theme switch has no
+  IntelliJ action.
+- **`Alt+F` stays** for Find in Files, because IntelliJ's `Ctrl+Shift+F`
+  cannot be delivered.
+
+Terminal caveats, from the captures in `docs/spikes/spike-27-keyboard-and-colors.md`
+and `docs/spikes/spike-49-per-terminal-capture.md`:
+
+- `Ctrl+B` is the second prefix of the Omarchy tmux configuration, which
+  swallows it, so Go to Definition needs the command palette there.
+- `Alt+Left` and `Alt+Right` are bound by the Omarchy tmux configuration as
+  pane switches, so the tab switches need the palette there too.
+- `Ctrl+F4`, `Alt+F7`, `Alt+F1`, `Shift+F6` and `Shift+F2` have not been
+  checked in a live terminal yet. The TamboUI key parser reads the F-key
+  modifiers (spike 27), but each sequence is unverified on each terminal.
 
 Chords a terminal cannot deliver, and their alternatives:
 
@@ -97,6 +160,12 @@ Chords a terminal cannot deliver, and their alternatives:
   `Ctrl+P` to open the command palette.
 - **`Ctrl+Shift+A`** (Find Action): `Ctrl+Shift+letter` sends the same bytes
   as `Ctrl+letter` in legacy mode. Use the command palette.
+- **`Ctrl+Shift+Z`** (Redo in IntelliJ): sends the same bytes as `Ctrl+Z`.
+  Redo is `Ctrl+Y` here.
+- **`Ctrl+Shift+N`** (Go to File in IntelliJ): sends the same bytes as
+  `Ctrl+N`. Go to File is `Ctrl+O` here.
+- **`Ctrl+Shift+F`** (Find in Files in IntelliJ): sends the same bytes as
+  `Ctrl+F`. Find in Files is `Alt+F` here.
 - **Alt+digit in tmux and ghostty**: `Alt+digit` is intercepted by default in
   tmux (`M-1`..`M-9`) and ghostty (tab switching). The profile binds
   `Alt+F12` to Terminal, the IntelliJ chord, and keeps `Alt+2` as a second

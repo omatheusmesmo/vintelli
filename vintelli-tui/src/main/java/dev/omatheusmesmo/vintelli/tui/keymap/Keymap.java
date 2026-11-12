@@ -143,10 +143,8 @@ public final class Keymap {
         builder.bind(KeyTrigger.key(KeyCode.HOME, false, true, false), KeyActions.FOCUS_NAVIGATION_BAR);
         builder.bind(KeyTrigger.key(KeyCode.F7), KeyActions.PROJECT_NEW_FILE);
         builder.bind(KeyTrigger.key(KeyCode.F9), KeyActions.PROJECT_NEW_DIRECTORY);
-        builder.bind(KeyTrigger.key(KeyCode.F2), KeyActions.PROJECT_RENAME);
         builder.bind(KeyTrigger.key(KeyCode.DELETE), KeyActions.PROJECT_DELETE);
         builder.bind(KeyTrigger.key(KeyCode.F5), KeyActions.PROJECT_REFRESH);
-        builder.bind(KeyTrigger.key(KeyCode.F3), KeyActions.PROJECT_SELECT_OPENED_FILE);
         builder.bind(KeyTrigger.key(KeyCode.F4), KeyActions.PROJECT_EXPAND_ALL);
         builder.bind(KeyTrigger.alt('c'), KeyActions.PROJECT_COLLAPSE_ALL);
         builder.bind(KeyTrigger.alt('v'), KeyActions.PROJECT_VIEW_MENU);
@@ -161,14 +159,7 @@ public final class Keymap {
         builder.bind(KeyTrigger.ctrl('c'), KeyActions.COPY);
         builder.bind(KeyTrigger.ctrl('v'), KeyActions.PASTE);
         builder.bind(KeyTrigger.ctrl('f'), KeyActions.FIND);
-        builder.bind(KeyTrigger.ctrl('w'), KeyActions.CLOSE_TAB);
-        builder.bind(KeyTrigger.alt(']'), KeyActions.NEXT_TAB);
-        builder.bind(KeyTrigger.alt('['), KeyActions.PREVIOUS_TAB);
-        builder.bind(KeyTrigger.key(KeyCode.F12), KeyActions.DEFINITION);
-        builder.bind(KeyTrigger.alt('u'), KeyActions.USAGES);
         builder.bind(KeyTrigger.alt('i'), KeyActions.TOGGLE_IMPORT_FOLD);
-        builder.bind(KeyTrigger.ctrl('b'), KeyActions.TOGGLE_BREAKPOINT);
-        builder.bind(KeyTrigger.key(KeyCode.F8), KeyActions.NEXT_PROBLEM);
         builder.bind(KeyTrigger.ctrl('o'), KeyActions.GO_TO_FILE);
         builder.bind(KeyTrigger.alt('f'), KeyActions.FIND_IN_FILES);
         builder.bind(KeyTrigger.alt('='), KeyActions.PROJECT_WIDER);
@@ -177,6 +168,7 @@ public final class Keymap {
         builder.bind(KeyTrigger.alt(','), KeyActions.BOTTOM_SHORTER);
         builder.bind(KeyTrigger.ctrl('t'), bindingName(KeyActions.SWITCH_THEME));
         builder.bind(KeyTrigger.alt('1'), KeyActions.ACTIVATE_PROJECT);
+        bindProfileChords(builder, profile);
         for (ToolWindow toolWindow : toolWindows) {
             String activation = activateToolWindow(toolWindow.id());
             builder.bind(KeyTrigger.alt(toolWindow.shortcut()), activation);
@@ -184,6 +176,38 @@ public final class Keymap {
             toolWindow.extraChord().ifPresent(chord -> builder.bind(chord, activation));
         }
         return builder.build();
+    }
+
+    /**
+     * Chords of the actions that the {@code intellij} profile aligns with the IntelliJ default keymap,
+     * and the chords the {@code vim} profile keeps for the same actions. A trigger for Shift matches
+     * with or without Shift unless the trigger requires it, so {@code F2} also answers {@code Shift+F2}.
+     */
+    private static void bindProfileChords(Bindings.Builder builder, KeymapProfile profile) {
+        switch (profile) {
+            case INTELLIJ -> {
+                builder.bind(KeyTrigger.key(KeyCode.F2), KeyActions.NEXT_PROBLEM);
+                builder.bind(KeyTrigger.key(KeyCode.F6, false, false, true), KeyActions.PROJECT_RENAME);
+                builder.bind(KeyTrigger.key(KeyCode.F1, false, true, false), KeyActions.PROJECT_SELECT_OPENED_FILE);
+                builder.bind(KeyTrigger.key(KeyCode.F4, true, false, false), KeyActions.CLOSE_TAB);
+                builder.bind(KeyTrigger.key(KeyCode.RIGHT, false, true, false), KeyActions.NEXT_TAB);
+                builder.bind(KeyTrigger.key(KeyCode.LEFT, false, true, false), KeyActions.PREVIOUS_TAB);
+                builder.bind(KeyTrigger.ctrl('b'), KeyActions.DEFINITION);
+                builder.bind(KeyTrigger.key(KeyCode.F8, true, false, false), KeyActions.TOGGLE_BREAKPOINT);
+                builder.bind(KeyTrigger.key(KeyCode.F7, false, true, false), KeyActions.USAGES);
+            }
+            case VIM -> {
+                builder.bind(KeyTrigger.key(KeyCode.F3), KeyActions.PROJECT_SELECT_OPENED_FILE);
+                builder.bind(KeyTrigger.key(KeyCode.F2), KeyActions.PROJECT_RENAME);
+                builder.bind(KeyTrigger.ctrl('w'), KeyActions.CLOSE_TAB);
+                builder.bind(KeyTrigger.alt(']'), KeyActions.NEXT_TAB);
+                builder.bind(KeyTrigger.alt('['), KeyActions.PREVIOUS_TAB);
+                builder.bind(KeyTrigger.key(KeyCode.F12), KeyActions.DEFINITION);
+                builder.bind(KeyTrigger.alt('u'), KeyActions.USAGES);
+                builder.bind(KeyTrigger.key(KeyCode.F8), KeyActions.NEXT_PROBLEM);
+                builder.bind(KeyTrigger.ctrl('b'), KeyActions.TOGGLE_BREAKPOINT);
+            }
+        }
     }
 
     private static List<KeyAction> buildCatalog(List<ToolWindow> toolWindows) {

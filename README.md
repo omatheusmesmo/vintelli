@@ -14,7 +14,7 @@ It runs with open tooling only. IntelliJ IDEA is an optional extra.
 - 🤖 **AI agents in a side panel.** Choose OpenCode, Claude Code or pi over ACP (`Alt+8`), with executable availability shown before starting a session. See [agent setup](docs/acp-agents.md).
 - 🔌 **Other agents can drive it.** The MCP server reads the shell state and pushes highlights and diffs into the TUI.
 - 🧠 **Language support over LSP.** Configurable profiles, with jdtls as the first one.
-- 🪲 **Optional Java debugging.** An experimental DAP provider uses Java Debug through jdtls. Toggle persistent source breakpoints from the editor gutter or with `Ctrl+B`; see [Java Debug Adapter setup](docs/language-servers.md#java-debug-adapter).
+- 🪲 **Optional Java debugging.** An experimental DAP provider uses Java Debug through jdtls. Toggle persistent source breakpoints from the editor gutter or with `Ctrl+F8`; see [Java Debug Adapter setup](docs/language-servers.md#java-debug-adapter).
 - ⌨️ **Familiar keys and colors.** The `intellij` keymap is the default, and the themes come from IntelliJ IDEA's color files.
 
 ## Install

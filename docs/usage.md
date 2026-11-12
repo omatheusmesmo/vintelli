@@ -246,11 +246,11 @@ selected may be cut at the pane edge. Opening a file from the editor, search, Pr
 or a definition expands its folders and selects its row.
 `Enter` toggles a directory or opens the selected file in the built-in editor.
 With the project panel focused, `F5` refreshes the tree, `F7` creates a file,
-`F9` creates a directory, `F2` renames the selected entry, and `Delete` asks
+`F9` creates a directory, `Shift+F6` renames the selected entry, and `Delete` asks
 for confirmation before removal. Project mutations use the configured local
 file provider; names must stay within the project and rename never replaces an
 existing entry. In the editor, `Ctrl+S` saves, `Ctrl+Z`/`Ctrl+Y` undo and redo,
-`Alt+]`/`Alt+[` switch editor tabs, and `Ctrl+W` closes a tab (dirty tabs ask
+`Alt+Right`/`Alt+Left` switch editor tabs, and `Ctrl+F4` closes a tab (dirty tabs ask
 for confirmation). `F10` opens the menus, the menu icon at the left of the
 toolbar does the same with the mouse, and long unavailable reasons can be
 scrolled with Page Up/Down.
@@ -265,8 +265,8 @@ With no file open, the editor shows a start screen with the project name and the
 main shortcuts (Go to File, Find in Files, Search Everywhere, the menu and the keymap
 help). Its keys come from the active keymap, so a custom keymap file shows its own
 chords, and an action without a chord has no row.
-`Ctrl+O` opens Go to File, `Alt+F` searches file contents, `F12` requests a
-definition, `Alt+U` requests references, and `F8` moves to the next diagnostic, and `Alt+I` folds or unfolds the import block.
+`Ctrl+O` opens Go to File, `Alt+F` searches file contents, `Ctrl+B` requests a
+definition, `Alt+F7` requests references, and `F2` moves to the next diagnostic, and `Alt+I` folds or unfolds the import block.
 In the editor, a left click places the caret on the character under the pointer
 and focuses the editor. Drag with the left button to select text; releasing ends
 the drag, and moving the caret or editing clears the selection. The mouse wheel
@@ -322,7 +322,7 @@ All and Collapse All act on the whole tree, and Collapse All keeps the selection
 on the top folder that holds it. Hide works like the Project icon on the left
 strip, and the command palette (`Ctrl+P`) runs every header action from
 anywhere. Each button dispatches the same action as its keys, with the project
-panel focused: `F3` Select Opened File, `F4` Expand All, `Alt+c` Collapse All,
+panel focused: `Alt+F1` Select Opened File, `F4` Expand All, `Alt+c` Collapse All,
 `Alt+v` the view menu, `Alt+n` the New menu, `Alt+o` the options menu and `Alt+p`
 Hide. A click on a blank header cell does nothing. When the pane is narrow, the
 buttons drop from the left and Hide stays last. Nerd Font mode draws Nerd

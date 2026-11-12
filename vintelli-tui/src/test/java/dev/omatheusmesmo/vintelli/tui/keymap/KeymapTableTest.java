@@ -16,10 +16,10 @@ class KeymapTableTest {
     @Test
     void readsChordListsStatusAndAQuotedReasonWithCommas() throws IOException {
         KeymapTable table = parse(HEADER + "# a comment line\n"
-                + "editor_nextTab,Alt+] | Alt+[,\"Alt+,\",different,\"Next, then previous tab\"\n");
+                + "editor_nextTab,Alt+Right | Alt+Left,\"Alt+,\",different,\"Next, then previous tab\"\n");
 
         KeymapTable.Row row = table.rowOf("editor_nextTab");
-        assertEquals(List.of("Alt+]", "Alt+["), row.activeChords());
+        assertEquals(List.of("Alt+Right", "Alt+Left"), row.activeChords());
         assertEquals(List.of("Alt+,"), row.intellijChords());
         assertEquals(KeymapTable.Status.DIFFERENT, row.status());
         assertEquals("Next, then previous tab", row.reason());

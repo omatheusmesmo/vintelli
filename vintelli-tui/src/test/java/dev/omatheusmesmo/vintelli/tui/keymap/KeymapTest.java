@@ -62,8 +62,10 @@ class KeymapTest {
         assertTrue(keymap.matches(actionChord('6'), KeyActions.activateToolWindow("problems")));
         assertTrue(keymap.matches(actionChord('8'), KeyActions.activateToolWindow("acp.agents")));
         assertTrue(keymap.matches(keypress('c', KeyModifiers.CTRL), QUIT));
-        assertTrue(keymap.matches(keypress('b', KeyModifiers.CTRL), KeyActions.TOGGLE_BREAKPOINT));
-        assertTrue(keymap.matchesReserved(keypress('b', KeyModifiers.CTRL), KeyActions.TOGGLE_BREAKPOINT));
+        assertTrue(keymap.matches(KeyEvent.ofKey(KeyCode.F8, KeyModifiers.CTRL), KeyActions.TOGGLE_BREAKPOINT));
+        assertTrue(keymap.matchesReserved(KeyEvent.ofKey(KeyCode.F8, KeyModifiers.CTRL), KeyActions.TOGGLE_BREAKPOINT));
+        assertFalse(keymap.matches(keypress('b', KeyModifiers.CTRL), KeyActions.TOGGLE_BREAKPOINT),
+                "Ctrl+B is Go to Declaration in the intellij profile");
     }
 
     @Test
@@ -76,8 +78,8 @@ class KeymapTest {
                 "Alt+F12 survives a capturing terminal, so the shell can switch away from it");
         assertTrue(keymap.matches(actionChord('2'), KeyActions.activateToolWindow("terminal")),
                 "Alt+2 stays as the second binding of the Terminal window");
-        assertTrue(keymap.matches(KeyEvent.ofKey(KeyCode.F12), KeyActions.DEFINITION),
-                "bare F12 keeps Go to Definition, Alt+F12 is only the Terminal window");
+        assertTrue(keymap.matches(keypress('b', KeyModifiers.CTRL), KeyActions.DEFINITION),
+                "Ctrl+B is Go to Declaration, Alt+F12 is only the Terminal window");
         assertFalse(keymap.matches(KeyEvent.ofKey(KeyCode.F12, KeyModifiers.ALT), KeyActions.DEFINITION));
     }
 
@@ -385,6 +387,58 @@ class KeymapTest {
         Path userKeymapFile = ConfigDirectory.userKeymapFile(Map.of(), system);
 
         assertEquals(Path.of(directory, "vintelli", "keymap.properties"), userKeymapFile);
+    }
+
+    @Test
+    void intellijChordsRouteTheAlignedActions() {
+        Keymap keymap = Keymap.ofProfile(KeymapProfile.DEFAULT, WINDOWS);
+
+        assertTrue(keymap.matches(keypress('b', KeyModifiers.CTRL), KeyActions.DEFINITION));
+        assertTrue(keymap.matches(KeyEvent.ofKey(KeyCode.F7, KeyModifiers.ALT), KeyActions.USAGES));
+        assertTrue(keymap.matches(KeyEvent.ofKey(KeyCode.F2), KeyActions.NEXT_PROBLEM));
+        assertTrue(keymap.matches(KeyEvent.ofKey(KeyCode.F4, KeyModifiers.CTRL), KeyActions.CLOSE_TAB));
+        assertTrue(keymap.matches(KeyEvent.ofKey(KeyCode.RIGHT, KeyModifiers.ALT), KeyActions.NEXT_TAB));
+        assertTrue(keymap.matches(KeyEvent.ofKey(KeyCode.LEFT, KeyModifiers.ALT), KeyActions.PREVIOUS_TAB));
+        assertTrue(keymap.matches(KeyEvent.ofKey(KeyCode.F1, KeyModifiers.ALT), KeyActions.PROJECT_SELECT_OPENED_FILE));
+        assertTrue(keymap.matches(KeyEvent.ofKey(KeyCode.F6, KeyModifiers.SHIFT), KeyActions.PROJECT_RENAME));
+    }
+
+    @Test
+    void intellijProfileNoLongerBindsTheChordsItReplaced() {
+        Keymap keymap = Keymap.ofProfile(KeymapProfile.DEFAULT, WINDOWS);
+
+        assertNoActionAnswers(keymap, KeyEvent.ofKey(KeyCode.F12), "bare F12 (Go to Definition before the alignment)");
+        assertNoActionAnswers(keymap, KeyEvent.ofChar('u', KeyModifiers.ALT), "Alt+U (Find Usages before the alignment)");
+        assertNoActionAnswers(keymap, keypress('w', KeyModifiers.CTRL), "Ctrl+W (Close Tab before the alignment)");
+        assertNoActionAnswers(keymap, KeyEvent.ofChar(']', KeyModifiers.ALT), "Alt+] (Next Tab before the alignment)");
+        assertNoActionAnswers(keymap, KeyEvent.ofChar('[', KeyModifiers.ALT), "Alt+[ (Previous Tab before the alignment)");
+        assertNoActionAnswers(keymap, KeyEvent.ofKey(KeyCode.F8), "F8 (Next Problem before the alignment)");
+        assertNoActionAnswers(keymap, KeyEvent.ofKey(KeyCode.F3), "F3 (Select Opened File before the alignment)");
+    }
+
+    @Test
+    void vimProfileKeepsTheChordsOfTheAlignedActions() {
+        Keymap vim = Keymap.ofProfile(KeymapProfile.VIM, WINDOWS);
+
+        assertTrue(vim.matches(KeyEvent.ofKey(KeyCode.F12), KeyActions.DEFINITION));
+        assertTrue(vim.matches(KeyEvent.ofChar('u', KeyModifiers.ALT), KeyActions.USAGES));
+        assertTrue(vim.matches(KeyEvent.ofKey(KeyCode.F8), KeyActions.NEXT_PROBLEM));
+        assertTrue(vim.matches(keypress('w', KeyModifiers.CTRL), KeyActions.CLOSE_TAB));
+        assertTrue(vim.matches(KeyEvent.ofChar(']', KeyModifiers.ALT), KeyActions.NEXT_TAB));
+        assertTrue(vim.matches(KeyEvent.ofChar('[', KeyModifiers.ALT), KeyActions.PREVIOUS_TAB));
+        assertTrue(vim.matches(KeyEvent.ofKey(KeyCode.F3), KeyActions.PROJECT_SELECT_OPENED_FILE));
+        assertTrue(vim.matches(keypress('b', KeyModifiers.CTRL), KeyActions.TOGGLE_BREAKPOINT));
+        assertTrue(vim.matches(KeyEvent.ofKey(KeyCode.F2), KeyActions.PROJECT_RENAME));
+        assertFalse(vim.matches(keypress('b', KeyModifiers.CTRL), KeyActions.DEFINITION),
+                "the aligned chords stay out of the vim profile");
+        assertFalse(vim.matches(KeyEvent.ofKey(KeyCode.F6, KeyModifiers.SHIFT), KeyActions.PROJECT_RENAME));
+    }
+
+    private static void assertNoActionAnswers(Keymap keymap, KeyEvent event, String description) {
+        for (KeyAction action : keymap.actions()) {
+            assertFalse(keymap.matches(event, action.id()),
+                    description + " must not reach " + action.id() + " in the intellij profile");
+        }
     }
 
     private static KeyAction actionById(Keymap keymap, String id) {

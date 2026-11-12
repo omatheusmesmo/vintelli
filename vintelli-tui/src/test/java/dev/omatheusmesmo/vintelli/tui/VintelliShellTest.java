@@ -2578,7 +2578,7 @@ class VintelliShellTest {
     }
 
     @Test
-    void locateButtonAndF3RevealTheFileOfTheActiveEditorTab() throws Exception {
+    void locateButtonAndAltF1RevealTheFileOfTheActiveEditorTab() throws Exception {
         String previous = useAsciiIconFace();
         try {
             Files.createDirectories(project.resolve("src/main"));
@@ -2596,9 +2596,9 @@ class VintelliShellTest {
                 assertEquals(EXPANDED_TREE, shell.projectFiles(), "locate expands the folders of the active file");
                 assertEquals("src/main/A.java", shell.selectedPathString());
                 clickHeaderButton(pilot, test, "-");
-                pilot.press(KeyCode.F3);
+                pilot.press(KeyCode.F1, KeyModifiers.ALT);
                 settle(pilot);
-                assertEquals(EXPANDED_TREE, shell.projectFiles(), "F3 locates the active file like the button");
+                assertEquals(EXPANDED_TREE, shell.projectFiles(), "Alt+F1 locates the active file like the button");
                 assertEquals("src/main/A.java", shell.selectedPathString());
             }
         } finally {
