@@ -27,9 +27,24 @@ sdk env            # honors .sdkmanrc (Java 25)
 Build and run:
 
 ```bash
-./mvnw -pl vintelli-app -am quarkus:dev          # backend, dev mode with live reload
 ./mvnw package
 java -jar vintelli-app/target/quarkus-app/quarkus-run.jar --tui   # TUI (real terminal)
+java -jar vintelli-app/target/quarkus-app/quarkus-run.jar serve   # headless server (HTTP, MCP endpoint)
+```
+
+Backend dev mode with live reload must start from the `vintelli-app` module
+directory, not from the repository root. The root aggregator does not declare
+the Quarkus plugin, so `./mvnw -pl vintelli-app -am quarkus:dev` fails with
+`No plugin found for prefix 'quarkus'`. Two modules also need a one-time setup:
+`vintelli-jsonrpc` and `vintelli-acp` have no sources yet, so Maven never
+creates their `target/classes` directory, and the Quarkus build step requires
+one for every module it resolves. Run this after a fresh clone (and repeat the
+`mkdir` after a `clean`):
+
+```bash
+./mvnw -pl vintelli-app -am install -DskipTests
+mkdir -p vintelli-jsonrpc/target/classes vintelli-acp/target/classes
+cd vintelli-app && ../mvnw quarkus:dev -Dquarkus.analytics.disabled=true -Dquarkus.args=serve
 ```
 
 The TUI writes no log lines to the terminal. Add `--debug` (or set
@@ -40,6 +55,15 @@ Run one module's tests:
 
 ```bash
 ./mvnw -pl <module> -am test -Dtest=<Class> -Dsurefire.failIfNoSpecifiedTests=false
+```
+
+For `vintelli-app`, use `package` instead of `test`. In the `test` phase the
+Quarkus build step resolves the reactor modules to their `target/classes`
+directories, and the two empty modules above fail with `does not exist`; the
+`package` phase resolves them to their jars instead:
+
+```bash
+./mvnw -pl vintelli-app -am package -Dtest=<Class> -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
 Native verification (run by CI on every pull request):
@@ -205,7 +229,7 @@ Template:
 
 ## Validation
 
-- `./mvnw -pl <module> -am test -Dtest=<Class> -Dsurefire.failIfNoSpecifiedTests=false`
+- `./mvnw -pl <module> -am test -Dtest=<Class> -Dsurefire.failIfNoSpecifiedTests=false` (`package` instead of `test` for `vintelli-app`)
 - Native integration tests: <list of *IT classes>
 
 ## Libraries considered
