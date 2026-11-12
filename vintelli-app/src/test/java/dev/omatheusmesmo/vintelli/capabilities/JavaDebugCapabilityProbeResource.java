@@ -65,7 +65,9 @@ public final class JavaDebugCapabilityProbeResource implements QuarkusTestResour
                     Map.entry("vintelli.lsp.profiles.debug-probe.args", lspArguments),
                     Map.entry("vintelli.lsp.profiles.debug-probe.workspace-root", projectRoot.toString()),
                     Map.entry("vintelli.lsp.profiles.debug-probe.java.home", System.getProperty("java.home")),
-                    Map.entry("vintelli.lsp.profiles.debug-probe.initialization-options", options));
+                    Map.entry("vintelli.lsp.profiles.debug-probe.initialization-options", options),
+                    Map.entry("quarkus.log.category.\"dev.omatheusmesmo.vintelli.lsp\".level", "DEBUG"),
+                    Map.entry("quarkus.log.category.\"dev.omatheusmesmo.vintelli.lsp\".min-level", "DEBUG"));
         } catch (Exception failure) {
             stop();
             throw new IllegalStateException("Could not start the Java debug capability test resource", failure);
