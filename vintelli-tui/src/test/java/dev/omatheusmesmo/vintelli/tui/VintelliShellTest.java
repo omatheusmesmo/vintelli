@@ -651,6 +651,65 @@ class VintelliShellTest {
     }
 
     @Test
+    void pilotDiscardingTheUnsavedTabRemovesItsProblemsFromTheWindow() throws Exception {
+        ProblemsShell fixture = openProblemsShell();
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), WIDE)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+            refreshProblemsWindow(pilot, fixture);
+            awaitProblemCount(pilot, fixture.window(), 3);
+
+            fixture.editor().requestFocus();
+            settle(pilot);
+            fixture.editor().insert("x");
+            pilot.press(KeyCode.F4, KeyModifiers.CTRL);
+            settle(pilot);
+            assertTrue(fixture.shell().status().startsWith("Discard unsaved changes"), fixture.shell().status());
+            pilot.press('n');
+            settle(pilot);
+            assertEquals(2, fixture.editor().tabs().size(), "n keeps the unsaved tab open");
+            assertEquals("Close cancelled", fixture.shell().status());
+            pilot.press(KeyCode.F4, KeyModifiers.CTRL);
+            settle(pilot);
+            pilot.press('y');
+            settle(pilot);
+            awaitProblemCount(pilot, fixture.window(), 1);
+            assertEquals(List.of("other"), fixture.window().problems().stream().map(Diagnostic::message).toList(),
+                    "the discarded tab takes its problems out of the window");
+            fixture.window().close();
+        }
+    }
+
+    @Test
+    void pilotRestoredTabsGetTheirProblemsWhenTheProblemsWindowIsFirstRendered() throws Exception {
+        RestoredShell fixture = openRestoredShell();
+        Buffer buffer = offlineFrame(fixture.shell(), WIDE);
+        int tabRow = findBottomTabRow(buffer);
+        int problemsX = rowText(buffer, tabRow).indexOf("6 Problems") + 1;
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), WIDE)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+            pilot.click(problemsX, tabRow + 1);
+            settle(pilot);
+            awaitProblemCount(pilot, fixture.window(), 3);
+            awaitEditorProblems(pilot, fixture.editor(), List.of("first", "second"));
+            fixture.window().close();
+        }
+    }
+
+    @Test
+    void pilotRestoredTabsGetTheirProblemsWhileTheProblemsWindowIsHidden() throws Exception {
+        RestoredShell fixture = openRestoredShell();
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), WIDE)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+            assertEquals(2, fixture.editor().tabs().size(), "the session restores both tabs");
+            awaitEditorProblems(pilot, fixture.editor(), List.of("first", "second"));
+            fixture.window().close();
+        }
+    }
+
+    @Test
     void asciiModeDrawsTheStripsAndTheBottomTabsWithoutNonAsciiGlyphs() throws Exception {
         String previous = System.getProperty(IconMode.CONFIG_PROPERTY);
         System.setProperty(IconMode.CONFIG_PROPERTY, "ascii");
@@ -971,11 +1030,7 @@ class VintelliShellTest {
                 sequence -> { });
         editor.open(new OpenRequest(other, 0));
         editor.open(new OpenRequest(main, 0));
-        ProblemsToolWindowTest.TestRegistry registry = new ProblemsToolWindowTest.TestRegistry(
-                new ProblemsToolWindowTest.TestDiagnostics(List.of(
-                        new Diagnostic(main, 4, 0, 4, 6, Severity.WARNING, "jdtls", "second"),
-                        new Diagnostic(main, 2, 2, 2, 6, Severity.ERROR, "jdtls", "first"),
-                        new Diagnostic(other, 0, 0, 0, 5, Severity.ERROR, "jdtls", "other"))));
+        ProblemsToolWindowTest.TestRegistry registry = problemsRegistry(main, other);
         ProblemsToolWindow window = new ProblemsToolWindow(registry, editor, () -> themes);
         List<ToolWindow> windows = new ToolWindowRegistry(List.of(new RunToolWindow(() -> themes),
                 new TerminalToolWindow(() -> themes), window, editor)).toolWindows();
@@ -1022,6 +1077,45 @@ class VintelliShellTest {
 
     private static String rowOf(String frame, String fragment) {
         return frame.lines().filter(line -> line.contains(fragment)).findFirst().orElse("");
+    }
+
+    private record RestoredShell(VintelliShell shell, BuiltinEditor editor, ProblemsToolWindow window) {
+    }
+
+    private RestoredShell openRestoredShell() throws IOException {
+        Path main = project.resolve("Main.txt");
+        Files.writeString(main, numberedLines(10));
+        Path other = project.resolve("Other.txt");
+        Files.writeString(other, "other\n");
+        Path session = project.resolve("editor-session.properties");
+        ShellThemes themes = defaultThemes();
+        BuiltinEditor writer = new BuiltinEditor(project, session, themes::editorPalette, new FakeClipboard(),
+                sequence -> { });
+        writer.open(new OpenRequest(other, 0));
+        writer.open(new OpenRequest(main, 0));
+        BuiltinEditor editor = new BuiltinEditor(project, session, themes::editorPalette, new FakeClipboard(),
+                sequence -> { });
+        ProblemsToolWindow window = new ProblemsToolWindow(problemsRegistry(main, other), editor, () -> themes);
+        List<ToolWindow> windows = new ToolWindowRegistry(List.of(new RunToolWindow(() -> themes),
+                new TerminalToolWindow(() -> themes), window, editor)).toolWindows();
+        return new RestoredShell(new VintelliShell(ShellConfig.of(windows, new ShellState(), themes)), editor, window);
+    }
+
+    private static ProblemsToolWindowTest.TestRegistry problemsRegistry(Path main, Path other) {
+        return new ProblemsToolWindowTest.TestRegistry(new ProblemsToolWindowTest.TestDiagnostics(List.of(
+                new Diagnostic(main, 4, 0, 4, 6, Severity.WARNING, "jdtls", "second"),
+                new Diagnostic(main, 2, 2, 2, 6, Severity.ERROR, "jdtls", "first"),
+                new Diagnostic(other, 0, 0, 0, 5, Severity.ERROR, "jdtls", "other"))));
+    }
+
+    private static void awaitEditorProblems(Pilot pilot, BuiltinEditor editor, List<String> messages) {
+        long deadline = System.nanoTime() + SETTLE_TIMEOUT.toNanos();
+        while (!editor.diagnostics().stream().map(Diagnostic::message).toList().equals(messages)
+                && System.nanoTime() < deadline) {
+            pause(pilot, Duration.ofMillis(10));
+        }
+        assertEquals(messages, editor.diagnostics().stream().map(Diagnostic::message).toList(),
+                "the active editor tab paints the problems of its file");
     }
 
     private VintelliShell shellWithRegistry(FixedStatusRegistry registry) {

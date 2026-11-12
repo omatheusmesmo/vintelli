@@ -307,6 +307,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         }
         readFileSummary.refresh();
         vcsActions.refreshToolbarVcs();
+        restoreSessionThenRefreshProblems();
     }
 
     /**
@@ -1267,14 +1268,13 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             }
             return EventResult.HANDLED;
         }
+        if (prompt == Kind.EDITOR_CLOSE) {
+            answerEditorClose(key);
+            return EventResult.HANDLED;
+        }
         if (inputCaptured && key.isKey(KeyCode.ESCAPE)
                 && (capturedWindow == null || !capturedWindow.shouldHandleKeyBeforeShell(key))) {
             releaseCapture();
-            return EventResult.HANDLED;
-        }
-        if (prompt == Kind.EDITOR_CLOSE) {
-            editor.handleKey(key);
-            status = editor.status();
             return EventResult.HANDLED;
         }
         if (prompt == Kind.VCS_PROMPT) {
@@ -1720,6 +1720,23 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         toolWindows.stream().filter(ProblemsToolWindow.class::isInstance)
                 .map(ProblemsToolWindow.class::cast)
                 .forEach(ProblemsToolWindow::refreshInBackground);
+    }
+
+    private void restoreSessionThenRefreshProblems() {
+        if (editor == null || toolWindows.stream().noneMatch(ProblemsToolWindow.class::isInstance)) {
+            return;
+        }
+        editor.restoreSession();
+        refreshProblems();
+    }
+
+    private void answerEditorClose(KeyEvent key) {
+        int tabs = editor.tabs().size();
+        editor.handleKey(key);
+        status = editor.status();
+        if (editor.tabs().size() < tabs) {
+            refreshProblems();
+        }
     }
 
     static Set<Integer> changedLines(String diffText) {
