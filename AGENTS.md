@@ -23,8 +23,8 @@ This is a Quarkus application. Follow these rules when working on this project.
   mode, and dev mode starts from the `vintelli-app` module directory, not from
   the repository root (one-time setup in CONTRIBUTING.md). Without dev mode, a
   single test class runs with
-  `./mvnw -pl vintelli-app -am package -Dtest=<Class>
-  -Dsurefire.failIfNoSpecifiedTests=false`; `test` fails for this module.
+  `./mvnw -pl vintelli-app -am test -Dtest=<Class>
+  -Dsurefire.failIfNoSpecifiedTests=false`.
 - The JDK is pinned by `.sdkmanrc` (SDKMAN rules; mise does not manage Java);
   `mvnw` stays exactly as upstream ships it.
 
