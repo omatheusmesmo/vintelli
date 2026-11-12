@@ -39,7 +39,8 @@ class DebugLaunchTest {
                 Path transcript = directory.resolve(kind + ".txt");
                 String executable = System.getProperty("os.name").startsWith("Windows") ? "jdb.exe" : "jdb";
                 Path jdb = Path.of(System.getProperty("java.home"), "bin", executable);
-                debugger = new ProcessBuilder(jdb.toString(), "-attach", "127.0.0.1:" + port)
+                debugger = new ProcessBuilder(jdb.toString(), "-connect",
+                        "com.sun.jdi.SocketAttach:hostname=127.0.0.1,port=" + port)
                         .redirectErrorStream(true).redirectOutput(transcript.toFile()).start();
                 debugger.getOutputStream().write("threads\nexit\n".getBytes(StandardCharsets.UTF_8));
                 debugger.getOutputStream().close();

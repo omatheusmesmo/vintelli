@@ -4662,9 +4662,8 @@ class VintelliShellTest {
         }
 
         private void drag(MouseEvent event) {
-            int before = frames.get();
             runner.tuiRunner().dispatch(event);
-            awaitFrame(before);
+            awaitSettled();
         }
 
         private void resize(int width, int height) {
