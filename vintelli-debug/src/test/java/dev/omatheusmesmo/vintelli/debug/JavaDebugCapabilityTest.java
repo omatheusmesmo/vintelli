@@ -89,6 +89,134 @@ class JavaDebugCapabilityTest {
     }
 
     @Test
+    void stoppedFrameAndExecutionActionsFollowDapEventOrdering() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.NORMAL)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "stepping"), ignored -> { }));
+
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+            while (session.snapshot().currentFrame() == null && System.nanoTime() < deadline) {
+                Thread.sleep(10);
+            }
+            assertTrue(session.snapshot().currentFrame() != null, "the stopped event should retrieve the top frame");
+            assertEquals("/project/Main.java", session.snapshot().currentFrame().sourcePath());
+            assertEquals(12, session.snapshot().currentFrame().line());
+            assertTrue(session.snapshot().capabilities().resume());
+            assertTrue(session.snapshot().capabilities().stepOver());
+            assertTrue(session.resume() instanceof CapabilityResult.Ok<Boolean>);
+            assertEquals(DebugCapability.State.RUNNING, session.snapshot().state());
+            assertEquals(null, session.snapshot().currentFrame(), "continued clears the stale stopped frame");
+            assertTrue(session.pause() instanceof CapabilityResult.Ok<Boolean>);
+            assertEquals(DebugCapability.State.STOPPED, session.snapshot().state());
+            assertTrue(session.stepOver() instanceof CapabilityResult.Ok<Boolean>);
+            assertTrue(session.stepInto() instanceof CapabilityResult.Ok<Boolean>);
+            assertTrue(session.stepOut() instanceof CapabilityResult.Ok<Boolean>);
+            assertTrue(session.stepOver() instanceof CapabilityResult.Ok<Boolean>, "repeated step requests remain valid");
+            assertEquals(List.of("resume", "pause", "stepOver", "stepInto", "stepOut", "stepOver"),
+                    twin.executionActions());
+            session.disconnect();
+            assertEquals(null, session.snapshot().currentFrame());
+        }
+    }
+
+    @Test
+    void stackTraceFromAnOlderStopCannotReplaceTheCurrentFrame() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.STALE_STACK_TRACE)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "stop generations"), ignored -> { }));
+            DapTwin.Connection connection = twin.connection();
+            long stackDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+            while (!connection.staleStackTracePending() && System.nanoTime() < stackDeadline) Thread.sleep(10);
+            assertTrue(connection.staleStackTracePending());
+            connection.stopAgain();
+
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+            while ((session.snapshot().currentFrame() == null || session.snapshot().currentFrame().line() != 20)
+                    && System.nanoTime() < deadline) Thread.sleep(10);
+            assertEquals(20, session.snapshot().currentFrame().line());
+            connection.releaseStaleStackTrace();
+            Thread.sleep(50);
+            assertEquals(20, session.snapshot().currentFrame().line(), "a late first-stop response must be ignored");
+            session.disconnect();
+        }
+    }
+
+    @Test
+    void actionAcknowledgementWaitsForItsMatchingDapEvent() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.ACK_BEFORE_EVENT)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "ack ordering"), ignored -> { }));
+            ExecutorService worker = Executors.newSingleThreadExecutor();
+            try {
+                Future<CapabilityResult<Boolean>> first = worker.submit(session::stepOver);
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+                while (!twin.connection().delayedExecutionEventPending() && System.nanoTime() < deadline) Thread.sleep(10);
+                assertFalse(first.isDone(), "a DAP response does not finish the action before its stopped event");
+                assertTrue(session.stepOver().isFailure(), "a repeated request is fenced until the event arrives");
+                assertEquals(List.of("stepOver"), twin.executionActions());
+                twin.connection().releaseDelayedExecutionEvent();
+                assertTrue(first.get(2, TimeUnit.SECONDS) instanceof CapabilityResult.Ok<Boolean>);
+            } finally {
+                worker.shutdownNow();
+                session.disconnect();
+            }
+        }
+    }
+
+    @Test
+    void acknowledgedActionKeepsItsFenceAfterEventTimeoutUntilLateEventArrives() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.ACK_BEFORE_EVENT)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "late execution event"), ignored -> { }));
+            assertTrue(session.stepOver().isFailure(), "the caller receives a bounded timeout result");
+            assertEquals(DebugCapability.State.EXECUTING, session.snapshot().state(),
+                    "the session stays ambiguous while the acknowledged action has no matching event");
+            assertTrue(session.stepOver().isFailure(), "the retained transition fence blocks duplicate actions");
+            assertEquals(List.of("stepOver"), twin.executionActions());
+
+            twin.connection().releaseDelayedExecutionEvent();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+            while (session.snapshot().state() != DebugCapability.State.STOPPED && System.nanoTime() < deadline) {
+                Thread.sleep(10);
+            }
+            assertEquals(DebugCapability.State.STOPPED, session.snapshot().state());
+            deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+            while (session.snapshot().currentFrame() == null && System.nanoTime() < deadline) Thread.sleep(10);
+            assertTrue(session.snapshot().currentFrame() != null);
+            session.disconnect();
+        }
+    }
+
+    @Test
+    void optionalPauseIsLearnedFromTheAdapterAndTransientTimeoutStaysUnknown() throws Exception {
+        try (DapTwin unsupported = new DapTwin(DapTwin.Mode.UNSUPPORTED_PAUSE)) {
+            JavaDebugCapability capability = enabled(unsupported.port(), new FakeRun());
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "unsupported pause"), ignored -> { }));
+            assertFalse(session.snapshot().capabilities().known(DebugCapability.SteppingAction.PAUSE));
+            assertTrue(session.resume() instanceof CapabilityResult.Ok<Boolean>);
+            assertTrue(session.pause().isFailure());
+            assertTrue(session.snapshot().capabilities().known(DebugCapability.SteppingAction.PAUSE));
+            assertFalse(session.snapshot().capabilities().supports(DebugCapability.SteppingAction.PAUSE));
+            session.disconnect();
+        }
+        try (DapTwin timeout = new DapTwin(DapTwin.Mode.PAUSE_NO_EVENT)) {
+            JavaDebugCapability capability = enabled(timeout.port(), new FakeRun());
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "pause timeout"), ignored -> { }));
+            assertTrue(session.resume() instanceof CapabilityResult.Ok<Boolean>);
+            assertTrue(session.pause().isFailure());
+            assertFalse(session.snapshot().capabilities().known(DebugCapability.SteppingAction.PAUSE),
+                    "a timeout must not be cached as an unsupported request");
+            session.disconnect();
+        }
+    }
+
+    @Test
     void launchOwnsAndCancelsItsRunHandleWhenDisconnected() throws Exception {
         try (DapTwin twin = new DapTwin(DapTwin.Mode.NORMAL)) {
             FakeRun run = new FakeRun();

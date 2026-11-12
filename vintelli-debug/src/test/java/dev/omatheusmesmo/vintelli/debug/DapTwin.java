@@ -19,8 +19,18 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.eclipse.lsp4j.debug.Capabilities;
 import org.eclipse.lsp4j.debug.ConfigurationDoneArguments;
+import org.eclipse.lsp4j.debug.ContinueArguments;
+import org.eclipse.lsp4j.debug.ContinueResponse;
+import org.eclipse.lsp4j.debug.ContinuedEventArguments;
 import org.eclipse.lsp4j.debug.DisconnectArguments;
 import org.eclipse.lsp4j.debug.InitializeRequestArguments;
+import org.eclipse.lsp4j.debug.NextArguments;
+import org.eclipse.lsp4j.debug.PauseArguments;
+import org.eclipse.lsp4j.debug.StackFrame;
+import org.eclipse.lsp4j.debug.StackTraceArguments;
+import org.eclipse.lsp4j.debug.StackTraceResponse;
+import org.eclipse.lsp4j.debug.StepInArguments;
+import org.eclipse.lsp4j.debug.StepOutArguments;
 import org.eclipse.lsp4j.debug.OutputEventArguments;
 import org.eclipse.lsp4j.debug.StoppedEventArguments;
 import org.eclipse.lsp4j.debug.TerminatedEventArguments;
@@ -34,6 +44,9 @@ import org.eclipse.lsp4j.debug.Source;
 import org.eclipse.lsp4j.debug.launch.DSPLauncher;
 import org.eclipse.lsp4j.debug.services.IDebugProtocolClient;
 import org.eclipse.lsp4j.debug.services.IDebugProtocolServer;
+import org.eclipse.lsp4j.jsonrpc.ResponseErrorException;
+import org.eclipse.lsp4j.jsonrpc.messages.ResponseError;
+import org.eclipse.lsp4j.jsonrpc.messages.ResponseErrorCode;
 
 final class DapTwin implements AutoCloseable {
 
@@ -45,6 +58,8 @@ final class DapTwin implements AutoCloseable {
     private final AtomicBoolean closed = new AtomicBoolean();
     private final CountDownLatch firstConnection = new CountDownLatch(1);
     private volatile List<Integer> breakpointLines = List.of();
+    private final List<String> executionActions = new CopyOnWriteArrayList<>();
+    private final AtomicInteger stackTraceCalls = new AtomicInteger();
 
     DapTwin(Mode mode) throws IOException {
         this.mode = mode;
@@ -63,6 +78,10 @@ final class DapTwin implements AutoCloseable {
     List<Integer> breakpointLines() {
         return breakpointLines;
     }
+
+    List<String> executionActions() { return List.copyOf(executionActions); }
+    int stackTraceCalls() { return stackTraceCalls.get(); }
+    void releaseStaleStackTrace() { connections.forEach(Connection::releaseStaleStackTrace); }
 
     Connection connection() {
         try {
@@ -115,7 +134,11 @@ final class DapTwin implements AutoCloseable {
         MALFORMED,
         REJECT_BREAKPOINT,
         REJECT_SECOND_SESSION,
-        RESOLVE_BREAKPOINT
+        RESOLVE_BREAKPOINT,
+        ACK_BEFORE_EVENT,
+        UNSUPPORTED_PAUSE,
+        PAUSE_NO_EVENT,
+        STALE_STACK_TRACE
     }
 
     final class Connection {
@@ -132,6 +155,8 @@ final class DapTwin implements AutoCloseable {
         private final CountDownLatch disconnectReceived = new CountDownLatch(1);
         private volatile String hostName;
         private volatile Integer targetPort;
+        private volatile CompletableFuture<StackTraceResponse> staleStackTrace;
+        private volatile Runnable delayedExecutionEvent;
 
         private Connection(Socket socket, int connectionNumber) {
             this.socket = socket;
@@ -188,6 +213,9 @@ final class DapTwin implements AutoCloseable {
             return attachCalls.get();
         }
 
+        boolean staleStackTracePending() { return staleStackTrace != null; }
+        boolean delayedExecutionEventPending() { return delayedExecutionEvent != null; }
+
         boolean terminateDebuggee() {
             return terminateDebuggee;
         }
@@ -203,6 +231,16 @@ final class DapTwin implements AutoCloseable {
                 event.setOutput("line " + index);
                 remote.output(event);
             }
+        }
+
+        void stopAgain() { server.stopAtBreakpoint(); }
+        void releaseStaleStackTrace() {
+            CompletableFuture<StackTraceResponse> pending = staleStackTrace;
+            if (pending != null) pending.complete(server.stackTraceResponse(12));
+        }
+        void releaseDelayedExecutionEvent() {
+            Runnable event = delayedExecutionEvent;
+            if (event != null) event.run();
         }
 
         private final class TwinServer implements IDebugProtocolServer {
@@ -265,6 +303,75 @@ final class DapTwin implements AutoCloseable {
                 ThreadsResponse response = new ThreadsResponse();
                 response.setThreads(new Thread[] { thread });
                 return CompletableFuture.completedFuture(response);
+            }
+
+            @Override public CompletableFuture<StackTraceResponse> stackTrace(StackTraceArguments arguments) {
+                int request = stackTraceCalls.incrementAndGet();
+                if (mode == Mode.STALE_STACK_TRACE && request == 1) {
+                    staleStackTrace = new CompletableFuture<>();
+                    return staleStackTrace;
+                }
+                return CompletableFuture.completedFuture(stackTraceResponse(
+                        mode == Mode.STALE_STACK_TRACE && request > 1 ? 20 : 12));
+            }
+
+            private StackTraceResponse stackTraceResponse(int line) {
+                StackFrame frame = new StackFrame();
+                frame.setId(1);
+                frame.setName("main");
+                frame.setLine(line);
+                frame.setColumn(3);
+                Source source = new Source();
+                source.setPath("/project/Main.java");
+                frame.setSource(source);
+                StackTraceResponse response = new StackTraceResponse();
+                response.setStackFrames(new StackFrame[] { frame });
+                return response;
+            }
+
+            @Override public CompletableFuture<ContinueResponse> continue_(ContinueArguments arguments) {
+                executionActions.add("resume");
+                client.continued(new ContinuedEventArguments());
+                return CompletableFuture.completedFuture(new ContinueResponse());
+            }
+
+            @Override public CompletableFuture<Void> pause(PauseArguments arguments) {
+                executionActions.add("pause");
+                if (mode == Mode.UNSUPPORTED_PAUSE) {
+                    return CompletableFuture.failedFuture(new ResponseErrorException(new ResponseError(
+                            ResponseErrorCode.MethodNotFound, "Pause request is not supported by this adapter", null)));
+                }
+                if (mode == Mode.PAUSE_NO_EVENT) return CompletableFuture.completedFuture(null);
+                stopAtBreakpoint();
+                return CompletableFuture.completedFuture(null);
+            }
+
+            @Override public CompletableFuture<Void> next(NextArguments arguments) {
+                executionActions.add("stepOver");
+                if (mode == Mode.ACK_BEFORE_EVENT) {
+                    delayedExecutionEvent = this::sendContinuedAndStopped;
+                    return CompletableFuture.completedFuture(null);
+                }
+                sendContinuedAndStopped();
+                return CompletableFuture.completedFuture(null);
+            }
+
+            @Override public CompletableFuture<Void> stepIn(StepInArguments arguments) {
+                executionActions.add("stepInto");
+                sendContinuedAndStopped();
+                return CompletableFuture.completedFuture(null);
+            }
+
+            @Override public CompletableFuture<Void> stepOut(StepOutArguments arguments) {
+                executionActions.add("stepOut");
+                sendContinuedAndStopped();
+                return CompletableFuture.completedFuture(null);
+            }
+
+            private void sendContinuedAndStopped() {
+                IDebugProtocolClient remote = client;
+                remote.continued(new ContinuedEventArguments());
+                stopAtBreakpoint();
             }
 
             @Override

@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
@@ -130,6 +131,7 @@ class RunToolWindowInteractionContractTest {
     static final class FakeRegistry implements CapabilityRegistry {
         private final RunCapability provider;
         private final DebugCapability debugProvider;
+        volatile EditorBridge editorBridge;
 
         FakeRegistry(RunCapability provider) {
             this(provider, null);
@@ -152,7 +154,10 @@ class RunToolWindowInteractionContractTest {
         @Override public CapabilitySelection<DiagnosticsCapability> diagnostics() { return unavailable(CapabilityType.DIAGNOSTICS); }
         @Override public CapabilitySelection<CallHierarchyCapability> callHierarchy() { return unavailable(CapabilityType.CALL_HIERARCHY); }
         @Override public CapabilitySelection<CodeActionCapability> codeActions() { return unavailable(CapabilityType.CODE_ACTION); }
-        @Override public CapabilitySelection<EditorBridge> editorBridge() { return unavailable(CapabilityType.EDITOR_BRIDGE); }
+        @Override public CapabilitySelection<EditorBridge> editorBridge() {
+            return editorBridge == null ? unavailable(CapabilityType.EDITOR_BRIDGE)
+                    : CapabilitySelection.selected(CapabilityType.EDITOR_BRIDGE, editorBridge);
+        }
         @Override public CapabilitySelection<VersionControlCapability> versionControl() { return unavailable(CapabilityType.VERSION_CONTROL); }
         @Override public List<CapabilityStatus> snapshot() {
             return List.of(CapabilityStatus.available(CapabilityType.RUN, provider.identifier(),
@@ -167,6 +172,9 @@ class RunToolWindowInteractionContractTest {
     static final class FakeDebugCapability implements DebugCapability {
         final AtomicInteger attachedPort = new AtomicInteger();
         final AtomicInteger disconnects = new AtomicInteger();
+        final List<String> executionActions = new CopyOnWriteArrayList<>();
+        private volatile State state = State.STOPPED;
+        volatile String sourcePath = "/project/Main.java";
 
         @Override public String identifier() { return "fake-dap"; }
         @Override public ProviderHealth health() { return ProviderHealth.available(); }
@@ -174,11 +182,17 @@ class RunToolWindowInteractionContractTest {
         @Override public CapabilityResult<DebugSession> launch(DebugRequest request, Consumer<String> outputLines) {
             return CapabilityResult.failed(new CapabilityFailure("Not used by the interaction test", ""));
         }
+        @Override public CapabilityResult<List<SourceBreakpoint>> setBreakpoints(String sourcePath,
+                List<SourceBreakpoint> breakpoints) {
+            return CapabilityResult.ok(List.copyOf(breakpoints));
+        }
         @Override public CapabilityResult<DebugSession> attach(AttachRequest request, Consumer<String> outputLines) {
             attachedPort.set(request.port());
             return CapabilityResult.ok(new DebugSession() {
                 @Override public DebugSessionSnapshot snapshot() {
-                    return new DebugSessionSnapshot("interaction", request.label(), State.STOPPED, List.of(), "", "");
+                    return new DebugSessionSnapshot("interaction", request.label(), state, List.of(), "", "", 1,
+                            state == State.STOPPED ? new DebugFrame("main", sourcePath, 4, 1) : null,
+                            new DebugCapabilities(true, true, true, true, true));
                 }
                 @Override public CapabilityResult<List<DebugThread>> threads() {
                     return CapabilityResult.ok(List.of());
@@ -188,6 +202,11 @@ class RunToolWindowInteractionContractTest {
                     return CapabilityResult.ok(true);
                 }
                 @Override public void cancel() { disconnects.incrementAndGet(); }
+                @Override public CapabilityResult<Boolean> resume() { executionActions.add("resume"); state = State.RUNNING; return CapabilityResult.ok(true); }
+                @Override public CapabilityResult<Boolean> pause() { executionActions.add("pause"); state = State.STOPPED; return CapabilityResult.ok(true); }
+                @Override public CapabilityResult<Boolean> stepOver() { executionActions.add("stepOver"); return CapabilityResult.ok(true); }
+                @Override public CapabilityResult<Boolean> stepInto() { executionActions.add("stepInto"); return CapabilityResult.ok(true); }
+                @Override public CapabilityResult<Boolean> stepOut() { executionActions.add("stepOut"); return CapabilityResult.ok(true); }
             });
         }
         @Override public List<DebugSessionSnapshot> snapshot() { return List.of(); }

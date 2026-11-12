@@ -205,6 +205,11 @@ EditorTabBarElement-overflow {
   color: $editor-keyword;
 }
 
+.editor-execution-line {
+  color: $editor-number;
+  text-style: bold;
+}
+
 .editor-caret {
   text-style: reversed;
 }

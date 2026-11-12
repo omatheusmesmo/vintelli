@@ -75,6 +75,28 @@ class JavaDebugCapabilityProbeTest {
     }
 
     @Test
+    void packagedProviderStepsTheRealDebuggeeAndReportsItsStoppedFrame() throws Exception {
+        Process debuggee = startExternalDebuggee(JavaDebugCapabilityProbeResource.attachPort());
+        try {
+            assertTrue(debuggeeReady(debuggee), "the external JDWP debuggee did not start");
+            var response = given().queryParam("kind", "stepping").post(PROBE).then().statusCode(200).extract();
+            assertTrue(Boolean.TRUE.equals(response.path("available")));
+            assertEquals("", response.path("error"));
+            assertEquals("STOPPED", response.path("snapshot.state"));
+            assertEquals(JavaDebugCapabilityProbeResource.projectRoot().resolve("Main.java").toString(),
+                    response.path("snapshot.currentFrame.sourcePath"));
+            assertTrue(((Number) response.path("snapshot.currentFrame.line")).intValue() > 0);
+            assertEquals(List.of("pause", "stepOver", "stepInto", "stepOut"),
+                    JavaDebugCapabilityProbeResource.adapter().executionActions());
+            given().delete(PROBE).then().statusCode(200);
+            assertTrue(debuggee.isAlive(), "detaching after stepping must preserve the external debuggee");
+        } finally {
+            given().delete(PROBE).then().statusCode(200);
+            destroy(debuggee);
+        }
+    }
+
+    @Test
     void launchOwnsTheDebuggeeAndFreesItsLoopbackPortOnDisconnect() throws Exception {
         try {
             var started = given().queryParam("kind", "launch").post(PROBE).then().statusCode(200).extract();

@@ -81,6 +81,11 @@ public final class KeyActions {
     public static final String RUN_DEBUG = "run.debug";
     public static final String RUN_EXECUTE = "run.execute";
     public static final String RUN_STOP = "run.stop";
+    public static final String DEBUG_RESUME = "debug.resume";
+    public static final String DEBUG_PAUSE = "debug.pause";
+    public static final String DEBUG_STEP_OVER = "debug.step-over";
+    public static final String DEBUG_STEP_INTO = "debug.step-into";
+    public static final String DEBUG_STEP_OUT = "debug.step-out";
     public static final String RUN_REFRESH = "run.refresh";
     public static final String RUN_CHOOSE_CONFIGURATION = "run.choose-configuration";
     public static final String RUN_SELECT_NEXT = "run.select-next";
@@ -138,6 +143,11 @@ public final class KeyActions {
                 new KeyAction(RUN_REFRESH, "Refresh Run Configurations", ""),
                 new KeyAction(RUN_CHOOSE_CONFIGURATION, "Choose Run Configuration", ""),
                 new KeyAction(RUN_STOP, "Stop Current Run", ""),
+                new KeyAction(DEBUG_RESUME, "Resume Debug Session", "C"),
+                new KeyAction(DEBUG_PAUSE, "Pause Debug Session", "P"),
+                new KeyAction(DEBUG_STEP_OVER, "Step Over", "O"),
+                new KeyAction(DEBUG_STEP_INTO, "Step Into", "I"),
+                new KeyAction(DEBUG_STEP_OUT, "Step Out", "U"),
                 new KeyAction(TERMINAL_EXECUTE, "Execute Terminal Command", ""),
                 new KeyAction(PROBLEMS_NAVIGATE, "Open Selected Problem", ""),
                 new KeyAction(PROBLEMS_REFRESH, "Refresh Problems", ""),

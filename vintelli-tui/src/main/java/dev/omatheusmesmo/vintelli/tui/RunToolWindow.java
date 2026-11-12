@@ -5,7 +5,9 @@ import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -15,11 +17,13 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityRegistry;
+import dev.omatheusmesmo.vintelli.api.capability.CapabilityFailure;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilitySelection;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability;
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugSession;
+import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugSessionSnapshot;
 import dev.omatheusmesmo.vintelli.api.capability.EditorBridge;
 import dev.omatheusmesmo.vintelli.api.capability.RunCapability;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
@@ -59,6 +63,7 @@ public final class RunToolWindow implements ToolWindow {
     private final AtomicLong runSequence = new AtomicLong();
     private final AtomicLong capabilitySequence = new AtomicLong();
     private final AtomicBoolean capabilityRequested = new AtomicBoolean();
+    private final AtomicBoolean debugActionPending = new AtomicBoolean();
     private final boolean ideaConfigured;
 
     private volatile List<RunCapability.RunConfiguration> configurations = List.of();
@@ -67,6 +72,7 @@ public final class RunToolWindow implements ToolWindow {
     private volatile String status = LOADING;
     private volatile RunCapability.RunHandle handle;
     private volatile DebugSession debugSession;
+    private volatile EditorBridge debugEditorBridge;
     private volatile boolean starting;
     private volatile boolean running;
     private int selectedIndex;
@@ -162,6 +168,13 @@ public final class RunToolWindow implements ToolWindow {
 
     @Override
     public String actionForKey(KeyEvent event) {
+        if (debugSession != null && debugging && !event.hasCtrl() && !event.hasAlt()) {
+            if (event.isCharIgnoreCase('c')) return KeyActions.DEBUG_RESUME;
+            if (event.isCharIgnoreCase('p')) return KeyActions.DEBUG_PAUSE;
+            if (event.isCharIgnoreCase('o')) return KeyActions.DEBUG_STEP_OVER;
+            if (event.isCharIgnoreCase('i')) return KeyActions.DEBUG_STEP_INTO;
+            if (event.isCharIgnoreCase('u')) return KeyActions.DEBUG_STEP_OUT;
+        }
         if (event.isKey(KeyCode.ENTER)) {
             return KeyActions.RUN_EXECUTE;
         }
@@ -190,8 +203,24 @@ public final class RunToolWindow implements ToolWindow {
         if (row == 1 && column >= 18 && column < 36) {
             return KeyActions.RUN_REFRESH;
         }
-        if (row == 1 && column >= 36 && column < 56 && handle != null) {
-            return handle.supportsCancellation() ? KeyActions.RUN_STOP : null;
+        if (row == 1) {
+            String controls = controlsLine();
+            int stopStart = controls.indexOf("■ Stop");
+            if (handle != null && handle.supportsCancellation() && stopStart >= 0
+                    && column >= stopStart && column < stopStart + "■ Stop".length()) {
+                return KeyActions.RUN_STOP;
+            }
+            if (debugSession != null) {
+                String[] labels = { "Resume", "Pause", "Over", "Into", "Out" };
+                String[] actions = { KeyActions.DEBUG_RESUME, KeyActions.DEBUG_PAUSE,
+                        KeyActions.DEBUG_STEP_OVER, KeyActions.DEBUG_STEP_INTO, KeyActions.DEBUG_STEP_OUT };
+                int start = controls.indexOf(labels[0]);
+                int buttonStart = start;
+                for (int index = 0; index < labels.length; index++) {
+                    if (column >= buttonStart && column < buttonStart + labels[index].length()) return actions[index];
+                    buttonStart += labels[index].length() + 2;
+                }
+            }
         }
         return null;
     }
@@ -224,6 +253,12 @@ public final class RunToolWindow implements ToolWindow {
 
     @Override
     public boolean performAction(String actionId, KeyEvent event) {
+        if (KeyActions.DEBUG_RESUME.equals(actionId) || KeyActions.DEBUG_PAUSE.equals(actionId)
+                || KeyActions.DEBUG_STEP_OVER.equals(actionId) || KeyActions.DEBUG_STEP_INTO.equals(actionId)
+                || KeyActions.DEBUG_STEP_OUT.equals(actionId)) {
+            requestDebugAction(actionId);
+            return true;
+        }
         if (KeyActions.RUN_DEBUG.equals(actionId)) {
             startSelected(true);
             return true;
@@ -261,11 +296,10 @@ public final class RunToolWindow implements ToolWindow {
         visibleConfigurationCount = 0;
         List<String> lines = new ArrayList<>();
         lines.add(capabilitySummary.headline());
-        lines.add("▶ Run [Enter]     ↻ Refresh [r]     "
-                + (handle == null || !handle.supportsCancellation()
-                        ? "Stop unavailable" : "■ Stop"));
+        lines.add(controlsLine());
         lines.add(status);
         if (!debugSupport.available()) lines.add("Debug unavailable: " + debugSupport.reason());
+        lines.addAll(debugUnavailableActions());
         lines.addAll(capabilitySummary.skipped());
 
         int innerRows = Math.max(0, area.height());
@@ -326,6 +360,12 @@ public final class RunToolWindow implements ToolWindow {
             return availableRows;
         }
         return Math.min(availableRows - 1, Math.max(2, availableRows / 3));
+    }
+
+    private String controlsLine() {
+        return "▶ Run [Enter]     ↻ Refresh [r]     "
+                + (handle == null || !handle.supportsCancellation() ? "Stop unavailable" : "■ Stop")
+                + (debugSession == null ? "" : "     Resume  Pause  Over  Into  Out");
     }
 
     private void appendConsole(List<String> lines, int rows) {
@@ -545,6 +585,8 @@ public final class RunToolWindow implements ToolWindow {
     }
 
     private void startRun(String identifier, List<String> arguments, boolean debug) {
+        clearExecutionMarker();
+        debugEditorBridge = null;
         RunCapability selected = provider;
         if (selected == null) {
             status = "Run provider unavailable; refresh configurations";
@@ -703,6 +745,7 @@ public final class RunToolWindow implements ToolWindow {
                 return;
             }
             DebugSession session = attachedSession;
+            EditorBridge activeDebugEditor = debugEditor;
             uiWork.execute(() -> {
                 if (sequence != runSequence.get()) {
                     disconnectAsync(session);
@@ -720,8 +763,10 @@ public final class RunToolWindow implements ToolWindow {
                 } else {
                     handle = ((CapabilityResult.Ok<RunCapability.RunHandle>) result).value();
                     debugSession = session;
+                    debugEditorBridge = activeDebugEditor;
                     running = true;
                     status = (debug ? "Debug 127.0.0.1:" + debugPort + " · " : "Running ") + identifier;
+                    if (session != null) watchDebugSession(sequence, session, activeDebugEditor);
                 }
             });
         });
@@ -739,6 +784,8 @@ public final class RunToolWindow implements ToolWindow {
         }
         DebugSession activeDebugSession = debugSession;
         debugSession = null;
+        clearExecutionMarker();
+        debugEditorBridge = null;
         status = "Stop requested";
         Thread.ofVirtual().name("vintelli-run-stop").start(() -> {
             try {
@@ -753,6 +800,8 @@ public final class RunToolWindow implements ToolWindow {
     private void failRun(String failure) {
         disconnectAsync(debugSession);
         debugSession = null;
+        clearExecutionMarker();
+        debugEditorBridge = null;
         starting = false;
         running = false;
         debugging = false;
@@ -775,8 +824,145 @@ public final class RunToolWindow implements ToolWindow {
         debugging = false;
         disconnectAsync(debugSession);
         debugSession = null;
+        clearExecutionMarker();
+        debugEditorBridge = null;
         handle = null;
         status = completion.summary();
+    }
+
+    private void requestDebugAction(String actionId) {
+        DebugSession session = debugSession;
+        if (session == null) {
+            status = "No debug session is active";
+            return;
+        }
+        DebugSessionSnapshot snapshot = session.snapshot();
+        DebugCapability.SteppingAction action = actionId.equals(KeyActions.DEBUG_RESUME)
+                ? DebugCapability.SteppingAction.RESUME
+                : actionId.equals(KeyActions.DEBUG_PAUSE) ? DebugCapability.SteppingAction.PAUSE
+                : actionId.equals(KeyActions.DEBUG_STEP_OVER) ? DebugCapability.SteppingAction.STEP_OVER
+                : actionId.equals(KeyActions.DEBUG_STEP_INTO) ? DebugCapability.SteppingAction.STEP_INTO
+                : DebugCapability.SteppingAction.STEP_OUT;
+        if (debugActionPending.get()) {
+            status = "A debugger action is already in progress";
+            return;
+        }
+        boolean pauseProbe = action == DebugCapability.SteppingAction.PAUSE
+                && !snapshot.capabilities().known(action);
+        if (!snapshot.capabilities().supports(action) && !pauseProbe) {
+            status = actionLabel(action) + " unavailable: unsupported by this adapter";
+            return;
+        }
+        boolean requiresStopped = action != DebugCapability.SteppingAction.PAUSE;
+        if (requiresStopped && snapshot.state() != DebugCapability.State.STOPPED) {
+            status = actionLabel(action) + " unavailable: the session is not stopped";
+            return;
+        }
+        if (!requiresStopped && snapshot.state() != DebugCapability.State.RUNNING) {
+            status = "Pause unavailable: the session is not running";
+            return;
+        }
+        if (pauseProbe) status = "Pause support is not yet confirmed; probing the adapter";
+        if (!debugActionPending.compareAndSet(false, true)) return;
+        Thread.ofVirtual().name("vintelli-debug-action").start(() -> {
+            CapabilityResult<Boolean> result = invokeDebugAction(session, action);
+            uiWork.execute(() -> {
+                debugActionPending.set(false);
+                if (debugSession != session) return;
+                if (result instanceof CapabilityResult.Failed<Boolean> failed) {
+                    status = actionLabel(action) + " failed: " + failed.failure().reason();
+                } else {
+                    status = actionLabel(action) + " requested";
+                    if (action == DebugCapability.SteppingAction.RESUME) clearExecutionMarker();
+                }
+            });
+        });
+    }
+
+    private static CapabilityResult<Boolean> invokeDebugAction(DebugSession session,
+            DebugCapability.SteppingAction action) {
+        try {
+            return switch (action) {
+                case RESUME -> session.resume();
+                case PAUSE -> session.pause();
+                case STEP_OVER -> session.stepOver();
+                case STEP_INTO -> session.stepInto();
+                case STEP_OUT -> session.stepOut();
+            };
+        } catch (RuntimeException failure) {
+            return CapabilityResult.failed(new CapabilityFailure(message(failure), ""));
+        }
+    }
+
+    private List<String> debugUnavailableActions() {
+        DebugSession active = debugSession;
+        if (active == null) return List.of();
+        DebugSessionSnapshot snapshot = active.snapshot();
+        List<String> unavailable = new ArrayList<>();
+        for (DebugCapability.SteppingAction action : DebugCapability.SteppingAction.values()) {
+            boolean stateAllows = action == DebugCapability.SteppingAction.PAUSE
+                    ? snapshot.state() == DebugCapability.State.RUNNING
+                    : snapshot.state() == DebugCapability.State.STOPPED;
+            if (!stateAllows) {
+                unavailable.add(actionLabel(action) + " unavailable: session is "
+                        + snapshot.state().name().toLowerCase(Locale.ROOT));
+            } else if (!snapshot.capabilities().supports(action)) {
+                if (!snapshot.capabilities().known(action)) {
+                    unavailable.add(actionLabel(action) + " support is not yet confirmed; action will probe the adapter");
+                } else {
+                    unavailable.add(actionLabel(action) + " unavailable: unsupported by this adapter");
+                }
+            } else if (debugActionPending.get()) {
+                unavailable.add(actionLabel(action) + " unavailable: another debugger action is in progress");
+            }
+        }
+        return unavailable;
+    }
+
+    private void watchDebugSession(long sequence, DebugSession session, EditorBridge editor) {
+        Thread.ofVirtual().name("vintelli-debug-state").start(() -> {
+            DebugCapability.DebugFrame applied = null;
+            while (sequence == runSequence.get() && debugSession == session) {
+                DebugCapability.DebugSessionSnapshot snapshot = session.snapshot();
+                DebugCapability.DebugFrame frame = snapshot.state() == DebugCapability.State.STOPPED
+                        ? snapshot.currentFrame() : null;
+                if (!Objects.equals(frame, applied)) {
+                    applied = frame;
+                    if (editor != null) {
+                        uiWork.execute(() -> {
+                            if (debugSession == session) editor.updateExecutionLocation(frame);
+                        });
+                    }
+                }
+                if (snapshot.state() == DebugCapability.State.TERMINATED
+                        || snapshot.state() == DebugCapability.State.DISCONNECTED
+                        || snapshot.state() == DebugCapability.State.FAILED) {
+                    if (editor != null) uiWork.execute(() -> editor.updateExecutionLocation(null));
+                    return;
+                }
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+        });
+    }
+
+    private void clearExecutionMarker() {
+        EditorBridge editor = debugEditorBridge;
+        if (editor != null) uiWork.execute(() -> editor.updateExecutionLocation(null));
+    }
+
+    private static String actionLabel(DebugCapability.SteppingAction action) {
+        return switch (action) {
+            case RESUME -> "Resume";
+            case PAUSE -> "Pause";
+            case STEP_OVER -> "Step over";
+            case STEP_INTO -> "Step into";
+            case STEP_OUT -> "Step out";
+        };
     }
 
     private static void disconnect(DebugSession session) {

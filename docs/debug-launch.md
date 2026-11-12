@@ -36,6 +36,20 @@ owner of process cleanup. Before starting, the toolbar sends each complete sourc
 breakpoint set exposed by the selected editor to the Debug provider. This also
 loads persisted editor breakpoints into a newly attached session.
 
+## Stepping and the current frame
+
+While a debug session is active, use the Run window controls, their mouse targets,
+or the action palette: **Resume** (`C`), **Pause** (`P`), **Step Over** (`O`),
+**Step Into** (`I`) and **Step Out** (`U`). Actions that do not apply to the
+current session state or are unsupported by the adapter show a reason in Run.
+Repeated actions are serialized while a DAP request is in flight.
+
+When the adapter reports a stopped thread, Vintelli reads its top stack frame,
+opens the frame's source at that line, and marks the execution line in the gutter.
+The marker is transient and distinct from a breakpoint in both ASCII and Unicode
+icon modes. It clears when execution resumes, the session disconnects, the
+process exits, or attach fails. The marker never edits source text.
+
 ## Source breakpoints
 
 Click a line's gutter marker or run **Toggle Line Breakpoint** (`Ctrl+F8`) to

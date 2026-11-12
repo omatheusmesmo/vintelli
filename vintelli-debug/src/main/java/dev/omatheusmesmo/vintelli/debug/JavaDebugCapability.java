@@ -11,6 +11,7 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.Objects;
@@ -45,6 +46,14 @@ import org.eclipse.lsp4j.debug.OutputEventArguments;
 import org.eclipse.lsp4j.debug.StoppedEventArguments;
 import org.eclipse.lsp4j.debug.TerminatedEventArguments;
 import org.eclipse.lsp4j.debug.Breakpoint;
+import org.eclipse.lsp4j.debug.ContinueArguments;
+import org.eclipse.lsp4j.debug.NextArguments;
+import org.eclipse.lsp4j.debug.PauseArguments;
+import org.eclipse.lsp4j.debug.StackTraceArguments;
+import org.eclipse.lsp4j.debug.StackTraceResponse;
+import org.eclipse.lsp4j.debug.StepInArguments;
+import org.eclipse.lsp4j.debug.StepOutArguments;
+import org.eclipse.lsp4j.debug.StackFrame;
 import org.eclipse.lsp4j.debug.SetBreakpointsArguments;
 import org.eclipse.lsp4j.debug.SetBreakpointsResponse;
 import org.eclipse.lsp4j.debug.Source;
@@ -53,6 +62,9 @@ import org.eclipse.lsp4j.debug.launch.DSPLauncher;
 import org.eclipse.lsp4j.debug.services.IDebugProtocolClient;
 import org.eclipse.lsp4j.debug.services.IDebugProtocolServer;
 import org.eclipse.lsp4j.jsonrpc.Launcher;
+import org.eclipse.lsp4j.jsonrpc.ResponseErrorException;
+import org.eclipse.lsp4j.jsonrpc.messages.ResponseError;
+import org.eclipse.lsp4j.jsonrpc.messages.ResponseErrorCode;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityFailure;
@@ -64,6 +76,8 @@ import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.AttachRequest;
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugRequest;
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugSessionSnapshot;
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugThread;
+import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugFrame;
+import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugCapabilities;
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.State;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import dev.omatheusmesmo.vintelli.api.capability.RunCapability;
@@ -437,6 +451,10 @@ public final class JavaDebugCapability implements DebugCapability {
         private volatile IDebugProtocolServer server;
         private volatile RunHandle runHandle;
         private volatile boolean terminal;
+        private volatile DebugCapabilities debugCapabilities = new DebugCapabilities(false, false, false, false, false);
+        private final AtomicBoolean executionRequestPending = new AtomicBoolean();
+        private long stopGeneration;
+        private PendingExecution pendingExecution;
 
         private DapSession(String label, boolean ownsRun, Consumer<String> outputLines) {
             this.label = label;
@@ -500,6 +518,7 @@ public final class JavaDebugCapability implements DebugCapability {
             if (capabilities == null || !Boolean.TRUE.equals(capabilities.getSupportsConfigurationDoneRequest())) {
                 throw new IOException("The Java debug adapter does not support configurationDone");
             }
+            debugCapabilities = new DebugCapabilities(true, false, true, true, true, false);
             if (isTerminal()) {
                 throw new IOException("The debug adapter ended during initialization");
             }
@@ -607,18 +626,245 @@ public final class JavaDebugCapability implements DebugCapability {
 
         private void eventStopped(StoppedEventArguments event) {
             String reason = event == null || event.getReason() == null ? "stopped" : event.getReason();
+            int threadId = event == null || event.getThreadId() == null ? 0 : event.getThreadId();
+            long generation;
             synchronized (this) {
                 if (terminal) {
                     return;
                 }
-                update(snapshot -> new DebugSessionSnapshot(id, label, State.STOPPED, snapshot.threads(), "", reason));
+                generation = ++stopGeneration;
+                PendingExecution pending = pendingExecution;
+                boolean matching = matchesPending(pending, State.STOPPED, threadId);
+                State stoppedState = pending != null && !matching ? State.EXECUTING : State.STOPPED;
+                String stateReason = stoppedState == State.EXECUTING
+                        ? "Waiting for the requested debugger event" : "";
+                update(snapshot -> new DebugSessionSnapshot(id, label, stoppedState, snapshot.threads(), stateReason, reason,
+                        threadId, null, debugCapabilities));
+                if (matching) completePendingExecution(State.STOPPED, threadId);
+            }
+            if (threadId > 0) loadTopFrame(threadId, generation);
+        }
+
+        private void eventContinued(ContinuedEventArguments event) {
+            if (!isTerminal()) {
+                synchronized (this) {
+                    ++stopGeneration;
+                    PendingExecution pending = pendingExecution;
+                    State runningState = pending != null && pending.state() == State.STOPPED
+                            ? State.EXECUTING : State.RUNNING;
+                    String reason = runningState == State.EXECUTING
+                            ? "Waiting for the requested debugger event" : "";
+                    update(snapshot -> new DebugSessionSnapshot(id, label, runningState, snapshot.threads(), reason, "",
+                            0, null, debugCapabilities));
+                    completePendingExecution(State.RUNNING, event == null
+                            ? 0 : event.getThreadId());
+                }
             }
         }
 
-        private void eventContinued() {
-            if (!isTerminal()) {
-                state(State.RUNNING, "");
+        private void completePendingExecution(State state, int threadId) {
+            PendingExecution pending = pendingExecution;
+            if (matchesPending(pending, state, threadId)) {
+                pending.transition().complete(null);
+                if (pendingExecution == pending) pendingExecution = null;
+                executionRequestPending.set(false);
             }
+        }
+
+        private boolean matchesPending(PendingExecution pending, State eventState, int threadId) {
+            if (pending == null || stopGeneration <= pending.baselineGeneration()) return false;
+            boolean stateMatches = pending.state() == eventState
+                    || pending.state() == State.RUNNING && eventState == State.STOPPED;
+            return stateMatches && (pending.threadId() == 0 || threadId == 0 || pending.threadId() == threadId);
+        }
+
+        private void loadTopFrame(int threadId, long generation) {
+            IDebugProtocolServer protocol = server;
+            if (protocol == null || isTerminal()) return;
+            StackTraceArguments arguments = new StackTraceArguments();
+            arguments.setThreadId(threadId);
+            protocol.stackTrace(arguments).orTimeout(requestTimeout.toMillis(), TimeUnit.MILLISECONDS)
+                    .whenComplete((response, failure) -> {
+                        if (failure != null || response == null || response.getStackFrames() == null
+                                || response.getStackFrames().length == 0 || isTerminal()) return;
+                        StackFrame top = response.getStackFrames()[0];
+                        Source source = top.getSource();
+                        if (source == null || source.getPath() == null || top.getLine() < 1) return;
+                        DebugFrame frame = new DebugFrame(top.getName(), source.getPath(), top.getLine(),
+                                top.getColumn() < 1 ? 1 : top.getColumn());
+                        synchronized (this) {
+                            if (!terminal && stopGeneration == generation && current.get().state() == State.STOPPED
+                                    && current.get().stoppedThreadId() == threadId) {
+                                update(snapshot -> new DebugSessionSnapshot(id, label, snapshot.state(), snapshot.threads(),
+                                        snapshot.reason(), snapshot.stoppedReason(), threadId, frame, debugCapabilities));
+                            }
+                        }
+                    });
+        }
+
+        private CapabilityResult<Boolean> requestExecution(SteppingAction action) {
+            IDebugProtocolServer protocol = server;
+            DebugSessionSnapshot before = snapshot();
+            if (protocol == null || isTerminal()) return CapabilityResult.failed(
+                    new CapabilityFailure("The debug session is not active", ""));
+            boolean pauseProbe = action == SteppingAction.PAUSE && !debugCapabilities.known(action);
+            if (!debugCapabilities.supports(action) && !pauseProbe) return CapabilityResult.failed(
+                    new CapabilityFailure(actionLabel(action) + " is not supported by this adapter", ""));
+            if (action != SteppingAction.PAUSE && before.state() != State.STOPPED)
+                return CapabilityResult.failed(new CapabilityFailure(actionLabel(action) + " requires a stopped session", ""));
+            if (action == SteppingAction.PAUSE && before.state() != State.RUNNING)
+                return CapabilityResult.failed(new CapabilityFailure("Pause requires a running session", ""));
+            if (!executionRequestPending.compareAndSet(false, true)) return CapabilityResult.failed(
+                    new CapabilityFailure("Another debugger action is still waiting for its DAP event", ""));
+            State expected = action == SteppingAction.RESUME ? State.RUNNING : State.STOPPED;
+            int threadId = action == SteppingAction.PAUSE
+                    ? (before.threads().isEmpty() ? 0 : before.threads().getFirst().id()) : stoppedThreadId(before);
+            CompletableFuture<Void> transition = new CompletableFuture<>();
+            PendingExecution pending;
+            synchronized (this) {
+                pending = new PendingExecution(expected, threadId, stopGeneration, transition);
+                pendingExecution = pending;
+            }
+            return executeAndAwait(protocol, action, before, pauseProbe, pending);
+        }
+
+        private CapabilityResult<Boolean> executeAndAwait(IDebugProtocolServer protocol, SteppingAction action,
+                DebugSessionSnapshot before, boolean pauseProbe, PendingExecution pending) {
+            boolean acknowledged = false;
+            try {
+                synchronized (this) {
+                    update(snapshot -> new DebugSessionSnapshot(id, label, State.EXECUTING, snapshot.threads(),
+                            "Waiting for the debugger execution event", snapshot.stoppedReason(),
+                            snapshot.stoppedThreadId(), snapshot.currentFrame(), debugCapabilities));
+                }
+                switch (action) {
+                    case RESUME -> {
+                        ContinueArguments arguments = new ContinueArguments();
+                        arguments.setThreadId(stoppedThreadId(before));
+                        protocol.continue_(arguments).get(requestTimeout.toMillis(), TimeUnit.MILLISECONDS);
+                    }
+                    case PAUSE -> {
+                        PauseArguments arguments = new PauseArguments();
+                        List<DebugThread> availableThreads = before.threads();
+                        if (availableThreads.isEmpty()) {
+                            ThreadsResponse response = protocol.threads().get(requestTimeout.toMillis(), TimeUnit.MILLISECONDS);
+                            if (response != null && response.getThreads() != null) {
+                                availableThreads = Arrays.stream(response.getThreads()).filter(Objects::nonNull)
+                                        .map(thread -> new DebugThread(thread.getId(), thread.getName())).toList();
+                            }
+                        }
+                        arguments.setThreadId(availableThreads.isEmpty() ? 1 : availableThreads.getFirst().id());
+                        protocol.pause(arguments).get(requestTimeout.toMillis(), TimeUnit.MILLISECONDS);
+                    }
+                    case STEP_OVER -> {
+                        NextArguments arguments = new NextArguments();
+                        arguments.setThreadId(stoppedThreadId(before));
+                        protocol.next(arguments).get(requestTimeout.toMillis(), TimeUnit.MILLISECONDS);
+                    }
+                    case STEP_INTO -> {
+                        StepInArguments arguments = new StepInArguments();
+                        arguments.setThreadId(stoppedThreadId(before));
+                        protocol.stepIn(arguments).get(requestTimeout.toMillis(), TimeUnit.MILLISECONDS);
+                    }
+                    case STEP_OUT -> {
+                        StepOutArguments arguments = new StepOutArguments();
+                        arguments.setThreadId(stoppedThreadId(before));
+                        protocol.stepOut(arguments).get(requestTimeout.toMillis(), TimeUnit.MILLISECONDS);
+                    }
+                }
+                acknowledged = true;
+                pending.transition().get(requestTimeout.toMillis(), TimeUnit.MILLISECONDS);
+                if (action == SteppingAction.PAUSE && pauseProbe) {
+                    updatePauseCapability(true);
+                }
+                return CapabilityResult.ok(Boolean.TRUE);
+            } catch (Exception failure) {
+                if (action == SteppingAction.PAUSE && pauseProbe && isExplicitUnsupportedRequest(failure)) {
+                    updatePauseCapability(false);
+                }
+                if (!acknowledged && !pending.transition().isDone() && !hasEventAfter(pending)) {
+                    restoreExecutionState(before, pending);
+                }
+                return CapabilityResult.failed(new CapabilityFailure(failureReason(failure), ""));
+            } finally {
+                if (pending.transition().isDone() || !acknowledged && !hasEventAfter(pending)) {
+                    releasePendingExecution(pending);
+                }
+            }
+        }
+
+        private boolean hasEventAfter(PendingExecution pending) {
+            synchronized (this) {
+                return stopGeneration > pending.baselineGeneration();
+            }
+        }
+
+        private void restoreExecutionState(DebugSessionSnapshot before, PendingExecution pending) {
+            synchronized (this) {
+                if (pendingExecution != pending) return;
+                update(snapshot -> snapshot.state() == State.EXECUTING
+                        ? new DebugSessionSnapshot(id, label, before.state(), snapshot.threads(), before.reason(),
+                                before.stoppedReason(), before.stoppedThreadId(), before.currentFrame(), debugCapabilities)
+                        : snapshot);
+            }
+        }
+
+        private void releasePendingExecution(PendingExecution pending) {
+            synchronized (this) {
+                if (pendingExecution == pending) pendingExecution = null;
+                if (pendingExecution == null) executionRequestPending.set(false);
+            }
+        }
+
+        private void updatePauseCapability(boolean supported) {
+            synchronized (this) {
+                debugCapabilities = new DebugCapabilities(debugCapabilities.resume(), supported,
+                        debugCapabilities.stepOver(), debugCapabilities.stepInto(), debugCapabilities.stepOut(), true);
+                update(snapshot -> new DebugSessionSnapshot(id, label, snapshot.state(), snapshot.threads(),
+                        snapshot.reason(), snapshot.stoppedReason(), snapshot.stoppedThreadId(),
+                        snapshot.currentFrame(), debugCapabilities));
+            }
+        }
+
+        private boolean isExplicitUnsupportedRequest(Exception failure) {
+            Throwable cause = failure;
+            while (cause != null) {
+                if (cause instanceof ResponseErrorException responseFailure) {
+                    ResponseError error = responseFailure.getResponseError();
+                    if (error != null && (error.getCode() == ResponseErrorCode.MethodNotFound.getValue()
+                            || explicitlyUnsupported(error.getMessage()))) {
+                        return true;
+                    }
+                }
+                if (explicitlyUnsupported(cause.getMessage())) return true;
+                cause = cause.getCause();
+            }
+            return false;
+        }
+
+        private boolean explicitlyUnsupported(String message) {
+            if (message == null) return false;
+            String reason = message.toLowerCase(Locale.ROOT);
+            return reason.contains("not supported") || reason.contains("unsupported")
+                    || reason.contains("method not found") || reason.contains("unknown command");
+        }
+
+        private record PendingExecution(State state, int threadId, long baselineGeneration,
+                CompletableFuture<Void> transition) { }
+
+        private int stoppedThreadId(DebugSessionSnapshot value) {
+            return value.stoppedThreadId() > 0 ? value.stoppedThreadId()
+                    : value.threads().isEmpty() ? 1 : value.threads().getFirst().id();
+        }
+
+        private String actionLabel(SteppingAction action) {
+            return switch (action) {
+                case RESUME -> "Resume";
+                case PAUSE -> "Pause";
+                case STEP_OVER -> "Step over";
+                case STEP_INTO -> "Step into";
+                case STEP_OUT -> "Step out";
+            };
         }
 
         private void eventTerminated() {
@@ -638,7 +884,13 @@ public final class JavaDebugCapability implements DebugCapability {
                     return;
                 }
                 terminal = true;
-                update(snapshot -> new DebugSessionSnapshot(id, label, state, snapshot.threads(), reason, stoppedReason));
+                ++stopGeneration;
+                if (pendingExecution != null) pendingExecution.transition().completeExceptionally(
+                        new IOException("The debug session ended before the requested execution event"));
+                pendingExecution = null;
+                executionRequestPending.set(false);
+                update(snapshot -> new DebugSessionSnapshot(id, label, state, snapshot.threads(), reason, stoppedReason,
+                        0, null, debugCapabilities));
             }
         }
 
@@ -650,7 +902,7 @@ public final class JavaDebugCapability implements DebugCapability {
             synchronized (this) {
                 if (!terminal && current.get().state() != State.STOPPED) {
                     update(snapshot -> new DebugSessionSnapshot(id, label, State.RUNNING,
-                            snapshot.threads(), "", ""));
+                            snapshot.threads(), "", "", 0, null, debugCapabilities));
                 }
             }
         }
@@ -660,7 +912,8 @@ public final class JavaDebugCapability implements DebugCapability {
                 if (terminal) {
                     return;
                 }
-                update(snapshot -> new DebugSessionSnapshot(id, label, state, snapshot.threads(), reason, ""));
+                update(snapshot -> new DebugSessionSnapshot(id, label, state, snapshot.threads(), reason, "",
+                        0, null, debugCapabilities));
             }
         }
 
@@ -758,12 +1011,19 @@ public final class JavaDebugCapability implements DebugCapability {
                                 .toList();
                 List<DebugThread> copy = List.copyOf(threads);
                 update(snapshot -> new DebugSessionSnapshot(id, label, snapshot.state(), copy,
-                        snapshot.reason(), snapshot.stoppedReason()));
+                        snapshot.reason(), snapshot.stoppedReason(), snapshot.stoppedThreadId(),
+                        snapshot.currentFrame(), debugCapabilities));
                 return CapabilityResult.ok(copy);
             } catch (Exception failure) {
                 return CapabilityResult.failed(new CapabilityFailure(failureReason(failure), ""));
             }
         }
+
+        @Override public CapabilityResult<Boolean> resume() { return requestExecution(SteppingAction.RESUME); }
+        @Override public CapabilityResult<Boolean> pause() { return requestExecution(SteppingAction.PAUSE); }
+        @Override public CapabilityResult<Boolean> stepOver() { return requestExecution(SteppingAction.STEP_OVER); }
+        @Override public CapabilityResult<Boolean> stepInto() { return requestExecution(SteppingAction.STEP_INTO); }
+        @Override public CapabilityResult<Boolean> stepOut() { return requestExecution(SteppingAction.STEP_OUT); }
 
         private CapabilityResult<List<DebugCapability.SourceBreakpoint>> setBreakpoints(String sourcePath,
                 List<DebugCapability.SourceBreakpoint> requested) {
@@ -842,7 +1102,7 @@ public final class JavaDebugCapability implements DebugCapability {
 
             @Override
             public void continued(ContinuedEventArguments event) {
-                eventContinued();
+                eventContinued(event);
             }
 
             @Override
