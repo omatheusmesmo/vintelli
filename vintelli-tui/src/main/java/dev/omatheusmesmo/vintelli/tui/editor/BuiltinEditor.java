@@ -357,7 +357,9 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
                 if (hasMixedLineEndings(text)) {
                     return failed("Files with mixed line endings cannot be edited safely", file.toString());
                 }
-                documents.add(new EditorDocument(file, text));
+                EditorDocument opened = new EditorDocument(file, text);
+                opened.breakpoints(breakpointsOf(file));
+                documents.add(opened);
                 existing = documents.size() - 1;
             }
             active = existing;
@@ -554,7 +556,7 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
         }
         status = clipboard.copy(document.selectedText());
         document.replaceSelection("");
-        persist();
+        changed();
     }
 
     public synchronized void pasteClipboard() {
@@ -569,7 +571,7 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
             return;
         }
         document.replaceSelection(paste.get().text().replace("\r\n", "\n").replace('\r', '\n'));
-        persist();
+        changed();
         status = "Pasted from " + paste.get().origin();
     }
 
@@ -664,6 +666,47 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
 
     public synchronized List<Diagnostic> diagnostics() { return document() == null ? List.of() : document().diagnostics(); }
 
+    private EditorDocument.Breakpoints breakpointsOf(Path file) {
+        return new EditorDocument.Breakpoints() {
+            @Override public Map<Integer, DebugCapability.SourceBreakpoint> snapshot() {
+                synchronized (BuiltinEditor.this) { return new TreeMap<>(breakpoints.getOrDefault(file, Map.of())); }
+            }
+            @Override public void restore(Map<Integer, DebugCapability.SourceBreakpoint> snapshot) {
+                synchronized (BuiltinEditor.this) { replaceBreakpoints(file, snapshot); }
+            }
+            @Override public void edited(String before, String after) {
+                synchronized (BuiltinEditor.this) { shiftBreakpoints(file, LineShift.between(before, after)); }
+            }
+        };
+    }
+
+    private void shiftBreakpoints(Path file, LineShift shift) {
+        Map<Integer, DebugCapability.SourceBreakpoint> source = breakpoints.get(file);
+        if (source == null || source.isEmpty()) {
+            return;
+        }
+        Map<Integer, DebugCapability.SourceBreakpoint> shifted = new TreeMap<>();
+        source.forEach((line, point) -> {
+            int moved = shift.map(line);
+            if (moved >= 0) {
+                shifted.put(moved, moved == line ? point
+                        : new DebugCapability.SourceBreakpoint(point.sourcePath(), moved + 1));
+            }
+        });
+        replaceBreakpoints(file, shifted);
+    }
+
+    private void replaceBreakpoints(Path file, Map<Integer, DebugCapability.SourceBreakpoint> replacement) {
+        Map<Integer, DebugCapability.SourceBreakpoint> current = breakpoints.getOrDefault(file, Map.of());
+        if (current.isEmpty() && replacement.isEmpty()) {
+            return;
+        }
+        if (!current.keySet().equals(replacement.keySet())) {
+            breakpointGeneration++;
+        }
+        breakpoints.put(file, new TreeMap<>(replacement));
+    }
+
     synchronized void changed() {
         EditorDocument document = document();
         if (document != null) {
@@ -714,7 +757,9 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
                         try {
                             if (Files.exists(recoveryFile) && !recoveryFile.toRealPath().startsWith(root)) { continue; }
                         } catch (IOException io) { continue; }
-                        documents.add(new EditorDocument(recoveryFile, tab.recovery(), null));
+                        EditorDocument recovered = new EditorDocument(recoveryFile, tab.recovery(), null);
+                        recovered.breakpoints(breakpointsOf(recoveryFile));
+                        documents.add(recovered);
                         active = documents.size() - 1;
                         status = "Recovered unsaved text for unavailable file " + project.relativize(recoveryFile);
                     } catch (IOException | RuntimeException ignored) { continue; }

@@ -17,8 +17,8 @@ import java.util.Properties;
 
 /**
  * Project scoped, zero based line-number anchors, separate from source files and editor recovery text.
- * Edits keep anchors on their current line; a breakpoint past the new end of file is removed, and
- * undo does not resurrect a removed anchor.
+ * Edits move anchors with the text they mark; an anchor on a removed line is dropped, and undo restores
+ * the anchors of the revision it returns to.
  */
 final class BreakpointStore {
     record Source(Path file, List<Integer> lines) {
