@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 import dev.omatheusmesmo.vintelli.api.capability.CallHierarchyCapability;
@@ -238,14 +239,12 @@ class MainToolbarTest {
             Pilot pilot = fixture.pilot();
             String row = fixture.awaitRow("idea:First");
             pilot.click(row.indexOf("idea:First") + 2, 0);
-            pilot.pause(Duration.ofMillis(60));
-            pilot.findElement("run-configuration-picker");
+            fixture.awaitUntil("the run configuration chooser", () -> pilot.hasElement(RunConfigurationChooser.ID));
             assertTrue(fixture.rendered.get().contains("idea:First"), fixture.rendered.get());
             pilot.press(KeyCode.DOWN);
             pilot.press(KeyCode.ENTER);
-            pilot.pause(Duration.ofMillis(100));
-            assertEquals("idea:Second", fixture.run.selectedConfigurationLabel(), fixture.screen());
             fixture.awaitRow("idea:Second");
+            assertEquals("idea:Second", fixture.run.selectedConfigurationLabel(), fixture.diagnostics());
             assertEquals(1L, provider.started.getCount(), "selecting a configuration never starts a run");
         }
     }
@@ -293,8 +292,8 @@ class MainToolbarTest {
             Pilot pilot = fixture.pilot();
             pilot.click(column(fixture.awaitRow("idea:First"), glyphs().play()), 0);
             assertTrue(provider.started.await(WAIT.toMillis(), TimeUnit.MILLISECONDS));
-            pilot.pause(Duration.ofMillis(200));
-            pilot.click(column(fixture.awaitRow("idea:First"), glyphs().stop()), 0);
+            String row = fixture.awaitRow(glyphs().stop());
+            pilot.click(column(row, glyphs().stop()), 0);
             assertTrue(provider.cancelled.await(WAIT.toMillis(), TimeUnit.MILLISECONDS), "the stop button never cancelled");
         }
     }
@@ -306,9 +305,31 @@ class MainToolbarTest {
             Pilot pilot = fixture.pilot();
             pilot.click(column(fixture.awaitRow("idea:First"), glyphs().play()), 0);
             assertTrue(provider.started.await(WAIT.toMillis(), TimeUnit.MILLISECONDS));
-            pilot.pause(Duration.ofMillis(200));
-            pilot.click(column(fixture.awaitRow("idea:First"), glyphs().stop()), 0);
-            assertFalse(provider.cancelled.await(300, TimeUnit.MILLISECONDS), "a non cancellable run must not be stopped");
+            String row = fixture.awaitRow(glyphs().stop());
+            pilot.click(column(row, glyphs().stop()), 0);
+            fixture.awaitHandled();
+            assertEquals(1L, provider.cancelled.getCount(), "a non cancellable run must not be stopped");
+        }
+    }
+
+    @Test
+    void chooserAndStopButtonAreFoundWhenEveryFrameIsSlow() throws Exception {
+        Duration slowFrame = Duration.ofMillis(150);
+        FakeRunProvider chooserProvider = new FakeRunProvider(true);
+        try (Fixture fixture = new Fixture(chooserProvider, WIDTH, slowFrame)) {
+            Pilot pilot = fixture.pilot();
+            String row = fixture.awaitRow("idea:First");
+            pilot.click(row.indexOf("idea:First") + 2, 0);
+            fixture.awaitUntil("the run configuration chooser", () -> pilot.hasElement(RunConfigurationChooser.ID));
+        }
+        FakeRunProvider runProvider = new FakeRunProvider(true);
+        try (Fixture fixture = new Fixture(runProvider, WIDTH, slowFrame)) {
+            Pilot pilot = fixture.pilot();
+            pilot.click(column(fixture.awaitRow("idea:First"), glyphs().play()), 0);
+            assertTrue(runProvider.started.await(WAIT.toMillis(), TimeUnit.MILLISECONDS));
+            String row = fixture.awaitRow(glyphs().stop());
+            pilot.click(column(row, glyphs().stop()), 0);
+            assertTrue(runProvider.cancelled.await(WAIT.toMillis(), TimeUnit.MILLISECONDS), "the stop button never cancelled");
         }
     }
 
@@ -349,6 +370,22 @@ class MainToolbarTest {
         assertEquals(MainToolbar.Kind.RUN, toolbar.segmentAt(playCell, 0).orElseThrow().kind());
         MainToolbar.Segment settings = segments.get(segments.size() - 1);
         assertEquals(WIDTH, settings.x() + settings.width(), "the settings button ends at the right edge of the row");
+    }
+
+    /**
+     * Simulates a slow render on the render thread, the way a loaded CI runner
+     * delays a frame. It is the cost of drawing, not a wait: the tests still wait
+     * for the frame that shows their condition.
+     */
+    private static void renderTakes(Duration delay) {
+        if (delay.isZero()) {
+            return;
+        }
+        try {
+            Thread.sleep(delay.toMillis());
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private static MainToolbar.Segment segmentOf(List<MainToolbar.Segment> segments, MainToolbar.Kind kind) {
@@ -415,6 +452,10 @@ class MainToolbarTest {
         private final int width;
 
         private Fixture(FakeRunProvider provider, int width) throws Exception {
+            this(provider, width, Duration.ZERO);
+        }
+
+        private Fixture(FakeRunProvider provider, int width, Duration frameDelay) throws Exception {
             this.width = width;
             ShellThemes themes = themes();
             UiWorkQueue uiWork = new UiWorkQueue();
@@ -443,6 +484,7 @@ class MainToolbarTest {
                     .config(config)
                     .styleEngine(themes.engine())
                     .postRenderProcessor((frame, elements, styles, focus, elapsed) -> {
+                        renderTakes(frameDelay);
                         rendered.set(rowOf(frame.buffer(), width));
                         captured.set(frame.buffer().copy());
                     })
@@ -476,22 +518,53 @@ class MainToolbarTest {
             return text.toString();
         }
 
+        private String diagnostics() {
+            return "run running=" + run.running() + ", canStop=" + run.canStop()
+                    + ", selected=" + run.selectedConfigurationLabel() + ", status=" + run.statusMessage()
+                    + ", render failure=" + failure.get()
+                    + "\nrendered row: " + rendered.get() + "\nscreen:\n" + screen();
+        }
+
         /**
-         * Waits for the row to show {@code text}. The runner renders only when
-         * an event arrives (no tick), and the provider results are applied by
-         * the next render, so each round resizes to the same size to force a frame.
+         * Waits until a frame rendered after this call shows {@code text} in the
+         * toolbar row. The condition is checked against that frame, never against
+         * an earlier one, so a label that was already drawn cannot satisfy it.
          */
         private String awaitRow(String text) throws InterruptedException {
+            return awaitUntil("the toolbar to show " + text, () -> rendered.get().contains(text));
+        }
+
+        /**
+         * Waits until a frame rendered after this call satisfies {@code condition}.
+         * Each round resizes to the same size so the runner draws a frame that
+         * drains the queued provider results, then waits for the render thread to
+         * have handled that frame, so the check reads a frame newer than the call.
+         */
+        private String awaitUntil(String description, BooleanSupplier condition) throws InterruptedException {
             long deadline = System.nanoTime() + WAIT.toNanos();
-            String row;
-            do {
+            boolean handled = true;
+            while (handled && System.nanoTime() < deadline) {
                 pilot.resize(width, 24);
-                pilot.pause(Duration.ofMillis(30));
-                row = rendered.get();
-            } while (!row.contains(text) && System.nanoTime() < deadline);
-            assertTrue(failure.get() == null, "the render thread failed: " + failure.get());
-            assertTrue(row.contains(text), "the toolbar never showed " + text + ": " + row);
-            return row;
+                handled = awaitRenderThread(deadline);
+                if (handled && condition.getAsBoolean()) {
+                    return rendered.get();
+                }
+            }
+            throw new AssertionError(description + " was not drawn within " + WAIT.toMillis() + " ms. " + diagnostics());
+        }
+
+        /** Waits until the render thread has handled every event queued before this call. */
+        private void awaitHandled() throws InterruptedException {
+            if (!awaitRenderThread(System.nanoTime() + WAIT.toNanos())) {
+                throw new AssertionError("the render thread did not handle the queued input within "
+                        + WAIT.toMillis() + " ms. " + diagnostics());
+            }
+        }
+
+        private boolean awaitRenderThread(long deadline) throws InterruptedException {
+            CountDownLatch handled = new CountDownLatch(1);
+            runner.runOnRenderThread(handled::countDown);
+            return handled.await(Math.max(0, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);
         }
 
         @Override
