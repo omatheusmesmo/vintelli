@@ -19,11 +19,12 @@ import io.restassured.RestAssured;
 /**
  * Asserts the capability status surface of the shipped app: the four local
  * capabilities (run, terminal, read-file and the version control provider) are
- * served by the beans of {@code vintelli-local}, the two LSP capabilities
+ * served by the beans of {@code vintelli-local}, the LSP capabilities
  * (diagnostics and call hierarchy) stay explicitly unavailable until a language
  * server profile is configured, and the built-in editor bridge remains
- * available. Under {@code -Dnative} the same assertions run against the native
- * runner, so these providers also survive AOT.
+ * available. Code action and Java debug are also listed as unavailable without
+ * their configured providers. Under {@code -Dnative} the same assertions run
+ * against the native runner, so these providers also survive AOT.
  */
 @QuarkusIntegrationTest
 class CapabilitiesResourceIT {
@@ -52,24 +53,27 @@ class CapabilitiesResourceIT {
                 .when().get(capabilities)
                 .then()
                 .statusCode(200)
-                .body("", hasSize(8))
-                .body("providerIdentifier", contains("local", "local", "local", null, null, "builtin", "local", null))
+                .body("", hasSize(9))
+                .body("providerIdentifier", contains("local", "local", "local", null, null, "builtin", "local", null,
+                        null))
                 .body("provenance", contains(
                         "local process runner via mvn", "local shell process",
                         "local filesystem, confined to the project root", null, null,
                         "built-in TamboUI TextArea editor", "JGit, repository discovered from the project root",
-                        null))
+                        null, null))
                 .body("health.state", contains(
                         "AVAILABLE", "AVAILABLE", "AVAILABLE", "UNAVAILABLE", "UNAVAILABLE", "AVAILABLE",
-                        "AVAILABLE", "UNAVAILABLE"))
+                        "AVAILABLE", "UNAVAILABLE", "UNAVAILABLE"))
                 .body("health.reason", contains(
                         nullValue(), nullValue(), nullValue(),
                         containsString("no healthy provider for 'diagnostics': idea"),
                         containsString("no healthy provider for 'call-hierarchy': lsp"),
                         nullValue(),
                         nullValue(),
-                        containsString("no healthy provider for 'code-action': lsp")))
+                        containsString("no healthy provider for 'code-action': lsp"),
+                        containsString("no healthy provider for 'debug': java-dap")))
                 .body("capability", hasItem("VERSION_CONTROL"))
-                .body("capability", hasItem("CODE_ACTION"));
+                .body("capability", hasItem("CODE_ACTION"))
+                .body("capability", hasItem("DEBUG"));
     }
 }

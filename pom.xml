@@ -54,6 +54,7 @@
         <module>vintelli-acp</module>
         <module>vintelli-lsp</module>
         <module>vintelli-local</module>
+        <module>vintelli-debug</module>
         <module>vintelli-core</module>
         <module>vintelli-idea</module>
         <module>vintelli-tui</module>

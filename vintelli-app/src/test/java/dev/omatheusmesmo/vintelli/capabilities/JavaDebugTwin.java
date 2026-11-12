@@ -31,6 +31,7 @@ public final class JavaDebugTwin {
     public static final class Debuggee {
         public static void main(String[] args) throws Exception {
             System.out.println("debuggee-started");
+            System.out.println("debuggee-pid:" + ProcessHandle.current().pid());
             Thread.sleep(120_000);
         }
     }

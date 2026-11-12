@@ -13,6 +13,7 @@ public enum CapabilityType {
     DIAGNOSTICS("diagnostics"),
     CALL_HIERARCHY("call-hierarchy"),
     CODE_ACTION("code-action"),
+    DEBUG("debug"),
     EDITOR_BRIDGE("editor-bridge"),
     VERSION_CONTROL("vcs");
 

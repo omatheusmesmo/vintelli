@@ -14,6 +14,7 @@ It runs with open tooling only. IntelliJ IDEA is an optional extra.
 - 🤖 **AI agents in a side panel.** Choose OpenCode, Claude Code or pi over ACP (`Alt+8`), with executable availability shown before starting a session. See [agent setup](docs/acp-agents.md).
 - 🔌 **Other agents can drive it.** The MCP server reads the shell state and pushes highlights and diffs into the TUI.
 - 🧠 **Language support over LSP.** Configurable profiles, with jdtls as the first one.
+- 🪲 **Optional Java debugging.** An experimental DAP provider uses Java Debug through jdtls; see [Java Debug Adapter setup](docs/language-servers.md#java-debug-adapter).
 - ⌨️ **Familiar keys and colors.** The `intellij` keymap is the default, and the themes come from IntelliJ IDEA's color files.
 
 ## Install
@@ -139,7 +140,7 @@ java -jar vintelli-app/target/quarkus-app/quarkus-run.jar
 ./mvnw verify -Dnative -Dquarkus.native.container-build
 ```
 
-Modules: `vintelli-app` (the application), `vintelli-tui` (TamboUI shell), `vintelli-core` (Quarkus extension), `vintelli-api` and `vintelli-jsonrpc` (plain Java), `vintelli-local`, `vintelli-lsp` and `vintelli-idea`.
+Modules: `vintelli-app` (the application), `vintelli-tui` (TamboUI shell), `vintelli-core` (Quarkus extension), `vintelli-api` and `vintelli-jsonrpc` (plain Java), `vintelli-local`, `vintelli-lsp`, `vintelli-debug` and `vintelli-idea`.
 
 Read [AGENTS.md](AGENTS.md) and [CONTRIBUTING.md](CONTRIBUTING.md) before changing code. The topic files in `docs/` hold the details.
 
@@ -157,4 +158,5 @@ Debug supported Maven applications and tests from the toolbar, with a suspended
 loopback JDWP port and process-tree Stop: [debug launch](docs/debug-launch.md).
 
 The Java debugger architecture is recorded in [spike 385](docs/spikes/spike-385-native-java-debugger.md):
-typed DAP with Java Debug via jdtls; the full provider and TUI workflow remain tracked in #276.
+typed DAP with Java Debug via jdtls. The provider is opt-in and experimental; breakpoints,
+stepping, the Debug window and evaluation have separate follow-up issues #387 through #390.

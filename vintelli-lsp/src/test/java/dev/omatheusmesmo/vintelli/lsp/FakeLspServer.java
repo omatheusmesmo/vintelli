@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import com.google.gson.JsonObject;
 
@@ -43,6 +44,8 @@ import org.eclipse.lsp4j.DidCloseTextDocumentParams;
 import org.eclipse.lsp4j.DidOpenNotebookDocumentParams;
 import org.eclipse.lsp4j.DidOpenTextDocumentParams;
 import org.eclipse.lsp4j.DidSaveNotebookDocumentParams;
+import org.eclipse.lsp4j.ExecuteCommandOptions;
+import org.eclipse.lsp4j.ExecuteCommandParams;
 import org.eclipse.lsp4j.Hover;
 import org.eclipse.lsp4j.HoverParams;
 import org.eclipse.lsp4j.InitializeParams;
@@ -146,6 +149,7 @@ public final class FakeLspServer {
         private final Optional<Path> trace;
         private final String marker;
         private final List<String> arguments;
+        private final AtomicInteger debugAdapterRequests = new AtomicInteger();
         private volatile LanguageClient remoteClient;
         private volatile String initializationOptions = "";
 
@@ -187,6 +191,10 @@ public final class FakeLspServer {
             capabilities.setCallHierarchyProvider(true);
             capabilities.setDocumentSymbolProvider(true);
             capabilities.setCodeActionProvider(true);
+            if (arguments.contains("--java-debug")) {
+                capabilities.setExecuteCommandProvider(new ExecuteCommandOptions(
+                        List.of("vscode.java.startDebugSession")));
+            }
             return CompletableFuture.completedFuture(new InitializeResult(capabilities,
                     new ServerInfo("fake-language-server", "1.0.0")));
         }
@@ -442,6 +450,34 @@ public final class FakeLspServer {
 
         @Override
         public void didChangeWatchedFiles(org.eclipse.lsp4j.DidChangeWatchedFilesParams params) {
+        }
+
+        @Override
+        public CompletableFuture<Object> executeCommand(ExecuteCommandParams params) {
+            server.trace("executeCommand " + params.getCommand());
+            if (!server.arguments.contains("--java-debug")
+                    || !"vscode.java.startDebugSession".equals(params.getCommand())) {
+                return CompletableFuture.failedFuture(new IllegalArgumentException("unsupported command"));
+            }
+            for (String argument : server.arguments) {
+                if (argument.startsWith("--dap-ports=")) {
+                    String[] ports = argument.substring("--dap-ports=".length()).split(",");
+                    int request = Math.min(server.debugAdapterRequests.getAndIncrement(), ports.length - 1);
+                    return portValue(ports[request]);
+                }
+                if (argument.startsWith("--dap-port=")) {
+                    return portValue(argument.substring("--dap-port=".length()));
+                }
+            }
+            return CompletableFuture.completedFuture(60001);
+        }
+
+        private static CompletableFuture<Object> portValue(String value) {
+            try {
+                return CompletableFuture.completedFuture(Integer.valueOf(value));
+            } catch (NumberFormatException malformed) {
+                return CompletableFuture.completedFuture(value);
+            }
         }
 
     }

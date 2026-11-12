@@ -15,6 +15,9 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonParser;
+
 import dev.omatheusmesmo.vintelli.api.capability.CallHierarchyCapability;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityFailure;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
@@ -57,11 +60,12 @@ import org.jboss.logging.Logger;
  * an explicit result the callers can render.
  */
 @Singleton
-public final class LspClient implements AutoCloseable {
+public final class LspClient implements AutoCloseable, JavaDebugAdapterPort {
 
     private static final Logger LOG = Logger.getLogger(LspClient.class);
 
     private static final Duration DIAGNOSTICS_WAIT = Duration.ofSeconds(30);
+    private static final String START_DEBUG_SESSION_COMMAND = "vscode.java.startDebugSession";
 
     private final LspProfileConfig profiles;
     private final Object lock = new Object();
@@ -91,6 +95,54 @@ public final class LspClient implements AutoCloseable {
                     + "' is not running");
         }
         return ProviderHealth.available();
+    }
+
+    @Override
+    public ProviderHealth debugAdapterHealth() {
+        String configurationFailure = debugAdapterConfigurationFailure();
+        if (!configurationFailure.isEmpty()) {
+            return ProviderHealth.unavailable(configurationFailure);
+        }
+        LspServerSession current = session;
+        if (current != null && current.isLive()
+                && !current.supportsExecuteCommand(START_DEBUG_SESSION_COMMAND)) {
+            return ProviderHealth.unavailable("the language server does not advertise "
+                    + START_DEBUG_SESSION_COMMAND + "; verify that the Java debug bundle is installed and loaded");
+        }
+        return ProviderHealth.available();
+    }
+
+    @Override
+    public CapabilityResult<Integer> startDebugAdapter() {
+        String configurationFailure = debugAdapterConfigurationFailure();
+        if (!configurationFailure.isEmpty()) {
+            return debugAdapterUnavailable(configurationFailure);
+        }
+        Selection selection = requestSelection();
+        if (selection.failure() != null) {
+            return debugAdapterUnavailable(selection.failure());
+        }
+        if (configuredBundles(selection.settings().initializationOptions().orElse(null)).isEmpty()) {
+            return debugAdapterUnavailable("the jdt.ls profile has no Java debug bundle in "
+                    + "initializationOptions.bundles");
+        }
+        try {
+            LspServerSession current = ensureStarted(selection);
+            if (!current.supportsExecuteCommand(START_DEBUG_SESSION_COMMAND)) {
+                return debugAdapterUnavailable("the language server does not advertise "
+                        + START_DEBUG_SESSION_COMMAND);
+            }
+            Integer port = adapterPortOf(current.executeCommand(START_DEBUG_SESSION_COMMAND));
+            if (port == null) {
+                return debugAdapterUnavailable("the language server returned an invalid DAP adapter port");
+            }
+            return CapabilityResult.ok(port);
+        } catch (ExecutionException | IOException | InterruptedException | TimeoutException | RuntimeException failure) {
+            if (failure instanceof InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+            return debugAdapterUnavailable(failureDetail(selection, failure).detail());
+        }
     }
 
     /**
@@ -518,6 +570,82 @@ public final class LspClient implements AutoCloseable {
             case Hint -> DiagnosticsCapability.Severity.HINT;
             default -> DiagnosticsCapability.Severity.INFORMATION;
         };
+    }
+
+    private String debugAdapterConfigurationFailure() {
+        Map<String, LspProfileConfig.Profile> configured = profiles.profiles();
+        if (configured.isEmpty()) {
+            return "Java debugging requires a configured jdt.ls profile";
+        }
+        String picked = profiles.profile().orElse(null);
+        LspProfileConfig.Profile settings;
+        if (picked != null) {
+            settings = configured.get(picked);
+            if (settings == null) {
+                return "the selected language server profile '" + picked + "' is not configured";
+            }
+        } else if (configured.size() == 1) {
+            settings = configured.values().iterator().next();
+        } else {
+            return "several language server profiles are configured; set vintelli.lsp.profile for Java debugging";
+        }
+        if (settings.command().orElse("").isBlank()) {
+            return "the selected jdt.ls profile does not configure a command";
+        }
+        if (configuredBundles(settings.initializationOptions().orElse(null)).isEmpty()) {
+            return "the selected jdt.ls profile must include the Java debug bundle in "
+                    + "initializationOptions.bundles";
+        }
+        return "";
+    }
+
+    private static List<String> configuredBundles(String initializationOptions) {
+        if (initializationOptions == null || initializationOptions.isBlank()) {
+            return List.of();
+        }
+        try {
+            JsonElement root = JsonParser.parseString(initializationOptions);
+            if (!root.isJsonObject() || !root.getAsJsonObject().has("bundles")) {
+                return List.of();
+            }
+            JsonElement bundles = root.getAsJsonObject().get("bundles");
+            if (!bundles.isJsonArray()) {
+                return List.of();
+            }
+            List<String> configured = new ArrayList<>();
+            for (JsonElement bundle : bundles.getAsJsonArray()) {
+                if (bundle.isJsonPrimitive() && bundle.getAsJsonPrimitive().isString()) {
+                    String path = bundle.getAsString();
+                    if (!path.isBlank()) {
+                        configured.add(path);
+                    }
+                }
+            }
+            return List.copyOf(configured);
+        } catch (RuntimeException malformed) {
+            return List.of();
+        }
+    }
+
+    private static Integer adapterPortOf(Object result) {
+        if (result instanceof Number number) {
+            return validPort(number.doubleValue());
+        }
+        if (result instanceof JsonElement json && json.isJsonPrimitive() && json.getAsJsonPrimitive().isNumber()) {
+            return validPort(json.getAsDouble());
+        }
+        return null;
+    }
+
+    private static Integer validPort(double value) {
+        if (!Double.isFinite(value) || value != Math.rint(value) || value < 1 || value > 65535) {
+            return null;
+        }
+        return (int) value;
+    }
+
+    private CapabilityResult<Integer> debugAdapterUnavailable(String reason) {
+        return CapabilityResult.failed(new CapabilityFailure(reason, ""));
     }
 
     private LspServerSession ensureStarted(Selection selection) throws IOException {

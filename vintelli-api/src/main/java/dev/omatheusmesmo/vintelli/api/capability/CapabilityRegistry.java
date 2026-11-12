@@ -47,6 +47,13 @@ public interface CapabilityRegistry {
     CapabilitySelection<CodeActionCapability> codeActions();
 
     /**
+     * @return the current debug provider, or an explicit unavailable state
+     */
+    default CapabilitySelection<DebugCapability> debug() {
+        return CapabilitySelection.unavailable(CapabilityType.DEBUG, "No debug provider is installed");
+    }
+
+    /**
      * @return the current editor bridging provider, or an explicit unavailable state
      */
     CapabilitySelection<EditorBridge> editorBridge();

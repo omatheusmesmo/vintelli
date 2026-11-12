@@ -11,6 +11,7 @@ import io.quarkus.deployment.builditem.nativeimage.NativeImageProxyDefinitionBui
 import io.quarkus.deployment.builditem.nativeimage.ReflectiveClassBuildItem;
 import io.quarkus.test.QuarkusUnitTest;
 import org.eclipse.lsp4j.services.LanguageServer;
+import org.eclipse.lsp4j.debug.services.IDebugProtocolServer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
@@ -21,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * The native registration of the LSP4J client is derived from the Jandex index
  * at build time: the assertions run over the captured build items of a small
  * application, so an LSP4J upgrade keeps passing while the build step keeps
- * rediscovering the types and the four service proxies.
+ * rediscovering the types and the service proxies.
  */
 class LspClientProcessorTest {
 
@@ -43,12 +44,19 @@ class LspClientProcessorTest {
         assertTrue(registered.contains("org.eclipse.lsp4j.jsonrpc.RemoteEndpoint"), registered.toString());
         assertTrue(registered.contains("dev.omatheusmesmo.vintelli.lsp.VintelliLanguageClient"),
                 registered.toString());
+        assertTrue(registered.contains("org.eclipse.lsp4j.debug.InitializeRequestArguments"), registered.toString());
+        assertTrue(registered.contains("org.eclipse.lsp4j.debug.Capabilities"), registered.toString());
+        assertTrue(registered.contains("org.eclipse.lsp4j.debug.ChecksumAlgorithm"), registered.toString());
+        assertTrue(registered.contains("org.eclipse.lsp4j.debug.services.IDebugProtocolClient"),
+                registered.toString());
+        assertTrue(registered.contains("dev.omatheusmesmo.vintelli.debug.JavaDebugCapability$DapSession$DapClient"),
+                registered.toString());
     }
 
     @Test
-    void theFourServiceProxiesAreRegistered() {
+    void theLspAndDebugServiceProxiesAreRegistered() {
         List<String> definitions = List.of(System.getProperty(PROXIES_PROPERTY, "").split(";"));
-        assertEquals(4, definitions.stream().filter(line -> !line.isBlank()).count(), definitions.toString());
+        assertEquals(5, definitions.stream().filter(line -> !line.isBlank()).count(), definitions.toString());
 
         assertTrue(definitions.contains("org.eclipse.lsp4j.services.LanguageServer,"
                 + "org.eclipse.lsp4j.jsonrpc.Endpoint"), definitions.toString());
@@ -57,6 +65,8 @@ class LspClientProcessorTest {
         assertTrue(definitions.contains("org.eclipse.lsp4j.services.WorkspaceService,"
                 + "org.eclipse.lsp4j.jsonrpc.Endpoint"), definitions.toString());
         assertTrue(definitions.contains("org.eclipse.lsp4j.services.NotebookDocumentService,"
+                + "org.eclipse.lsp4j.jsonrpc.Endpoint"), definitions.toString());
+        assertTrue(definitions.contains(IDebugProtocolServer.class.getName() + ","
                 + "org.eclipse.lsp4j.jsonrpc.Endpoint"), definitions.toString());
     }
 

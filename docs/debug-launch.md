@@ -26,7 +26,9 @@ The Debug button is dimmed for unsupported configurations. Invoking it displays
 the reason in Run. Gradle, arbitrary exec goals and providers without an explicit
 debug launch contract are unavailable. Surefire must fork a test JVM; a project
 that disables forking cannot expose a test debug port. Breakpoints, stepping and
-variable inspection inside Vintelli are tracked separately in #276.
+variable inspection inside Vintelli are tracked separately in #387 through #390. The
+optional Java Debug Adapter provider is a separate integration through jdtls;
+see [language-server setup](language-servers.md#java-debug-adapter).
 
 The existing inspect gate also enables `/tui/debug-launch-probe`: POST accepts
 only the fixed `kind=test|quarkus|spring` scenarios, GET reads bounded output and

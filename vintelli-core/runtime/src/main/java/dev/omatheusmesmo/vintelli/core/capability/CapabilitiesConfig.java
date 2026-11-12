@@ -45,6 +45,11 @@ public interface CapabilitiesConfig {
     Order codeAction();
 
     /**
+     * Ranking of Java debug session providers.
+     */
+    Order debug();
+
+    /**
      * Ranking of the editor-bridge capability providers. Without
      * configuration the builtin editor serves, because unlisted providers
      * sort by identifier and {@code builtin} comes first.

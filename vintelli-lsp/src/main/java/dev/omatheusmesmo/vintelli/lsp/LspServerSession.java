@@ -52,6 +52,8 @@ import org.eclipse.lsp4j.Diagnostic;
 import org.eclipse.lsp4j.DidChangeTextDocumentParams;
 import org.eclipse.lsp4j.DidCloseTextDocumentParams;
 import org.eclipse.lsp4j.DidOpenTextDocumentParams;
+import org.eclipse.lsp4j.ExecuteCommandOptions;
+import org.eclipse.lsp4j.ExecuteCommandParams;
 import org.eclipse.lsp4j.Hover;
 import org.eclipse.lsp4j.HoverCapabilities;
 import org.eclipse.lsp4j.HoverParams;
@@ -193,6 +195,18 @@ final class LspServerSession implements AutoCloseable {
 
     boolean isLive() {
         return !closed && process.isAlive();
+    }
+
+    boolean supportsExecuteCommand(String command) {
+        ExecuteCommandOptions options = initializeResult.getCapabilities().getExecuteCommandProvider();
+        return options != null && options.getCommands() != null && options.getCommands().contains(command);
+    }
+
+    Object executeCommand(String command)
+            throws ExecutionException, InterruptedException, TimeoutException {
+        return server.getWorkspaceService()
+                .executeCommand(new ExecuteCommandParams(command, List.of()))
+                .get(REQUEST_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
     }
 
     Hover hover(String uri, Position position) throws ExecutionException, InterruptedException, TimeoutException {
