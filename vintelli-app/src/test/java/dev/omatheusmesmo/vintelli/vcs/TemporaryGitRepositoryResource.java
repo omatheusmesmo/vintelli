@@ -2,11 +2,19 @@ package dev.omatheusmesmo.vintelli.vcs;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.lang.System.Logger;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.DosFileAttributeView;
+import java.time.Duration;
 import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+
+import static java.util.stream.Collectors.joining;
 
 import io.quarkus.test.common.QuarkusTestResourceLifecycleManager;
 import org.eclipse.jgit.api.Git;
@@ -35,6 +43,11 @@ public final class TemporaryGitRepositoryResource implements QuarkusTestResource
 
     private static final String AUTHOR = "Vintelli Test";
     private static final String EMAIL = "test@vintelli.invalid";
+    private static final Logger LOG = System.getLogger(TemporaryGitRepositoryResource.class.getName());
+    private static final Duration DELETE_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration FIRST_RETRY_PAUSE = Duration.ofMillis(10);
+    private static final Duration MAX_RETRY_PAUSE = Duration.ofMillis(250);
+    private static final int MAX_LISTED_LEFTOVERS = 50;
 
     private static volatile Path repositoryRoot;
     private static volatile SystemReader previousReader;
@@ -72,6 +85,12 @@ public final class TemporaryGitRepositoryResource implements QuarkusTestResource
         }
     }
 
+    /**
+     * Never throws: Quarkus closes the test resources before it stops the
+     * application under test, so a failure here would leave that process alive
+     * and holding its port for every later test. A repository that cannot be
+     * emptied in time is logged with its leftovers instead.
+     */
     @Override
     public void stop() {
         restoreGitConfiguration();
@@ -80,17 +99,84 @@ public final class TemporaryGitRepositoryResource implements QuarkusTestResource
         if (root == null) {
             return;
         }
-        try (var walk = Files.walk(root)) {
-            walk.sorted(Comparator.reverseOrder()).forEach(path -> {
-                try {
-                    Files.delete(path);
-                } catch (IOException e) {
-                    throw new UncheckedIOException(e);
-                }
-            });
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
+        deleteWithRetry(root);
+    }
+
+    /**
+     * Each attempt walks the tree again, so entries that a process still writes
+     * while the application stops are removed by a later attempt. The attempts
+     * back off between failures and end at the deadline, which bounds the wait
+     * without a fixed sleep.
+     */
+    private static void deleteWithRetry(Path root) {
+        DeleteRetry.withRealClock(DELETE_TIMEOUT, FIRST_RETRY_PAUSE, MAX_RETRY_PAUSE)
+                .run(() -> deleteTree(root))
+                .ifPresent(lastFailure -> LOG.log(Logger.Level.ERROR, leakReport(root, lastFailure)));
+    }
+
+    private static void deleteTree(Path root) throws IOException {
+        if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) {
+            return;
         }
+        List<Path> paths;
+        try (var walk = Files.walk(root)) {
+            paths = walk.sorted(Comparator.reverseOrder()).toList();
+        } catch (UncheckedIOException walkFailure) {
+            throw walkFailure.getCause();
+        }
+        for (Path path : paths) {
+            clearReadOnly(path);
+            Files.deleteIfExists(path);
+        }
+    }
+
+    /**
+     * Git writes loose objects read-only. Windows refuses to delete a read-only file
+     * ({@code AccessDeniedException}), so the flag is cleared first where the file system has it.
+     */
+    private static void clearReadOnly(Path path) throws IOException {
+        DosFileAttributeView dos = Files.getFileAttributeView(path, DosFileAttributeView.class,
+                LinkOption.NOFOLLOW_LINKS);
+        if (dos != null && Files.exists(path, LinkOption.NOFOLLOW_LINKS) && dos.readAttributes().isReadOnly()) {
+            dos.setReadOnly(false);
+        }
+    }
+
+    private static String leakReport(Path root, IOException failure) {
+        return "LEAKED temporary Git repository " + root + " after " + DELETE_TIMEOUT + ": " + failure
+                + System.lineSeparator() + "Leftover entries:" + System.lineSeparator() + describeLeftovers(root)
+                + System.lineSeparator() + "Live processes referencing the repository:"
+                + System.lineSeparator() + describeProcesses(root);
+    }
+
+    private static String describeLeftovers(Path root) {
+        try (var walk = Files.walk(root)) {
+            return walk.limit(MAX_LISTED_LEFTOVERS).map(path -> describeEntry(root, path))
+                    .collect(joining(System.lineSeparator()));
+        } catch (IOException | UncheckedIOException listingFailure) {
+            return "  (cannot list the leftovers: " + listingFailure + ")";
+        }
+    }
+
+    private static String describeEntry(Path root, Path path) {
+        String relativeName = root.relativize(path).toString();
+        String relative = relativeName.isEmpty() ? "." : relativeName;
+        try {
+            BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class,
+                    LinkOption.NOFOLLOW_LINKS);
+            return "  " + relative + " size=" + attributes.size() + " modified=" + attributes.lastModifiedTime();
+        } catch (IOException vanished) {
+            return "  " + relative + " (gone while listing)";
+        }
+    }
+
+    private static String describeProcesses(Path root) {
+        String needle = root.toString();
+        String listing = ProcessHandle.allProcesses()
+                .filter(process -> process.info().commandLine().orElse("").contains(needle))
+                .map(process -> "  pid " + process.pid() + ": " + process.info().commandLine().orElse(""))
+                .collect(joining(System.lineSeparator()));
+        return listing.isEmpty() ? "  (none)" : listing;
     }
 
     private static void pinRepositoryConfiguration(Git git, Path emptyExcludes) throws IOException {
