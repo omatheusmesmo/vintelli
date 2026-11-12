@@ -5234,6 +5234,135 @@ class VintelliShellTest {
     }
 
     @Test
+    void pilotEnterAboveABreakpointMovesItsMarkerAndUndoAndRedoFollowTheLine() throws Exception {
+        EditorShell fixture = openEditorShell("Enter.txt", "alpha\nbeta\ngamma\ndelta\n", 0);
+        markBreakpoints(fixture, "Enter.txt", 2);
+        try (ToolkitTestRunner test = runShell(fixture.shell())) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+            fixture.editor().requestFocus();
+            settle(pilot);
+
+            pilot.press(KeyCode.ENTER);
+            settle(pilot);
+            assertEquals("\nalpha\nbeta\ngamma\ndelta\n", fixture.editor().activeDocument().orElseThrow().text());
+            assertEquals(List.of(4), markedLines(fixture, "Enter.txt"));
+
+            pressCtrl(pilot, 'z');
+            settle(pilot);
+            assertEquals(List.of(3), markedLines(fixture, "Enter.txt"), "undo moves the marker back with its line");
+
+            pressCtrl(pilot, 'y');
+            settle(pilot);
+            assertEquals(List.of(4), markedLines(fixture, "Enter.txt"), "redo moves the marker down again");
+        }
+    }
+
+    @Test
+    void pilotPasteAboveABreakpointMovesItsMarkerAndUndoRestoresIt() throws Exception {
+        EditorShell fixture = openEditorShell("Paste.txt", "alpha\nbeta\n", 0);
+        markBreakpoints(fixture, "Paste.txt", 1);
+        fixture.clipboard().write("one\ntwo\n");
+        try (ToolkitTestRunner test = runShell(fixture.shell())) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+            fixture.editor().requestFocus();
+            settle(pilot);
+
+            pressCtrl(pilot, 'v');
+            settle(pilot);
+            assertEquals("one\ntwo\nalpha\nbeta\n", fixture.editor().activeDocument().orElseThrow().text());
+            assertEquals(List.of(4), markedLines(fixture, "Paste.txt"));
+
+            pressCtrl(pilot, 'z');
+            settle(pilot);
+            assertEquals(List.of(2), markedLines(fixture, "Paste.txt"));
+        }
+    }
+
+    @Test
+    void pilotCutRemovesTheBreakpointOnTheCutLineAndUndoBringsItBack() throws Exception {
+        EditorShell fixture = openEditorShell("CutLines.txt", "alpha\nbeta\ngamma\n", 0);
+        markBreakpoints(fixture, "CutLines.txt", 0, 2);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect text = pilot.findElement(BuiltinEditor.TEXT_AREA_ID);
+            selectWithMouse(test, text, 0, 0, 1, 0);
+            settle(pilot);
+
+            pressCtrl(pilot, 'x');
+            settle(pilot);
+            assertEquals("beta\ngamma\n", fixture.editor().activeDocument().orElseThrow().text());
+            assertEquals(List.of(2), markedLines(fixture, "CutLines.txt"), "the cut line's marker is gone");
+
+            pressCtrl(pilot, 'z');
+            settle(pilot);
+            assertEquals("alpha\nbeta\ngamma\n", fixture.editor().activeDocument().orElseThrow().text());
+            assertEquals(List.of(1, 3), markedLines(fixture, "CutLines.txt"), "undo restores the removed marker");
+        }
+    }
+
+    @Test
+    void pilotCtrlDKeepsTheMarkerOnTheOriginalLineAndMovesTheLinesBelow() throws Exception {
+        EditorShell fixture = openEditorShell("DupAnchors.txt", "alpha\nbeta\ngamma\n", 0);
+        markBreakpoints(fixture, "DupAnchors.txt", 0, 2);
+        try (ToolkitTestRunner test = runShell(fixture.shell())) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+            fixture.editor().requestFocus();
+            settle(pilot);
+
+            pressCtrl(pilot, 'd');
+            settle(pilot);
+            assertEquals("alpha\nalpha\nbeta\ngamma\n", fixture.editor().activeDocument().orElseThrow().text());
+            assertEquals(List.of(1, 4), markedLines(fixture, "DupAnchors.txt"));
+
+            pressCtrl(pilot, 'z');
+            settle(pilot);
+            assertEquals(List.of(1, 3), markedLines(fixture, "DupAnchors.txt"));
+        }
+    }
+
+    @Test
+    void pilotBackspaceAcrossALineBreakRemovesTheJoinedLineMarkerAndUndoRestoresIt() throws Exception {
+        EditorShell fixture = openEditorShell("Join.txt", "alpha\nbeta\ngamma\n", 1);
+        markBreakpoints(fixture, "Join.txt", 1, 2);
+        try (ToolkitTestRunner test = runShell(fixture.shell())) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+            fixture.editor().requestFocus();
+            settle(pilot);
+
+            pilot.press(KeyCode.BACKSPACE);
+            settle(pilot);
+            assertEquals("alphabeta\ngamma\n", fixture.editor().activeDocument().orElseThrow().text());
+            assertEquals(List.of(2), markedLines(fixture, "Join.txt"));
+
+            pressCtrl(pilot, 'z');
+            settle(pilot);
+            assertEquals(List.of(2, 3), markedLines(fixture, "Join.txt"));
+        }
+    }
+
+    @Test
+    void pilotTypingOverAMultiLineSelectionRemovesTheMarkersInsideIt() throws Exception {
+        EditorShell fixture = openEditorShell("Over.txt", "alpha\nbeta\ngamma\ndelta\nepsilon\n", 0);
+        markBreakpoints(fixture, "Over.txt", 1, 3, 4);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect text = pilot.findElement(BuiltinEditor.TEXT_AREA_ID);
+            selectWithMouse(test, text, 0, 0, 2, 0);
+            settle(pilot);
+
+            pilot.press('X');
+            settle(pilot);
+            assertEquals("Xgamma\ndelta\nepsilon\n", fixture.editor().activeDocument().orElseThrow().text());
+            assertEquals(List.of(2, 3), markedLines(fixture, "Over.txt"),
+                    "the marker inside the replaced range is gone and the lines below keep their markers");
+        }
+    }
+
+    @Test
     void pilotClipboardStatesTheEditorOnlyFallbackWithoutASystemClipboard() throws Exception {
         EditorShell fixture = openEditorShell("Local.txt", "alpha beta\n", 0);
         fixture.clipboard().available = false;
@@ -5392,6 +5521,21 @@ class VintelliShellTest {
 
     private static void pressCtrl(Pilot pilot, char key) {
         pilot.press(key, KeyModifiers.CTRL);
+    }
+
+    private List<Integer> markedLines(EditorShell fixture, String name) throws IOException {
+        return fixture.editor().sourceBreakpoints().getOrDefault(project.resolve(name).toRealPath(), List.of())
+                .stream().map(point -> point.line()).toList();
+    }
+
+    private void markBreakpoints(EditorShell fixture, String name, int... rows) throws IOException {
+        Path file = project.resolve(name);
+        int caret = fixture.editor().activeDocument().orElseThrow().line();
+        for (int row : rows) {
+            fixture.editor().open(new OpenRequest(file, row));
+            fixture.editor().toggleBreakpointAtCaret();
+        }
+        fixture.editor().open(new OpenRequest(file, caret));
     }
 
     private static final class FakeClipboard implements SystemClipboard {

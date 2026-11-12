@@ -54,9 +54,16 @@ process exits, or attach fails. The marker never edits source text.
 
 Click a line's gutter marker or run **Toggle Line Breakpoint** (`Ctrl+F8`) to
 toggle a breakpoint. Locations are stored per canonical project and source file
-as zero based line anchors. Text edits and undo keep an anchor on its current
-line; if an edit shortens the file past an anchor, that breakpoint is removed
-permanently, including after undo. Renames do not migrate anchors: the saved
+as zero based line anchors. An anchor follows its text: when an edit inserts or
+removes lines above it, the anchor moves to the same line of text. This covers
+Enter, paste, cut, duplicate line, replacing a selection, and Backspace or Delete
+across a line break. An anchor on a line that an edit removes is removed. When an
+edit splits a line, the anchor stays on the first part. When two lines are joined,
+the first line keeps its anchor and the anchor of the joined second line is
+removed. Undo and redo restore the anchors recorded with each text revision, so
+undoing an edit brings back the anchors that edit removed. A breakpoint toggled
+after an edit is not part of that revision, so undoing the edit drops it. Renames
+do not migrate anchors: the saved
 location remains associated with the old relative path, and the renamed file
 starts without those breakpoints. Deleted-file locations and empty source sets
 remain stored as tombstones. They are included in the toolbar's complete

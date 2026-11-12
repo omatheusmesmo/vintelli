@@ -1,5 +1,6 @@
 package dev.omatheusmesmo.vintelli.tui.editor;
 
+import dev.omatheusmesmo.vintelli.api.capability.DebugCapability;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Diagnostic;
 import dev.tamboui.widgets.input.TextAreaState;
 
@@ -16,11 +17,29 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Deque;
 import java.util.List;
+import java.util.Map;
 
 /** One document owns its cursor, undo history and highlighting cache. Guarded by BuiltinEditor. */
 public final class EditorDocument {
     private static final int HISTORY_LIMIT = 200;
-    private record Revision(String text, int row, int column, List<Diagnostic> diagnostics) {}
+    private record Revision(String text, int row, int column, List<Diagnostic> diagnostics,
+            Map<Integer, DebugCapability.SourceBreakpoint> breakpoints) {}
+
+    /**
+     * Breakpoints of this document's file, kept with the undo history: every edit shifts them,
+     * and each revision restores the set it was recorded with.
+     */
+    interface Breakpoints {
+        Breakpoints NONE = new Breakpoints() {
+            @Override public Map<Integer, DebugCapability.SourceBreakpoint> snapshot() { return Map.of(); }
+            @Override public void restore(Map<Integer, DebugCapability.SourceBreakpoint> snapshot) { }
+            @Override public void edited(String before, String after) { }
+        };
+
+        Map<Integer, DebugCapability.SourceBreakpoint> snapshot();
+        void restore(Map<Integer, DebugCapability.SourceBreakpoint> snapshot);
+        void edited(String before, String after);
+    }
 
     private final Path file;
     private final TextAreaState state;
@@ -32,6 +51,7 @@ public final class EditorDocument {
     /** Exact on-disk contents last opened/saved; null means this is a recovered missing file. */
     private String savedDiskText;
     private List<Diagnostic> diagnostics = List.of();
+    private Breakpoints breakpoints = Breakpoints.NONE;
     /** While folded, {@code view} is the widget-facing copy of {@code state} with the import block replaced by its placeholder. */
     private ImportFold fold;
     private TextAreaState view;
@@ -72,6 +92,8 @@ public final class EditorDocument {
     }
     EditorSyntaxHighlighter highlighter() { return highlighter; }
 
+    void breakpoints(Breakpoints value) { breakpoints = value; }
+
     void mutate(Runnable edit) {
         Revision before = revision();
         edit.run();
@@ -81,6 +103,7 @@ public final class EditorDocument {
             while (undo.size() > HISTORY_LIMIT) { undo.removeLast(); }
             redo.clear();
             remapDiagnostics(before.text(), text());
+            breakpoints.edited(before.text(), text());
             clearSelection();
             revealPending = true;
         }
@@ -126,11 +149,12 @@ public final class EditorDocument {
         state.setText(revision.text());
         position(revision.row(), revision.column());
         diagnostics(revision.diagnostics());
+        breakpoints.restore(revision.breakpoints());
         if (folded) { foldImports(); }
         return true;
     }
 
-    private Revision revision() { return new Revision(text(), row(), column(), diagnostics); }
+    private Revision revision() { return new Revision(text(), row(), column(), diagnostics, breakpoints.snapshot()); }
 
     void position(int row, int column) {
         if (fold != null && fold.hides(row)) { dropFold(); }

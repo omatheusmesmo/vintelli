@@ -550,7 +550,7 @@ class BuiltinEditorTest {
     }
 
     @Test
-    void persistsBreakpointsPerProjectAndKeepsTheirLineNumbersAcrossEditAndUndo() throws IOException {
+    void persistsBreakpointsPerProjectAndKeepsTheirLinesAcrossEditAndUndo() throws IOException {
         Path source = write("Breakpoint.java", "class Breakpoint {\n  void run() {}\n}\n");
         Path removed = write("Removed.java", "class Removed {}\n");
         Path session = project.resolve("editor.properties");
@@ -559,9 +559,9 @@ class BuiltinEditorTest {
 
         assertTrue(editor.toggleBreakpoint(1));
         editor.insert("// inserted above the source\n");
-        assertTrue(editor.breakpoints(editor.document()).containsKey(1));
+        assertEquals(List.of(2), breakpointLines(editor), "the breakpoint follows its line");
         assertTrue(editor.undo());
-        assertTrue(editor.breakpoints(editor.document()).containsKey(1));
+        assertEquals(List.of(1), breakpointLines(editor));
         editor.open(new OpenRequest(removed, 0));
         assertTrue(editor.toggleBreakpoint(0));
         assertTrue(editor.toggleBreakpoint(0));
@@ -590,8 +590,45 @@ class BuiltinEditorTest {
         assertTrue(editor.breakpoints(editor.document()).isEmpty());
         assertTrue(editor.sourceBreakpoints().containsKey(source.toRealPath()));
         assertTrue(editor.sourceBreakpoints().get(source.toRealPath()).isEmpty());
-        editor.undo();
-        assertTrue(editor.breakpoints(editor.document()).isEmpty(), "undo does not resurrect a truncated breakpoint");
+        assertTrue(editor.undo());
+        assertEquals(List.of(2), breakpointLines(editor), "undo brings back the breakpoint of the removed line");
+        assertTrue(editor.redo());
+        assertTrue(editor.breakpoints(editor.document()).isEmpty(), "redo removes it again");
+    }
+
+    @Test
+    void breakpointMovesWithItsLineWhenTextIsInsertedAboveItThroughUndoAndRedo() throws IOException {
+        Path source = write("Follow.java", "first\nsecond\nthird\n");
+        BuiltinEditor editor = editor(null);
+        editor.open(new OpenRequest(source, 0));
+        assertTrue(editor.toggleBreakpoint(2));
+
+        editor.insert("inserted\n");
+        assertEquals(List.of(3), breakpointLines(editor));
+        assertTrue(editor.undo());
+        assertEquals(List.of(2), breakpointLines(editor));
+        assertTrue(editor.redo());
+        assertEquals(List.of(3), breakpointLines(editor));
+    }
+
+    @Test
+    void breakpointOnADeletedLineIsRemovedAndUndoBringsItBackWhileLaterOnesShift() throws IOException {
+        Path source = write("Deleted.java", "first\nsecond\nthird\nfourth\n");
+        BuiltinEditor editor = editor(null);
+        editor.open(new OpenRequest(source, 0));
+        assertTrue(editor.toggleBreakpoint(1));
+        assertTrue(editor.toggleBreakpoint(3));
+
+        editor.document().mutate(() -> editor.document().state().setText("first\nthird\nfourth\n"));
+        editor.changed();
+        assertEquals(List.of(2), breakpointLines(editor), "the fourth line moved up to zero based row two");
+
+        assertTrue(editor.undo());
+        assertEquals(List.of(1, 3), breakpointLines(editor));
+    }
+
+    private static List<Integer> breakpointLines(BuiltinEditor editor) {
+        return editor.breakpoints(editor.document()).keySet().stream().sorted().toList();
     }
 
     @Test
