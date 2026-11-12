@@ -40,12 +40,12 @@ public final class JavaDebugCapabilityProbeResource implements QuarkusTestResour
                     + JavaDebugTwin.class.getName() + "\n");
             Path wrapper = projectRoot.resolve("mvnw");
             Files.writeString(wrapper, "#!/bin/sh\nexec " + shell(java.toString()) + " "
-                    + shell("@" + args) + " \"$@\"\n");
+                    + shell(argumentFile(args)) + " \"$@\"\n");
             if (!wrapper.toFile().setExecutable(true)) {
                 throw new IOException("Cannot mark the fixed debug wrapper executable");
             }
-            Files.writeString(projectRoot.resolve("mvnw.cmd"), "@echo off\r\n\"" + java + "\" \"@"
-                    + args + "\" %*\r\n");
+            Files.writeString(projectRoot.resolve("mvnw.cmd"), "@echo off\r\n\"" + java + "\" \""
+                    + argumentFile(args) + "\" %*\r\n");
             try (ServerSocket reservation = new ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))) {
                 attachPort = reservation.getLocalPort();
             }
@@ -54,7 +54,7 @@ public final class JavaDebugCapabilityProbeResource implements QuarkusTestResour
             Path lspArgumentFile = projectRoot.resolve("debug-probe.args");
             Files.writeString(lspArgumentFile, "-cp\n" + quote(FakeLspServer.classpath()) + "\n"
                     + FakeLspServer.class.getName() + "\n--java-debug\n--dap-port=" + adapter.port() + "\n");
-            String lspArguments = "@" + lspArgumentFile;
+            String lspArguments = argumentFile(lspArgumentFile);
             return Map.ofEntries(
                     Map.entry("vintelli.inspect.enabled", "true"),
                     Map.entry("vintelli.debug.enabled", "true"),
@@ -105,6 +105,10 @@ public final class JavaDebugCapabilityProbeResource implements QuarkusTestResour
 
     private static String quote(String value) {
         return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+    }
+
+    private static String argumentFile(Path path) {
+        return "@" + path.toString().replace('\\', '/');
     }
 
     private static String shell(String value) {
