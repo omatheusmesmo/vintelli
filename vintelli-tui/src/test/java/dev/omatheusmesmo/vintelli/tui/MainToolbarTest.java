@@ -93,6 +93,19 @@ class MainToolbarTest {
     }
 
     @Test
+    void labelAfterAWideMenuLabelOpensWhereItsPopupPanelOpens() {
+        List<String> wideMenus = List.of("文件", "Edit", "View");
+        MainToolbar.Model open = new MainToolbar.Model("vintelli", "main", "idea:First", false, true, 1);
+        List<MainToolbar.Segment> segments = MainToolbar.layout(WIDTH, open, wideMenus, UNICODE);
+        MainToolbar.Segment edit = segments.stream()
+                .filter(segment -> segment.kind() == MainToolbar.Kind.MENU && segment.menuIndex() == 1)
+                .findFirst().orElseThrow();
+
+        assertEquals(MainToolbar.MENU_ORIGIN + MenuPopup.labelWidth("文件"), edit.x());
+        assertEquals(MenuPopup.labelOffset(wideMenus, 1, MainToolbar.MENU_ORIGIN), edit.x());
+    }
+
+    @Test
     void asciiFaceDrawsNoNonAsciiCell() {
         MainToolbar toolbar = new MainToolbar(() -> CLOSED, MENUS, IconMode.ASCII, MainToolbarTest::themes);
         String row = render(toolbar, WIDTH);

@@ -107,6 +107,14 @@ class MenuPopupTest {
     }
 
     @Test
+    void wideLabelReportsItsDisplayWidthAndShiftsTheLabelAfterIt() {
+        List<String> menus = List.of("文件", "View");
+
+        assertEquals(6, MenuPopup.labelWidth("文件"));
+        assertEquals(10, MenuPopup.labelOffset(menus, 1, 4));
+    }
+
+    @Test
     void clickBeforeFirstRenderDoesNotDispatch() {
         MenuPopup popup = popup(List.of(new MenuEntry("File", "SaveAll", "Save All")));
         popup.open(0);

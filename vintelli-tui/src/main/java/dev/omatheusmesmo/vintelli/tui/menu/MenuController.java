@@ -2,6 +2,7 @@ package dev.omatheusmesmo.vintelli.tui.menu;
 
 import dev.omatheusmesmo.vintelli.tui.OverlayKey;
 import dev.omatheusmesmo.vintelli.tui.OverlayRegion;
+import dev.tamboui.text.CharWidth;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -56,7 +57,7 @@ final class MenuController {
     }
 
     static int labelWidth(String menu) {
-        return menu.length() + 2;
+        return CharWidth.of(menu) + 2;
     }
 
     void open(int index) {
