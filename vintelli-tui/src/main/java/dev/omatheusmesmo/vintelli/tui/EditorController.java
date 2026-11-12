@@ -405,6 +405,15 @@ final class EditorController {
         }
     }
 
+    private void selectAll() {
+        if (editor == null) {
+            host.status("Built-in editor unavailable");
+        } else {
+            editor.selectAll();
+            host.status(editor.status());
+        }
+    }
+
     private void toggleBreakpoint() {
         if (editor == null || !editor.toggleBreakpointAtCaret()) {
             host.status("Open a project file to toggle a breakpoint");
@@ -502,6 +511,11 @@ final class EditorController {
             case KeyActions.DUPLICATE_LINE -> {
                 closeOverlays.run();
                 duplicateLine();
+                yield true;
+            }
+            case KeyActions.SELECT_ALL -> {
+                closeOverlays.run();
+                selectAll();
                 yield true;
             }
             default -> false;

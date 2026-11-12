@@ -433,6 +433,15 @@ final class EditorElement implements Element {
             if (EditorSelectionKeys.handleClipboardChord(event, editor.keymap(), document, editor)) {
                 return EventResult.HANDLED;
             }
+            if (EditorSelectionKeys.selectsAll(event, editor.keymap())) {
+                editor.selectAll();
+                return EventResult.HANDLED;
+            }
+            if (EditorSelectionKeys.extendsSelection(event)) {
+                extendSelection(document, event, focused);
+                editor.changed();
+                return EventResult.HANDLED;
+            }
             int rowBefore = document.row();
             int columnBefore = document.column();
             boolean hadSelection = document.hasSelection();
@@ -454,6 +463,14 @@ final class EditorElement implements Element {
             }
             if (handled) { editor.changed(); }
             return handled ? EventResult.HANDLED : EventResult.UNHANDLED;
+        }
+    }
+
+    private void extendSelection(EditorDocument document, KeyEvent event, boolean focused) {
+        if (event.isKey(KeyCode.PAGE_UP) || event.isKey(KeyCode.PAGE_DOWN)) {
+            document.extendSelectionByPage(event.isKey(KeyCode.PAGE_DOWN), Math.max(1, textBody.height()));
+        } else {
+            document.extendSelection(() -> textArea.handleKeyEvent(event, focused));
         }
     }
 

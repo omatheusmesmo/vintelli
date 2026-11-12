@@ -165,7 +165,7 @@ class KeymapTest {
                 "problems.filter-all", "problems.filter-errors", "problems.filter-warnings",
                 "problems.expand", "problems.collapse", "problems.toggle-group",
                 "editor_open", "editor_save", "editor_undo", "editor_redo", "editor_find",
-                "editor_cut", "editor_copy", "editor_paste", "editor_duplicateLine",
+                "editor_cut", "editor_copy", "editor_paste", "editor_duplicateLine", "editor_selectAll",
                 "editor_close", "editor_nextTab", "editor_previousTab", "editor_definition",
                 "editor_usages", "editor_nextProblem", "editor_toggleImportFold", "editor_toggleBreakpoint",
                 "navigation_goToFile", "navigation_findInFiles", "navigation_goToLine",
@@ -474,6 +474,30 @@ class KeymapTest {
 
         assertFalse(vim.isBound(KeyActions.DUPLICATE_LINE));
         assertFalse(vim.matches(keypress('d', KeyModifiers.CTRL), KeyActions.DUPLICATE_LINE));
+    }
+
+    @Test
+    void ctrlASelectsAllInTheIntellijProfileAndStaysOutOfTheCapturedInput() {
+        Keymap keymap = Keymap.ofProfile(KeymapProfile.DEFAULT, WINDOWS);
+
+        assertTrue(keymap.matches(keypress('a', KeyModifiers.CTRL), "editor_selectAll"));
+        assertFalse(keymap.matchesReserved(keypress('a', KeyModifiers.CTRL), "editor_selectAll"),
+                "a capturing terminal keeps Ctrl+A for its own line editing");
+        Set<String> answering = new LinkedHashSet<>();
+        for (KeyAction action : keymap.actions()) {
+            if (keymap.matches(keypress('a', KeyModifiers.CTRL), action.id())) {
+                answering.add(action.id());
+            }
+        }
+        assertEquals(Set.of("editor_selectAll"), answering, "no other action answers Ctrl+A");
+    }
+
+    @Test
+    void vimProfileSelectsAllOnCtrlEBecauseCtrlAIsVimIncrement() {
+        Keymap vim = Keymap.ofProfile(KeymapProfile.VIM, WINDOWS);
+
+        assertTrue(vim.matches(keypress('e', KeyModifiers.CTRL), "editor_selectAll"));
+        assertFalse(vim.matches(keypress('a', KeyModifiers.CTRL), "editor_selectAll"));
     }
 
     private static void assertNoActionAnswers(Keymap keymap, KeyEvent event, String description) {

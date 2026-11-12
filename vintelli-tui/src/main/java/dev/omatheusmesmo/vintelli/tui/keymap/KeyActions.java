@@ -41,6 +41,7 @@ public final class KeyActions {
     public static final String TOGGLE_IMPORT_FOLD = "editor_toggleImportFold";
     public static final String TOGGLE_BREAKPOINT = "editor_toggleBreakpoint";
     public static final String DUPLICATE_LINE = "editor_duplicateLine";
+    public static final String SELECT_ALL = "editor_selectAll";
     public static final String GO_TO_FILE = "navigation_goToFile";
     public static final String GO_TO_LINE = "navigation_goToLine";
     public static final String FOCUS_NAVIGATION_BAR = "navigation_focusBreadcrumbs";
@@ -121,6 +122,7 @@ public final class KeyActions {
                 new KeyAction(CUT, "Cut", "Ctrl+X"), new KeyAction(COPY, "Copy", "Ctrl+C"),
                 new KeyAction(PASTE, "Paste", "Ctrl+V"),
                 new KeyAction(DUPLICATE_LINE, "Duplicate Line", "Ctrl+D"),
+                new KeyAction(SELECT_ALL, "Select All", "Ctrl+A"),
                 new KeyAction(CLOSE_TAB, "Close Editor Tab", ""),
                 new KeyAction(NEXT_TAB, "Next Editor Tab", ""),
                 new KeyAction(PREVIOUS_TAB, "Previous Editor Tab", ""),
@@ -207,7 +209,7 @@ public final class KeyActions {
     public static Set<String> reservedActionIds(List<ToolWindow> toolWindows) {
         Set<String> reserved = new LinkedHashSet<>(List.of(SEARCH_EVERYWHERE, KEYMAP_HELP));
         shellActions().stream().map(KeyAction::id)
-                .filter(id -> !OPEN_FILE.equals(id) && !CLIPBOARD_ACTIONS.contains(id))
+                .filter(id -> !OPEN_FILE.equals(id) && !CLIPBOARD_ACTIONS.contains(id) && !SELECT_ALL.equals(id))
                 .forEach(reserved::add);
         for (ToolWindow toolWindow : toolWindows) {
             reserved.add(activateToolWindow(toolWindow.id()));
