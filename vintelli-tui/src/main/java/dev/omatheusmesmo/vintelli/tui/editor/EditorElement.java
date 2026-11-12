@@ -268,6 +268,9 @@ final class EditorElement implements Element {
                 TextElement statusLine = Toolkit.text(editor.status()).length(1);
                 if (editor.closeConfirmationPending()) {
                     statusLine.id("editor-close-confirmation").focusable().onKeyEvent(key -> {
+                        if (editor.answersCloseConfirmation(key)) {
+                            return EventResult.UNHANDLED;
+                        }
                         editor.handleKey(key);
                         return EventResult.HANDLED;
                     });
@@ -438,9 +441,8 @@ final class EditorElement implements Element {
 
     @Override public EventResult handleKeyEvent(KeyEvent event, boolean focused) {
         synchronized (editor) {
-            if (editor.closeConfirmationPending()) {
-                if (event.isCharIgnoreCase('y')) { editor.confirmClose(true); return EventResult.HANDLED; }
-                if (event.isCharIgnoreCase('n') || event.isKey(KeyCode.ESCAPE)) { editor.confirmClose(false); return EventResult.HANDLED; }
+            if (editor.answersCloseConfirmation(event)) {
+                return EventResult.UNHANDLED;
             }
             if (editor.menuNavigationActive() || editor.overlayInputActive()) { return EventResult.UNHANDLED; }
             if (reserved(event)) { return EventResult.UNHANDLED; }

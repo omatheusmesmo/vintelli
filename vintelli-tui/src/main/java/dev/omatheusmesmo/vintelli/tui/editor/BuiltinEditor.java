@@ -159,7 +159,17 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     @Override public char shortcut() { return '5'; }
     @Override public int ordinal() { return 40; }
     @Override public boolean capturesInput() { return true; }
-    @Override public boolean handleKey(KeyEvent key) { return element.handleKeyEvent(key, true).isHandled(); }
+    @Override public boolean handleKey(KeyEvent key) {
+        if (answersCloseConfirmation(key)) { confirmClose(key.isCharIgnoreCase('y')); return true; }
+        return element.handleKeyEvent(key, true).isHandled();
+    }
+
+
+    public synchronized boolean answersCloseConfirmation(KeyEvent key) {
+        return closeConfirmationPending()
+                && (key.isCharIgnoreCase('y') || key.isCharIgnoreCase('n') || key.isKey(KeyCode.ESCAPE));
+    }
+
     @Override public boolean shouldHandleKeyBeforeShell(KeyEvent key) { return key.isKey(KeyCode.ESCAPE) && findOpen(); }
     @Override public synchronized void render(Frame frame, Rect area) {
         element.render(frame, area, DefaultRenderContext.createEmpty());
