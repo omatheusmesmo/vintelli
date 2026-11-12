@@ -49,6 +49,13 @@ start a fresh connection handshake. Each prints one `IDEA MCP status:` line
 with the state and next step. They return exit code `0` when connected and `1`
 for every other state, so scripts can check connection readiness directly.
 
+When the URL is configured, the status bar also shows a short `IDEA: <state>`
+segment, for example `IDEA: connected` or `IDEA: consent pending`. Connected and
+not yet contacted states are dimmed; every other state is emphasized. The
+segment reads the last known state off the render thread, at most every five
+seconds while the bar renders, so an unreachable IDEA never delays a frame. The
+state changes when a tool call or the connect action contacts IDEA.
+
 Status bar states reported by the IDEA contributor:
 - `off` - no URL configured or client closed
 - `on` - connected and initialized

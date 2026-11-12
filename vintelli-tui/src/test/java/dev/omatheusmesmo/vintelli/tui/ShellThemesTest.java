@@ -88,6 +88,17 @@ class ShellThemesTest {
                 "the shipped pane gap rule survives the patch");
     }
     @Test
+    void ideaStatusRolesDimTheHealthyStateAndBrightenTheWarning() {
+        ShellThemes themes = new ShellThemes("dark", (Path) null);
+
+        assertEquals(themes.color("muted"), themes.resolver("StatusBarElement-idea").toStyle().fg().orElse(null),
+                "a healthy IDEA segment is dimmed");
+        assertEquals(themes.color("chrome-fg-strong"),
+                themes.resolver("StatusBarElement-idea-warning").toStyle().fg().orElse(null),
+                "an unhealthy IDEA segment uses the warning role");
+    }
+
+    @Test
     void userFileWithDirectiveExtendsAShippedTheme() throws IOException {
         Path userFile = writeUserFile("midnight.tcss",
                 "@theme midnight extends dark\n$panel: #101010;\ntool-window { color: $panel; }\n");

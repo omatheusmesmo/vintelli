@@ -101,7 +101,8 @@ final class StatusBarElement implements Element {
             if (placement.text().isEmpty()) {
                 continue;
             }
-            Style style = isSelected(placement.id(), navigation) ? base.reversed() : base;
+            Style style = isSelected(placement.id(), navigation) ? base.reversed()
+                    : segmentStyle(placement.id(), base, context);
             buffer.setString(area.x() + placement.x(), area.y(), placement.text(), style);
         }
         renderPopup(buffer, area, base);
@@ -148,6 +149,13 @@ final class StatusBarElement implements Element {
             Style style = row == 0 ? popupStyle.bold() : popupStyle;
             buffer.setString(popup.x() + 1, popup.y() + row, text, style);
         }
+    }
+
+    private static Style segmentStyle(String id, Style base, RenderContext context) {
+        if (IdeaStatusBadge.ID.equals(id) || IdeaStatusBadge.WARNING_ID.equals(id)) {
+            return context.childStyle(id);
+        }
+        return base;
     }
 
     private static boolean isSelected(String id, StatusBar.Navigation navigation) {

@@ -280,6 +280,15 @@ EditorTabBarElement-overflow {
   color: $chrome-fg-strong;
 }
 
+StatusBarElement-idea {
+  color: $muted;
+}
+
+StatusBarElement-idea-warning {
+  color: $chrome-fg-strong;
+  text-style: bold;
+}
+
 /* Islands: the frame is $panel and every pane island is $editor-bg. A gap cell
    is a half block in the island tone over the frame tone (.pane-gap), a corner
    is a quarter block in the frame tone over the island tone (.pane-corner). */

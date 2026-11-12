@@ -6,8 +6,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityStatus;
+import dev.omatheusmesmo.vintelli.api.idea.IdeaMcpConnection;
 import dev.omatheusmesmo.vintelli.api.statusbar.CapabilityStatusWidgets;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
 import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability;
@@ -141,6 +143,64 @@ class StatusBarTest {
         assertEquals("Read-only", ASCII.readOnly());
         assertEquals(" > ", ASCII.divider());
         assertEquals(" › ", UNICODE.divider());
+    }
+
+    @Test
+    void hidesTheIdeaSegmentWhenTheEndpointIsNotConfigured() {
+        StatusBar bar = new StatusBar(() -> "Ready", () -> false, null, null, List.of(), UNICODE,
+                () -> StatusBar.Navigation.NONE, IdeaStatusBadge.of(Optional.empty(),
+                        reporting("CONNECTED", "reachable"), () -> 0L, Runnable::run));
+
+        assertEquals(List.of(new Segment(StatusBarLayout.MESSAGE_ID, 80, "Ready", "Ready")), bar.right());
+    }
+
+    @Test
+    void hidesTheIdeaSegmentWhileInputIsBlocking() {
+        StatusBar bar = new StatusBar(() -> "Ready", () -> true, null, null, List.of(), UNICODE,
+                () -> StatusBar.Navigation.NONE, IdeaStatusBadge.of(Optional.of("http://127.0.0.1:9/stream"),
+                        reporting("CONSENT_PENDING", "approve"), () -> 0L, Runnable::run));
+
+        assertEquals(List.of(new Segment(StatusBarLayout.MESSAGE_ID, 80, "Ready", "Ready")), bar.right());
+    }
+
+    @Test
+    void showsEachConnectionStateAsAShortDimOrWarningSegmentWithoutRawDetail() {
+        String[][] expected = {
+                {"CONNECTED", IdeaStatusBadge.ID, "IDEA: connected"},
+                {"DISCONNECTED", IdeaStatusBadge.ID, "IDEA: disconnected"},
+                {"UNREACHABLE", IdeaStatusBadge.WARNING_ID, "IDEA: unreachable"},
+                {"AUTH_REQUIRED", IdeaStatusBadge.WARNING_ID, "IDEA: auth required"},
+                {"CONSENT_PENDING", IdeaStatusBadge.WARNING_ID, "IDEA: consent pending"},
+                {"ENDPOINT_NOT_FOUND", IdeaStatusBadge.WARNING_ID, "IDEA: endpoint not found"},
+                {"TIMEOUT", IdeaStatusBadge.WARNING_ID, "IDEA: timeout"},
+                {"ERROR", IdeaStatusBadge.WARNING_ID, "IDEA: error"},
+        };
+        String rawDetail = "java.net.ConnectException: Connection refused to 127.0.0.1:9";
+        for (String[] row : expected) {
+            StatusBar bar = new StatusBar(() -> "Ready", () -> false, null, null, List.of(), UNICODE,
+                    () -> StatusBar.Navigation.NONE, IdeaStatusBadge.of(Optional.of("http://127.0.0.1:9/stream"),
+                            reporting(row[0], rawDetail), () -> 0L, Runnable::run));
+
+            Segment idea = bar.right().stream().filter(segment -> segment.id().startsWith("idea"))
+                    .findFirst().orElseThrow();
+
+            assertEquals(row[1], idea.id(), row[0]);
+            assertEquals(row[2], idea.text(), row[0]);
+        }
+    }
+
+    private static IdeaMcpConnection reporting(String state, String detail) {
+        return new IdeaMcpConnection() {
+            @Override
+            public Snapshot connectionStatus() {
+                return new Snapshot(state, detail);
+            }
+
+            @Override
+            public Snapshot reconnectFromUserAction() {
+                throw new UnsupportedOperationException();
+            }
+        };
     }
 
     private static StatusBar bar(StatusBar.Glyphs glyphs, List<CapabilityStatus> statuses) {
