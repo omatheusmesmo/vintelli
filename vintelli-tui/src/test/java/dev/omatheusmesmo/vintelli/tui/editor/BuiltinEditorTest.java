@@ -15,6 +15,7 @@ import dev.tamboui.toolkit.event.EventResult;
 import dev.tamboui.tui.event.Event;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
+import dev.tamboui.tui.event.KeyModifiers;
 import dev.tamboui.tui.event.MouseButton;
 import dev.tamboui.tui.event.MouseEvent;
 import dev.tamboui.tui.pilot.Pilot;
@@ -290,6 +291,124 @@ class BuiltinEditorTest {
         assertEquals(1, editor.diagnostics().getFirst().startLine());
         assertTrue(editor.undo());
         assertEquals(0, editor.diagnostics().getFirst().startLine());
+    }
+
+    @Test
+    void duplicatesTheCaretLineBelowItAndMovesTheCaretToTheCopyInTheSameColumn() throws IOException {
+        BuiltinEditor editor = editor(null);
+        editor.open(new OpenRequest(write("Middle.txt", "alpha\nbeta\ngamma\n"), 0));
+        editor.document().position(1, 2);
+
+        editor.duplicateLine();
+
+        assertEquals("alpha\nbeta\nbeta\ngamma\n", editor.activeDocument().orElseThrow().text());
+        assertEquals(2, editor.document().row());
+        assertEquals(2, editor.document().column());
+    }
+
+    @Test
+    void duplicatesTheFirstLineWithTheCaretOnTheCopy() throws IOException {
+        BuiltinEditor editor = editor(null);
+        editor.open(new OpenRequest(write("First.txt", "alpha\nbeta\n"), 0));
+
+        editor.duplicateLine();
+
+        assertEquals("alpha\nalpha\nbeta\n", editor.activeDocument().orElseThrow().text());
+        assertEquals(1, editor.document().row());
+        assertEquals(0, editor.document().column());
+    }
+
+    @Test
+    void duplicatesTheLastLineWhenTheFileEndsWithANewline() throws IOException {
+        BuiltinEditor editor = editor(null);
+        editor.open(new OpenRequest(write("Newline.txt", "alpha\nbeta\ngamma\n"), 2));
+
+        editor.duplicateLine();
+
+        assertEquals("alpha\nbeta\ngamma\ngamma\n", editor.activeDocument().orElseThrow().text());
+        assertEquals(3, editor.document().row());
+    }
+
+    @Test
+    void duplicatingTheLastLineWithoutANewlineGivesTheCopyTheBreakAndKeepsTheEndAsItWas() throws IOException {
+        BuiltinEditor editor = editor(null);
+        editor.open(new OpenRequest(write("NoNewline.txt", "alpha\nbeta"), 1));
+        editor.document().position(1, 3);
+
+        editor.duplicateLine();
+
+        assertEquals("alpha\nbeta\nbeta", editor.activeDocument().orElseThrow().text());
+        assertEquals(2, editor.document().row());
+        assertEquals(3, editor.document().column());
+    }
+
+    @Test
+    void duplicateIsOneUndoStepThatRemovesTheCopyAndMarksTheDocumentDirty() throws IOException {
+        BuiltinEditor editor = editor(null);
+        editor.open(new OpenRequest(write("Undo.txt", "alpha\nbeta\n"), 0));
+        editor.document().position(1, 1);
+
+        editor.duplicateLine();
+        assertTrue(editor.activeDocument().orElseThrow().dirty());
+
+        assertTrue(editor.undo());
+        assertEquals("alpha\nbeta\n", editor.activeDocument().orElseThrow().text());
+        assertEquals(1, editor.document().row());
+        assertEquals(1, editor.document().column());
+        assertFalse(editor.activeDocument().orElseThrow().dirty());
+        assertFalse(editor.undo(), "the copy takes exactly one undo step");
+    }
+
+    @Test
+    void duplicateKeepsTheImportBlockFoldedAndTheDocumentIntact() throws IOException {
+        BuiltinEditor editor = foldedEditor();
+        editor.document().position(8, 4);
+
+        editor.duplicateLine();
+
+        assertTrue(editor.document().importsFolded());
+        assertEquals(IMPORTS.replace("    int x;\n", "    int x;\n    int x;\n"),
+                editor.activeDocument().orElseThrow().text());
+        assertEquals(9, editor.document().row());
+    }
+
+    @Test
+    void duplicateKeepsDiagnosticsOnTheirLinesAndShiftsTheOnesBelowTheCopy() throws IOException {
+        Path file = write("Diagnostics.txt", "alpha\nbeta\ngamma\n");
+        BuiltinEditor editor = editor(null);
+        editor.open(new OpenRequest(file, 0));
+        editor.setDiagnostics(List.of(new Diagnostic(file, 2, 0, 2, 5, Severity.ERROR, "javac", "bad")));
+
+        editor.duplicateLine();
+        assertEquals(3, editor.diagnostics().getFirst().startLine());
+
+        assertTrue(editor.undo());
+        assertEquals(2, editor.diagnostics().getFirst().startLine());
+    }
+
+    @Test
+    void duplicateWithASelectionCopiesOnlyTheCaretLineAndClearsTheSelection() throws IOException {
+        BuiltinEditor editor = editor(null);
+        editor.open(new OpenRequest(write("Selected.txt", "alpha\nbeta\n"), 0));
+        editor.document().pointerPress(0, 1);
+        editor.document().pointerDrag(0, 4);
+        assertTrue(editor.document().hasSelection());
+
+        editor.duplicateLine();
+
+        assertEquals("alpha\nalpha\nbeta\n", editor.activeDocument().orElseThrow().text());
+        assertFalse(editor.document().hasSelection());
+    }
+
+    @Test
+    void ctrlDIsLeftToTheShellEvenWhileTheFindRowIsOpen() throws IOException {
+        BuiltinEditor editor = editor(null);
+        editor.open(new OpenRequest(write("Find.txt", "alpha\n"), 0));
+        editor.openFind();
+
+        assertFalse(editor.handleKey(KeyEvent.ofChar('d', KeyModifiers.CTRL)),
+                "Ctrl+D is a shell chord, the editor must not consume it");
+        assertEquals("alpha\n", editor.activeDocument().orElseThrow().text());
     }
 
     @Test

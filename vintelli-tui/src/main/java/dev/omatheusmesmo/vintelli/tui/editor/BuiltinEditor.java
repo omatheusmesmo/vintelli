@@ -573,6 +573,17 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
         status = "Pasted from " + paste.get().origin();
     }
 
+    public synchronized void duplicateLine() {
+        EditorDocument document = document();
+        if (document == null) {
+            status = "No file is open";
+            return;
+        }
+        document.duplicateLine();
+        changed();
+        status = "Line duplicated";
+    }
+
     public synchronized boolean toggleImportFold() {
         EditorDocument document = document();
         boolean toggled = document != null && document.toggleImportFold();

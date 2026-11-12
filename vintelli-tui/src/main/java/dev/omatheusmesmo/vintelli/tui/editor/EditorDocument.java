@@ -86,6 +86,21 @@ public final class EditorDocument {
         }
     }
 
+    /** Copies the caret line below itself and moves the caret to the copy, as one undoable step. */
+    void duplicateLine() {
+        mutate(() -> {
+            int row = row();
+            int column = column();
+            boolean folded = fold != null;
+            dropFold();
+            List<String> lines = new ArrayList<>(Arrays.asList(state.text().split("\n", -1)));
+            lines.add(row + 1, lines.get(row));
+            state.setText(String.join("\n", lines));
+            position(row + 1, column);
+            if (folded) { foldImports(); }
+        });
+    }
+
     /** Replaces the whole text as one undoable step; the cursor keeps its place when the text still has it. */
     void replaceText(String replacement) {
         mutate(() -> {

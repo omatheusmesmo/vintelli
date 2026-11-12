@@ -162,7 +162,7 @@ class KeymapTest {
                 "problems.navigate", "problems.refresh", "problems.select-next", "problems.select-previous",
                 "problems.filter-all", "problems.filter-errors", "problems.filter-warnings",
                 "editor_open", "editor_save", "editor_undo", "editor_redo", "editor_find",
-                "editor_cut", "editor_copy", "editor_paste",
+                "editor_cut", "editor_copy", "editor_paste", "editor_duplicateLine",
                 "editor_close", "editor_nextTab", "editor_previousTab", "editor_definition",
                 "editor_usages", "editor_nextProblem", "editor_toggleImportFold", "editor_toggleBreakpoint",
                 "navigation_goToFile", "navigation_findInFiles",
@@ -432,6 +432,30 @@ class KeymapTest {
         assertFalse(vim.matches(keypress('b', KeyModifiers.CTRL), KeyActions.DEFINITION),
                 "the aligned chords stay out of the vim profile");
         assertFalse(vim.matches(KeyEvent.ofKey(KeyCode.F6, KeyModifiers.SHIFT), KeyActions.PROJECT_RENAME));
+    }
+
+    @Test
+    void ctrlDDuplicatesTheLineOnlyInTheIntellijProfile() {
+        Keymap keymap = Keymap.ofProfile(KeymapProfile.DEFAULT, WINDOWS);
+
+        assertTrue(keymap.matches(keypress('d', KeyModifiers.CTRL), KeyActions.DUPLICATE_LINE));
+        assertTrue(keymap.matchesReserved(keypress('d', KeyModifiers.CTRL), KeyActions.DUPLICATE_LINE),
+                "Ctrl+D keeps reaching the shell while the editor captures the keyboard");
+        Set<String> answering = new LinkedHashSet<>();
+        for (KeyAction action : keymap.actions()) {
+            if (keymap.matches(keypress('d', KeyModifiers.CTRL), action.id())) {
+                answering.add(action.id());
+            }
+        }
+        assertEquals(Set.of(KeyActions.DUPLICATE_LINE), answering, "no other action answers Ctrl+D");
+    }
+
+    @Test
+    void vimProfileBindsNothingToDuplicateLine() {
+        Keymap vim = Keymap.ofProfile(KeymapProfile.VIM, WINDOWS);
+
+        assertFalse(vim.isBound(KeyActions.DUPLICATE_LINE));
+        assertFalse(vim.matches(keypress('d', KeyModifiers.CTRL), KeyActions.DUPLICATE_LINE));
     }
 
     private static void assertNoActionAnswers(Keymap keymap, KeyEvent event, String description) {

@@ -432,7 +432,7 @@ final class EditorElement implements Element {
 
     private static boolean reserved(KeyEvent event) {
         if (event.hasAlt()) { return true; }
-        if (event.hasCtrl() && "sz yf bwop".replace(" ", "").indexOf(Character.toLowerCase(event.character())) >= 0) { return true; }
+        if (event.hasCtrl() && "sz yf bwopd".replace(" ", "").indexOf(Character.toLowerCase(event.character())) >= 0) { return true; }
         return event.isKey(KeyCode.F1) || event.isKey(KeyCode.F2) || event.isKey(KeyCode.F4) || event.isKey(KeyCode.F8)
                 || event.isKey(KeyCode.F10) || event.isKey(KeyCode.F12);
     }

@@ -396,6 +396,15 @@ final class EditorController {
         }
     }
 
+    private void duplicateLine() {
+        if (editor == null) {
+            host.status("Built-in editor unavailable");
+        } else {
+            editor.duplicateLine();
+            host.status(editor.status());
+        }
+    }
+
     private void toggleBreakpoint() {
         if (editor == null || !editor.toggleBreakpointAtCaret()) {
             host.status("Open a project file to toggle a breakpoint");
@@ -488,6 +497,11 @@ final class EditorController {
             case KeyActions.NEXT_PROBLEM -> {
                 closeOverlays.run();
                 nextProblem();
+                yield true;
+            }
+            case KeyActions.DUPLICATE_LINE -> {
+                closeOverlays.run();
+                duplicateLine();
                 yield true;
             }
             default -> false;

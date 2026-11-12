@@ -4890,6 +4890,44 @@ class VintelliShellTest {
     }
 
     @Test
+    void pilotCtrlDDuplicatesTheCaretLineAndOneCtrlZRemovesTheCopy() throws Exception {
+        EditorShell fixture = openEditorShell("Duplicate.txt", "alpha\nbeta\ngamma\n", 1);
+        try (ToolkitTestRunner test = runShell(fixture.shell())) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+            fixture.editor().requestFocus();
+            settle(pilot);
+
+            pressCtrl(pilot, 'd');
+            settle(pilot);
+            assertEquals("alpha\nbeta\nbeta\ngamma\n", fixture.editor().activeDocument().orElseThrow().text());
+            assertEquals("Line duplicated", fixture.shell().status());
+            assertTrue(fixture.editor().activeDocument().orElseThrow().dirty());
+
+            pressCtrl(pilot, 'z');
+            settle(pilot);
+            assertEquals("alpha\nbeta\ngamma\n", fixture.editor().activeDocument().orElseThrow().text(),
+                    "one undo removes the copy alone");
+            assertFalse(fixture.editor().activeDocument().orElseThrow().dirty());
+        }
+    }
+
+    @Test
+    void pilotCtrlDOnTheLastLineWithoutANewlineKeepsTheDocumentEndAsItWas() throws Exception {
+        EditorShell fixture = openEditorShell("Tail.txt", "alpha\nbeta", 1);
+        try (ToolkitTestRunner test = runShell(fixture.shell())) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+            fixture.editor().requestFocus();
+            settle(pilot);
+
+            pressCtrl(pilot, 'd');
+            settle(pilot);
+            assertEquals("alpha\nbeta\nbeta", fixture.editor().activeDocument().orElseThrow().text());
+        }
+    }
+
+    @Test
     void pilotClipboardStatesTheEditorOnlyFallbackWithoutASystemClipboard() throws Exception {
         EditorShell fixture = openEditorShell("Local.txt", "alpha beta\n", 0);
         fixture.clipboard().available = false;
