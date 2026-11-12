@@ -14,6 +14,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -123,7 +125,12 @@ public final class AcpTerminalRegistry {
     }
 
     public AcpSchema.KillTerminalCommandResponse kill(String terminalId) {
-        destroyProcessTree(find(terminalId).process);
+        Terminal terminal = find(terminalId);
+        try {
+            destroyProcessTree(terminal.process);
+        } finally {
+            terminal.awaitCapture();
+        }
         return new AcpSchema.KillTerminalCommandResponse();
     }
 
@@ -132,7 +139,11 @@ public final class AcpTerminalRegistry {
         if (terminal == null) {
             throw new IllegalArgumentException("unknown terminal " + terminalId);
         }
-        destroyProcessTree(terminal.process);
+        try {
+            destroyProcessTree(terminal.process);
+        } finally {
+            terminal.awaitCapture();
+        }
         return new AcpSchema.ReleaseTerminalResponse();
     }
 
@@ -160,19 +171,54 @@ public final class AcpTerminalRegistry {
     }
 
     private void destroyProcessTree(Process process) {
-        process.descendants().forEach(ProcessHandle::destroyForcibly);
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        List<ProcessHandle> descendants = process.descendants().toList();
+        descendants.stream()
+                .sorted((left, right) -> Integer.compare(processDepth(right), processDepth(left)))
+                .forEach(ProcessHandle::destroyForcibly);
+        try {
+            for (ProcessHandle descendant : descendants) {
+                awaitExit(descendant, deadline);
+            }
+        } catch (ExecutionException | TimeoutException failure) {
+            process.destroyForcibly();
+            try {
+                process.waitFor(Math.max(0, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+            throw new IllegalStateException("terminal descendant did not exit after being forcibly destroyed", failure);
+        } catch (InterruptedException interrupted) {
+            process.destroyForcibly();
+            Thread.currentThread().interrupt();
+            return;
+        }
         process.destroyForcibly();
         try {
-            process.waitFor(5, TimeUnit.SECONDS);
+            if (!process.waitFor(Math.max(0, deadline - System.nanoTime()), TimeUnit.NANOSECONDS)) {
+                throw new IllegalStateException("terminal process did not exit after being forcibly destroyed");
+            }
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
         }
-        for (ProcessHandle descendant : process.descendants().toList()) {
-            try {
-                descendant.onExit().get(5, TimeUnit.SECONDS);
-            } catch (Exception ignored) {
-            }
+    }
+
+    private static int processDepth(ProcessHandle process) {
+        int depth = 0;
+        var parent = process.parent();
+        while (parent.isPresent()) {
+            depth++;
+            parent = parent.get().parent();
         }
+        return depth;
+    }
+
+    private static void awaitExit(ProcessHandle process, long deadline)
+            throws InterruptedException, ExecutionException, TimeoutException {
+        if (!process.isAlive()) {
+            return;
+        }
+        process.onExit().get(Math.max(0, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);
     }
 
     public int size() {
