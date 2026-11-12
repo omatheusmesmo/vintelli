@@ -49,7 +49,7 @@ public final class MenuPopup {
         return MenuController.labelOffset(menus, index, originX);
     }
 
-    /** Width of one menu label including its padding cell on each side. */
+    /** Terminal cells of one menu label, its text measured by display width, plus a padding cell on each side. */
     public static int labelWidth(String menu) {
         return MenuController.labelWidth(menu);
     }
