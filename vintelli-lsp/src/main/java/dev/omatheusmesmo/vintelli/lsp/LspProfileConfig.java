@@ -40,6 +40,15 @@ public interface LspProfileConfig {
     boolean debugEndpointEnabled();
 
     /**
+     * Whether a language server named {@code jdtls} is looked up on {@code PATH}
+     * when no profile is configured. Any configured profile disables the lookup,
+     * and nothing is searched until a language feature asks for the server.
+     */
+    @WithName("discovery.enabled")
+    @WithDefault("true")
+    boolean discoveryEnabled();
+
+    /**
      * One language server: command and arguments, the workspace root passed as
      * {@code rootUri} and {@code initializationOptions}, raw JSON, handed over
      * untouched in the initialize request.

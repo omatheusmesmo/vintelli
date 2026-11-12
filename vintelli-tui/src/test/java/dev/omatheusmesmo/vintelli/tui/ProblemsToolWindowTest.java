@@ -217,6 +217,29 @@ class ProblemsToolWindowTest {
     }
 
     @Test
+    void aMissingLanguageServerIsNamedOnceWithTheInstallStep() throws Exception {
+        ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
+        BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
+        ProblemsToolWindow window = new ProblemsToolWindow(new TestRegistry(null,
+                "no healthy provider for 'diagnostics': idea (disconnected: not connected yet), lsp (No language "
+                        + "server found. Install jdtls and put it on the PATH, or set "
+                        + "vintelli.lsp.profiles.<name>.command (see docs/language-servers.md).)"), editor, () -> themes);
+        Rect area = new Rect(0, 0, 200, 6);
+        window.refresh();
+        String sentence = "No language server found. Install jdtls and put it on the PATH, or set "
+                + "vintelli.lsp.profiles.<name>.command (see docs/language-servers.md).";
+        assertTrue(awaitRender(window, area, sentence));
+
+        String rendered = render(window, area);
+
+        assertEquals(1, occurrences(rendered, sentence), rendered);
+        assertEquals(0, occurrences(rendered, "Diagnostics provider not ready"), rendered);
+        assertEquals(0, occurrences(rendered, "no healthy provider"), rendered);
+        assertEquals(0, occurrences(rendered, "not connected yet"), rendered);
+        window.close();
+    }
+
+    @Test
     void unavailableStateNamesTheReasonOnceAndTheHeaderOnlyTheStatus() throws Exception {
         ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
         BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
@@ -367,7 +390,12 @@ class ProblemsToolWindowTest {
 
     static final class TestRegistry implements CapabilityRegistry {
         private volatile DiagnosticsCapability diagnostics;
-        TestRegistry(DiagnosticsCapability diagnostics) { this.diagnostics = diagnostics; }
+        private final String reason;
+        TestRegistry(DiagnosticsCapability diagnostics) { this(diagnostics, "not available in test"); }
+        TestRegistry(DiagnosticsCapability diagnostics, String reason) {
+            this.diagnostics = diagnostics;
+            this.reason = reason;
+        }
         void select(DiagnosticsCapability next) { diagnostics = next; }
         @Override public CapabilitySelection<RunCapability> run() { return unavailable(CapabilityType.RUN); }
         @Override public CapabilitySelection<TerminalCapability> terminal() { return unavailable(CapabilityType.TERMINAL); }
@@ -382,13 +410,13 @@ class ProblemsToolWindowTest {
         @Override public CapabilitySelection<VersionControlCapability> versionControl() { return unavailable(CapabilityType.VERSION_CONTROL); }
         @Override public List<CapabilityStatus> snapshot() {
             return diagnostics == null
-                    ? List.of(CapabilityStatus.unavailable(CapabilityType.DIAGNOSTICS, "not available in test"))
+                    ? List.of(CapabilityStatus.unavailable(CapabilityType.DIAGNOSTICS, reason))
                     : List.of(CapabilityStatus.available(CapabilityType.DIAGNOSTICS, diagnostics.identifier(),
                             diagnostics.provenance(), List.of()));
         }
 
-        private static <T> CapabilitySelection<T> unavailable(CapabilityType capability) {
-            return CapabilitySelection.unavailable(capability, "not available in test");
+        private <T> CapabilitySelection<T> unavailable(CapabilityType capability) {
+            return CapabilitySelection.unavailable(capability, reason);
         }
     }
 }

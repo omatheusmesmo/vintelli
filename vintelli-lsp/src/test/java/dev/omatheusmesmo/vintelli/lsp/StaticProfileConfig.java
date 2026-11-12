@@ -47,5 +47,10 @@ final class StaticProfileConfig {
         public boolean debugEndpointEnabled() {
             return false;
         }
+
+        @Override
+        public boolean discoveryEnabled() {
+            return true;
+        }
     }
 }

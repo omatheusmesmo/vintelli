@@ -221,11 +221,12 @@ last. Provider selections are read from the live capability registry.
 Capability states: the Run, Terminal and Problems tool windows use the same
 wording as the provider popup, and the project pane footer shows the Read File
 state. The text is read from the registry snapshot off the render thread. The
-active provider reads `Problems: jdtls (jdtls over stdio)`. An unavailable Problems
+active provider reads `Problems: jdtls (jdtls over stdio)`, or `Problems: jdtls
+(found on PATH over stdio)` when the server was discovered. An unavailable Problems
 window shows one line instead of the registry wording, with the reason and the
-next step, for example `No diagnostics provider configured. Set
-vintelli.lsp.profiles.jdtls.command=jdtls, then restart Vintelli
-(docs/language-servers.md).`. Each higher ranked provider that was passed over reads `skipped idea: not
+next step, for example `No language server found. Install jdtls and put it on the
+PATH, or set vintelli.lsp.profiles.<name>.command (see docs/language-servers.md).`.
+Each higher ranked provider that was passed over reads `skipped idea: not
 connected`: in Problems and Run it is its own line, in Terminal it is its own
 line while no session runs, and in the project pane footer the skipped entries
 share one line. The first state appears asynchronously after start. Problems

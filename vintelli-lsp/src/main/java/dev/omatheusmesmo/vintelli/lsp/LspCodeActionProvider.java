@@ -37,7 +37,7 @@ public final class LspCodeActionProvider implements CodeActionCapability {
 
     @Override
     public String provenance() {
-        return client.activeProfileName().orElse("lsp") + " over stdio";
+        return client.activeProvenance();
     }
 
     @Override

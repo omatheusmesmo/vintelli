@@ -38,8 +38,8 @@ class ProblemsToolWindowStatesInteractionTest {
     private static final Size VIEWPORT = new Size(100, 24);
     private static final Duration WAIT = Duration.ofSeconds(3);
     private static final String REGISTRY_REASON = "no healthy provider for 'diagnostics': "
-            + "idea (disconnected: not connected yet), lsp (no language server profile is configured; set "
-            + "vintelli.lsp.profiles.<name>.command, for example vintelli.lsp.profiles.jdtls.command=jdtls)";
+            + "idea (disconnected: not connected yet), lsp (No language server found. Install jdtls and put it on "
+            + "the PATH, or set vintelli.lsp.profiles.<name>.command (see docs/language-servers.md).)";
 
     @TempDir
     Path project;
@@ -53,14 +53,14 @@ class ProblemsToolWindowStatesInteractionTest {
                 Optional.empty()), themes, registry)) {
             fixture.press('6', KeyModifiers.ALT);
 
-            assertTrue(fixture.await(() -> windowText(fixture).contains("No diagnostics provider configured"),
-                    WAIT), windowText(fixture));
+            assertTrue(fixture.await(() -> windowText(fixture).contains("No language server found"), WAIT),
+                    windowText(fixture));
             String screen = windowText(fixture);
-            assertTrue(screen.contains("vintelli.lsp.profiles.jdtls.command=jdtls"), screen);
+            assertTrue(screen.contains("docs/language-servers.md"), screen);
             assertTrue(screen.contains("Problems Unavailable"), screen);
             assertEquals(0, occurrences(screen, "no healthy provider"), screen);
             assertEquals(0, occurrences(screen, "not connected yet"), screen);
-            assertEquals(1, occurrences(screen, "No diagnostics provider configured"), screen);
+            assertEquals(1, occurrences(screen, "No language server found"), screen);
         }
     }
 

@@ -51,6 +51,49 @@ over HTTP for the native ITs, which run against the fake language server of
 `vintelli-lsp`; they answer 404 unless
 `vintelli.lsp.debug-endpoint.enabled=true`.
 
+## Discovery
+
+Without any `vintelli.lsp.profiles.<name>` key, Vintelli looks for a Java
+language server on `PATH`. The lookup runs only when a language feature asks for
+the server: Problems, quick fixes and call hierarchy. Nothing is started, and the
+lookup itself only checks files. The status line also reads provider health, so
+it may perform the `PATH` check on its first read; no process starts for it.
+
+The executable is `jdtls`. On Windows the candidates are `jdtls.cmd`,
+`jdtls.bat` and `jdtls.exe`, in that order. The first candidate that is an
+executable file on `PATH` wins, and a file without the executable bit is
+skipped. The discovered server runs as an implicit profile named `jdtls`:
+
+- command: the absolute path of the executable found on `PATH`;
+- arguments: `-data` and the data directory described below;
+- workspace root: the directory Vintelli was started in;
+- Java: no `java.min-version` and no `java.home`, so the server uses the Java
+  runtime its own launcher finds (`JAVA_HOME`, then `java` on `PATH`).
+
+The data directory is `vintelli/jdtls-data/<key>` under the user cache: under
+`$XDG_CACHE_HOME` or `~/.cache` on Linux, `~/Library/Caches` on macOS and
+`%LOCALAPPDATA%` on Windows. The key is the first 16 hex digits of the SHA-256 of
+the project root path, so every project keeps its own index. Vintelli does not
+create the directory; jdt.ls does.
+
+Explicit configuration always wins. Any configured profile disables discovery
+entirely, and `vintelli.lsp.discovery.enabled=false` turns it off (it is on by
+default):
+
+```properties
+vintelli.lsp.discovery.enabled=false
+```
+
+When no profile is configured and no `jdtls` is found, the Problems window shows
+one line with the next step: `No language server found. Install jdtls and put it
+on the PATH, or set vintelli.lsp.profiles.<name>.command (see
+docs/language-servers.md).` The provider label reads `jdtls (found on PATH over
+stdio)` when the discovered server serves, so the window shows why it runs.
+
+Discovery provides no Java debugging: the Java Debug Adapter still needs an
+explicit profile with the debug bundle, as described below. Compiler output from
+the Run tool is not turned into diagnostics; that is a follow-up.
+
 ## Java Debug Adapter
 
 The optional `java-dap` provider uses the Java Debug Adapter as a jdtls extension.

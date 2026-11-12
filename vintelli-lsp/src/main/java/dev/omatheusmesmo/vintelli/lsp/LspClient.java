@@ -68,13 +68,20 @@ public final class LspClient implements AutoCloseable, JavaDebugAdapterPort {
     private static final String START_DEBUG_SESSION_COMMAND = "vscode.java.startDebugSession";
 
     private final LspProfileConfig profiles;
+    private final LanguageServerDiscovery discovery;
     private final Object lock = new Object();
     private volatile LspServerSession session;
     private volatile Optional<String> runtimeFailure = Optional.empty();
 
     @Inject
     LspClient(LspProfileConfig profiles) {
+        this(profiles, LanguageServerDiscovery.system(profiles.discoveryEnabled(),
+                Path.of(System.getProperty("user.dir"))));
+    }
+
+    LspClient(LspProfileConfig profiles, LanguageServerDiscovery discovery) {
         this.profiles = profiles;
+        this.discovery = discovery;
         checkRuntime();
     }
 
@@ -356,6 +363,19 @@ public final class LspClient implements AutoCloseable, JavaDebugAdapterPort {
             return Optional.of(selection.profile());
         }
         return Optional.empty();
+    }
+
+    /**
+     * @return how the active server was picked: the configured profile, or the
+     *         {@code jdtls} executable found on {@code PATH}, or a plain
+     *         {@code lsp} label while no server is selected
+     */
+    public String activeProvenance() {
+        Selection selection = selection();
+        if (selection.profile() == null) {
+            return "lsp over stdio";
+        }
+        return selection.discovered() ? "found on PATH over stdio" : selection.profile() + " over stdio";
     }
 
     @Override
@@ -680,6 +700,9 @@ public final class LspClient implements AutoCloseable, JavaDebugAdapterPort {
      * the files of the Java installation.
      */
     private Selection selection() {
+        if (profiles.profiles().isEmpty()) {
+            return discoveredSelection();
+        }
         Selection configured = configuredSelection();
         Optional<String> failure = runtimeFailure;
         if (configured.failure() == null && failure.isPresent()) {
@@ -713,12 +736,22 @@ public final class LspClient implements AutoCloseable, JavaDebugAdapterPort {
                 : JavaRuntimeRequirement.failure(configured.profile(), configured.settings(), System.getenv());
     }
 
+    /**
+     * The selection without any configured profile: the language server found on
+     * {@code PATH}, or the one-line reason when none is found. It runs only when a
+     * health read or a request asks for the server.
+     */
+    private Selection discoveredSelection() {
+        return discovery.discover()
+                .map(found -> Selection.discovered(LanguageServerDiscovery.PROFILE, found.profile(),
+                        found.executable()))
+                .orElseGet(() -> Selection.unavailable(LanguageServerDiscovery.NO_SERVER_REASON));
+    }
+
     private Selection configuredSelection() {
         Map<String, LspProfileConfig.Profile> configured = profiles.profiles();
         if (configured.isEmpty()) {
-            return Selection.unavailable("no language server profile is configured; set "
-                    + "vintelli.lsp.profiles.<name>.command, for example "
-                    + "vintelli.lsp.profiles.jdtls.command=jdtls");
+            return Selection.unavailable(LanguageServerDiscovery.NO_SERVER_REASON);
         }
         String picked = profiles.profile().orElse(null);
         if (picked != null) {
@@ -780,14 +813,19 @@ public final class LspClient implements AutoCloseable, JavaDebugAdapterPort {
      * The configuration read of one selection: {@code profile} and
      * {@code executable} are non null with an empty {@code failure}.
      */
-    record Selection(String profile, LspProfileConfig.Profile settings, Path executable, String failure) {
+    record Selection(String profile, LspProfileConfig.Profile settings, Path executable, String failure,
+            boolean discovered) {
 
         static Selection available(String profile, LspProfileConfig.Profile settings, Path executable) {
-            return new Selection(profile, settings, executable, null);
+            return new Selection(profile, settings, executable, null, false);
+        }
+
+        static Selection discovered(String profile, LspProfileConfig.Profile settings, Path executable) {
+            return new Selection(profile, settings, executable, null, true);
         }
 
         static Selection unavailable(String failure) {
-            return new Selection(null, null, null, Objects.requireNonNull(failure));
+            return new Selection(null, null, null, Objects.requireNonNull(failure), false);
         }
     }
 }
