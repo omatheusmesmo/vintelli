@@ -116,6 +116,7 @@ is unchanged and keeps the chords these actions had before.
 | `project_rename` (Rename Project Entry) | `Shift+F6` | `Shift+F6` | `F2` |
 | `project_select_opened_file` (Select Opened File) | `Alt+F1` | `Alt+F1` | `F3` |
 | `editor_duplicateLine` (Duplicate Line) | `Ctrl+D` | `Ctrl+D` | none, the `vim` profile binds nothing here |
+| `navigation_goToLine` (Go to Line) | `Ctrl+G` | `Ctrl+G` | none, `vim` binds `Alt+G` (new) |
 
 Decisions behind the table:
 
@@ -206,6 +207,25 @@ table below:
 The search is literal and case-sensitive. The caret keys do not move the caret
 in the text while the row is open, so close it with `Escape` first. `Find in
 Files` (`Alt+F`) keeps opening the project search.
+
+## Go to Line
+
+`Go to Line` (`Ctrl+G` in the `intellij` profile, `Alt+G` in `vim`, and the
+Navigate menu or the command palette in both) opens a one-line input in a
+small panel over the editor. It takes a line, or a line and a column, counted
+from 1 as in IntelliJ:
+
+| Input | Caret |
+|---|---|
+| `42` | Line 42, column 1 |
+| `42:7` | Line 42, column 7 |
+
+A number past the end goes to the last line, and a column past the end goes
+to the end of that line. `0`, a negative, empty or non numeric input keeps the
+panel open with a message and leaves the caret where it was. `Enter` confirms
+and returns the focus to the text, `Escape` cancels and does the same. The
+status line shows the new position, and a target inside a folded import block
+expands the block to reach it.
 
 ## IntelliJ comparison table
 

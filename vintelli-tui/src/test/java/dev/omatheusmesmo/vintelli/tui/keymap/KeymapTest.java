@@ -165,7 +165,7 @@ class KeymapTest {
                 "editor_cut", "editor_copy", "editor_paste", "editor_duplicateLine",
                 "editor_close", "editor_nextTab", "editor_previousTab", "editor_definition",
                 "editor_usages", "editor_nextProblem", "editor_toggleImportFold", "editor_toggleBreakpoint",
-                "navigation_goToFile", "navigation_findInFiles",
+                "navigation_goToFile", "navigation_findInFiles", "navigation_goToLine",
                 "navigation_focusBreadcrumbs",
                 "layout_project_wider", "layout_project_narrower", "layout_bottom_taller", "layout_bottom_shorter",
                 "shell.theme.switch", "shell.settings", "project_new_file", "project_new_directory", "project_rename",
@@ -401,6 +401,21 @@ class KeymapTest {
         assertTrue(keymap.matches(KeyEvent.ofKey(KeyCode.LEFT, KeyModifiers.ALT), KeyActions.PREVIOUS_TAB));
         assertTrue(keymap.matches(KeyEvent.ofKey(KeyCode.F1, KeyModifiers.ALT), KeyActions.PROJECT_SELECT_OPENED_FILE));
         assertTrue(keymap.matches(KeyEvent.ofKey(KeyCode.F6, KeyModifiers.SHIFT), KeyActions.PROJECT_RENAME));
+    }
+
+    @Test
+    void ctrlGGoesToLineInTheIntellijProfileAndAltGInVim() {
+        Keymap intellij = Keymap.ofProfile(KeymapProfile.DEFAULT, WINDOWS);
+        Keymap vim = Keymap.ofProfile(KeymapProfile.VIM, WINDOWS);
+
+        assertTrue(intellij.matches(keypress('g', KeyModifiers.CTRL), KeyActions.GO_TO_LINE),
+                "Ctrl+G is Go to Line in the intellij profile");
+        assertTrue(intellij.matchesReserved(keypress('g', KeyModifiers.CTRL), KeyActions.GO_TO_LINE),
+                "Ctrl+G still reaches the shell while an input has focus");
+        assertFalse(vim.matches(keypress('g', KeyModifiers.CTRL), KeyActions.GO_TO_LINE),
+                "the vim profile does not take Ctrl+G");
+        assertTrue(vim.matches(KeyEvent.ofChar('g', KeyModifiers.ALT), KeyActions.GO_TO_LINE),
+                "Alt+G is Go to Line in the vim profile, which had no Alt+G");
     }
 
     @Test

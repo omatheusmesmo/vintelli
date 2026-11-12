@@ -13,6 +13,8 @@ import dev.omatheusmesmo.vintelli.tui.keymap.KeymapHelpOverlay;
 import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeymapRegistry;
 import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
+import dev.omatheusmesmo.vintelli.tui.editor.GoToLine;
+import dev.omatheusmesmo.vintelli.tui.editor.GoToLineOverlay;
 import dev.omatheusmesmo.vintelli.tui.menu.MenuPopup;
 import dev.omatheusmesmo.vintelli.tui.OverlayStack.Kind;
 import dev.omatheusmesmo.vintelli.tui.layout.ShellLayout;
@@ -133,7 +135,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
      */
     private record KeymapParts(Keymap keymap, CommandPalette commandPalette, KeymapHelpOverlay keymapHelp,
             MenuPopup menuPopup, ProjectSearchModel searchModel, ProjectSearchOverlay searchOverlay,
-            OverlayStack stack, RunConfigurationChooser runConfigurations) {
+            OverlayStack stack, RunConfigurationChooser runConfigurations, GoToLineOverlay goToLine) {
     }
 
     private final ShellThemes themes;
@@ -331,14 +333,16 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 MainToolbar.MENU_ORIGIN);
         ProjectSearchOverlay searchOverlay = searchModel == null ? null : new ProjectSearchOverlay(searchModel);
         OverlayStack stack = new OverlayStack();
+        GoToLineOverlay goToLine = new GoToLineOverlay();
         RunConfigurationChooser runConfigurations = new RunConfigurationChooser(
                 () -> runWindow == null ? List.of() : runWindow.configurations());
         KeymapParts built = new KeymapParts(keymap, commandPalette, keymapHelp, menuPopup, searchModel,
-                searchOverlay, stack, runConfigurations);
+                searchOverlay, stack, runConfigurations, goToLine);
         stack.registerOverlay(Kind.COMMAND_PALETTE, commandPalette::isOpen, commandPalette::close);
         stack.registerOverlay(Kind.KEYMAP_HELP, keymapHelp::isOpen, keymapHelp::close);
         stack.registerOverlay(Kind.MENU, menuPopup::isOpen, () -> closeMenu(built));
         stack.registerOverlay(Kind.RUN_CONFIGURATION, runConfigurations::isOpen, runConfigurations::close);
+        stack.registerOverlay(Kind.GO_TO_LINE, goToLine::isOpen, () -> closeGoToLine(goToLine));
         if (searchModel != null) {
             stack.registerOverlay(Kind.PROJECT_SEARCH, searchModel::isOpen, searchModel::close);
         }
@@ -1022,6 +1026,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             case RUN_CONFIGURATION -> new OverlayElement(RunConfigurationChooser.ID,
                     (frame, area) -> parts.runConfigurations().render(frame, area, mainToolbar.configurationColumn()));
             case PROJECT_SEARCH -> new OverlayElement("project-search", parts.searchOverlay()::render);
+            case GO_TO_LINE -> new OverlayElement("go-to-line", parts.goToLine()::render);
             default -> throw new IllegalStateException("Not a drawn overlay: " + kind);
         };
     }
@@ -1065,6 +1070,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             if (mouse.isClick()) {
                 parts.stack().close(Kind.KEYMAP_HELP);
             }
+            return EventResult.HANDLED;
+        }
+        if (top == Kind.GO_TO_LINE) {
             return EventResult.HANDLED;
         }
         if (top == Kind.RUN_CONFIGURATION) {
@@ -1211,6 +1219,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                     .ifPresent(identifier -> selectRunConfiguration(parts, identifier));
             case PROJECT_SEARCH -> parts.searchOverlay().handleKey(key)
                     .ifPresent(target -> editorController.openRevealed(target.file(), target.line()));
+            case GO_TO_LINE -> handleGoToLineKey(parts, key);
             default -> throw new IllegalStateException("Not a drawn overlay: " + overlay);
         }
     }
@@ -1461,6 +1470,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 parts.stack().closeOverlays();
                 openSearch(parts, ProjectSearchModel.Mode.FILES);
             }
+            case KeyActions.GO_TO_LINE -> {
+                parts.stack().closeOverlays();
+                openGoToLine(parts);
+            }
             case KeyActions.PROJECT_WIDER -> {
                 parts.stack().closeOverlays();
                 paneLayout.resizeProject(2);
@@ -1523,6 +1536,44 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         inputCaptured = true;
         capturedWindow = editor;
         status = editor.status();
+    }
+
+    private void openGoToLine(KeymapParts parts) {
+        if (editor == null || !editor.hasDocument()) {
+            status = "Open a file to go to a line in";
+            return;
+        }
+        inputCaptured = false;
+        parts.stack().open(Kind.GO_TO_LINE, () -> openGoToLineInput(parts.goToLine()));
+        status = parts.goToLine().status();
+    }
+
+    private void openGoToLineInput(GoToLineOverlay overlay) {
+        overlay.open();
+        if (editor != null) {
+            editor.overlayInputActive(true);
+        }
+    }
+
+    private void closeGoToLine(GoToLineOverlay overlay) {
+        overlay.close();
+        if (editor != null) {
+            editor.overlayInputActive(false);
+        }
+    }
+
+    private void handleGoToLineKey(KeymapParts parts, KeyEvent key) {
+        GoToLineOverlay overlay = parts.goToLine();
+        Optional<GoToLine> target = overlay.handleKey(key);
+        if (overlay.isOpen()) {
+            status = overlay.status();
+            return;
+        }
+        target.ifPresent(position -> editor.goToLine(position.line(), position.column()));
+        editor.overlayInputActive(false);
+        editor.requestFocus();
+        inputCaptured = false;
+        status = target.isPresent() ? editor.status() : "Go to Line closed";
     }
 
     private void focusProjectPanel() {

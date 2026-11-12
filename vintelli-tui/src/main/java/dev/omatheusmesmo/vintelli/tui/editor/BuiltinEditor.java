@@ -84,6 +84,7 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     private String status = "Open a file from Project or Go to File";
     private boolean sessionLoaded;
     private boolean menuNavigationActive;
+    private boolean overlayInputActive;
     private String focusRequest;
     private Map<String, VersionControlCapability.State> vcsStates = Map.of();
     private Map<String, Set<Integer>> vcsChangedLines = Map.of();
@@ -212,6 +213,9 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     }
     public synchronized void menuNavigationActive(boolean active) { menuNavigationActive = active; }
     synchronized boolean menuNavigationActive() { return menuNavigationActive; }
+    /** True while a shell overlay that takes typed text is open, so the text area yields every key to the shell. */
+    public synchronized void overlayInputActive(boolean active) { overlayInputActive = active; }
+    synchronized boolean overlayInputActive() { return overlayInputActive; }
     public synchronized Path project() { return project; }
     public synchronized String status() { return status; }
     synchronized ShellEditorPalette palette() { return palette.get(); }
@@ -582,6 +586,18 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
         document.duplicateLine();
         changed();
         status = "Line duplicated";
+    }
+
+    /** Moves the caret to a one based line and column, clamped to the document; false when no file is open. */
+    public synchronized boolean goToLine(int line, int column) {
+        EditorDocument document = document();
+        if (document == null) {
+            status = "No file is open";
+            return false;
+        }
+        document.goTo(line - 1, column - 1);
+        status = "Line " + (document.row() + 1) + ", column " + (document.column() + 1);
+        return true;
     }
 
     public synchronized boolean toggleImportFold() {

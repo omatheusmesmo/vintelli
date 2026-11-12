@@ -5043,6 +5043,127 @@ class VintelliShellTest {
         pilot.mouseRelease(MouseButton.LEFT, endX, endY);
     }
 
+    @Test
+    void pilotCtrlGTypedLineAndColumnMovesTheCaretAndTheStatusBarTogether() throws Exception {
+        EditorShell fixture = openEditorShell("Jump.txt", numberedLines(40), 0);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            fixture.editor().requestFocus();
+            settle(pilot);
+
+            pressCtrl(pilot, 'g');
+            settle(pilot);
+            assertTrue(test.renderedFrame().contains("Line or line:column"), "Ctrl+G opens the input");
+            type(pilot, "30:4");
+            pilot.press(KeyCode.ENTER);
+            settle(pilot);
+
+            assertEquals(29, fixture.editor().activeDocument().orElseThrow().line(), "zero based document row");
+            assertEquals(3, fixture.editor().activeDocument().orElseThrow().column());
+            BuiltinEditor.StatusBarInfo bar = fixture.editor().statusBarInfo().orElseThrow();
+            assertEquals(30, bar.line());
+            assertEquals(4, bar.column());
+            assertTrue(test.renderedFrame().contains("30:4"), "the status bar shows the new caret");
+            assertFalse(test.renderedFrame().contains("Line or line:column"), "Enter closes the input");
+            assertEquals(BuiltinEditor.TEXT_AREA_ID, test.runner().focusManager().focusedId(),
+                    "Enter returns the focus to the editor");
+        }
+    }
+
+    @Test
+    void pilotGoToLineClampsPastTheEndAndEscapeCancelsAndReturnsFocus() throws Exception {
+        EditorShell fixture = openEditorShell("Clamp.txt", "alpha\nbeta", 0);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            fixture.editor().requestFocus();
+            settle(pilot);
+
+            pressCtrl(pilot, 'g');
+            settle(pilot);
+            type(pilot, "999:999");
+            pilot.press(KeyCode.ENTER);
+            settle(pilot);
+            assertEquals(2, fixture.editor().statusBarInfo().orElseThrow().line(), "clamped to the last line");
+            assertEquals(5, fixture.editor().statusBarInfo().orElseThrow().column(), "clamped to the line length");
+
+            pressCtrl(pilot, 'g');
+            settle(pilot);
+            type(pilot, "1");
+            pilot.press(KeyCode.ESCAPE);
+            settle(pilot);
+
+            assertFalse(test.renderedFrame().contains("Line or line:column"), "Escape closes the input");
+            assertEquals(2, fixture.editor().statusBarInfo().orElseThrow().line(), "Escape moves nothing");
+            assertEquals(BuiltinEditor.TEXT_AREA_ID, test.runner().focusManager().focusedId(),
+                    "Escape returns the focus to the editor");
+        }
+    }
+
+    @Test
+    void pilotInvalidGoToLineShowsAMessageKeepsTheCaretAndStaysOpen() throws Exception {
+        EditorShell fixture = openEditorShell("Invalid.txt", numberedLines(10), 3);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            fixture.editor().requestFocus();
+            settle(pilot);
+            BuiltinEditor.StatusBarInfo before = fixture.editor().statusBarInfo().orElseThrow();
+
+            pressCtrl(pilot, 'g');
+            settle(pilot);
+            type(pilot, "0");
+            pilot.press(KeyCode.ENTER);
+            settle(pilot);
+
+            assertTrue(test.renderedFrame().contains("Not a position"), "the refusal is shown");
+            assertTrue(test.renderedFrame().contains("Go to Line"), "the input stays open to correct the number");
+            assertEquals(before, fixture.editor().statusBarInfo().orElseThrow(), "the caret did not move");
+            pilot.press(KeyCode.ESCAPE);
+            settle(pilot);
+        }
+    }
+
+    @Test
+    void pilotGoToLineBelowAFoldedImportBlockKeepsTheBlockFolded() throws Exception {
+        String source = "package a;\n\nimport x.A;\nimport x.B;\n\nclass C {\n  int v;\n}\n";
+        EditorShell fixture = openEditorShell("Folded.java", source, 0);
+        assertTrue(fixture.editor().toggleImportFold(), "the import block folds");
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            fixture.editor().requestFocus();
+            settle(pilot);
+
+            pressCtrl(pilot, 'g');
+            settle(pilot);
+            type(pilot, "7:3");
+            pilot.press(KeyCode.ENTER);
+            settle(pilot);
+
+            assertTrue(test.renderedFrame().contains("import ..."), "the block stays folded");
+            assertTrue(test.renderedFrame().contains("int v;"), "the view follows the caret below the fold");
+            assertEquals(6, fixture.editor().activeDocument().orElseThrow().line());
+            assertEquals(7, fixture.editor().statusBarInfo().orElseThrow().line());
+            assertEquals(3, fixture.editor().statusBarInfo().orElseThrow().column());
+        }
+    }
+
+    @Test
+    void pilotCtrlGStillOpensGoToLineWhileTheFindRowCapturesTheKeyboard() throws Exception {
+        EditorShell fixture = openEditorShell("Capture.txt", numberedLines(5), 0);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            fixture.editor().requestFocus();
+            settle(pilot);
+            pressCtrl(pilot, 'f');
+            settle(pilot);
+
+            pressCtrl(pilot, 'g');
+            settle(pilot);
+
+            assertTrue(test.renderedFrame().contains("Line or line:column"),
+                    "the reserved chord reaches the shell while the find row captures input");
+        }
+    }
+
     private static void pressCtrl(Pilot pilot, char key) {
         pilot.press(key, KeyModifiers.CTRL);
     }
