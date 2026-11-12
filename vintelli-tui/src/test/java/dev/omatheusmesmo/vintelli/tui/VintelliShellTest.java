@@ -3099,7 +3099,7 @@ class VintelliShellTest {
     }
 
     @Test
-    void pilotDragKeepsTheAnchorAfterWheelScrollingAndClampsToTheVisibleText() throws Exception {
+    void pilotDragKeepsTheAnchorAfterWheelScrollingAndScrollsOneRowBelowTheText() throws Exception {
         EditorShell fixture = openEditorShell("Long.txt", numberedLines(40), 0);
         try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
             Pilot pilot = test.pilot();
@@ -3116,10 +3116,118 @@ class VintelliShellTest {
 
             BuiltinEditor.PointerState selected = fixture.editor().pointerState().orElseThrow();
             assertEquals(scrolled + 1, selected.anchorLine(), "the anchor is the row under the press after scrolling");
-            assertEquals(scrolled + text.height() - 1, selected.line(),
-                    "a drag below the text clamps to the last visible row");
+            assertEquals(scrolled + 1, selected.scrollRow(), "a drag below the text scrolls the document one row");
+            assertEquals(scrolled + text.height(), selected.line(),
+                    "the selection end is the last visible row after that one-row scroll");
             assertEquals(2, selected.column(), "the column follows the pointer x inside the text area");
             assertTrue(selected.selectedText().startsWith("ine "), selected.selectedText());
+        }
+    }
+
+    @Test
+    void pilotDragBelowTheTextScrollsOneRowPerDragEventAndKeepsTheAnchor() throws Exception {
+        EditorShell fixture = openEditorShell("DragDown.txt", numberedLines(40), 0);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect text = pilot.findElement(BuiltinEditor.TEXT_AREA_ID);
+            int below = text.y() + text.height();
+            pilot.mousePress(MouseButton.LEFT, text.x() + 1, text.y() + 1);
+
+            test.drag(MouseEvent.drag(MouseButton.LEFT, text.x() + 2, below));
+            settle(pilot);
+            BuiltinEditor.PointerState first = fixture.editor().pointerState().orElseThrow();
+            assertEquals(1, first.scrollRow(), "one drag event below the text scrolls the document one row");
+            assertEquals(text.height(), first.line(), "the selection end moves to the new last visible row");
+
+            test.drag(MouseEvent.drag(MouseButton.LEFT, text.x() + 2, below));
+            test.drag(MouseEvent.drag(MouseButton.LEFT, text.x() + 2, below));
+            pilot.mouseRelease(MouseButton.LEFT, text.x() + 2, below);
+            settle(pilot);
+
+            BuiltinEditor.PointerState selected = fixture.editor().pointerState().orElseThrow();
+            assertEquals(3, selected.scrollRow(), "each drag event below the text scrolls one more row");
+            assertEquals(3 + text.height() - 1, selected.line(), "the selection end follows the last visible row");
+            assertEquals(1, selected.anchorLine(), "the anchor stays on the row where the drag started");
+            assertEquals(1, selected.anchorColumn(), "the anchor column stays where the drag started");
+            assertTrue(selected.selectedText().startsWith("ine 2\n"), selected.selectedText());
+        }
+    }
+
+    @Test
+    void pilotDragAboveTheTextScrollsOneRowUpPerDragEventAndKeepsTheAnchor() throws Exception {
+        EditorShell fixture = openEditorShell("DragUp.txt", numberedLines(40), 0);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect text = pilot.findElement(BuiltinEditor.TEXT_AREA_ID);
+            for (int step = 0; step < 4; step++) {
+                test.drag(MouseEvent.scrollDown(text.x() + 5, text.y() + 1));
+            }
+            settle(pilot);
+            assertEquals(12, fixture.editor().pointerState().orElseThrow().scrollRow(), "four wheel steps move twelve rows");
+            pilot.mousePress(MouseButton.LEFT, text.x() + 1, text.y() + 2);
+
+            test.drag(MouseEvent.drag(MouseButton.LEFT, text.x() + 2, text.y() - 1));
+            settle(pilot);
+            BuiltinEditor.PointerState first = fixture.editor().pointerState().orElseThrow();
+            assertEquals(11, first.scrollRow(), "one drag event above the text scrolls the document one row up");
+            assertEquals(11, first.line(), "the selection end moves to the new first visible row");
+
+            test.drag(MouseEvent.drag(MouseButton.LEFT, text.x() + 2, text.y() - 1));
+            test.drag(MouseEvent.drag(MouseButton.LEFT, text.x() + 2, text.y() - 1));
+            pilot.mouseRelease(MouseButton.LEFT, text.x() + 2, text.y() - 1);
+            settle(pilot);
+
+            BuiltinEditor.PointerState selected = fixture.editor().pointerState().orElseThrow();
+            assertEquals(9, selected.scrollRow(), "each drag event above the text scrolls one more row up");
+            assertEquals(9, selected.line(), "the selection end follows the first visible row");
+            assertEquals(14, selected.anchorLine(), "the anchor stays on the row where the drag started");
+            assertEquals(1, selected.anchorColumn(), "the anchor column stays where the drag started");
+        }
+    }
+
+    @Test
+    void pilotDragBelowTheLastLineStopsScrollingAtTheEndOfTheDocument() throws Exception {
+        EditorShell fixture = openEditorShell("DragEnd.txt", numberedLines(40), 0);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect text = pilot.findElement(BuiltinEditor.TEXT_AREA_ID);
+            int below = text.y() + text.height();
+            int lastScroll = 41 - text.height();
+            pilot.mousePress(MouseButton.LEFT, text.x() + 1, text.y() + 1);
+
+            for (int step = 0; step < 60; step++) {
+                test.drag(MouseEvent.drag(MouseButton.LEFT, text.x() + 2, below));
+            }
+            pilot.mouseRelease(MouseButton.LEFT, text.x() + 2, below);
+            settle(pilot);
+
+            BuiltinEditor.PointerState selected = fixture.editor().pointerState().orElseThrow();
+            assertEquals(lastScroll, selected.scrollRow(), "scrolling stops once the last line is at the bottom");
+            assertEquals(40, selected.line(), "the selection ends on the last line of the document");
+            assertEquals(1, selected.anchorLine(), "the anchor stays on the row where the drag started");
+        }
+    }
+
+    @Test
+    void pilotDragAboveTheFirstLineStopsScrollingAtTheStartOfTheDocument() throws Exception {
+        EditorShell fixture = openEditorShell("DragStart.txt", numberedLines(40), 0);
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            Rect text = pilot.findElement(BuiltinEditor.TEXT_AREA_ID);
+            test.drag(MouseEvent.scrollDown(text.x() + 5, text.y() + 1));
+            settle(pilot);
+            pilot.mousePress(MouseButton.LEFT, text.x() + 1, text.y() + 2);
+
+            for (int step = 0; step < 5; step++) {
+                test.drag(MouseEvent.drag(MouseButton.LEFT, text.x() + 2, text.y() - 1));
+            }
+            pilot.mouseRelease(MouseButton.LEFT, text.x() + 2, text.y() - 1);
+            settle(pilot);
+
+            BuiltinEditor.PointerState selected = fixture.editor().pointerState().orElseThrow();
+            assertEquals(0, selected.scrollRow(), "scrolling up stops at the first row of the document");
+            assertEquals(0, selected.line(), "the selection end is the first line of the document");
+            assertEquals(5, selected.anchorLine(), "the anchor stays on the row where the drag started");
         }
     }
 

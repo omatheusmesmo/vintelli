@@ -271,7 +271,7 @@ chords, and an action without a chord has no row.
 definition, `Alt+F7` requests references, and `F2` moves to the next diagnostic, and `Alt+I` folds or unfolds the import block.
 In the editor, a left click places the caret on the character under the pointer
 and focuses the editor. Drag with the left button to select text; releasing ends
-the drag, and moving the caret or editing clears the selection. The mouse wheel
+the drag, and moving the caret or editing clears the selection. Dragging past the top or bottom edge of the text scrolls the document one row per move, so a selection can extend beyond one screen. The mouse wheel
 scrolls the document under the pointer by three rows without moving the caret,
 and the next key press brings the caret back into view. Clicks on the line
 numbers, the tab bar and the breadcrumbs do not move the caret. The editor has

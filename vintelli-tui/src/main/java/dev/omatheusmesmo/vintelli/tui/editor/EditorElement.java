@@ -323,6 +323,7 @@ final class EditorElement implements Element {
                     return true;
                 }
                 if (event.kind() == MouseEventKind.DRAG && event.isLeftButton()) {
+                    scrollDragEdge(document, event.y());
                     TextPosition at = textPosition(document, event.x(), event.y());
                     document.pointerDrag(at.row(), at.column());
                     return true;
@@ -355,6 +356,27 @@ final class EditorElement implements Element {
             }
             return false;
         }
+    }
+
+    private void scrollDragEdge(EditorDocument document, int y) {
+        int rows = dragScrollRows(y, textBody);
+        if (rows != 0) {
+            document.scrollBy(rows, textBody.height());
+        }
+    }
+
+    /**
+     * The document rows to scroll for a drag event at {@code y}: one row up above the text area,
+     * one row down below it, and none inside it. {@link EditorDocument#scrollBy} clamps at both ends.
+     */
+    static int dragScrollRows(int y, Rect body) {
+        if (body.isEmpty()) {
+            return 0;
+        }
+        if (y < body.y()) {
+            return -1;
+        }
+        return y >= body.bottom() ? 1 : 0;
     }
 
     void cancelPointer() {
