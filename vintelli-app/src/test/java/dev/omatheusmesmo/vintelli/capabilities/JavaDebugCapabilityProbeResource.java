@@ -51,8 +51,10 @@ public final class JavaDebugCapabilityProbeResource implements QuarkusTestResour
             }
             Path bundle = renamedBundle(projectRoot);
             String options = "{\"bundles\":[\"" + json(bundle.toString()) + "\"]}";
-            String lspArguments = "-cp," + FakeLspServer.classpath() + "," + FakeLspServer.class.getName()
-                    + ",--java-debug,--dap-port=" + adapter.port();
+            Path lspArgumentFile = projectRoot.resolve("debug-probe.args");
+            Files.writeString(lspArgumentFile, "-cp\n" + quote(FakeLspServer.classpath()) + "\n"
+                    + FakeLspServer.class.getName() + "\n--java-debug\n--dap-port=" + adapter.port() + "\n");
+            String lspArguments = "@" + lspArgumentFile;
             return Map.ofEntries(
                     Map.entry("vintelli.inspect.enabled", "true"),
                     Map.entry("vintelli.debug.enabled", "true"),
