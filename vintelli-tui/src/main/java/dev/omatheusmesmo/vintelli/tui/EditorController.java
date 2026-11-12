@@ -36,6 +36,8 @@ final class EditorController {
 
         void refreshVcs();
 
+        void refreshDiagnostics();
+
         void refreshProjectTree();
 
         void requestProjectFocus();
@@ -243,6 +245,7 @@ final class EditorController {
             return;
         }
         host.refreshVcs();
+        host.refreshDiagnostics();
         host.status(editor.status());
     }
 
@@ -335,6 +338,9 @@ final class EditorController {
             return;
         }
         BuiltinEditor.CloseResult result = editor.closeActive();
+        if (result == BuiltinEditor.CloseResult.CLOSED) {
+            host.refreshDiagnostics();
+        }
         host.status(result == BuiltinEditor.CloseResult.CONFIRM_REQUIRED ? editor.status()
                 : result == BuiltinEditor.CloseResult.EMPTY ? "No editor tab is open" : "Tab closed");
     }
@@ -359,6 +365,7 @@ final class EditorController {
         }
         editor.save();
         host.refreshVcs();
+        host.refreshDiagnostics();
         host.status(editor.status());
     }
 

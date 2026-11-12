@@ -268,7 +268,19 @@ public final class ProblemsToolWindow implements ToolWindow {
         problems.clear();
         selection = Selection.ofProblem(0);
         scrollOffset = 0;
-        worker.execute(() -> load(request));
+        worker.execute(() -> load(request, false));
+    }
+
+    /**
+     * Reads the diagnostics of the open files again after an open, a save or a close, and pushes them to the editor.
+     * Unlike {@link #refresh()} the list and the selection stay on screen until the new read lands.
+     */
+    public synchronized void refreshInBackground() {
+        if (registry == null || editor == null) {
+            return;
+        }
+        long request = refreshSequence.incrementAndGet();
+        worker.execute(() -> load(request, true));
     }
 
     public synchronized List<Diagnostic> problems() {
@@ -283,7 +295,7 @@ public final class ProblemsToolWindow implements ToolWindow {
         worker.shutdownNow();
     }
 
-    private void load(long request) {
+    private void load(long request, boolean background) {
         CapabilityStateLine.Summary summary = CapabilityStateLine.read(registry, CapabilityType.DIAGNOSTICS,
                 ideaConfigured);
         synchronized (this) {
@@ -292,13 +304,13 @@ public final class ProblemsToolWindow implements ToolWindow {
             }
         }
         try {
-            loadDiagnostics(request);
+            loadDiagnostics(request, background);
         } catch (RuntimeException failure) {
             finishError(request, safeMessage(failure));
         }
     }
 
-    private void loadDiagnostics(long request) {
+    private void loadDiagnostics(long request, boolean background) {
         if (request != refreshSequence.get()) return;
         CapabilitySelection<DiagnosticsCapability> chosen = registry.diagnostics();
         if (chosen instanceof CapabilitySelection.Unavailable<DiagnosticsCapability> unavailable) {
@@ -312,6 +324,7 @@ public final class ProblemsToolWindow implements ToolWindow {
                 if (request != refreshSequence.get()) return;
                 state = State.EMPTY;
                 message = "Open files in the editor to inspect their diagnostics";
+                clearProblems();
             }
             return;
         }
@@ -338,10 +351,15 @@ public final class ProblemsToolWindow implements ToolWindow {
                 .thenComparingInt(Diagnostic::startLine).thenComparing(problem -> problem.severity().ordinal()));
         synchronized (this) {
             if (request != refreshSequence.get()) return;
+            Selection previous = selection;
             problems.clear();
             problems.addAll(collected);
-            selection = defaultSelection();
-            scrollOffset = 0;
+            if (background) {
+                selection = visibleEntries().contains(previous) ? previous : defaultSelection();
+            } else {
+                selection = defaultSelection();
+                scrollOffset = 0;
+            }
             if (!collected.isEmpty()) {
                 state = State.READY;
                 message = failures.isEmpty() ? "" : "Some files could not be checked: " + failures.getFirst();
@@ -352,6 +370,7 @@ public final class ProblemsToolWindow implements ToolWindow {
                 state = State.EMPTY;
                 message = "No problems in open files";
             }
+            editor.setDiagnostics(collected);
         }
     }
 
@@ -359,12 +378,22 @@ public final class ProblemsToolWindow implements ToolWindow {
         if (request != refreshSequence.get()) return;
         state = State.UNAVAILABLE;
         message = ProblemsStatusText.unavailable(reason, ideaConfigured);
+        clearProblems();
     }
 
     private synchronized void finishError(long request, String reason) {
         if (request != refreshSequence.get()) return;
         state = State.ERROR;
         message = "Diagnostics refresh failed: " + reason;
+        clearProblems();
+    }
+
+    /** Drops the listed problems and the editor's copies of them, so that the window and the editor agree. */
+    private void clearProblems() {
+        problems.clear();
+        selection = Selection.ofProblem(0);
+        scrollOffset = 0;
+        editor.setDiagnostics(List.of());
     }
 
     private List<ProblemRows.Row> buildRows(int width, Function<String, Style> roles) {

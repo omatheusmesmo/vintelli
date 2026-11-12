@@ -233,6 +233,54 @@ class ProblemsToolWindowTest {
         window.close();
     }
 
+    @Test
+    void refreshHandsEachOpenFilesProblemsToItsEditorAndClearsTheFilesWithNone() throws Exception {
+        Path broken = Files.writeString(project.resolve("Broken.java"), "class Broken {\n  void run() {}\n}\n");
+        Path clean = Files.writeString(project.resolve("Clean.java"), "class Clean {}\n");
+        ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
+        BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
+        editor.open(new EditorBridge.OpenRequest(broken, 0));
+        editor.open(new EditorBridge.OpenRequest(clean, 0));
+        Diagnostic problem = new Diagnostic(broken, 1, 2, 1, 6, Severity.ERROR, "jdtls", "bad method");
+        ProblemsToolWindow window = new ProblemsToolWindow(new TestRegistry(new TestDiagnostics(List.of(problem))),
+                editor, () -> themes);
+
+        window.refresh();
+        assertTrue(awaitDiagnostics(window, 1));
+
+        editor.selectTab(0);
+        assertEquals(List.of(problem), editor.diagnostics(), "the editor of the broken file paints the problem the window lists");
+        editor.selectTab(1);
+        assertEquals(List.of(), editor.diagnostics(), "a file the provider reports no problems for is cleared");
+        window.close();
+    }
+
+    @Test
+    void aProviderSwitchClearsTheProblemsPaintedInTheEditor() throws Exception {
+        Path file = Files.writeString(project.resolve("Broken.java"), "class Broken {\n  void run() {}\n}\n");
+        ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
+        BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
+        editor.open(new EditorBridge.OpenRequest(file, 0));
+        TestRegistry registry = new TestRegistry(new TestDiagnostics(List.of(
+                new Diagnostic(file, 1, 2, 1, 6, Severity.ERROR, "jdtls", "bad method"))));
+        ProblemsToolWindow window = new ProblemsToolWindow(registry, editor, () -> themes);
+        Rect area = new Rect(0, 0, 90, 6);
+        window.refresh();
+        assertTrue(awaitDiagnostics(window, 1));
+        assertEquals(1, editor.diagnostics().size());
+
+        registry.select(null);
+        window.refresh();
+        assertTrue(awaitRender(window, area, "Diagnostics unavailable"));
+        assertEquals(List.of(), editor.diagnostics(), "an unavailable provider leaves no problem in the editor");
+
+        registry.select(new TestDiagnostics(List.of()));
+        window.refresh();
+        assertTrue(awaitRender(window, area, "No problems in open files"));
+        assertEquals(List.of(), editor.diagnostics(), "a provider that knows no problem clears the editor");
+        window.close();
+    }
+
     private static boolean awaitDiagnostics(ProblemsToolWindow window, int expected) throws InterruptedException {
         long deadline = System.nanoTime() + 2_000_000_000L;
         while (window.problems().size() != expected && System.nanoTime() < deadline) {
@@ -289,9 +337,9 @@ class ProblemsToolWindowTest {
         return rows(buffer, area);
     }
 
-    private static final class TestDiagnostics implements DiagnosticsCapability {
+    static final class TestDiagnostics implements DiagnosticsCapability {
         private final List<Diagnostic> diagnostics;
-        private TestDiagnostics(List<Diagnostic> diagnostics) { this.diagnostics = diagnostics; }
+        TestDiagnostics(List<Diagnostic> diagnostics) { this.diagnostics = diagnostics; }
         @Override public String identifier() { return "jdtls"; }
         @Override public String provenance() { return "jdtls over stdio"; }
         @Override public ProviderHealth health() { return ProviderHealth.available(); }
@@ -317,9 +365,10 @@ class ProblemsToolWindowTest {
         }
     }
 
-    private static final class TestRegistry implements CapabilityRegistry {
-        private final DiagnosticsCapability diagnostics;
-        private TestRegistry(DiagnosticsCapability diagnostics) { this.diagnostics = diagnostics; }
+    static final class TestRegistry implements CapabilityRegistry {
+        private volatile DiagnosticsCapability diagnostics;
+        TestRegistry(DiagnosticsCapability diagnostics) { this.diagnostics = diagnostics; }
+        void select(DiagnosticsCapability next) { diagnostics = next; }
         @Override public CapabilitySelection<RunCapability> run() { return unavailable(CapabilityType.RUN); }
         @Override public CapabilitySelection<TerminalCapability> terminal() { return unavailable(CapabilityType.TERMINAL); }
         @Override public CapabilitySelection<ReadFileCapability> readFile() { return unavailable(CapabilityType.READ_FILE); }

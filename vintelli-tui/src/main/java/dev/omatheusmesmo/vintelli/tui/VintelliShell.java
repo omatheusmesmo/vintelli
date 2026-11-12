@@ -898,6 +898,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             }
 
             @Override
+            public void refreshDiagnostics() {
+                VintelliShell.this.refreshProblems();
+            }
+
+            @Override
             public void refreshProjectTree() {
                 VintelliShell.this.refreshProjectTree();
             }
@@ -1709,6 +1714,12 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     public void refreshVcs() {
         vcsActions.refresh();
+    }
+
+    private void refreshProblems() {
+        toolWindows.stream().filter(ProblemsToolWindow.class::isInstance)
+                .map(ProblemsToolWindow.class::cast)
+                .forEach(ProblemsToolWindow::refreshInBackground);
     }
 
     static Set<Integer> changedLines(String diffText) {
