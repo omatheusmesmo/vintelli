@@ -585,6 +585,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             }
 
             @Override
+            public boolean leftWindowsOpen() {
+                return !toolWindowHost.visibleWindows(ToolWindow.Anchor.LEFT).isEmpty();
+            }
+
+            @Override
             public boolean rightRegistered() {
                 return toolWindowHost.hasWindows(ToolWindow.Anchor.RIGHT);
             }
@@ -677,11 +682,14 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private Element leftStripe() {
         Row left = Toolkit.row().id("left-stripe");
         left.add(toolStripes.leftElement());
-        if (shellLayout.isProjectVisible()) {
+        boolean columnShown = paneLayout.leftColumnShown();
+        if (columnShown) {
             left.add(leftPanel());
+        } else {
+            toolWindowPanel.forgetTabs(ToolWindow.Anchor.LEFT);
         }
         paneSeparatorVertical = separator("pane-separator-vertical");
-        paneSeparatorVertical.length(shellLayout.isProjectVisible() ? PANE_SEPARATOR_WIDTH : 0);
+        paneSeparatorVertical.length(columnShown ? PANE_SEPARATOR_WIDTH : 0);
         left.add(paneSeparatorVertical);
         left.fill();
         return left;
@@ -690,10 +698,13 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private Element leftPanel() {
         List<ToolWindow> leftWindows = toolWindowHost.visibleWindows(ToolWindow.Anchor.LEFT);
         if (leftWindows.isEmpty()) {
+            toolWindowPanel.forgetTabs(ToolWindow.Anchor.LEFT);
             return projectPane();
         }
         Column column = Toolkit.column().id("left-panel");
-        column.add(projectPane());
+        if (shellLayout.isProjectVisible()) {
+            column.add(projectPane());
+        }
         column.add(toolWindowPanel.stripe(ToolWindow.Anchor.LEFT));
         column.fill();
         return column;
