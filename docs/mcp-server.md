@@ -34,6 +34,28 @@ frame, so no TamboUI type leaks into the MCP tools.
   editor panel; sizes are capped and control characters are stripped before
   rendering
 
+## Finding the instance for a project
+
+Once its HTTP server listens, every instance writes one record,
+`instances/<pid>.json`, under the per-user state directory: `$XDG_STATE_HOME/vintelli`
+on Linux, `~/Library/Application Support/vintelli` on macOS and
+`%LOCALAPPDATA%\vintelli` on Windows. The record holds the process id, the bound
+port, the host and the canonical `vintelli.local.project-root`. It contains no
+secrets, is created owner-only where the platform supports it, is replaced
+atomically, and is removed when the instance exits.
+
+A client picks the instance for its project by reading the records and taking
+the live one whose project root matches; its MCP endpoint is
+`http://<host>:<port>/mcp`. A record whose process is gone is stale: it is
+ignored and deleted when read, and a new start for the same process id replaces
+it. When several live instances own the same root, the most recently started one
+wins. Because a process id can be reused by an unrelated process, a client should
+confirm the endpoint with an MCP `initialize` before it trusts a record.
+
+Pinning `quarkus.http.port` stays the explicit override: the pinned port is
+written to the record as well, so a client that looks the project up finds the
+pinned instance the same way.
+
 ## Host and Origin guard
 
 A loopback bind does not stop DNS rebinding: a web page served from a hostile
