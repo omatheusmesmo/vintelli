@@ -11,12 +11,11 @@ import java.util.Locale;
  */
 final class ProblemsStatusText {
 
-    static final String NO_PROVIDER_LINE = "No diagnostics provider configured. Set "
-            + "vintelli.lsp.profiles.jdtls.command=jdtls, then restart Vintelli (docs/language-servers.md).";
+    static final String NO_PROVIDER_LINE = "No language server found. Install jdtls and put it on the PATH, or set "
+            + "vintelli.lsp.profiles.<name>.command (see docs/language-servers.md).";
 
     private static final String REGISTRY_PREFIX = "no healthy provider for '";
-    private static final String NO_LANGUAGE_SERVER = "no language server profile is configured";
-    private static final String ADD_LANGUAGE_SERVER = "Set vintelli.lsp.profiles.jdtls.command=jdtls to add one.";
+    private static final String NO_LANGUAGE_SERVER = "No language server found.";
     private static final String RETRY = "Press R to retry.";
 
     private ProblemsStatusText() {
@@ -44,8 +43,8 @@ final class ProblemsStatusText {
                 .reduce((left, right) -> left + " " + right)
                 .orElse("");
         boolean missingLanguageServer = relevant.stream().anyMatch(ProblemsStatusText::isUnconfigured);
-        String hint = missingLanguageServer ? " " + ADD_LANGUAGE_SERVER : "";
-        return "Diagnostics provider not ready. " + details + hint + " " + RETRY;
+        String nextStep = missingLanguageServer ? " " + NO_PROVIDER_LINE : "";
+        return "Diagnostics provider not ready. " + details + nextStep + " " + RETRY;
     }
 
     static String counts(int errors, int warnings, int others) {

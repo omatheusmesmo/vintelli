@@ -32,7 +32,7 @@ public final class LspNavigationProvider implements NavigationCapability {
 
     @Override
     public String provenance() {
-        return client.activeProfileName().orElse("lsp") + " over stdio";
+        return client.activeProvenance();
     }
 
     @Override

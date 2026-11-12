@@ -37,7 +37,7 @@ public final class LspDiagnosticsProvider implements DiagnosticsCapability {
 
     @Override
     public String provenance() {
-        return client.activeProfileName().orElse("lsp") + " over stdio";
+        return client.activeProvenance();
     }
 
     @Override
