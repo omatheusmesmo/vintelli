@@ -1,0 +1,36 @@
+---
+title: Vintelli
+description: A terminal IDE for Java with an IntelliJ IDEA-like layout. It runs with open tooling only, and IntelliJ IDEA is an optional extra.
+layout: base
+---
+<p class="lead">A terminal IDE for Java with an IntelliJ IDEA-like layout. It runs with open tooling only. IntelliJ IDEA is an optional extra.</p>
+
+<h2>Standalone first</h2>
+<p>Vintelli works without IntelliJ IDEA. Every capability has a standalone provider, and IDEA only adds its providers for Run, Terminal, Problems and call hierarchy when you connect it.</p>
+
+<h2>What it does</h2>
+<ul>
+  <li><strong>Work where you already are.</strong> A full IDE layout in your terminal, with no window to open.</li>
+  <li><strong>Native when you want it.</strong> With a GraalVM or Mandrel toolchain, the installer builds one binary that needs no JVM to run.</li>
+  <li><strong>Open tools by default.</strong> Maven, Gradle, terminal commands and Git (JGit) need no IDE.</li>
+  <li><strong>Commit from the shell.</strong> Stage or unstage the selected project file, write multiline commit messages, and amend the current commit after reviewing the staged-change summary.</li>
+  <li><strong>Start the application.</strong> Detect Quarkus, Spring Boot and configured Java application commands, and keep the choice per project.</li>
+  <li><strong>AI agents in a side panel.</strong> Choose OpenCode, Claude Code or pi over ACP, with executable availability shown before a session starts.</li>
+  <li><strong>Other agents can drive it.</strong> The MCP server reads the shell state and pushes highlights and diffs into the TUI.</li>
+  <li><strong>Language support over LSP.</strong> Configurable profiles, with jdtls as the first one.</li>
+  <li><strong>Familiar keys and colors.</strong> The <code>intellij</code> keymap is the default, and the themes come from IntelliJ IDEA's color files.</li>
+</ul>
+
+<h2>Try it</h2>
+<p>Vintelli is pre-release and has no published binary yet. The installer clones the repository, builds it and installs the <code>vintelli</code> command. You need git and JDK 25.</p>
+<pre><code>curl -fsSL https://raw.githubusercontent.com/omatheusmesmo/vintelli/main/scripts/install.sh | bash
+cd your-java-project
+vintelli</code></pre>
+
+<h2>Read more</h2>
+<ul>
+  <li><a href="{=site.url('/tour/')}">The tour</a>: the screens in both shipped themes.</li>
+  <li><a href="{=site.url('/keymap/')}">The keymap</a>: every named action and its chords.</li>
+  <li><a href="{=site.url('/decisions/')}">Decisions and measurements</a>: the spikes behind the design.</li>
+  <li><a href="https://github.com/omatheusmesmo/vintelli">The source on GitHub</a>, with the README and the docs.</li>
+</ul>

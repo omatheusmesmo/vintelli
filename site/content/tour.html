@@ -1,0 +1,52 @@
+---
+title: Tour
+description: The Vintelli screens in both shipped themes, rendered from a terminal capture.
+layout: base
+---
+<p class="note">The screenshots on this page are rendered HTML from a terminal capture, not a real terminal. The site workflow starts the TUI in tmux at 160 by 45 cells, takes each pane with its colors and converts it to HTML. Fonts, cursor and the exact glyph shapes of your own terminal will differ.</p>
+
+<p>Both shipped themes are shown for each screen: <code>darcula</code> (the classic IntelliJ Darcula chrome) and <code>dark</code> (the default, New UI Dark chrome). Press <kbd>Ctrl+T</kbd> to switch between them in the TUI.</p>
+
+<h2>Project</h2>
+<p>The default layout: the project pane on the left, the editor in the middle, and the tool window stripes around it. <kbd>Alt+1</kbd> focuses the project pane.</p>
+<h3>darcula</h3>
+{#include captures/project-darcula /}
+<h3>dark</h3>
+{#include captures/project-dark /}
+
+<h2>Go to File</h2>
+<p><kbd>Ctrl+O</kbd> opens Go to File. It is <kbd>Ctrl+O</kbd> here because a terminal sends the same bytes for IntelliJ's <kbd>Ctrl+Shift+N</kbd>.</p>
+<h3>darcula</h3>
+{#include captures/goto-file-darcula /}
+<h3>dark</h3>
+{#include captures/goto-file-dark /}
+
+<h2>Search Everywhere</h2>
+<p><kbd>Ctrl+P</kbd> opens the command palette, the stand-in for IntelliJ's Search Everywhere. It lists every action with its active chord and filters by label or action id.</p>
+<h3>darcula</h3>
+{#include captures/search-everywhere-darcula /}
+<h3>dark</h3>
+{#include captures/search-everywhere-dark /}
+
+<h2>Problems</h2>
+<p><kbd>Alt+6</kbd> activates the Problems tool window.</p>
+<h3>darcula</h3>
+{#include captures/problems-darcula /}
+<h3>dark</h3>
+{#include captures/problems-dark /}
+
+<h2>Maven</h2>
+<p><kbd>Alt+9</kbd> activates the Maven tool window, where the profiles are chosen per module.</p>
+<h3>darcula</h3>
+{#include captures/maven-darcula /}
+<h3>dark</h3>
+{#include captures/maven-dark /}
+
+<h2>Structure</h2>
+<p><kbd>Alt+7</kbd> activates the Structure tool window.</p>
+<h3>darcula</h3>
+{#include captures/structure-darcula /}
+<h3>dark</h3>
+{#include captures/structure-dark /}
+
+<p>The keys for every action are in the <a href="{=site.url('/keymap/')}">keymap</a>.</p>

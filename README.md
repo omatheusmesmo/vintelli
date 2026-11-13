@@ -132,6 +132,8 @@ The complete setup, the states and the CLI commands are in [IntelliJ IDEA as an 
 
 Start with [usage](docs/usage.md), the [keymap](docs/keymap.md) and [themes](docs/themes.md).
 
+The project site, with a tour of the screens, the keymap and the decisions, is at <https://omatheusmesmo.github.io/vintelli/>.
+
 <details>
 <summary>All documentation</summary>
 
