@@ -49,6 +49,7 @@ jobs:
             code:
               - '**'
               - '!docs/**'
+              - '!site/**'
               - '!**/*.md'
 
   test-jvm:

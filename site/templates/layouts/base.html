@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{=page.title} | Vintelli</title>
+  <meta name="description" content="{=page.description}">
+  <link rel="stylesheet" href="{=site.url('/css/site.css')}">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="{=site.url('/')}">Vintelli</a>
+    <nav>
+      <a href="{=site.url('/tour/')}">Tour</a>
+      <a href="{=site.url('/keymap/')}">Keymap</a>
+      <a href="{=site.url('/decisions/')}">Decisions</a>
+      <a href="https://github.com/omatheusmesmo/vintelli">Source</a>
+    </nav>
+  </header>
+  <main>
+    <h1>{=page.title}</h1>
+    {#insert /}
+  </main>
+  <footer class="site-footer">
+    <p>Vintelli is pre-release. The site is built from the repository by the site workflow.</p>
+  </footer>
+</body>
+</html>
