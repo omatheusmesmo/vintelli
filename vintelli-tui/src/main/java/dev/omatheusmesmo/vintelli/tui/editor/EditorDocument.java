@@ -18,6 +18,7 @@ import java.util.Arrays;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 
 /** One document owns its cursor, undo history and highlighting cache. Guarded by BuiltinEditor. */
 public final class EditorDocument {
@@ -86,9 +87,18 @@ public final class EditorDocument {
     int viewRow(int documentRow) { return fold == null ? documentRow : fold.hides(documentRow) ? -1 : fold.toView(documentRow); }
 
     boolean hasDiagnosticAt(int viewRow) {
+        return hasDiagnosticAt(viewRow, value -> true);
+    }
+
+    boolean hasDiagnosticAt(int viewRow, Predicate<Diagnostic> matching) {
         int first = documentRow(viewRow);
         int span = fold != null && viewRow == fold.start() ? fold.count() : 1;
-        return diagnostics.stream().anyMatch(value -> value.startLine() >= first && value.startLine() < first + span);
+        return diagnostics.stream().filter(matching)
+                .anyMatch(value -> value.startLine() >= first && value.startLine() < first + span);
+    }
+
+    boolean readOnly() {
+        return !Files.isWritable(file);
     }
     EditorSyntaxHighlighter highlighter() { return highlighter; }
 

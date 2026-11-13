@@ -2,6 +2,8 @@ package dev.omatheusmesmo.vintelli.tui.editor;
 
 import dev.omatheusmesmo.vintelli.api.ShellEditorPalette;
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability;
+import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Diagnostic;
+import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Severity;
 import dev.omatheusmesmo.vintelli.tui.VcsMarkers;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcon;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
@@ -296,11 +298,13 @@ final class EditorElement implements Element {
         int caret = document.state().cursorRow();
         Map<Integer, DebugCapability.SourceBreakpoint> breakpoints = editor.breakpoints(document);
         boolean ascii = editor.icons().mode() == IconMode.ASCII;
+        boolean hintAllowed = !document.readOnly();
         List<Line> lines = new ArrayList<>();
         int first = document.state().scrollRow();
         int end = Math.min(document.state().lineCount(), first + height);
         for (int row = first; row < end; row++) {
             boolean diagnostic = document.hasDiagnosticAt(row);
+            boolean quickFixHint = hintAllowed && row == caret && document.hasDiagnosticAt(row, EditorElement::suggestsFix);
             var breakpoint = breakpoints.get(document.documentRow(row));
             String marker;
             Style markerStyle = Style.EMPTY;
@@ -310,7 +314,7 @@ final class EditorElement implements Element {
                     case REJECTED -> { marker = ascii ? "! " : "× "; markerStyle = roleStyle(context, REJECTED_BREAKPOINT_ROLE); }
                     default -> { marker = ascii ? "o " : "◌ "; markerStyle = roleStyle(context, PENDING_BREAKPOINT_ROLE); }
                 }
-            } else if (diagnostic && row == caret) {
+            } else if (quickFixHint) {
                 marker = ascii ? QUICK_FIX_ASCII : QUICK_FIX;
                 markerStyle = roleStyle(context, QUICK_FIX_ROLE);
             } else {
@@ -326,6 +330,10 @@ final class EditorElement implements Element {
                     Span.raw(" ")));
         }
         return Text.from(lines);
+    }
+
+    private static boolean suggestsFix(Diagnostic value) {
+        return value.severity() == Severity.ERROR || value.severity() == Severity.WARNING;
     }
 
     static Style roleStyle(RenderContext context, String role) {

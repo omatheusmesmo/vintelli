@@ -494,7 +494,7 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
         }
         String lineSeparator = document.lineSeparator().equals("\r\n") ? "CRLF" : "LF";
         return Optional.of(new StatusBarInfo(document.row() + 1, document.column() + 1, "UTF-8", lineSeparator,
-                EditorIndent.describe(document.text()), !Files.isWritable(document.file())));
+                EditorIndent.describe(document.text()), document.readOnly()));
     }
 
     public synchronized List<TabView> tabs() {

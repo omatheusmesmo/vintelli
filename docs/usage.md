@@ -297,7 +297,7 @@ chords, and an action without a chord has no row.
 `Ctrl+O` opens Go to File, `Ctrl+G` goes to a line (`line` or `line:column`), `Alt+F` searches file contents, `Ctrl+B` requests a
 definition, `Alt+F7` requests references, and `F2` moves to the next diagnostic, and `Alt+I` folds or unfolds the import block.
 Alt+Enter asks the language server for quick fixes at the selection or the caret. A
-lightbulb (`*` in ASCII mode) marks the caret line when it has a diagnostic. The
+lightbulb (`*` in ASCII mode) marks the caret line when it has an error or a warning in an editable file; it does not ask the server, so Alt+Enter can still report no quick fixes. The
 popup lists the actions with their kinds: Up and Down move through them (wrapping at the
 ends), Enter applies the chosen action as one undo step (Ctrl+Z reverts it), a click selects a row
 and a second click applies it, and Escape closes the popup. An action that only runs a
