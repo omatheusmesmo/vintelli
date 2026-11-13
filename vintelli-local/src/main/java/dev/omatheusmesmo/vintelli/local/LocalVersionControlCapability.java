@@ -24,8 +24,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
-import org.eclipse.jgit.dircache.DirCache;
+import org.eclipse.jgit.diff.DiffEntry;
 import org.eclipse.jgit.diff.DiffFormatter;
+import org.eclipse.jgit.dircache.DirCache;
 import org.eclipse.jgit.errors.RepositoryNotFoundException;
 import org.eclipse.jgit.lib.BranchTrackingStatus;
 import org.eclipse.jgit.lib.Constants;
@@ -48,6 +49,7 @@ import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
+import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability.CommitAuthor;
 import dev.omatheusmesmo.vintelli.api.statusbar.StatusBarWidget;
 import io.quarkus.arc.Unremovable;
 import jakarta.annotation.PreDestroy;
@@ -83,6 +85,7 @@ public final class LocalVersionControlCapability implements VersionControlCapabi
     private static final String STAGE_FAILED = "The file could not be staged";
     private static final String UNSTAGE_FAILED = "The file could not be unstaged";
     private static final String COMMIT_FAILED = "The staged changes could not be committed";
+    private static final String AMEND_FAILED = "The current commit could not be amended";
     private static final String BRANCH_SWITCH_FAILED = "The local branch could not be checked out";
     private static final int MAX_COMMIT_MESSAGE_LENGTH = 1000;
     private static final int MAX_DIFF_BYTES = 256 * 1024;
@@ -228,6 +231,23 @@ public final class LocalVersionControlCapability implements VersionControlCapabi
     }
 
     @Override
+    public CapabilityResult<String> diffStaged() {
+        return withRepository(this::diffStaged);
+    }
+
+    @Override
+    public CapabilityResult<Optional<CommitAuthor>> configuredCommitAuthor() {
+        return withRepository((repository, projectPrefix) -> {
+            String name = repository.getConfig().getString("user", null, "name");
+            String email = repository.getConfig().getString("user", null, "email");
+            if (name == null || name.isBlank() || email == null || email.isBlank()) {
+                return CapabilityResult.ok(Optional.empty());
+            }
+            return CapabilityResult.ok(Optional.of(new CommitAuthor(name, email)));
+        });
+    }
+
+    @Override
     public CapabilityResult<Boolean> stage(Path path, boolean confirmed) {
         if (!confirmed) {
             return confirmationRequired();
@@ -278,24 +298,50 @@ public final class LocalVersionControlCapability implements VersionControlCapabi
 
     @Override
     public CapabilityResult<Boolean> commit(String message, boolean confirmed) {
+        return commit(message, null, false, confirmed);
+    }
+
+    @Override
+    public CapabilityResult<Boolean> commitAmend(String message, boolean confirmed) {
+        return commit(message, null, true, confirmed);
+    }
+
+    @Override
+    public CapabilityResult<Boolean> commit(String message, CommitAuthor author,
+            boolean amend, boolean confirmed) {
         if (!confirmed) {
             return confirmationRequired();
         }
         if (message == null || message.isBlank() || message.length() > MAX_COMMIT_MESSAGE_LENGTH) {
-            return CapabilityResult.failed(new CapabilityFailure(COMMIT_FAILED,
+            return CapabilityResult.failed(new CapabilityFailure(amend ? AMEND_FAILED : COMMIT_FAILED,
                     "The commit message must contain 1 to " + MAX_COMMIT_MESSAGE_LENGTH + " characters"));
         }
         return withRepository((repository, projectPrefix) -> {
             try {
+                if (amend && repository.resolve(Constants.HEAD) == null) {
+                    return CapabilityResult.failed(new CapabilityFailure(AMEND_FAILED,
+                            "There is no commit to amend"));
+                }
                 var status = Git.wrap(repository).status().call();
-                if (status.getAdded().isEmpty() && status.getChanged().isEmpty() && status.getRemoved().isEmpty()) {
+                boolean stagedChanges = !status.getAdded().isEmpty() || !status.getChanged().isEmpty()
+                        || !status.getRemoved().isEmpty();
+                if (!amend && !stagedChanges) {
                     return CapabilityResult.failed(new CapabilityFailure(COMMIT_FAILED,
                             "There are no staged changes to commit"));
                 }
-                Git.wrap(repository).commit().setMessage(message.strip()).call();
+                var command = Git.wrap(repository).commit().setMessage(message.strip()).setAmend(amend);
+                if (author != null) {
+                    command.setAuthor(author.name(), author.email());
+                    command.setCommitter(author.name(), author.email());
+                }
+                command.call();
                 return CapabilityResult.ok(true);
+            } catch (IOException failure) {
+                return CapabilityResult.failed(new CapabilityFailure(amend ? AMEND_FAILED : COMMIT_FAILED,
+                        messageOf(failure)));
             } catch (GitAPIException failure) {
-                return CapabilityResult.failed(new CapabilityFailure(COMMIT_FAILED, messageOf(failure)));
+                return CapabilityResult.failed(new CapabilityFailure(amend ? AMEND_FAILED : COMMIT_FAILED,
+                        messageOf(failure)));
             }
         });
     }
@@ -375,6 +421,28 @@ public final class LocalVersionControlCapability implements VersionControlCapabi
             }
         }
         return CapabilityResult.ok(new VersionControlCapability.Status(branch, ahead, behind, entries, truncated));
+    }
+
+    private CapabilityResult<String> diffStaged(Repository repository, String projectPrefix)
+            throws IOException, GitAPIException {
+        var output = new CappedOutputStream(MAX_DIFF_BYTES);
+        try (DiffFormatter formatter = new DiffFormatter(output)) {
+            formatter.setRepository(repository);
+            for (DiffEntry entry : Git.wrap(repository).diff().setCached(true).call()) {
+                String oldPath = entry.getOldPath();
+                String newPath = entry.getNewPath();
+                boolean oldInProject = oldPath.equals(DiffEntry.DEV_NULL)
+                        || relativeToProject(oldPath, projectPrefix).isPresent();
+                boolean newInProject = newPath.equals(DiffEntry.DEV_NULL)
+                        || relativeToProject(newPath, projectPrefix).isPresent();
+                if (oldInProject && newInProject
+                        && !(oldPath.equals(DiffEntry.DEV_NULL) && newPath.equals(DiffEntry.DEV_NULL))) {
+                    formatter.format(entry);
+                }
+            }
+        }
+        String diff = output.asString(StandardCharsets.UTF_8);
+        return CapabilityResult.ok(output.isTruncated() ? diff + "\n" + TRUNCATION_MARKER : diff);
     }
 
     /**

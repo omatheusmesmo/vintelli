@@ -3,6 +3,7 @@ package dev.omatheusmesmo.vintelli.api.capability;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Reads the state of the Git repository that contains the project: worktree
@@ -44,6 +45,24 @@ public interface VersionControlCapability extends ProviderDescriptor {
      */
     CapabilityResult<String> diffWorkingTree();
 
+    /**
+     * @return a unified diff of the index against {@code HEAD}. Providers
+     *         without a separate staged-diff implementation report a failure
+     *         rather than mixing unstaged changes into a commit summary
+     */
+    default CapabilityResult<String> diffStaged() {
+        return CapabilityResult.failed(new CapabilityFailure(
+                "Staged diff unavailable", "The provider does not support staged diffs"));
+    }
+
+    /**
+     * @return the author configured by Git for this repository, or an empty
+     *         value when the caller should ask the user for an identity
+     */
+    default CapabilityResult<Optional<CommitAuthor>> configuredCommitAuthor() {
+        return CapabilityResult.ok(Optional.empty());
+    }
+
     /** Adds one project file to the Git index after the caller confirms. */
     CapabilityResult<Boolean> stage(Path path, boolean confirmed);
 
@@ -52,6 +71,21 @@ public interface VersionControlCapability extends ProviderDescriptor {
 
     /** Commits the staged index with the supplied message after confirmation. */
     CapabilityResult<Boolean> commit(String message, boolean confirmed);
+
+    /** Replaces the current commit with the staged index and supplied message after confirmation. */
+    default CapabilityResult<Boolean> commitAmend(String message, boolean confirmed) {
+        return CapabilityResult.failed(new CapabilityFailure(
+                "Amend unavailable", "The provider does not support amending commits"));
+    }
+
+    /** Commits or amends, supplying an author only when Git has no configured identity. */
+    default CapabilityResult<Boolean> commit(String message, CommitAuthor author, boolean amend, boolean confirmed) {
+        if (author != null) {
+            return CapabilityResult.failed(new CapabilityFailure(
+                    "Commit author unavailable", "The provider does not support an author override"));
+        }
+        return amend ? commitAmend(message, confirmed) : commit(message, confirmed);
+    }
 
     /** Checks out an existing local branch without forcing worktree changes. */
     CapabilityResult<Boolean> switchBranch(String branch, boolean confirmed);
@@ -95,6 +129,20 @@ public interface VersionControlCapability extends ProviderDescriptor {
             Objects.requireNonNull(state, "state");
             if (path == null || path.isBlank()) {
                 throw new IllegalArgumentException("A worktree entry always has a project relative path");
+            }
+        }
+    }
+
+    /** Git author identity requested from the user when the repository has no configured identity. */
+    record CommitAuthor(String name, String email) {
+
+        public CommitAuthor {
+            Objects.requireNonNull(name, "name");
+            Objects.requireNonNull(email, "email");
+            name = name.strip();
+            email = email.strip();
+            if (name.isEmpty() || email.isEmpty()) {
+                throw new IllegalArgumentException("A commit author needs a name and email");
             }
         }
     }

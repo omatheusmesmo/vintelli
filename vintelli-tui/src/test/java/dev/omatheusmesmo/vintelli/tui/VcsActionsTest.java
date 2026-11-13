@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -57,10 +58,11 @@ class VcsActionsTest {
     void commitMessageIsConfirmedBeforeTheCommitRuns() throws InterruptedException {
         actions.requestCommit();
         typeText("fix");
-        assertEquals("Commit message: fix (Enter to continue, Esc cancels)", status.get());
+        assertEquals("Commit message: fix [Shift+Enter newline, Tab amend=off, Enter continue, Esc cancel]",
+                status.get());
 
         actions.handleVcsPromptKey(enter());
-        assertEquals("Commit 'fix'? [y/N]", status.get());
+        assertEquals("Commit 1 staged file (+1/-1 lines, amend off)? [y/N]", status.get());
         assertEquals(List.of(), vcs.commits);
 
         actions.handleVcsPromptKey(character('y'));
@@ -68,6 +70,71 @@ class VcsActionsTest {
         assertEquals(List.of("fix"), vcs.commits);
         assertEquals("Committed: fix", status.get());
         assertFalse(actions.promptOpen());
+    }
+
+    @Test
+    void commitMessageSupportsMultipleLinesAndAnAmendToggle() throws InterruptedException {
+        actions.requestCommit();
+        typeText("fix title");
+        actions.handleVcsPromptKey(shiftEnter());
+        typeText("detail");
+        actions.handleVcsPromptKey(toggleAmend());
+        assertEquals("Commit message: fix title\\ndetail [Shift+Enter newline, Tab amend=on, Enter continue, Esc cancel]",
+                status.get());
+
+        actions.handleVcsPromptKey(enter());
+        assertEquals("Commit 1 staged file (+1/-1 lines, amend on)? [y/N]", status.get());
+        actions.handleVcsPromptKey(character('y'));
+        awaitCondition(() -> !actions.writeInProgress());
+
+        assertEquals(List.of("fix title\ndetail"), vcs.commits);
+        assertEquals(List.of(true), vcs.amendments);
+        assertEquals("Amended commit: fix title detail", status.get());
+    }
+
+    @Test
+    void rejectsAWhitespaceOnlyMultilineCommitMessage() {
+        actions.requestCommit();
+        typeText("  ");
+        actions.handleVcsPromptKey(shiftEnter());
+        typeText(" \t ");
+        actions.handleVcsPromptKey(enter());
+
+        assertEquals("Commit message cannot be empty", status.get());
+        assertTrue(actions.promptOpen());
+        assertEquals(List.of(), vcs.commits);
+    }
+
+    @Test
+    void doesNotAskForAuthorWhenThereAreNoStagedChanges() {
+        vcs.configuredAuthor = Optional.empty();
+        vcs.stagedDiff = "";
+        actions.requestCommit();
+        typeText("fix");
+        actions.handleVcsPromptKey(enter());
+
+        assertEquals("There are no staged changes to commit", status.get());
+        assertFalse(actions.promptOpen());
+    }
+
+    @Test
+    void missingGitIdentityPromptsForNameAndEmailBeforeCommitConfirmation() throws InterruptedException {
+        vcs.configuredAuthor = Optional.empty();
+        actions.requestCommit();
+        typeText("fix");
+        actions.handleVcsPromptKey(enter());
+        assertEquals("Commit author name: (Enter to continue, Esc cancels)", status.get());
+        typeText("Matheus Oliveira");
+        actions.handleVcsPromptKey(enter());
+        assertEquals("Commit author email: (Enter to continue, Esc cancels)", status.get());
+        typeText("matheus@example.invalid");
+        actions.handleVcsPromptKey(enter());
+        assertEquals("Commit 1 staged file (+1/-1 lines, amend off)? [y/N]", status.get());
+
+        actions.handleVcsPromptKey(character('y'));
+        awaitCondition(() -> !actions.writeInProgress());
+        assertEquals(new VersionControlCapability.CommitAuthor("Matheus Oliveira", "matheus@example.invalid"),
+                vcs.authors.getFirst());
     }
 
     @Test
@@ -140,15 +207,23 @@ class VcsActionsTest {
     }
 
     private static PromptKey character(int codePoint) {
-        return new PromptKey(false, false, false, codePoint, true);
+        return new PromptKey(false, false, false, codePoint, true, false, false);
     }
 
     private static PromptKey enter() {
-        return new PromptKey(false, true, false, -1, false);
+        return new PromptKey(false, true, false, -1, false, false, false);
+    }
+
+    private static PromptKey shiftEnter() {
+        return new PromptKey(false, true, false, -1, false, true, false);
+    }
+
+    private static PromptKey toggleAmend() {
+        return new PromptKey(false, false, false, -1, false, false, true);
     }
 
     private static PromptKey escape() {
-        return new PromptKey(true, false, false, -1, false);
+        return new PromptKey(true, false, false, -1, false, false, false);
     }
 
     private static void awaitCondition(BooleanSupplier condition) throws InterruptedException {
@@ -161,6 +236,11 @@ class VcsActionsTest {
     private static final class FakeVcs implements VersionControlCapability {
 
         final List<String> commits = new CopyOnWriteArrayList<>();
+        final List<Boolean> amendments = new CopyOnWriteArrayList<>();
+        final List<VersionControlCapability.CommitAuthor> authors = new CopyOnWriteArrayList<>();
+        volatile Optional<VersionControlCapability.CommitAuthor> configuredAuthor = Optional.of(
+                new VersionControlCapability.CommitAuthor("Vintelli Test", "test@vintelli.invalid"));
+        volatile String stagedDiff = "diff --git a/file.txt b/file.txt\n-old\n+new\n";
         final List<String> switches = new CopyOnWriteArrayList<>();
         volatile CapabilityResult<Boolean> writeResult = CapabilityResult.ok(true);
         volatile String branch = "main";
@@ -192,6 +272,16 @@ class VcsActionsTest {
         }
 
         @Override
+        public CapabilityResult<String> diffStaged() {
+            return CapabilityResult.ok(stagedDiff);
+        }
+
+        @Override
+        public CapabilityResult<Optional<VersionControlCapability.CommitAuthor>> configuredCommitAuthor() {
+            return CapabilityResult.ok(configuredAuthor);
+        }
+
+        @Override
         public CapabilityResult<Boolean> stage(Path path, boolean confirmed) {
             return CapabilityResult.ok(false);
         }
@@ -204,6 +294,15 @@ class VcsActionsTest {
         @Override
         public CapabilityResult<Boolean> commit(String message, boolean confirmed) {
             commits.add(message);
+            return writeResult;
+        }
+
+        @Override
+        public CapabilityResult<Boolean> commit(String message, VersionControlCapability.CommitAuthor author,
+                boolean amend, boolean confirmed) {
+            commits.add(message);
+            if (author != null) { authors.add(author); }
+            amendments.add(amend);
             return writeResult;
         }
 

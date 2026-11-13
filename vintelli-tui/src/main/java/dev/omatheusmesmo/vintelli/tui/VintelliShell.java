@@ -1816,7 +1816,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         boolean character = key.code() == KeyCode.CHAR;
         return new VcsActions.PromptKey(key.isKey(KeyCode.ESCAPE), key.isKey(KeyCode.ENTER),
                 key.isKey(KeyCode.BACKSPACE), character ? key.codePoint() : -1,
-                character && !key.hasCtrl() && !key.hasAlt() && !Character.isISOControl(key.codePoint()));
+                character && !key.hasCtrl() && !key.hasAlt() && !Character.isISOControl(key.codePoint()),
+                key.isKey(KeyCode.ENTER) && key.hasShift(), key.isKey(KeyCode.TAB));
     }
 
     public void showVcsDiff() {
