@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -139,15 +140,16 @@ class AcpTerminalRegistryTest {
         String terminalId = registry.create(request).terminalId();
         Process process = registry.process(terminalId);
 
+        String leaf = windows ? "ping" : "sleep";
         List<ProcessHandle> captured = List.of();
-        long discoveryDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-        while (captured.isEmpty() && System.nanoTime() < discoveryDeadline) {
+        long discoveryDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
+        while (!includesLeaf(captured, leaf) && System.nanoTime() < discoveryDeadline) {
             captured = process.descendants().toList();
-            if (captured.isEmpty()) {
+            if (!includesLeaf(captured, leaf)) {
                 process.waitFor(10, TimeUnit.MILLISECONDS);
             }
         }
-        assertFalse(captured.isEmpty(), "expected a spawned grandchild");
+        assertTrue(includesLeaf(captured, leaf), "expected the whole process chain down to " + leaf);
 
         registry.kill(terminalId);
 
@@ -161,6 +163,12 @@ class AcpTerminalRegistryTest {
         }
         assertFalse(process.isAlive(), "terminal process should be dead");
         registry.release(terminalId);
+    }
+
+    private static boolean includesLeaf(List<ProcessHandle> handles, String leaf) {
+        return handles.stream().anyMatch(handle -> handle.info().command()
+                .map(command -> command.toLowerCase(Locale.ROOT).contains(leaf))
+                .orElse(true));
     }
 
     @RepeatedTest(10)
