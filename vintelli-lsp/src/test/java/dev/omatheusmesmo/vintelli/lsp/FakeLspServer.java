@@ -2,6 +2,7 @@ package dev.omatheusmesmo.vintelli.lsp;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -93,6 +94,8 @@ public final class FakeLspServer {
      * initialize, {@code --fail-initialize} refuses the initialize request,
      * {@code --trace-java-home} traces the {@code JAVA_HOME} the process got
      * and {@code --hold} turns the process into the holding child itself.
+     * {@code --publish-real-path} publishes the diagnostics under the real path
+     * of the document, as jdt.ls does when the workspace goes through a link.
      */
     public static void main(String[] args) throws Exception {
         if (List.of(args).contains("--hold")) {
@@ -259,7 +262,22 @@ public final class FakeLspServer {
         }
 
         void publish(String uri, List<Diagnostic> diagnostics) {
-            remoteClient.publishDiagnostics(new PublishDiagnosticsParams(uri, diagnostics));
+            remoteClient.publishDiagnostics(new PublishDiagnosticsParams(publishedUri(uri), diagnostics));
+        }
+
+        private String publishedUri(String uri) {
+            if (!arguments.contains("--publish-real-path")) {
+                return uri;
+            }
+            try {
+                Path path = Path.of(URI.create(uri));
+                Path real = Files.exists(path)
+                        ? path.toRealPath()
+                        : path.getParent().toRealPath().resolve(path.getFileName());
+                return real.toUri().toString();
+            } catch (IOException unresolvable) {
+                return uri;
+            }
         }
 
         String marker() {

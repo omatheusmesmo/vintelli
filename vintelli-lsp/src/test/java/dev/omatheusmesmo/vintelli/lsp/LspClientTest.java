@@ -21,6 +21,7 @@ import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * The generic client drives a real language server process (the fake server of
@@ -59,7 +60,7 @@ class LspClientTest {
             CapabilityResult<List<CodeReference>> definitions = client.definition(document(), 0, 0);
             assertFalse(definitions.isFailure(), definitions.toString());
             assertEquals(1, ok(definitions).size());
-            assertEquals(document().toAbsolutePath().toString(), ok(definitions).get(0).targetFile());
+            assertEquals(document().toRealPath().toString(), ok(definitions).get(0).targetFile());
             assertEquals(0, ok(definitions).get(0).startLine());
 
             CapabilityResult<List<CodeReference>> references = client.references(document(), 0, 0, false);
@@ -110,6 +111,43 @@ class LspClientTest {
             assertTraceContains(traceFile, "initialize", "didOpen", "didChange");
         }
         assertTraceContains(traceFile, "shutdown", "exit");
+    }
+
+    @Test
+    void diagnosticsPublishedUnderTheRealPathAreFoundThroughASymlinkedWorkspace() throws Exception {
+        Path link = symlinkToRealWorkspace();
+        Path requested = link.resolve("Fake.java");
+        Files.writeString(workspace.resolve("real").resolve("Fake.java"), "class Fake {}");
+        Path traceFile = trace("symlinked-diagnostics");
+        try (LspClient client = new LspClient(config(link, "unit",
+                fakeCommand(traceFile, PROFILE_MARKER, "--publish-real-path"), Optional.empty()))) {
+
+            CapabilityResult<List<DiagnosticsCapability.Diagnostic>> opened = client.diagnostics(requested);
+            assertFalse(opened.isFailure(), opened.toString());
+            assertEquals(requested, ok(opened).get(0).filePath());
+            assertEquals(DiagnosticsCapability.Severity.ERROR, ok(opened).get(0).severity());
+
+            CapabilityResult<List<DiagnosticsCapability.Diagnostic>> changed =
+                    client.modifyDocument(requested, "class Fake2 {}");
+            assertFalse(changed.isFailure(), changed.toString());
+            assertEquals(requested, ok(changed).get(0).filePath());
+            assertEquals("fake problem changed", ok(changed).get(0).message());
+
+            assertTraceContains(traceFile, "initialize", "didOpen", "didChange");
+        }
+        assertTraceContains(traceFile, "shutdown", "exit");
+    }
+
+    @Test
+    void aDocumentThatDoesNotExistYetIsIdentifiedUnderItsResolvedDirectory() throws Exception {
+        Path link = symlinkToRealWorkspace();
+        Path real = workspace.resolve("real").toRealPath();
+        Path missing = link.resolve("later").resolve("Later.java");
+
+        assertEquals(real.resolve("later").resolve("Later.java").toUri().toString(),
+                LspServerSession.uriFor(missing));
+        assertEquals(real.resolve("Fake.java").toUri().toString(),
+                LspServerSession.uriFor(link.resolve("Fake.java")));
     }
 
     @Test
@@ -468,9 +506,30 @@ class LspClientTest {
 
     private LspProfileConfig config(String name, List<String> command, Optional<String> initializationOptions)
             throws IOException {
+        return config(workspace, name, command, initializationOptions);
+    }
+
+    private static LspProfileConfig config(Path root, String name, List<String> command,
+            Optional<String> initializationOptions) {
         LspProfileConfig.Profile profile = new StaticProfileConfig.StaticProfile(command,
-                Optional.of(workspace.toString()), initializationOptions);
+                Optional.of(root.toString()), initializationOptions);
         return new StaticProfileConfig.StaticConfig(Optional.empty(), Map.of(name, profile));
+    }
+
+    /**
+     * A real directory {@code real} inside the temporary workspace and a link
+     * {@code link} to it. Creating the link needs a privilege some Windows
+     * accounts lack, so the test is skipped where the platform refuses it.
+     */
+    private Path symlinkToRealWorkspace() throws IOException {
+        Path real = Files.createDirectories(workspace.resolve("real"));
+        Path link = workspace.resolve("link");
+        try {
+            Files.createSymbolicLink(link, real);
+        } catch (IOException | UnsupportedOperationException notAllowed) {
+            assumeTrue(false, "symbolic links are not available here: " + notAllowed);
+        }
+        return link;
     }
 
     private static List<Thread> threadsNamedPrefix(String prefix) {
