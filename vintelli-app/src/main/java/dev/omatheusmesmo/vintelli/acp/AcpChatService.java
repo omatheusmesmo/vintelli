@@ -2,6 +2,8 @@ package dev.omatheusmesmo.vintelli.acp;
 
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -15,8 +17,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
+import com.agentclientprotocol.sdk.capabilities.NegotiatedCapabilities;
 import com.agentclientprotocol.sdk.client.AcpSyncClient;
 import com.agentclientprotocol.sdk.spec.AcpSchema;
 import dev.omatheusmesmo.vintelli.api.acp.AcpChatPort;
@@ -76,54 +80,33 @@ public final class AcpChatService implements AcpChatPort, AcpSessionIdsView {
     @Override
     public String openSession(String agentId, Consumer<Update> updates,
             Function<PermissionRequest, PermissionChoice> permissionHandler) {
-        catalog.require(agentId);
-        synchronized (lifecycleLock) {
-            if (shuttingDown) {
-                throw new IllegalStateException("ACP chat service is shutting down");
-            }
-            if (!isConfigured()) {
-                throw new IllegalStateException("ACP agent is not configured");
-            }
-        }
-        String id = UUID.randomUUID().toString();
-        Function<AcpSchema.RequestPermissionRequest, AcpSchema.RequestPermissionResponse> permission =
-                request -> answerPermission(request, permissionHandler);
-        AcpSyncClient client = agents.chatClient(agentId, notification -> {
-            AcpSchema.SessionUpdate update = notification.update();
-            if (update instanceof AcpSchema.AgentMessageChunk chunk
-                    && chunk.content() instanceof AcpSchema.TextContent content) {
-                updates.accept(new Message(content.text()));
-            } else if (update instanceof AcpSchema.ToolCall toolCall) {
-                updates.accept(toolCall(toolCall));
-            } else if (update instanceof AcpSchema.ToolCallUpdateNotification toolCall) {
-                updates.accept(toolCall(toolCall));
-            }
-        }, permission);
-        boolean registered;
-        synchronized (lifecycleLock) {
-            registered = !shuttingDown;
-            if (registered) {
-                clients.add(client);
-            }
-        }
-        if (!registered) {
-            client.close();
-            throw new IllegalStateException("ACP chat service is shutting down");
-        }
+        return openRemoteSession(agentId, updates, permissionHandler,
+                client -> client.newSession(new AcpSchema.NewSessionRequest(projectRoot.toString())).sessionId());
+    }
+
+    @Override
+    public List<SessionSummary> listSessions(String agentId) {
+        AcpSyncClient client = startClient(agentId, update -> { }, request -> PermissionChoice.cancel());
         try {
             AcpAgentGate.requireSupportedVersion(client.initialize());
-            AcpSchema.NewSessionResponse opened = client.newSession(new AcpSchema.NewSessionRequest(projectRoot.toString()));
-            synchronized (lifecycleLock) {
-                if (shuttingDown) {
-                    throw new IllegalStateException("ACP chat service is shutting down");
-                }
-                sessions.put(id, new Session(client, opened.sessionId(), updates));
-            }
-            return id;
-        } catch (RuntimeException failure) {
+            requireAdvertised(agentId, client, NegotiatedCapabilities::supportsListSessions, "listing sessions");
+            return storedSessions(client);
+        } finally {
             closeClient(client);
-            throw failure;
         }
+    }
+
+    @Override
+    public String loadSession(String agentId, String remoteSessionId, Consumer<Update> updates,
+            Function<PermissionRequest, PermissionChoice> permissionHandler) {
+        if (remoteSessionId == null || remoteSessionId.isBlank()) {
+            throw new IllegalArgumentException("ACP session id is required");
+        }
+        return openRemoteSession(agentId, updates, permissionHandler, client -> {
+            requireAdvertised(agentId, client, NegotiatedCapabilities::supportsLoadSession, "loading sessions");
+            client.loadSession(new AcpSchema.LoadSessionRequest(remoteSessionId, projectRoot.toString(), List.of()));
+            return remoteSessionId;
+        });
     }
 
     @Override
@@ -220,6 +203,90 @@ public final class AcpChatService implements AcpChatPort, AcpSessionIdsView {
         closeWorkers.shutdownNow();
     }
 
+    private String openRemoteSession(String agentId, Consumer<Update> updates,
+            Function<PermissionRequest, PermissionChoice> permissionHandler, RemoteSessionStart start) {
+        AcpSyncClient client = startClient(agentId, updates, permissionHandler);
+        try {
+            AcpAgentGate.requireSupportedVersion(client.initialize());
+            return registerSession(client, start.open(client), updates);
+        } catch (RuntimeException failure) {
+            closeClient(client);
+            throw failure;
+        }
+    }
+
+    private AcpSyncClient startClient(String agentId, Consumer<Update> updates,
+            Function<PermissionRequest, PermissionChoice> permissionHandler) {
+        catalog.require(agentId);
+        synchronized (lifecycleLock) {
+            if (shuttingDown) {
+                throw new IllegalStateException("ACP chat service is shutting down");
+            }
+            if (!isConfigured()) {
+                throw new IllegalStateException("ACP agent is not configured");
+            }
+        }
+        Function<AcpSchema.RequestPermissionRequest, AcpSchema.RequestPermissionResponse> permission =
+                request -> answerPermission(request, permissionHandler);
+        AcpSyncClient client = agents.chatClient(agentId, notification -> forwardUpdate(notification, updates), permission);
+        boolean registered;
+        synchronized (lifecycleLock) {
+            registered = !shuttingDown;
+            if (registered) {
+                clients.add(client);
+            }
+        }
+        if (!registered) {
+            client.close();
+            throw new IllegalStateException("ACP chat service is shutting down");
+        }
+        return client;
+    }
+
+    private String registerSession(AcpSyncClient client, String remoteId, Consumer<Update> updates) {
+        String id = UUID.randomUUID().toString();
+        synchronized (lifecycleLock) {
+            if (shuttingDown) {
+                throw new IllegalStateException("ACP chat service is shutting down");
+            }
+            sessions.put(id, new Session(client, remoteId, updates));
+        }
+        return id;
+    }
+
+    private void requireAdvertised(String agentId, AcpSyncClient client, Predicate<NegotiatedCapabilities> advertised,
+            String action) {
+        NegotiatedCapabilities capabilities = client.getAgentCapabilities();
+        if (capabilities == null || !advertised.test(capabilities)) {
+            throw new IllegalStateException("agent " + agentId + " does not support " + action);
+        }
+    }
+
+    private List<SessionSummary> storedSessions(AcpSyncClient client) {
+        List<SessionSummary> summaries = new ArrayList<>();
+        Set<String> cursors = new HashSet<>();
+        String cursor = null;
+        do {
+            AcpSchema.ListSessionsResponse page = client.listSessions(
+                    new AcpSchema.ListSessionsRequest(projectRoot.toString(), cursor, null));
+            page.sessions().forEach(info -> summaries.add(new SessionSummary(info.sessionId(), info.title(), info.updatedAt())));
+            cursor = page.nextCursor();
+        } while (cursor != null && cursors.add(cursor));
+        return List.copyOf(summaries);
+    }
+
+    private static void forwardUpdate(AcpSchema.SessionNotification notification, Consumer<Update> updates) {
+        AcpSchema.SessionUpdate update = notification.update();
+        if (update instanceof AcpSchema.AgentMessageChunk chunk
+                && chunk.content() instanceof AcpSchema.TextContent content) {
+            updates.accept(new Message(content.text()));
+        } else if (update instanceof AcpSchema.ToolCall toolCall) {
+            updates.accept(toolCall(toolCall));
+        } else if (update instanceof AcpSchema.ToolCallUpdateNotification toolCall) {
+            updates.accept(toolCall(toolCall));
+        }
+    }
+
     private static AcpSchema.RequestPermissionResponse answerPermission(AcpSchema.RequestPermissionRequest request,
             Function<PermissionRequest, PermissionChoice> permissionHandler) {
         AcpSchema.RequestPermissionResponse declined =
@@ -302,5 +369,11 @@ public final class AcpChatService implements AcpChatPort, AcpSessionIdsView {
     }
 
     private record Session(AcpSyncClient client, String remoteId, Consumer<Update> updates) {
+    }
+
+    /** Opens or reopens the remote session on an initialized client and answers its remote id. */
+    @FunctionalInterface
+    private interface RemoteSessionStart {
+        String open(AcpSyncClient client);
     }
 }

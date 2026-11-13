@@ -27,6 +27,32 @@ public interface AcpChatPort {
 
     record Agent(String id, String name, boolean available, String reason) { }
 
+    /**
+     * Lists the sessions the agent stored for the project. Fails when the agent does not
+     * advertise session listing.
+     */
+    default List<SessionSummary> listSessions(String agentId) {
+        throw new UnsupportedOperationException("ACP session listing is not supported by this chat port");
+    }
+
+    /**
+     * Reopens a session the agent stored. The replayed history reaches {@code updates} before this
+     * returns. Fails when the agent does not advertise session loading.
+     */
+    default String loadSession(String agentId, String remoteSessionId, Consumer<Update> updates,
+            Function<PermissionRequest, PermissionChoice> permissionHandler) {
+        throw new UnsupportedOperationException("ACP session loading is not supported by this chat port");
+    }
+
+    /** A stored session: its remote id, and the title and last activity the agent reported (empty when absent). */
+    record SessionSummary(String remoteId, String title, String updatedAt) {
+        public SessionSummary {
+            remoteId = Objects.requireNonNullElse(remoteId, "");
+            title = Objects.requireNonNullElse(title, "");
+            updatedAt = Objects.requireNonNullElse(updatedAt, "");
+        }
+    }
+
     /** Starts and initializes one agent process and opens a remote session. */
     String openSession(Consumer<Update> updates, Function<PermissionRequest, PermissionChoice> permissionHandler);
 

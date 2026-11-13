@@ -25,6 +25,8 @@ import java.util.stream.Collectors;
  * is the version it answers to initialize, and {@code --mcp=http,sse} lists the
  * MCP transports it advertises (default {@code http}). A session asking for an
  * MCP transport that is not advertised is refused with a protocol error.
+ * {@code --sessions} advertises session listing and loading, and then lists and
+ * replays the one stored session {@link #STORED_SESSION_ID}.
  *
  * <p>Prompt directives: {@code echo:} streams the text back, {@code kinds}
  * streams agent thought, agent message, tool call, tool call update and plan updates, {@code permit}
@@ -35,12 +37,17 @@ import java.util.stream.Collectors;
 public final class EchoAcpAgent {
 
     public static final String CANCEL_TRIGGER = "cancel-me";
+    public static final String STORED_SESSION_ID = "stored-session-1";
+    static final String STORED_SESSION_TITLE = "Earlier refactor";
+    static final String STORED_SESSION_UPDATED_AT = "2026-01-02T03:04:05Z";
     private static final long CANCEL_DEADLINE_MILLIS = 15_000;
 
     private static int protocolVersion = 1;
     private static boolean mcpHttp = true;
     private static boolean mcpSse;
+    private static boolean sessionsAdvertised;
     private static Path lifecycleLog;
+    private static AcpSyncAgent running;
 
     public static void main(String[] args) {
         configure(args);
@@ -52,12 +59,26 @@ public final class EchoAcpAgent {
                 .initializeHandler(request -> new AcpSchema.InitializeResponse(protocolVersion, capabilities(), List.of()))
                 .newSessionHandler(EchoAcpAgent::newSession)
                 .promptHandler(EchoAcpAgent::prompt)
+                .listSessionsHandler(request -> new AcpSchema.ListSessionsResponse(List.of(
+                        new AcpSchema.SessionInfo(STORED_SESSION_ID, request.cwd(), STORED_SESSION_TITLE,
+                                STORED_SESSION_UPDATED_AT, null, null))))
+                .loadSessionHandler(EchoAcpAgent::loadSession)
                 .closeSessionHandler(request -> {
                     recordLifecycle("session-close");
                     return new AcpSchema.CloseSessionResponse();
                 })
                 .build();
+        running = agent;
         agent.run();
+    }
+
+    private static AcpSchema.LoadSessionResponse loadSession(AcpSchema.LoadSessionRequest request) {
+        if (!STORED_SESSION_ID.equals(request.sessionId())) {
+            throw new AcpProtocolException(AcpErrorCodes.INVALID_PARAMS, "the echo agent has no stored session " + request.sessionId());
+        }
+        running.sendSessionUpdate(request.sessionId(),
+                new AcpSchema.AgentMessageChunk(new AcpSchema.TextContent("replayed:" + request.sessionId())));
+        return new AcpSchema.LoadSessionResponse((AcpSchema.SessionModeState) null);
     }
 
     static void configure(String[] args) {
@@ -68,6 +89,8 @@ public final class EchoAcpAgent {
                 List<String> transports = List.of(arg.substring("--mcp=".length()).split(","));
                 mcpHttp = transports.contains("http");
                 mcpSse = transports.contains("sse");
+            } else if (arg.equals("--sessions")) {
+                sessionsAdvertised = true;
             } else if (arg.startsWith("--lifecycle-log=")) {
                 lifecycleLog = Path.of(arg.substring("--lifecycle-log=".length()));
             }
@@ -84,8 +107,10 @@ public final class EchoAcpAgent {
     }
 
     private static AcpSchema.AgentCapabilities capabilities() {
-        AcpSchema.SessionCapabilities sessions = new AcpSchema.SessionCapabilities(null, Map.of(), null, null, null, null);
+        AcpSchema.SessionCapabilities sessions = new AcpSchema.SessionCapabilities(
+                sessionsAdvertised ? Map.of() : null, Map.of(), null, null, null, null);
         return AcpSchema.AgentCapabilities.builder()
+                .loadSession(sessionsAdvertised)
                 .sessionCapabilities(sessions)
                 .mcpCapabilities(new AcpSchema.McpCapabilities(mcpHttp, mcpSse))
                 .build();
