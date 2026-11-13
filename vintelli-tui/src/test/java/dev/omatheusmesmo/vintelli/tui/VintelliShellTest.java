@@ -5151,9 +5151,16 @@ class VintelliShellTest {
     private static VintelliShell shellWithProjectSearch() {
         ShellThemes themes = defaultThemes();
         List<ToolWindow> windows = defaultWindows();
-        return new VintelliShell(ShellConfig.of(windows, new ShellState(), themes)
+        VintelliShell shell = new VintelliShell(ShellConfig.of(windows, new ShellState(), themes)
                 .withKeymapSupplier(() -> Keymap.defaultKeymap(windows))
                 .withProjectSearch(new IdleProjectSearch()));
+        awaitProjectDiscovery(shell);
+        return shell;
+    }
+
+    private static void awaitProjectDiscovery(VintelliShell shell) {
+        awaitShellStatus(shell, "No project files found");
+        assertEquals("No project files found", shell.status());
     }
 
     private static void napMillis(long millis) {
@@ -6003,7 +6010,11 @@ class VintelliShellTest {
         if (projectSearch) {
             config = config.withProjectSearch(new IdleProjectSearch());
         }
-        return new EditorShell(new VintelliShell(config), editor, clipboard);
+        VintelliShell shell = new VintelliShell(config);
+        if (projectSearch) {
+            awaitProjectDiscovery(shell);
+        }
+        return new EditorShell(shell, editor, clipboard);
     }
 
     private static String numberedLines(int count) {
