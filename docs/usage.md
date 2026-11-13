@@ -337,6 +337,9 @@ The same problems are painted in the open editor tabs. Two limits remain until
 the next refresh: after a provider switch the painted problems of the old
 provider stay until `R`, and rows keep their original lines when the text is
 edited between a read and the next paint.
+A problem that the language server tags as deprecated also strikes its range
+through in the theme's comment color (`$editor-comment`), so a deprecated symbol
+stands out in the editor; the tag is display only and offers no quick fix.
 In Structure, click a symbol row to select it, press Enter to navigate to its
 file and line, and use the mouse wheel to scroll long outlines.
 In the project panel, a left click selects the row under the pointer and focuses

@@ -114,6 +114,26 @@ class LspClientTest {
     }
 
     @Test
+    void diagnosticTaggedDeprecatedIsReportedAsDeprecatedAndUntaggedIsNot() throws Exception {
+        Files.writeString(document(), "class Fake {}");
+        Path traceFile = trace("deprecated");
+        try (LspClient client = new LspClient(config("unit",
+                fakeCommand(traceFile, PROFILE_MARKER, "--deprecated-tag"), Optional.empty()))) {
+
+            CapabilityResult<List<DiagnosticsCapability.Diagnostic>> opened = client.diagnostics(document());
+            assertFalse(opened.isFailure(), opened.toString());
+            assertTrue(ok(opened).get(0).deprecated(), ok(opened).toString());
+        }
+        try (LspClient client = new LspClient(config("unit", fakeCommand(traceFile, PROFILE_MARKER),
+                Optional.empty()))) {
+
+            CapabilityResult<List<DiagnosticsCapability.Diagnostic>> opened = client.diagnostics(document());
+            assertFalse(opened.isFailure(), opened.toString());
+            assertFalse(ok(opened).get(0).deprecated(), ok(opened).toString());
+        }
+    }
+
+    @Test
     void diagnosticsPublishedUnderTheRealPathAreFoundThroughASymlinkedWorkspace() throws Exception {
         Path link = symlinkToRealWorkspace();
         Path requested = link.resolve("Fake.java");

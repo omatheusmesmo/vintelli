@@ -19,6 +19,8 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Predicate;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 /** One document owns its cursor, undo history and highlighting cache. Guarded by BuiltinEditor. */
 public final class EditorDocument {
@@ -484,6 +486,17 @@ public final class EditorDocument {
                     case WARNING -> EditorSyntaxHighlighter.Severity.WARNING;
                     default -> EditorSyntaxHighlighter.Severity.INFO;
                 })).toList());
+        highlighter.setDeprecated(diagnostics.stream().filter(Diagnostic::deprecated)
+                .flatMap(this::deprecatedRanges).toList());
+    }
+
+    private Stream<EditorSyntaxHighlighter.DeprecatedRange> deprecatedRanges(Diagnostic value) {
+        return IntStream.rangeClosed(value.startLine(), value.endLine())
+                .filter(row -> fold == null || !fold.hides(row))
+                .mapToObj(row -> new EditorSyntaxHighlighter.DeprecatedRange(
+                        fold == null ? row : fold.toView(row),
+                        row == value.startLine() ? value.startColumn() : 0,
+                        row == value.endLine() ? value.endColumn() : Integer.MAX_VALUE));
     }
 
     private void remapDiagnostics(String before, String after) {
@@ -499,7 +512,8 @@ public final class EditorDocument {
             int start = diagnostic.startLine() >= prefix ? Math.max(prefix, diagnostic.startLine() + delta) : diagnostic.startLine();
             int end = diagnostic.endLine() >= prefix ? Math.max(start, diagnostic.endLine() + delta) : diagnostic.endLine();
             mapped.add(new Diagnostic(diagnostic.filePath(), start, diagnostic.startColumn(), end,
-                    diagnostic.endColumn(), diagnostic.severity(), diagnostic.source(), diagnostic.message()));
+                    diagnostic.endColumn(), diagnostic.severity(), diagnostic.source(), diagnostic.message(),
+                    diagnostic.deprecated()));
         }
         diagnostics(mapped);
     }

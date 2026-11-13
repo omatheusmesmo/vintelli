@@ -6,6 +6,11 @@ import dev.omatheusmesmo.vintelli.api.capability.DebugCapability;
 import dev.omatheusmesmo.vintelli.api.capability.EditorBridge.OpenRequest;
 import dev.omatheusmesmo.vintelli.tui.ShellThemes;
 import dev.tamboui.layout.Size;
+import dev.tamboui.style.Modifier;
+import dev.tamboui.style.Style;
+import dev.tamboui.text.Line;
+import dev.tamboui.text.Span;
+import dev.tamboui.widgets.syntax.SyntaxTheme;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.buffer.Buffer;
 import dev.tamboui.terminal.Frame;
@@ -28,6 +33,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -383,6 +389,24 @@ class BuiltinEditorTest {
         assertEquals(1, editor.diagnostics().getFirst().startLine());
         assertTrue(editor.undo());
         assertEquals(0, editor.diagnostics().getFirst().startLine());
+    }
+
+    @Test
+    void deprecatedDiagnosticStrikesThroughOnlyItsColumnsOfTheOpenDocument() throws IOException {
+        Path file = write("Legacy.java", "int old = next;\n");
+        BuiltinEditor editor = editor(null);
+        editor.open(new OpenRequest(file, 0));
+        editor.setDiagnostics(List.of(new Diagnostic(file, 0, 4, 0, 7, Severity.HINT, "jdtls", "deprecated", true),
+                new Diagnostic(file, 0, 10, 0, 14, Severity.ERROR, "javac", "not deprecated")));
+
+        List<Line> lines = editor.document().highlighter().highlight("int old = next;\n", "java", Style.EMPTY,
+                SyntaxTheme.DEFAULTS);
+
+        String struck = lines.get(0).spans().stream()
+                .filter(span -> span.style().addModifiers().contains(Modifier.CROSSED_OUT))
+                .map(Span::content)
+                .collect(Collectors.joining());
+        assertEquals("old", struck);
     }
 
     @Test

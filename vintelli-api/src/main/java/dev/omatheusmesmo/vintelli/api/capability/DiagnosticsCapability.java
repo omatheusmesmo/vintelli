@@ -27,15 +27,23 @@ public interface DiagnosticsCapability extends ProviderDescriptor {
      * @param severity problem severity
      * @param source producer of the problem, for example {@code javac}
      * @param message problem text shown to the user
+     * @param deprecated the range names a symbol the language server marks as
+     *        deprecated, which editors show struck through; a display hint that
+     *        is independent of the severity
      */
     record Diagnostic(Path filePath, int startLine, int startColumn, int endLine, int endColumn, Severity severity,
-            String source, String message) {
+            String source, String message, boolean deprecated) {
 
         public Diagnostic {
             Objects.requireNonNull(filePath, "filePath");
             Objects.requireNonNull(severity, "severity");
             source = source == null ? "" : source;
             Objects.requireNonNull(message, "message");
+        }
+
+        public Diagnostic(Path filePath, int startLine, int startColumn, int endLine, int endColumn, Severity severity,
+                String source, String message) {
+            this(filePath, startLine, startColumn, endLine, endColumn, severity, source, message, false);
         }
     }
 
