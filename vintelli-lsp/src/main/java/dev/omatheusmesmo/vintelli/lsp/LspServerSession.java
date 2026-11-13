@@ -8,7 +8,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -93,6 +95,17 @@ import org.jboss.logging.Logger;
  * <p>Because the protocol channel is the stdout of the server process, the
  * stderr is drained into the log by a daemon thread; a server that fills its
  * stderr pipe would otherwise block forever.
+ *
+ * <p>Every URI this session sends (rootUri, workspace folders and document
+ * notifications, and the requests that name a document) is built by
+ * {@link #uriFor(Path)}, which canonicalizes the path first. A language server
+ * resolves symbolic links before it publishes diagnostics, so a path that goes
+ * through a link (for example {@code /var} on macOS or a symlinked checkout)
+ * would otherwise never match the URI the server publishes under. The rule: an
+ * existing path is resolved with {@code toRealPath()}; a path that does not
+ * exist yet, or whose link is broken, resolves its longest existing ancestor
+ * the same way and re-appends the remaining segments. Diagnostics are mapped
+ * back to the path the caller passed, not to the resolved one.
  */
 final class LspServerSession implements AutoCloseable {
 
@@ -469,7 +482,41 @@ final class LspServerSession implements AutoCloseable {
     }
 
     static String uriFor(Path file) {
-        return file.toAbsolutePath().toUri().toString();
+        return canonicalPath(file).toUri().toString();
+    }
+
+    /**
+     * @return the path with its symbolic links resolved, see the class
+     *         documentation for the rule that also covers missing files
+     */
+    static Path canonicalPath(Path file) {
+        Path given = file.toAbsolutePath();
+        try {
+            return given.toRealPath();
+        } catch (IOException notResolvable) {
+            return resolveThroughExistingAncestor(given.normalize());
+        }
+    }
+
+    private static Path resolveThroughExistingAncestor(Path absolute) {
+        Deque<Path> missing = new ArrayDeque<>();
+        Path existing = absolute;
+        while (existing != null && !Files.exists(existing)) {
+            missing.push(existing.getFileName());
+            existing = existing.getParent();
+        }
+        if (existing == null) {
+            return absolute;
+        }
+        try {
+            Path resolved = existing.toRealPath();
+            for (Path segment : missing) {
+                resolved = resolved.resolve(segment);
+            }
+            return resolved;
+        } catch (IOException unresolvable) {
+            return absolute;
+        }
     }
 
     /**
