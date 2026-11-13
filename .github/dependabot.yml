@@ -7,6 +7,10 @@ updates:
       interval: weekly
     commit-message:
       prefix: deps
+    groups:
+      codeql-action:
+        patterns:
+          - github/codeql-action/*
 
   - package-ecosystem: maven
     directory: /
