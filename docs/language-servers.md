@@ -165,8 +165,10 @@ selection without a healthy provider answers 503 and a failed capability
 result (not a repository, a path outside the project root) answers 409 with
 the provider's reason. Confirmed `PUT /vcs/stage`, `PUT /vcs/unstage`,
 `POST /vcs/commit` and `PUT /vcs/branch` operations use the same opt-in debug
-setting and require `confirm=true`; branch switching accepts existing local
-branches only and lets JGit refuse any checkout that would overwrite work.
+setting and require `confirm=true`; the commit body can set `amend=true` to
+replace the current commit. Branch switching accepts existing local branches
+only and lets JGit refuse any checkout that would overwrite work. See
+[VCS integration](vcs-integration.md) for the TUI commit workflow.
 The project root may sit below the repository root:
 the provider confines every requested diff path and every status entry to the
 project root, so no answer carries state from outside the project, and a
@@ -177,5 +179,9 @@ configuration when such a file exists.
 The TUI VCS refresh marks changed files in the Project tree and editor tabs;
 the active file's gutter marks lines changed against `HEAD`, and the VCS menu
 can open that file's unified diff or the full working tree diff. Its write
-actions stage or unstage the active file, commit staged changes, and switch
-local branches after an on-screen confirmation.
+actions stage or unstage the selected project-tree file (or the active editor
+file), commit staged changes, amend the current commit, and switch local
+branches after an on-screen confirmation. Before commit confirmation it shows
+the staged file count and insertion/deletion totals; unstaged edits do not
+appear in that summary. A selected directory does not stage its contents; the
+active editor file is used instead.

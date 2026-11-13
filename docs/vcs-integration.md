@@ -19,12 +19,24 @@ Reasons:
   repository and worktree access exercised inside the image.
 
 The same provider stages and unstages project files, commits the staged index,
-and checks out an existing local branch. Each capability call requires an
-explicit confirmation flag. The TUI asks for confirmation before invoking it;
-headless probe endpoints are disabled unless
+amends the current commit, and checks out an existing local branch. Each write
+capability call requires an explicit confirmation flag. The TUI asks for
+confirmation before invoking it; commits show a summary of staged files and
+added/removed lines. Commit messages can span lines with `Shift+Enter`; `Tab`
+toggles amend before confirmation. Git's configured `user.name` and
+`user.email` are used when available. If either is missing, the TUI asks for
+both values for that commit without persisting them. Headless probe endpoints are disabled unless
 `vintelli.vcs.debug-endpoint.enabled=true` and also require `confirm=true`.
 Branch switching does not force checkout, and paths are resolved under the
 configured project root before JGit sees them.
+
+## Headless write probe
+
+The opt-in `POST /vcs/commit` endpoint accepts `{"message":"..."}` for a new
+commit or `{"message":"...","amend":true}` to replace the current commit.
+It is a test/debug surface, not a public Git API; it remains disabled unless
+`vintelli.vcs.debug-endpoint.enabled=true`, and every write requires
+`confirm=true`.
 
 ## Missing Git
 

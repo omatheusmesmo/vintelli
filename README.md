@@ -10,6 +10,7 @@ It runs with open tooling only. IntelliJ IDEA is an optional extra.
 - 🖥️ **Work where you already are.** A full IDE layout in your terminal, with no window to open.
 - ⚡ **Native when you want it.** With a GraalVM or Mandrel toolchain, the installer builds one binary that needs no JVM to run.
 - 🔓 **Open tools by default.** Maven, Gradle, terminal commands and Git (JGit) need no IDE.
+- 🌱 **Commit from the shell.** Stage or unstage the selected project file, write multiline commit messages, and amend the current commit after reviewing the staged-change summary. See [VCS integration](docs/vcs-integration.md).
 - ▶️ **Start the application.** Detect Quarkus, Spring Boot and configured Java application commands, choose them from the toolbar, and keep the choice per project. See [run configurations](docs/run-configurations.md).
 - 🤖 **AI agents in a side panel.** Choose OpenCode, Claude Code or pi over ACP (`Alt+8`), with executable availability shown before starting a session. See [agent setup](docs/acp-agents.md).
 - 🔌 **Other agents can drive it.** The MCP server reads the shell state and pushes highlights and diffs into the TUI.
@@ -149,6 +150,7 @@ Start with [usage](docs/usage.md), the [keymap](docs/keymap.md) and [themes](doc
 | Language servers | [docs/language-servers.md](docs/language-servers.md) |
 | ACP agents | [docs/acp-agents.md](docs/acp-agents.md) |
 | Run configurations | [docs/run-configurations.md](docs/run-configurations.md) |
+| Git and version control | [docs/vcs-integration.md](docs/vcs-integration.md) |
 
 </details>
 

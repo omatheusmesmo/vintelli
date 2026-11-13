@@ -146,8 +146,11 @@ public final class VcsResource {
         if (request == null || request.message() == null) { return rejectedMutation("message is required"); }
         CapabilitySelection<VersionControlCapability> selection = registry.versionControl();
         if (!selection.isAvailable()) { return unavailableMutation(selection); }
-        return asMutationReply(((CapabilitySelection.Selected<VersionControlCapability>) selection)
-                .provider().commit(request.message(), true));
+        VersionControlCapability provider = ((CapabilitySelection.Selected<VersionControlCapability>) selection)
+                .provider();
+        return asMutationReply(request.amend()
+                ? provider.commitAmend(request.message(), true)
+                : provider.commit(request.message(), true));
     }
 
     @PUT
@@ -281,7 +284,7 @@ public final class VcsResource {
 
     public record VcsMutationReply(String state, String detail, boolean success) {}
 
-    public record CommitRequest(String message) {}
+    public record CommitRequest(String message, boolean amend) {}
 
     public record BranchRequest(String name) {}
 

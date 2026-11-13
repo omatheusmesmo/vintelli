@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
@@ -30,6 +31,7 @@ import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability.Entry;
+import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability.CommitAuthor;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability.State;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability.Status;
 
@@ -606,6 +608,64 @@ class LocalVersionControlCapabilityTest {
     }
 
     @Test
+    void amendsTheCurrentCommitAndSupportsAnAuthorPromptWhenGitHasNoIdentity()
+            throws IOException, GitAPIException {
+        Path repo = temp.resolve("amend-repo");
+        Files.createDirectories(repo);
+        try (Git git = initRepository(repo)) {
+            Files.writeString(repo.resolve("tracked.txt"), "first\n");
+            commitAll(git, "initial");
+            var capability = capabilityAt(repo);
+
+            assertEquals(Optional.empty(), value(capability.configuredCommitAuthor()));
+            assertEquals("Confirmation is required for this Git operation",
+                    failure(capability.commitAmend("not confirmed", false)).reason());
+            Files.writeString(repo.resolve("tracked.txt"), "second\n");
+            assertTrue(value(capability.stage(Path.of("tracked.txt"), true)));
+            Files.writeString(repo.resolve("tracked.txt"), "between\n");
+            String stagedDiff = value(capability.diffStaged());
+            assertTrue(stagedDiff.contains("+second"), stagedDiff);
+            assertFalse(stagedDiff.contains("between"), stagedDiff);
+            assertTrue(value(capability.commit("update", new CommitAuthor(AUTHOR, EMAIL), false, true)));
+            assertEquals(AUTHOR, git.log().call().iterator().next().getAuthorIdent().getName());
+            assertEquals(2, logCount(git));
+
+            Files.writeString(repo.resolve("tracked.txt"), "third\n");
+            assertTrue(value(capability.stage(Path.of("tracked.txt"), true)));
+            assertTrue(value(capability.commitAmend("amended update", true)));
+
+            var amended = git.log().call().iterator().next();
+            assertEquals("amended update", amended.getFullMessage());
+            assertEquals(2, logCount(git));
+            assertEquals(AUTHOR, amended.getAuthorIdent().getName());
+            assertEquals("third\n", Files.readString(repo.resolve("tracked.txt")));
+        }
+    }
+
+    @Test
+    void stagedDiffExcludesUnstagedChangesAndConfiguredIdentityUsesRepositoryConfig()
+            throws IOException, GitAPIException {
+        Path repo = temp.resolve("staged-diff-repo");
+        Files.createDirectories(repo);
+        try (Git git = initRepository(repo)) {
+            Files.writeString(repo.resolve("tracked.txt"), "first\n");
+            commitAll(git, "initial");
+            git.getRepository().getConfig().setString("user", null, "name", AUTHOR);
+            git.getRepository().getConfig().setString("user", null, "email", EMAIL);
+            git.getRepository().getConfig().save();
+            Files.writeString(repo.resolve("tracked.txt"), "staged\n");
+            assertTrue(value(capabilityAt(repo).stage(Path.of("tracked.txt"), true)));
+            Files.writeString(repo.resolve("tracked.txt"), "unstaged\n");
+
+            String stagedDiff = value(capabilityAt(repo).diffStaged());
+            assertTrue(stagedDiff.contains("+staged"), stagedDiff);
+            assertFalse(stagedDiff.contains("unstaged"), stagedDiff);
+            assertEquals(new CommitAuthor(AUTHOR, EMAIL),
+                    value(capabilityAt(repo).configuredCommitAuthor()).orElseThrow());
+        }
+    }
+
+    @Test
     void stagesDeletedAndSpecialCharacterPathsAndCanUnstageInAnUnbornRepository()
             throws IOException, GitAPIException {
         Path repo = temp.resolve("repo");
@@ -767,6 +827,14 @@ class LocalVersionControlCapabilityTest {
     private static void commitAll(Git git, String message) throws GitAPIException {
         git.add().addFilepattern(".").call();
         git.commit().setMessage(message).setAuthor(AUTHOR, EMAIL).setCommitter(AUTHOR, EMAIL).setSign(false).call();
+    }
+
+    private static int logCount(Git git) throws GitAPIException {
+        int count = 0;
+        for (var ignored : git.log().call()) {
+            count++;
+        }
+        return count;
     }
 
     private static void assertPathOutside(CapabilityResult<String> result) {
