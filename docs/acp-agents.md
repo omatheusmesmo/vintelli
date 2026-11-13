@@ -71,6 +71,15 @@ Without `--agent`, the prompt command uses the configured default. The one-shot
 command declines ACP permission requests because it has no interactive
 permission chooser. For interactive approval, use the TUI.
 
+## Earlier sessions
+
+The chat service can list the sessions an agent stored for the project and
+reopen one. Listing needs the agent to advertise `sessionCapabilities.list`,
+and loading needs `loadSession`. An agent that advertises neither is refused
+with a clear error and no session is registered. A loaded session replays its
+history through the same updates as a live turn, and then accepts prompts like
+any other session. The TUI does not offer this yet.
+
 ## Validation
 
 The packaged-runner tests select an agent backed by the ACP twin, check streamed
