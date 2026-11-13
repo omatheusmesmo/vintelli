@@ -192,6 +192,72 @@ class EditorSyntaxHighlighterTest {
     }
 
     @Test
+    void deprecatedRangeRendersStruckThroughInTheMutedColorAndItsNeighbourDoesNot() {
+        EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
+        ShellEditorPalette palette = new ShellEditorPalette(
+                "#101010", "#aabbcc", "#dd8844", "#44aa66", "#778899", "#ccaa55", "#bb66cc",
+                "#336699", "#ffffff", "#323232");
+        highlighter.editorPalette(palette);
+        highlighter.setDeprecated(List.of(new EditorSyntaxHighlighter.DeprecatedRange(0, 4, 7)));
+        TextArea textArea = TextArea.builder()
+                .style(Style.EMPTY)
+                .highlighter(highlighter, "java", SyntaxTheme.DEFAULTS)
+                .build();
+        Rect area = new Rect(0, 0, 20, 1);
+        Buffer buffer = Buffer.empty(area);
+
+        textArea.render(area, buffer, new TextAreaState("int old = next;"));
+
+        for (int x = 4; x < 7; x++) {
+            assertTrue(buffer.get(x, 0).style().addModifiers().contains(Modifier.CROSSED_OUT),
+                    "the deprecated identifier is struck through at column " + x);
+            assertEquals(Color.hex(palette.comment()), buffer.get(x, 0).style().fg().orElseThrow(),
+                    "the deprecated identifier uses the muted editor color");
+        }
+        for (int x = 10; x < 14; x++) {
+            assertFalse(buffer.get(x, 0).style().addModifiers().contains(Modifier.CROSSED_OUT),
+                    "a non-deprecated identifier is not struck through at column " + x);
+        }
+    }
+
+    @Test
+    void deprecatedRangeKeepsTheDiagnosticTintAndTheSelectionReversal() {
+        EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
+        String code = "int old = 1;\n";
+        highlighter.highlight(code, "java", Style.EMPTY, SyntaxTheme.DEFAULTS);
+        highlighter.setDiagnostics(List.of(
+                new EditorSyntaxHighlighter.Diagnostic(0, EditorSyntaxHighlighter.Severity.WARNING)));
+        highlighter.setDeprecated(List.of(new EditorSyntaxHighlighter.DeprecatedRange(0, 4, 7)));
+        highlighter.setSelection(new SelectionCursor(0, 4, 0, 7));
+
+        List<Line> lines = highlighter.highlight(code, "java", Style.EMPTY, SyntaxTheme.DEFAULTS);
+
+        Span struck = lines.get(0).spans().stream()
+                .filter(span -> span.style().addModifiers().contains(Modifier.CROSSED_OUT))
+                .findFirst().orElseThrow();
+        assertEquals("old", struck.content());
+        assertTrue(struck.style().addModifiers().contains(Modifier.REVERSED), "the selection reversal stays");
+        assertTrue(struck.style().addModifiers().contains(Modifier.UNDERLINED), "the diagnostic underline stays");
+        assertEquals(Color.ansi(AnsiColor.YELLOW), struck.style().bg().orElse(null),
+                "the diagnostic background stays");
+    }
+
+    @Test
+    void aNonDeprecatedDiagnosticIsNotStruckThrough() {
+        EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
+        String code = "int old = 1;\n";
+        highlighter.setDiagnostics(List.of(
+                new EditorSyntaxHighlighter.Diagnostic(0, EditorSyntaxHighlighter.Severity.ERROR)));
+
+        List<Line> lines = highlighter.highlight(code, "java", Style.EMPTY, SyntaxTheme.DEFAULTS);
+
+        for (Span span : lines.get(0).spans()) {
+            assertFalse(span.style().addModifiers().contains(Modifier.CROSSED_OUT),
+                    "a diagnostic without the deprecated flag never strikes text through");
+        }
+    }
+
+    @Test
     void docCommentOpenerKeepsFollowingLinesAsComment() {
         EditorSyntaxHighlighter highlighter = new EditorSyntaxHighlighter();
         ShellEditorPalette palette = new ShellEditorPalette(

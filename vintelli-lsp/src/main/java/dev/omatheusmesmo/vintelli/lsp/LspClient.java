@@ -35,6 +35,7 @@ import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionList;
 import org.eclipse.lsp4j.Diagnostic;
 import org.eclipse.lsp4j.DiagnosticSeverity;
+import org.eclipse.lsp4j.DiagnosticTag;
 import org.eclipse.lsp4j.Hover;
 import org.eclipse.lsp4j.Location;
 import org.eclipse.lsp4j.LocationLink;
@@ -577,7 +578,12 @@ public final class LspClient implements AutoCloseable, JavaDebugAdapterPort {
                 range == null || range.getEnd() == null ? 0 : range.getEnd().getCharacter(),
                 severityOf(problem.getSeverity()),
                 problem.getSource() == null ? "" : problem.getSource(),
-                message);
+                message,
+                isDeprecated(problem));
+    }
+
+    private static boolean isDeprecated(Diagnostic problem) {
+        return problem.getTags() != null && problem.getTags().contains(DiagnosticTag.Deprecated);
     }
 
     private static DiagnosticsCapability.Severity severityOf(DiagnosticSeverity severity) {

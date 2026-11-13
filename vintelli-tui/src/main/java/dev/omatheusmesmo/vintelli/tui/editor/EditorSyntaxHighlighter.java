@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.UnaryOperator;
 
 import dev.omatheusmesmo.vintelli.api.ShellEditorPalette;
 import dev.tamboui.style.AnsiColor;
@@ -84,6 +85,14 @@ final class EditorSyntaxHighlighter implements SyntaxHighlighter {
     }
 
     /**
+     * The columns of one logical row that carry a deprecated symbol, with the
+     * end column exclusive. A row of a multi-line range gets one entry for each
+     * row it covers.
+     */
+    record DeprecatedRange(int row, int startColumn, int endColumn) {
+    }
+
+    /**
      * Diagnostic severity with the background tint the editor paints and the
      * underline color drawn on the same row. The underline uses a brighter or
      * contrasting shade than the tint so it stays visible against it.
@@ -136,6 +145,10 @@ final class EditorSyntaxHighlighter implements SyntaxHighlighter {
 
     private final Map<Integer, Diagnostic> diagnostics = new HashMap<>();
 
+    private final Map<Integer, List<DeprecatedRange>> deprecatedRanges = new HashMap<>();
+
+    private Style deprecatedStyle = Style.EMPTY.crossedOut();
+
     private SelectionCursor selection = SelectionCursor.collapsed(0, 0);
 
     private int tintGeneration;
@@ -145,6 +158,8 @@ final class EditorSyntaxHighlighter implements SyntaxHighlighter {
     void editorPalette(ShellEditorPalette palette) {
         if (!Objects.equals(editorPalette, palette)) {
             editorPalette = palette;
+            deprecatedStyle = palette == null ? Style.EMPTY.crossedOut()
+                    : foreground(palette.comment()).crossedOut();
             editorTheme = palette == null ? null : SyntaxTheme.builder()
                     .token(TokenType.PLAIN, foreground(palette.text()))
                     .token(TokenType.COMMENT, foreground(palette.comment()))
@@ -262,7 +277,8 @@ final class EditorSyntaxHighlighter implements SyntaxHighlighter {
         boolean selectionRow = selection != null && !selection.isEmpty()
             && row >= selection.startRow() && row <= selection.endRow();
         boolean hasDiagnostic = diagnostics.containsKey(row);
-        if (selectionRow || hasDiagnostic) {
+        boolean hasDeprecated = deprecatedRanges.containsKey(row);
+        if (selectionRow || hasDiagnostic || hasDeprecated) {
             if (cached.tintStamp != tintGeneration) {
                 cached.tintedLine = tint(row, cached.tokens);
                 cached.tintStamp = tintGeneration;
@@ -279,7 +295,7 @@ final class EditorSyntaxHighlighter implements SyntaxHighlighter {
             int from = row == selection.startRow() ? selection.startCol() : 0;
             int to = row == selection.endRow() ? selection.endCol() : Integer.MAX_VALUE;
             if (to > from) {
-                styled = splitSelection(styled, from, to);
+                styled = styleRange(styled, from, to, Style::reversed);
             }
         }
         Diagnostic diagnostic = diagnostics.get(row);
@@ -289,27 +305,32 @@ final class EditorSyntaxHighlighter implements SyntaxHighlighter {
                     diagnostic.severity().background,
                     diagnostic.severity().underline);
         }
+        for (DeprecatedRange range : deprecatedRanges.getOrDefault(row, List.of())) {
+            if (range.endColumn() > range.startColumn()) {
+                styled = styleRange(styled, range.startColumn(), range.endColumn(), style -> style.patch(deprecatedStyle));
+            }
+        }
         return Line.from(styled);
     }
 
-    private static List<Span> splitSelection(List<Span> spans, int selectionStart, int selectionEnd) {
+    private static List<Span> styleRange(List<Span> spans, int rangeStart, int rangeEnd, UnaryOperator<Style> change) {
         List<Span> out = new ArrayList<>();
         int cursor = 0;
         for (Span span : spans) {
             String content = span.content();
             int spanEnd = cursor + content.length();
             Style style = span.style();
-            if (spanEnd <= selectionStart || cursor >= selectionEnd) {
+            if (spanEnd <= rangeStart || cursor >= rangeEnd) {
                 out.add(span);
                 cursor = spanEnd;
                 continue;
             }
-            int selectedFrom = Math.max(cursor, selectionStart);
-            int selectedTo = Math.min(spanEnd, selectionEnd);
+            int selectedFrom = Math.max(cursor, rangeStart);
+            int selectedTo = Math.min(spanEnd, rangeEnd);
             if (selectedFrom > cursor) {
                 out.add(Span.styled(content.substring(0, selectedFrom - cursor), style));
             }
-            out.add(Span.styled(content.substring(selectedFrom - cursor, selectedTo - cursor), style.reversed()));
+            out.add(Span.styled(content.substring(selectedFrom - cursor, selectedTo - cursor), change.apply(style)));
             if (selectedTo < spanEnd) {
                 out.add(Span.styled(content.substring(selectedTo - cursor), style));
             }
@@ -680,6 +701,21 @@ final class EditorSyntaxHighlighter implements SyntaxHighlighter {
     }
 
     /**
+     * Replaces the deprecated symbol ranges struck through over the document,
+     * in the muted color of the editor palette. The ranges compose with the
+     * selection and the diagnostic tint of their row.
+     *
+     * @param ranges the deprecated columns, grouped by logical row
+     */
+    void setDeprecated(List<DeprecatedRange> ranges) {
+        deprecatedRanges.clear();
+        for (DeprecatedRange range : ranges) {
+            deprecatedRanges.computeIfAbsent(range.row(), ignored -> new ArrayList<>()).add(range);
+        }
+        tintGeneration++;
+    }
+
+    /**
      * Replaces the keyboard selection range. The selection anchor is kept in
      * this object instead of {@code TextAreaState}, which has no selection
      * concept; the editor owns the anchor and extends it from the cursor while
@@ -711,6 +747,7 @@ final class EditorSyntaxHighlighter implements SyntaxHighlighter {
         previousTheme = null;
         cache.clear();
         diagnostics.clear();
+        deprecatedRanges.clear();
         selection = SelectionCursor.collapsed(0, 0);
         tintGeneration++;
     }

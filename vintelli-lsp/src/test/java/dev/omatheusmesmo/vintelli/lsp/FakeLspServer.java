@@ -38,6 +38,7 @@ import org.eclipse.lsp4j.CompletionParams;
 import org.eclipse.lsp4j.DefinitionParams;
 import org.eclipse.lsp4j.Diagnostic;
 import org.eclipse.lsp4j.DiagnosticSeverity;
+import org.eclipse.lsp4j.DiagnosticTag;
 import org.eclipse.lsp4j.DidChangeNotebookDocumentParams;
 import org.eclipse.lsp4j.DidChangeTextDocumentParams;
 import org.eclipse.lsp4j.DidCloseNotebookDocumentParams;
@@ -96,6 +97,8 @@ public final class FakeLspServer {
      * and {@code --hold} turns the process into the holding child itself.
      * {@code --publish-real-path} publishes the diagnostics under the real path
      * of the document, as jdt.ls does when the workspace goes through a link.
+     * {@code --deprecated-tag} tags the diagnostic published on open with the
+     * {@code Deprecated} tag.
      */
     public static void main(String[] args) throws Exception {
         if (List.of(args).contains("--hold")) {
@@ -296,10 +299,14 @@ public final class FakeLspServer {
         @Override
         public void didOpen(DidOpenTextDocumentParams params) {
             server.trace("didOpen");
-            server.publish(params.getTextDocument().getUri(), List.of(new Diagnostic(
+            Diagnostic opened = new Diagnostic(
                     new Range(new Position(0, 0), new Position(0, 5)),
                     "fake problem on " + params.getTextDocument().getUri(),
-                    DiagnosticSeverity.Error, "fake")));
+                    DiagnosticSeverity.Error, "fake");
+            if (server.arguments.contains("--deprecated-tag")) {
+                opened.setTags(List.of(DiagnosticTag.Deprecated));
+            }
+            server.publish(params.getTextDocument().getUri(), List.of(opened));
         }
 
         @Override
