@@ -1,8 +1,10 @@
 package dev.omatheusmesmo.vintelli.tui.maven;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.LongSupplier;
@@ -21,17 +23,24 @@ public final class MavenProjectController {
 
     public enum RowKind {
         MODULE,
-        PHASE
+        PHASE,
+        PROFILES,
+        PROFILE
     }
 
-    /** One visible row: a module node, or a lifecycle phase owned by the module at {@code selector}. */
-    public record Row(RowKind kind, String selector, int depth, String label, String phase, boolean expanded) {
+    /**
+     * One visible row: a module node, a lifecycle phase, the Profiles group or a profile checkbox, owned by the
+     * module at {@code selector}. {@code checked} is only meaningful for a profile row.
+     */
+    public record Row(RowKind kind, String selector, int depth, String label, String phase, boolean expanded,
+            boolean checked) {
     }
 
     private static final String ROOT = "";
 
     private MavenProjectLoad load;
     private final Set<String> expanded = new HashSet<>(Set.of(ROOT));
+    private final Map<String, Set<String>> selectedProfiles = new HashMap<>();
     private final DoubleClickTracker clicks = new DoubleClickTracker();
     private final Marquee marquee;
     private int selected;
@@ -94,7 +103,25 @@ public final class MavenProjectController {
 
     public synchronized void finishLoading(MavenProjectLoad result) {
         load = result;
+        if (result instanceof MavenProjectLoad.Loaded loaded) {
+            pruneProfiles(loaded.root());
+        }
         reset();
+    }
+
+    private void pruneProfiles(MavenModule root) {
+        Map<String, List<String>> declared = new HashMap<>();
+        declareProfiles(root, declared);
+        selectedProfiles.keySet().removeIf(selector -> !declared.containsKey(selector));
+        selectedProfiles.forEach((selector, ids) -> ids.retainAll(declared.get(selector)));
+        selectedProfiles.values().removeIf(Set::isEmpty);
+    }
+
+    private static void declareProfiles(MavenModule module, Map<String, List<String>> declared) {
+        declared.put(module.selector(), module.profiles());
+        for (MavenModule child : module.modules()) {
+            declareProfiles(child, declared);
+        }
     }
 
     private void reset() {
@@ -129,12 +156,20 @@ public final class MavenProjectController {
 
     private void collect(MavenModule module, int depth, List<Row> rows) {
         boolean open = expanded.contains(module.selector());
-        rows.add(new Row(RowKind.MODULE, module.selector(), depth, module.artifactId(), null, open));
+        rows.add(new Row(RowKind.MODULE, module.selector(), depth, module.artifactId(), null, open, false));
         if (!open) {
             return;
         }
         for (String phase : MavenLifecycle.PHASES) {
-            rows.add(new Row(RowKind.PHASE, module.selector(), depth + 1, phase, phase, false));
+            rows.add(new Row(RowKind.PHASE, module.selector(), depth + 1, phase, phase, false, false));
+        }
+        if (!module.profiles().isEmpty()) {
+            rows.add(new Row(RowKind.PROFILES, module.selector(), depth + 1, "Profiles", null, false, false));
+            Set<String> selected = selectedProfiles.getOrDefault(module.selector(), Set.of());
+            for (String id : module.profiles()) {
+                rows.add(new Row(RowKind.PROFILE, module.selector(), depth + 2, id, null, false,
+                        selected.contains(id)));
+            }
         }
         for (MavenModule child : module.modules()) {
             collect(child, depth + 1, rows);
@@ -205,8 +240,9 @@ public final class MavenProjectController {
     }
 
     /**
-     * Runs the selected phase, or toggles the selected module node. A phase
-     * row yields the goal; a module row yields nothing.
+     * Runs the selected phase with the profiles selected for its module, toggles
+     * the selected module node or profile, and does nothing on the Profiles group.
+     * Only a phase row yields a goal.
      */
     public synchronized Optional<MavenGoal> activateSelected() {
         Optional<Row> row = selectedRow();
@@ -214,15 +250,76 @@ public final class MavenProjectController {
             return Optional.empty();
         }
         Row current = row.get();
-        if (current.kind() == RowKind.PHASE) {
-            return Optional.of(new MavenGoal(current.phase(), current.selector()));
+        switch (current.kind()) {
+            case PHASE -> {
+                return Optional.of(new MavenGoal(current.phase(), current.selector(),
+                        selectedProfileIds(current.selector())));
+            }
+            case PROFILE -> toggleProfile(current.selector(), current.label());
+            case PROFILES -> {
+            }
+            case MODULE -> {
+                if (current.expanded()) {
+                    expanded.remove(current.selector());
+                } else {
+                    expanded.add(current.selector());
+                }
+                clampSelection();
+            }
         }
-        if (current.expanded()) {
-            expanded.remove(current.selector());
-        } else {
-            expanded.add(current.selector());
+        return Optional.empty();
+    }
+
+    /** Toggles the profile under the selection when it is a profile row, and reports whether it was one. */
+    public synchronized boolean isProfileRow(int index) {
+        List<Row> rows = rows();
+        return index >= 0 && index < rows.size() && rows.get(index).kind() == RowKind.PROFILE;
+    }
+
+    public synchronized boolean toggleSelectedProfile() {
+        Optional<Row> row = selectedRow();
+        if (row.isEmpty() || row.get().kind() != RowKind.PROFILE) {
+            return false;
         }
-        clampSelection();
+        toggleProfile(row.get().selector(), row.get().label());
+        return true;
+    }
+
+    private void toggleProfile(String selector, String id) {
+        Set<String> selected = selectedProfiles.computeIfAbsent(selector, key -> new HashSet<>());
+        if (!selected.remove(id)) {
+            selected.add(id);
+        }
+        if (selected.isEmpty()) {
+            selectedProfiles.remove(selector);
+        }
+    }
+
+    /** The profile ids selected for one module, in the order the module declares them. */
+    private List<String> selectedProfileIds(String selector) {
+        Set<String> selected = selectedProfiles.getOrDefault(selector, Set.of());
+        return findModule(selector).map(module -> module.profiles().stream()
+                .filter(selected::contains)
+                .toList()).orElse(List.of());
+    }
+
+    private Optional<MavenModule> findModule(String selector) {
+        if (load instanceof MavenProjectLoad.Loaded loaded) {
+            return findModule(loaded.root(), selector);
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<MavenModule> findModule(MavenModule module, String selector) {
+        if (module.selector().equals(selector)) {
+            return Optional.of(module);
+        }
+        for (MavenModule child : module.modules()) {
+            Optional<MavenModule> found = findModule(child, selector);
+            if (found.isPresent()) {
+                return found;
+            }
+        }
         return Optional.empty();
     }
 
@@ -264,7 +361,9 @@ public final class MavenProjectController {
         }
         int depth = rows.get(index).depth();
         for (int candidate = index - 1; candidate >= 0; candidate--) {
-            if (rows.get(candidate).kind() == RowKind.MODULE && rows.get(candidate).depth() == depth - 1) {
+            Row owner = rows.get(candidate);
+            boolean groupOwner = owner.kind() == RowKind.MODULE || owner.kind() == RowKind.PROFILES;
+            if (groupOwner && owner.depth() == depth - 1) {
                 return candidate;
             }
         }

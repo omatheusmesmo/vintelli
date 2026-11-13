@@ -44,6 +44,8 @@ stays idle. Set `vintelli.tui.marquee=false` (or `VINTELLI_TUI_MARQUEE=false`) t
 turn the motion off; the project tree then cuts the selected name with an
 ellipsis at the end.
 
+The Maven window (`Alt+9`) lists each module with its lifecycle phases and, when its `pom.xml` declares profiles, a Profiles group with one `[ ]` or `[x]` checkbox per profile id. Space, Enter or a click toggles a profile, and the choice is kept for the session only, per module, never saved to a file. Running a phase from a module passes the selected profiles as one `-P` argument in the order the pom declares them, and no `-P` argument when none is selected.
+
 Headless server (HTTP, MCP endpoint, web terminal):
 
 ```bash
