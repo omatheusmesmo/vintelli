@@ -154,7 +154,7 @@ Start with [usage](docs/usage.md), the [keymap](docs/keymap.md) and [themes](doc
 
 ## Status
 
-Vintelli is pre-release, with no published binary yet. See the GitHub issues for the plan (IDEA MCP integration, ACP agents, offline inspections, WebSocket surface, native smoke test).
+Vintelli is pre-release, with no published binary yet. See the GitHub issues for the plan (IDEA MCP integration, ACP agents, offline inspections, WebSocket surface). The native runner is built and tested in CI, see [docs/native-image.md](docs/native-image.md).
 
 <details>
 <summary>For AI agents and contributors</summary>
