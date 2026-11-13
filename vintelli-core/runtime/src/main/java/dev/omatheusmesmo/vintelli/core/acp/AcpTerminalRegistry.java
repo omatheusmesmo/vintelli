@@ -172,13 +172,16 @@ public final class AcpTerminalRegistry {
 
     private void destroyProcessTree(Process process) {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-        List<ProcessHandle> descendants = process.descendants().toList();
-        descendants.stream()
-                .sorted((left, right) -> Integer.compare(processDepth(right), processDepth(left)))
-                .forEach(ProcessHandle::destroyForcibly);
         try {
-            for (ProcessHandle descendant : descendants) {
-                awaitExit(descendant, deadline);
+            List<ProcessHandle> descendants = process.descendants().toList();
+            while (!descendants.isEmpty()) {
+                descendants.stream()
+                        .sorted((left, right) -> Integer.compare(processDepth(right), processDepth(left)))
+                        .forEach(ProcessHandle::destroyForcibly);
+                for (ProcessHandle descendant : descendants) {
+                    awaitExit(descendant, deadline);
+                }
+                descendants = process.descendants().toList();
             }
         } catch (ExecutionException | TimeoutException failure) {
             process.destroyForcibly();
