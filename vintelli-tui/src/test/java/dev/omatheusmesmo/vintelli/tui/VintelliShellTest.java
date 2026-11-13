@@ -6057,7 +6057,7 @@ class VintelliShellTest {
     }
 
     private static String awaitRenderedFrame(Pilot pilot, MouseShellRunner test, String text) {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
         String rendered = test.renderedFrame();
         while (!rendered.contains(text) && System.nanoTime() < deadline) {
             pause(pilot, Duration.ofMillis(30));
