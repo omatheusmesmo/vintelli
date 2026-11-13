@@ -35,6 +35,7 @@ import dev.omatheusmesmo.vintelli.api.capability.ReadFileCapability;
 import dev.omatheusmesmo.vintelli.api.capability.RunCapability;
 import dev.omatheusmesmo.vintelli.api.capability.TerminalCapability;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
+import dev.omatheusmesmo.vintelli.api.maven.MavenLifecycle;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import dev.omatheusmesmo.vintelli.tui.maven.MavenToolWindow;
 import dev.tamboui.layout.Rect;
@@ -48,6 +49,8 @@ class MavenToolWindowInteractionContractTest {
 
     private static final Size VIEWPORT = new Size(100, 20);
     private static final String PHASE_ROW = "validate";
+    private static final int PHASE_VALIDATE_INDEX = 2;
+    private static final int PROFILE_CI_INDEX = MavenLifecycle.PHASES.size() + 2;
 
     @TempDir
     Path project;
@@ -145,6 +148,61 @@ class MavenToolWindowInteractionContractTest {
         }
     }
 
+    @Test
+    void spaceTogglesTheFocusedProfileAndEnterRunsThePhaseWithTheSelectedProfile() throws Exception {
+        Path profiled = project.resolve("profiled");
+        writeProfiledProject(profiled);
+        try (ToolWindowInteractionAssertions.Session session = newSession(profiled)) {
+            ToolWindowPilotFixture fixture = session.fixture();
+            MavenContext context = session.context(MavenContext.class);
+            openMaven(fixture);
+            pressTimes(fixture, KeyCode.DOWN, PROFILE_CI_INDEX);
+            assertTrue(rowText(fixture.renderedText(), "ci").contains("[ ] ci"), fixture.renderedText());
+
+            fixture.press(' ');
+            assertTrue(rowText(fixture.renderedText(), "ci").contains("[x] ci"), fixture.renderedText());
+
+            fixture.press(KeyCode.ENTER);
+            assertTrue(rowText(fixture.renderedText(), "ci").contains("[ ] ci"), "Enter toggles a profile row");
+            assertEquals(List.of(), context.provider().requests(), "a profile row never runs anything");
+
+            fixture.press(' ');
+            pressTimes(fixture, KeyCode.UP, PROFILE_CI_INDEX - PHASE_VALIDATE_INDEX);
+            fixture.press(KeyCode.ENTER);
+            awaitUi(context.uiWork(), () -> !context.provider().requests().isEmpty());
+            assertEquals("maven:validate -Pci", describe(context.provider().requests().getFirst()));
+        }
+    }
+
+    @Test
+    void aPointerClickTogglesAScrolledProfileAndAClickOutsideTheWindowDoesNot() throws Exception {
+        Path profiled = project.resolve("profiled");
+        writeProfiledProject(profiled);
+        try (ToolWindowInteractionAssertions.Session session = newSession(profiled)) {
+            ToolWindowPilotFixture fixture = session.fixture();
+            MavenContext context = session.context(MavenContext.class);
+            openMaven(fixture);
+            Rect area = fixture.pilot().findElement("tool-maven");
+            for (int wheel = 0; wheel < 10 && rowIndex(fixture.renderedText(), "docs") < 0; wheel++) {
+                fixture.scrollDown(area.x() + 2, area.y());
+            }
+            int docs = rowContaining(fixture.renderedText(), "docs");
+            assertTrue(docs >= area.y() && docs < area.bottom(), fixture.renderedText());
+
+            fixture.pilot().click(area.x() + 2, docs);
+            assertTrue(rowText(fixture.renderedText(), "docs").contains("[x] docs"), fixture.renderedText());
+            assertTrue(rowText(fixture.renderedText(), "ci").contains("[ ] ci"), fixture.renderedText());
+
+            fixture.pilot().click(area.x() + 2, VIEWPORT.height() + 40);
+            assertTrue(rowText(fixture.renderedText(), "docs").contains("[x] docs"),
+                    "an outside click changes nothing");
+
+            fixture.resize(70, 20);
+            assertTrue(rowText(fixture.renderedText(), "docs").contains("[x] docs"), fixture.renderedText());
+            assertEquals(List.of(), context.provider().requests(), "toggling a profile never runs a phase");
+        }
+    }
+
     private ToolWindowInteractionAssertions.Session newSession() throws Exception {
         writeProject(project);
         return newSession(project);
@@ -166,6 +224,25 @@ class MavenToolWindowInteractionContractTest {
         return new ToolWindowInteractionAssertions.Session(fixture,
                 () -> observe(fixture, provider, uiWork),
                 new MavenContext(shell, provider, uiWork));
+    }
+
+    private static void writeProfiledProject(Path root) throws IOException {
+        Files.createDirectories(root.resolve("alpha"));
+        Files.writeString(root.resolve("pom.xml"), "<project><artifactId>demo</artifactId>"
+                + "<profiles><profile><id>ci</id></profile><profile><id>docs</id></profile></profiles>"
+                + "<modules><module>alpha</module></modules></project>", StandardCharsets.UTF_8);
+        Files.writeString(root.resolve("alpha/pom.xml"), "<project><artifactId>alpha</artifactId></project>",
+                StandardCharsets.UTF_8);
+    }
+
+    private static void pressTimes(ToolWindowPilotFixture fixture, KeyCode key, int times) {
+        for (int press = 0; press < times; press++) {
+            fixture.press(key);
+        }
+    }
+
+    private static String rowText(String screen, String token) {
+        return screen.lines().toList().get(rowContaining(screen, token));
     }
 
     private static void runValidateWithKeyboard(ToolWindowInteractionAssertions.Session session) {
@@ -252,13 +329,21 @@ class MavenToolWindowInteractionContractTest {
     }
 
     private static int rowContaining(String screen, String token) {
+        int row = rowIndex(screen, token);
+        if (row < 0) {
+            throw new AssertionError("no rendered row shows " + token + " in:\n" + screen);
+        }
+        return row;
+    }
+
+    private static int rowIndex(String screen, String token) {
         List<String> rows = screen.lines().toList();
         for (int row = 0; row < rows.size(); row++) {
             if (Arrays.asList(rows.get(row).split("[\\s│┃|›▸▾]+")).contains(token)) {
                 return row;
             }
         }
-        throw new AssertionError("no rendered row shows " + token + " in:\n" + screen);
+        return -1;
     }
 
     /**

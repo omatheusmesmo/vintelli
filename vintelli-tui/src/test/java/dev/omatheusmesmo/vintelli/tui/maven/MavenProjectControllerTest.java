@@ -305,6 +305,152 @@ class MavenProjectControllerTest {
         assertEquals("No Maven project: no pom.xml under the project root", controller.selectionText().orElseThrow());
     }
 
+    @Test
+    void aProfileRowIsDrawnUnderTheProfilesGroupAfterThePhasesOfItsModule() {
+        MavenProjectController controller = profiled(List.of("ci"), List.of("fast", "ci"));
+        selectModule(controller, "core");
+        controller.expandSelected();
+
+        List<Row> rows = controller.rows();
+        int group = indexOf(rows, row -> row.kind() == RowKind.PROFILES && "core".equals(row.selector()));
+        assertEquals("site", rows.get(group - 1).phase());
+        assertEquals(List.of("fast", "ci"), rows.subList(group + 1, group + 3).stream().map(Row::label).toList());
+        assertFalse(rows.get(group + 1).checked());
+    }
+
+    @Test
+    void togglingAProfileByEnterAndSpaceChangesItsCheck() {
+        MavenProjectController controller = profiled(List.of("ci"), List.of("fast", "ci"));
+        selectModule(controller, "core");
+        controller.expandSelected();
+
+        selectRow(controller, profileOf("core", "fast"));
+        assertTrue(controller.activateSelected().isEmpty());
+        assertTrue(selectedRow(controller).checked());
+
+        assertTrue(controller.toggleSelectedProfile());
+        assertFalse(selectedRow(controller).checked());
+
+        int ci = indexOf(controller.rows(), profileOf("core", "ci"));
+        assertTrue(controller.isProfileRow(ci));
+        assertFalse(controller.isProfileRow(indexOf(controller.rows(), phaseOf("core", "validate"))));
+        assertFalse(controller.isProfileRow(-1));
+        assertFalse(controller.isProfileRow(controller.rows().size()));
+    }
+
+    @Test
+    void spaceTogglesOnlyAProfileRow() {
+        MavenProjectController controller = profiled(List.of("ci"), List.of("fast"));
+        selectRow(controller, phaseOf("", "validate"));
+
+        assertFalse(controller.toggleSelectedProfile());
+        assertEquals(List.of(), controller.rows().stream().filter(Row::checked).toList());
+    }
+
+    @Test
+    void theSameProfileIdInTwoModulesIsSelectedIndependently() {
+        MavenProjectController controller = profiled(List.of("ci"), List.of("ci"));
+        selectRow(controller, profileOf("", "ci"));
+        controller.activateSelected();
+
+        selectModule(controller, "core");
+        controller.expandSelected();
+        int core = indexOf(controller.rows(), profileOf("core", "ci"));
+        assertFalse(controller.rows().get(core).checked());
+
+        controller.select(core);
+        controller.activateSelected();
+        assertTrue(controller.rows().get(core).checked());
+        assertTrue(controller.rows().get(indexOf(controller.rows(), profileOf("", "ci"))).checked());
+    }
+
+    @Test
+    void runningAPhaseAddsTheSelectedProfilesOfItsModuleInPomOrder() {
+        MavenProjectController controller = profiled(List.of("ci", "docs"), List.of("fast", "ci"));
+        selectRow(controller, profileOf("", "docs"));
+        controller.activateSelected();
+        selectModule(controller, "core");
+        controller.expandSelected();
+        selectRow(controller, profileOf("core", "ci"));
+        controller.activateSelected();
+        selectRow(controller, profileOf("core", "fast"));
+        controller.activateSelected();
+        selectRow(controller, phaseOf("core", "validate"));
+
+        MavenGoal goal = controller.activateSelected().orElseThrow();
+
+        assertEquals(List.of("-pl", "core", "-Pfast,ci"), goal.arguments());
+        selectRow(controller, phaseOf("", "validate"));
+        assertEquals(List.of("-Pdocs"), controller.activateSelected().orElseThrow().arguments());
+    }
+
+    @Test
+    void aPhaseRunsWithoutAProfileArgumentWhenNothingIsSelected() {
+        MavenProjectController controller = profiled(List.of("ci"), List.of("fast"));
+        selectModule(controller, "core");
+        controller.expandSelected();
+        selectRow(controller, phaseOf("core", "validate"));
+
+        assertEquals(List.of("-pl", "core"), controller.activateSelected().orElseThrow().arguments());
+    }
+
+    @Test
+    void theProfileSelectionSurvivesAReloadAndDropsIdsThatNoLongerExist() {
+        MavenProjectController controller = profiled(List.of("ci"), List.of("fast", "ci"));
+        selectModule(controller, "core");
+        controller.expandSelected();
+        selectRow(controller, profileOf("core", "fast"));
+        controller.activateSelected();
+        selectRow(controller, profileOf("core", "ci"));
+        controller.activateSelected();
+
+        controller.startLoading();
+        controller.finishLoading(new MavenProjectLoad.Loaded(profiledTree(List.of("ci"), List.of("ci"))));
+        selectModule(controller, "core");
+        controller.expandSelected();
+        selectRow(controller, phaseOf("core", "validate"));
+        assertEquals(List.of("-pl", "core", "-Pci"), controller.activateSelected().orElseThrow().arguments());
+
+        controller.startLoading();
+        controller.finishLoading(new MavenProjectLoad.Loaded(profiledTree(List.of("ci"), List.of("docs"))));
+        selectModule(controller, "core");
+        controller.expandSelected();
+        selectRow(controller, phaseOf("core", "validate"));
+        assertEquals(List.of("-pl", "core"), controller.activateSelected().orElseThrow().arguments());
+    }
+
+    @Test
+    void aGoalKeepsTheProfilesItWasGiven() {
+        MavenGoal goal = new MavenGoal("test", "core", List.of("fast", "ci"));
+
+        assertEquals(List.of("-pl", "core", "-Pfast,ci"), goal.arguments());
+        assertEquals(List.of(), new MavenGoal("test", "").arguments());
+    }
+
+    private static MavenProjectController profiled(List<String> rootProfiles, List<String> coreProfiles) {
+        MavenProjectController controller = new MavenProjectController();
+        controller.finishLoading(new MavenProjectLoad.Loaded(profiledTree(rootProfiles, coreProfiles)));
+        return controller;
+    }
+
+    private static MavenModule profiledTree(List<String> rootProfiles, List<String> coreProfiles) {
+        MavenModule core = new MavenModule("core", "core", coreProfiles, List.of());
+        return new MavenModule("vintelli", "", rootProfiles, List.of(core));
+    }
+
+    private static int indexOf(List<Row> rows, Predicate<Row> match) {
+        for (int index = 0; index < rows.size(); index++) {
+            if (match.test(rows.get(index))) {
+                return index;
+            }
+        }
+        throw new AssertionError("no matching row in " + rows);
+    }
+
+    private static Predicate<Row> profileOf(String selector, String id) {
+        return row -> row.kind() == RowKind.PROFILE && selector.equals(row.selector()) && id.equals(row.label());
+    }
+
     private static MavenProjectController loaded() {
         MavenProjectController controller = new MavenProjectController();
         controller.finishLoading(new MavenProjectLoad.Loaded(ROOT));

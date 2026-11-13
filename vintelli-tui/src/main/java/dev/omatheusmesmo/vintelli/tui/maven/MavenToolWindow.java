@@ -172,19 +172,27 @@ public final class MavenToolWindow implements ToolWindow {
         return null;
     }
 
+    /** Space toggles the focused profile row; on any other row it is not handled. */
     @Override
     public boolean handleKey(KeyEvent event) {
-        return false;
+        boolean space = event.code() == KeyCode.CHAR && event.codePoint() == ' ' && !event.hasCtrl() && !event.hasAlt();
+        return space && controller.toggleSelectedProfile();
     }
 
-    /** A double click on one row activates it, the same action Enter dispatches; a single click only selects. */
+    /**
+     * A double click on a module or phase row activates it, the same action Enter dispatches; a single click only
+     * selects. A profile row is a checkbox: one click toggles it, so it never takes part in a double click.
+     */
     @Override
     public String actionForMouse(MouseEvent event) {
         if (!isLeftClick(event) || !inside(event)) {
             return null;
         }
         int index = rowIndex(event);
-        return index >= 0 && controller.registerClick(index, nanos.getAsLong()) ? KeyActions.MAVEN_ACTIVATE : null;
+        if (index < 0 || controller.isProfileRow(index)) {
+            return null;
+        }
+        return controller.registerClick(index, nanos.getAsLong()) ? KeyActions.MAVEN_ACTIVATE : null;
     }
 
     @Override
@@ -208,6 +216,7 @@ public final class MavenToolWindow implements ToolWindow {
             return false;
         }
         controller.select(index);
+        controller.toggleSelectedProfile();
         return true;
     }
 
@@ -287,10 +296,11 @@ public final class MavenToolWindow implements ToolWindow {
 
     private static String prefix(Row row) {
         String indent = "  ".repeat(row.depth());
-        if (row.kind() == RowKind.PHASE) {
-            return indent;
-        }
-        return indent + (row.expanded() ? "▾ " : "▸ ");
+        return switch (row.kind()) {
+            case PHASE, PROFILES -> indent;
+            case PROFILE -> indent + (row.checked() ? "[x] " : "[ ] ");
+            case MODULE -> indent + (row.expanded() ? "▾ " : "▸ ");
+        };
     }
 
     private static String label(Row row) {

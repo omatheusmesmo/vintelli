@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -80,6 +81,7 @@ public final class MavenProjectReader {
         }
         String artifactId = childText(project, "artifactId")
                 .orElse(String.valueOf(real.getFileName()));
+        List<String> profiles = profileIds(project);
         List<MavenModule> children = new ArrayList<>();
         for (String name : moduleNames(project)) {
             if (++counted[0] > MAX_MODULES) {
@@ -87,7 +89,7 @@ public final class MavenProjectReader {
             }
             children.add(readModule(root, directory.resolve(name).normalize(), depth + 1, visited, counted));
         }
-        return new MavenModule(artifactId, selector(root, real), children);
+        return new MavenModule(artifactId, selector(root, real), profiles, children);
     }
 
     private static Path realDirectory(Path directory) {
@@ -141,6 +143,16 @@ public final class MavenProjectReader {
             }
         }
         return names;
+    }
+
+    private static List<String> profileIds(Element project) {
+        Set<String> ids = new LinkedHashSet<>();
+        for (Element profiles : childElements(project, "profiles")) {
+            for (Element profile : childElements(profiles, "profile")) {
+                childText(profile, "id").ifPresent(ids::add);
+            }
+        }
+        return List.copyOf(ids);
     }
 
     private static Optional<String> childText(Element parent, String name) {

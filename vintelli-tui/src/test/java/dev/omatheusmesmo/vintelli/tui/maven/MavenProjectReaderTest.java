@@ -48,6 +48,51 @@ class MavenProjectReaderTest {
     }
 
     @Test
+    void listsTheProfileIdsOfEachModuleInPomOrder() throws IOException {
+        pom(root, "<artifactId>parent</artifactId><modules><module>api</module></modules>"
+                + "<profiles><profile><id>release</id></profile><profile><id>fast</id></profile></profiles>");
+        pom(root.resolve("api"), "<artifactId>api</artifactId><profiles><profile><id>native</id></profile></profiles>");
+
+        MavenModule tree = loaded(MavenProjectReader.read(root));
+
+        assertEquals(List.of("release", "fast"), tree.profiles());
+        assertEquals(List.of("native"), tree.modules().getFirst().profiles());
+    }
+
+    @Test
+    void aPomWithoutProfilesListsNone() throws IOException {
+        pom(root, "<artifactId>single</artifactId>");
+
+        MavenModule tree = loaded(MavenProjectReader.read(root));
+
+        assertEquals(List.of(), tree.profiles());
+    }
+
+    @Test
+    void aProfileWithoutAnIdIsSkippedAndADuplicateIdIsListedOnce() throws IOException {
+        pom(root, "<artifactId>single</artifactId><profiles>"
+                + "<profile><activation><activeByDefault>true</activeByDefault></activation></profile>"
+                + "<profile><id>  </id></profile>"
+                + "<profile><id>ci</id></profile><profile><id>docs</id></profile><profile><id>ci</id></profile>"
+                + "</profiles>");
+
+        MavenModule tree = loaded(MavenProjectReader.read(root));
+
+        assertEquals(List.of("ci", "docs"), tree.profiles());
+    }
+
+    @Test
+    void aDoctypePomWithProfilesIsStillRefused() throws IOException {
+        Files.writeString(root.resolve("pom.xml"), "<!DOCTYPE project [<!ENTITY leak SYSTEM \"file:///etc/hostname\">]>"
+                + "<project><artifactId>p</artifactId>"
+                + "<profiles><profile><id>&leak;</id></profile></profiles></project>", StandardCharsets.UTF_8);
+
+        MavenProjectLoad load = MavenProjectReader.read(root);
+
+        assertInstanceOf(MavenProjectLoad.Unreadable.class, load);
+    }
+
+    @Test
     void aMissingPomIsReportedAsMissingNotAsAnEmptyTree() {
         assertInstanceOf(MavenProjectLoad.Missing.class, MavenProjectReader.read(root));
     }
