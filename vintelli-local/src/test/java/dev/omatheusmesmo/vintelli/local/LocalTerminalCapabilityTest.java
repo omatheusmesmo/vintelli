@@ -403,6 +403,39 @@ class LocalTerminalCapabilityTest {
     }
 
     @Test
+    void resolvesAnAbsoluteWorkingDirectoryInsideTheProjectRoot() throws IOException {
+        Path project = Files.createDirectories(temp.resolve("project"));
+        Path nested = Files.createDirectories(project.resolve("nested"));
+        Path ping = TestProcesses.extractSource(temp, "Ping.java");
+
+        TerminalResult result = resultOf(LocalTerminalCapability.of(new LocalProjectRoot(project), Duration.ofMinutes(5))
+                .execute(new TerminalRequest(launch(ping), nested.toAbsolutePath(), true)));
+
+        assertEquals(TerminalOutcome.EXECUTED, result.outcome());
+        assertTrue(childWorkingDirectory(result).equalsIgnoreCase(nested.toRealPath().toString()), result.output());
+    }
+
+    @Test
+    void runsInTheProjectRootWhenTheWorkingDirectoryIsBlank() throws IOException {
+        Path project = Files.createDirectories(temp.resolve("project"));
+        Path ping = TestProcesses.extractSource(temp, "Ping.java");
+
+        TerminalResult result = resultOf(LocalTerminalCapability.of(new LocalProjectRoot(project), Duration.ofMinutes(5))
+                .execute(new TerminalRequest(launch(ping), Path.of(""), true)));
+
+        assertEquals(TerminalOutcome.EXECUTED, result.outcome());
+        assertTrue(childWorkingDirectory(result).equalsIgnoreCase(project.toRealPath().toString()), result.output());
+    }
+
+    private static String childWorkingDirectory(TerminalResult result) {
+        return result.output().lines()
+                .filter(line -> line.startsWith("wd:"))
+                .map(line -> line.substring("wd:".length()).strip())
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("no wd line in: " + result.output()));
+    }
+
+    @Test
     void keepsTheOutputReadSoFarWhenTheCommandTimesOut() throws IOException {
         Path pumper = TestProcesses.extractSource(temp, "Pumper.java");
 

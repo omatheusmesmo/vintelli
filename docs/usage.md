@@ -163,9 +163,24 @@ Decisions of the local provider:
   PowerShell can also use `pwsh` on Unix when installed. Git Bash is discovered
   under common Git for Windows install roots. The resolver accepts a shell id
   or absolute executable path, not an arbitrary command line.
-- Shell command confirmation remains a heuristic. It catches the dangerous
-  command forms Vintelli knows, but aliases, functions, shell-specific syntax
-  and indirection can bypass it; confirmation is not a filesystem sandbox.
+- One shot terminal commands are not a persistent shell. Each request runs one
+  host shell invocation (`sh -c`, `cmd /d /c` or `powershell -Command`) in the
+  project root, so pipes, redirects and expansions inside that single line are
+  interpreted by the shell. `cd`, variables and other state do not carry over
+  to the next request, and no process stays running between requests. For a
+  shell that keeps state, use the Terminal tool window; the one shot command
+  is not the interactive terminal.
+- The `rm -rf` and `sudo` confirmation gate (`DangerousCommands`) is a
+  heuristic guard rail, not a sandbox. It looks at the base name of the first
+  word (a Windows executable suffix is ignored) and at the flags of that
+  command, so it misses:
+  - wrappers and indirection: `env rm -rf x`, `sh -c 'rm -rf x'`, `xargs rm`;
+  - other destructive tools: `find . -delete`, `git clean -fdx`, `dd`, `mkfs`;
+  - interpreters that read their own command line: `cmd`, `powershell`, `pwsh`;
+  - aliases, shell functions, scripts, and programs reached through another
+    path or name;
+  - spellings, abbreviations and flag combinations the parser does not know.
+  The gate also does not limit what an approved command does once it runs.
 - POSIX sessions use the host `script` utility to allocate a PTY, so that
   utility must be installed. Its command string contains only the resolved,
   quoted executable path and Vintelli's fixed interactive arguments; user
