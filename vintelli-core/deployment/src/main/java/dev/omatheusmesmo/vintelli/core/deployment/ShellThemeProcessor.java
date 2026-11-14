@@ -1,5 +1,8 @@
 package dev.omatheusmesmo.vintelli.core.deployment;
 
+import dev.omatheusmesmo.vintelli.api.dependencies.ProjectDependencyGraph;
+import dev.omatheusmesmo.vintelli.api.dependencies.ProjectDependencyGraph.LibraryDependency;
+import dev.omatheusmesmo.vintelli.api.dependencies.ProjectDependencyGraph.Module;
 import io.quarkus.deployment.annotations.BuildStep;
 import io.quarkus.deployment.builditem.CombinedIndexBuildItem;
 import io.quarkus.deployment.builditem.FeatureBuildItem;
@@ -16,11 +19,19 @@ import java.util.List;
  * theme resource directory is included in the native image by pattern; adding
  * a third theme needs no deployment change. The payload of a rejected theme
  * switch is an untyped {@code Response} entity that the native build cannot
- * see, so its record is registered for reflection from the Jandex index.
+ * see, so its record is registered for reflection from the Jandex index. The
+ * dependency graph's record payloads are also registered for JSON serialization,
+ * and the Maven model builder's built-in super POM is included so its offline
+ * dependency resolver can read Maven project metadata in a native image.
  */
 final class ShellThemeProcessor {
 
     private static final String THEME_REJECTED = "dev.omatheusmesmo.vintelli.tui.ShellInspectResource$ThemeRejected";
+    private static final String[] DEPENDENCY_GRAPH_TYPES = {
+            ProjectDependencyGraph.class.getName(),
+            Module.class.getName(),
+            LibraryDependency.class.getName()
+    };
 
     @BuildStep
     FeatureBuildItem feature() {
@@ -45,6 +56,22 @@ final class ShellThemeProcessor {
                 .constructors()
                 .methods()
                 .fields()
+                .build();
+    }
+
+    @BuildStep
+    ReflectiveClassBuildItem dependencyGraphPayload() {
+        return ReflectiveClassBuildItem.builder(DEPENDENCY_GRAPH_TYPES)
+                .constructors()
+                .methods()
+                .fields()
+                .build();
+    }
+
+    @BuildStep
+    NativeImageResourcePatternsBuildItem mavenModelSuperPom() {
+        return NativeImageResourcePatternsBuildItem.builder()
+                .includeGlob("org/apache/maven/model/pom-4.0.0.xml")
                 .build();
     }
 }

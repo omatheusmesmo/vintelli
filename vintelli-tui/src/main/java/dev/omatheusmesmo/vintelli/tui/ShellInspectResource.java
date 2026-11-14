@@ -1,5 +1,7 @@
 package dev.omatheusmesmo.vintelli.tui;
 
+import dev.omatheusmesmo.vintelli.api.dependencies.ProjectDependencyGraph;
+import dev.omatheusmesmo.vintelli.api.dependencies.ProjectDependencyGraphProvider;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyAction;
 import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeymapProfile;
@@ -12,6 +14,7 @@ import dev.tamboui.style.Color.Rgb;
 import dev.tamboui.style.Modifier;
 import dev.tamboui.terminal.Frame;
 import jakarta.enterprise.inject.Instance;
+import io.quarkus.arc.All;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import jakarta.ws.rs.GET;
@@ -86,15 +89,18 @@ public final class ShellInspectResource {
 
     private final Instance<VintelliShell> shell;
     private final Instance<ToolWindowRegistry> registry;
+    private final List<ProjectDependencyGraphProvider> dependencyGraphProviders;
     private final boolean enabled;
     private final String projectRoot;
 
     @Inject
     public ShellInspectResource(Instance<VintelliShell> shell, Instance<ToolWindowRegistry> registry,
+            @All List<ProjectDependencyGraphProvider> dependencyGraphProviders,
             @ConfigProperty(name = "vintelli.inspect.enabled", defaultValue = "false") boolean enabled,
             @ConfigProperty(name = "vintelli.local.project-root", defaultValue = ".") String projectRoot) {
         this.shell = shell;
         this.registry = registry;
+        this.dependencyGraphProviders = List.copyOf(dependencyGraphProviders);
         this.enabled = enabled;
         this.projectRoot = projectRoot;
     }
@@ -328,6 +334,17 @@ public final class ShellInspectResource {
             case MavenProjectLoad.Missing missing -> new MavenView("missing", missing.reason(), List.of());
             case MavenProjectLoad.Unreadable unreadable -> new MavenView("unreadable", unreadable.reason(), List.of());
         };
+    }
+
+    /** Reads dependency metadata for headless verification; the resolver is offline and uses no remotes. */
+    @GET
+    @Path("/dependencies")
+    @Produces(MediaType.APPLICATION_JSON)
+    public ProjectDependencyGraph dependencies() {
+        if (!enabled) {
+            throw new NotFoundException();
+        }
+        return DependencyGraphInspection.read(projectRoot, dependencyGraphProviders);
     }
 
     private static List<String> selectors(MavenModule module) {

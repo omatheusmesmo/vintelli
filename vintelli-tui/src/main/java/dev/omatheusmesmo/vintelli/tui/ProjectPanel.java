@@ -16,6 +16,7 @@ import dev.tamboui.toolkit.element.DefaultRenderContext;
 import dev.tamboui.toolkit.element.Element;
 import dev.tamboui.toolkit.element.RenderContext;
 import dev.tamboui.toolkit.element.Size;
+import dev.tamboui.toolkit.element.StyledElement;
 import dev.tamboui.toolkit.elements.ListElement;
 import dev.tamboui.toolkit.event.EventResult;
 import dev.tamboui.tui.event.KeyCode;
@@ -113,7 +114,8 @@ final class ProjectPanel implements Element {
         this.lock = lock;
         this.host = host;
         this.menus = new ProjectMenus(this::menuEntries, actionId -> host.keymap().describeBindings(actionId));
-        this.list = Toolkit.list(rows());
+        this.list = Toolkit.list();
+        list.elements(rows().toArray(StyledElement<?>[]::new));
         list.id(ID);
         list.addClass("tool-panel");
         list.focusable();
@@ -131,7 +133,7 @@ final class ProjectPanel implements Element {
         this.unicodeTree = unicode;
         if (controller.fileCount() > 0) {
             long kinds = controller.javaKindVersion();
-            list.items(rows());
+            list.elements(rows().toArray(StyledElement<?>[]::new));
             pushedRevision = controller.revision();
             pushedJavaKinds = kinds;
             pushedUnicode = unicode;
@@ -347,6 +349,14 @@ final class ProjectPanel implements Element {
             }
             return true;
         }
+        if (key.isKey(KeyCode.RIGHT) && controller.selectedDirectory()) {
+            controller.expandSelected();
+            return true;
+        }
+        if (key.isKey(KeyCode.LEFT) && controller.selectedDirectory()) {
+            controller.collapseSelected();
+            return true;
+        }
         if (host.shortcutsBlocked()) {
             return false;
         }
@@ -507,7 +517,7 @@ final class ProjectPanel implements Element {
                 || (clipped && pushedSelected != controller.selected())
                 || (clipped && pushedOffset != controller.marqueeOffset())) {
             long kinds = controller.javaKindVersion();
-            list.items(rows());
+            list.elements(rows().toArray(StyledElement<?>[]::new));
             pushedRevision = controller.revision();
             pushedJavaKinds = kinds;
             pushedUnicode = unicodeTree;
@@ -530,28 +540,41 @@ final class ProjectPanel implements Element {
         }
     }
 
-    private List<String> rows() {
+    private List<StyledElement<?>> rows() {
         List<String> files = controller.files();
         if (files.isEmpty()) {
-            return List.of(controller.emptyLabel());
+            return List.of(Toolkit.text(controller.emptyLabel()));
         }
         int left = controller.leftColumn();
         List<ProjectNode> nodes = controller.visibleNodes();
         if (nodes.isEmpty()) {
-            return files.stream().map(file -> dropColumns(vcsDecorated(file, file), left)).toList();
+            return files.stream().<StyledElement<?>>map(file -> Toolkit.text(dropColumns(vcsDecorated(file, file), left)))
+                    .toList();
         }
         boolean clipped = controller.selectedClipped();
         int selectedIndex = controller.selected();
-        List<String> labels = new ArrayList<>();
+        List<StyledElement<?>> labels = new ArrayList<>();
         for (int index = 0; index < nodes.size(); index++) {
             String label = dropColumns(nodeLabel(nodes.get(index)), left);
             if (clipped && index == selectedIndex) {
                 label = controller.marqueeEnabled() ? scrolledLabel(nodes.get(index), label)
                         : clipEnd(label, viewColumns);
             }
-            labels.add(label);
+            labels.add(nodeRow(nodes.get(index), label));
         }
         return labels;
+    }
+
+    private StyledElement<?> nodeRow(ProjectNode node, String label) {
+        if (!node.dependency || node.scope.isBlank()) {
+            return Toolkit.text(label);
+        }
+        String suffix = dependencySuffix(node);
+        if (!label.endsWith(suffix)) {
+            return Toolkit.text(label);
+        }
+        return Toolkit.row(Toolkit.text(label.substring(0, label.length() - suffix.length())),
+                Toolkit.text(suffix).dim()).spacing(0);
     }
 
     private String nodeLabel(ProjectNode node) {
@@ -563,7 +586,17 @@ final class ProjectPanel implements Element {
         }
         FileIcon icon = node.directory ? fileIcons.folderIconFor(node.name)
                 : fileIcons.iconFor(node.name, controller.javaKind(node));
-        return label.append(icon.symbol(fileIcons.mode())).append(' ').append(node.compactName()).toString();
+        label.append(icon.symbol(fileIcons.mode())).append(' ').append(node.compactName());
+        if (node.dependency && !node.scope.isBlank()) {
+            label.append(dependencySuffix(node));
+        } else if (node.externalLibraries && !node.status.isBlank()) {
+            label.append("  ").append(node.status);
+        }
+        return label.toString();
+    }
+
+    private static String dependencySuffix(ProjectNode node) {
+        return "  (" + (node.optional ? "optional, " : "") + node.scope + ")";
     }
 
     private String scrolledLabel(ProjectNode node, String label) {

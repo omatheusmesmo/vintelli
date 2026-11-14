@@ -4,6 +4,7 @@ import dev.omatheusmesmo.vintelli.api.capability.CapabilityRegistry;
 import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability;
 import dev.omatheusmesmo.vintelli.api.capability.ProjectFileOperations;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
+import dev.omatheusmesmo.vintelli.api.dependencies.ProjectDependencyGraphProvider;
 import dev.omatheusmesmo.vintelli.api.idea.IdeaMcpConnection;
 import dev.omatheusmesmo.vintelli.api.search.ProjectSearch;
 import dev.omatheusmesmo.vintelli.api.statusbar.StatusBarWidgetContributor;
@@ -25,6 +26,7 @@ final class ShellConfigProducer {
             @All List<NavigationCapability> navigationProviders, CapabilityRegistry capabilityRegistry,
             @All List<StatusBarWidgetContributor> statusBarContributors,
             @All List<VersionControlCapability> vcsProviders, @All List<ProjectFileOperations> fileOperations,
+            @All List<ProjectDependencyGraphProvider> dependencyGraphProviders,
             Instance<IdeaMcpConnection> ideaMcpConnections,
             @ConfigProperty(name = "vintelli.idea.mcp.url") Optional<String> ideaUrl,
             @ConfigProperty(name = "vintelli.tui.marquee", defaultValue = "true") boolean marquee) {
@@ -38,6 +40,7 @@ final class ShellConfigProducer {
                 .withPersistLayout(true)
                 .withStatusBarContributors(statusBarContributors)
                 .withFileOperations(fileOperations.isEmpty() ? null : fileOperations.getFirst())
+                .withDependencyGraphProviders(dependencyGraphProviders)
                 .withIdeaMcpConnection(ideaMcpConnection)
                 .withIdeaStatus(IdeaStatusBadge.of(ideaUrl, ideaMcpConnection))
                 .withMarquee(marquee);

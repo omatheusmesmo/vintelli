@@ -15,6 +15,7 @@ import io.quarkus.websockets.next.OnOpen;
 import io.quarkus.websockets.next.OnTextMessage;
 import io.quarkus.websockets.next.WebSocket;
 import io.quarkus.websockets.next.WebSocketConnection;
+import io.smallrye.common.annotation.Blocking;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -52,6 +53,7 @@ public final class WebTerminalEndpoint {
         this.sessions = sessions;
     }
 
+    @Blocking
     @OnOpen
     public Uni<Void> open(WebSocketConnection connection) {
         WebTerminalOutput output = ansi -> {

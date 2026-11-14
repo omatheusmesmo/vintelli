@@ -1,6 +1,11 @@
 package dev.omatheusmesmo.vintelli.tui;
 
 import dev.omatheusmesmo.vintelli.api.search.ProjectSearch;
+import dev.omatheusmesmo.vintelli.api.dependencies.ProjectDependencyGraph;
+import dev.omatheusmesmo.vintelli.api.dependencies.ProjectDependencyGraph.LibraryDependency;
+import dev.omatheusmesmo.vintelli.api.dependencies.ProjectDependencyGraph.Disposition;
+import dev.omatheusmesmo.vintelli.api.dependencies.ProjectDependencyGraph.Module;
+import dev.omatheusmesmo.vintelli.api.dependencies.ProjectDependencyGraphProvider;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityFailure;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.ProjectFileOperations;
@@ -40,6 +45,11 @@ class ProjectTreeTest {
     Path project;
 
     private VintelliShell shellWithProject(Path root) throws Exception {
+        return shellWithProject(root, null);
+    }
+
+    private VintelliShell shellWithProject(Path root, ProjectDependencyGraphProvider dependencyGraphProvider)
+            throws Exception {
         Files.createDirectories(root.resolve("src/main"));
         Files.writeString(root.resolve("src/main/A.java"), "class A {}");
         Files.writeString(root.resolve("README.md"), "# readme");
@@ -52,10 +62,14 @@ class ProjectTreeTest {
         List<ToolWindow> windows = new ArrayList<>(defaultWindows());
         windows.add(editor);
         ToolWindowRegistry registry = new ToolWindowRegistry(windows);
-        return new VintelliShell(ShellConfig.of(registry.toolWindows(), new ShellState(), themes)
+        ShellConfig config = ShellConfig.of(registry.toolWindows(), new ShellState(), themes)
                 .withKeymapSupplier(() -> Keymap.defaultKeymap(registry.toolWindows()))
                 .withProjectSearch(search)
-                .withFileOperations(testFileOperations(root)));
+                .withFileOperations(testFileOperations(root));
+        if (dependencyGraphProvider != null) {
+            config = config.withDependencyGraphProviders(List.of(dependencyGraphProvider));
+        }
+        return new VintelliShell(config);
     }
 
     private static ProjectFileOperations testFileOperations(Path root) {
@@ -183,7 +197,7 @@ class ProjectTreeTest {
         VintelliShell shell = shellWithProject(project);
         shell.refreshProjectTree();
         shell.selectPath("src");
-        try (ToolkitTestRunner runner = ToolkitTestRunner.runTest(shell::root, new Size(100, 30))) {
+        try (ToolkitTestRunner runner = ToolkitTestRunner.runTest(shell::root, new Size(160, 30))) {
             runner.runner().styleEngine(shell.themes().engine());
             runner.runner().eventRouter().addGlobalHandler(shell);
             Pilot pilot = runner.pilot();
@@ -232,6 +246,85 @@ class ProjectTreeTest {
         assertTrue(rendered.contains("    " + fileIcon + " A.java"), rendered);
         assertFalse(rendered.contains("├") || rendered.contains("└")
                 || rendered.contains("|--") || rendered.contains("\\--"), rendered);
+    }
+
+    @Test
+    void externalLibrariesExpandWithKeyboardAndShowScopes() throws Exception {
+        Files.writeString(project.resolve("pom.xml"), "<project/>");
+        Path jar = project.resolve("cached-library.jar");
+        Files.writeString(jar, "test jar");
+        ProjectDependencyGraph graph = new ProjectDependencyGraph(List.of(new Module("demo", List.of(
+                new LibraryDependency("example", "library", "1.2", "runtime", Disposition.RESOLVED, jar,
+                        List.of(new LibraryDependency("example", "transitive", "2.0", "compile",
+                                Disposition.MISSING, null, List.of())), true)))), false,
+                "Offline cache is incomplete");
+        ProjectDependencyGraphProvider provider = new ProjectDependencyGraphProvider() {
+            @Override public boolean supports(Path projectRoot) { return true; }
+            @Override public ProjectDependencyGraph read(Path projectRoot) { return graph; }
+        };
+        VintelliShell shell = shellWithProject(project, provider);
+
+        awaitProjectFiles(shell, path -> path.equals(".vintelli-external-libraries"));
+        try (ToolkitTestRunner runner = ToolkitTestRunner.runTest(shell::root, new Size(160, 30))) {
+            runner.runner().styleEngine(shell.themes().engine());
+            runner.runner().eventRouter().addGlobalHandler(shell);
+            Pilot pilot = runner.pilot();
+            pilot.pause(Duration.ofMillis(300));
+            var area = pilot.findElement(ProjectPanel.ID);
+            int externalRow = shell.projectFiles().indexOf(".vintelli-external-libraries");
+            pilot.click(area.x() + 10, area.y() + externalRow);
+            pilot.press(KeyCode.ENTER);
+            awaitProjectFiles(shell, path -> path.endsWith("/dependency-0"));
+            shell.selectPath(".vintelli-external-libraries/dependency-0");
+            pilot.press(KeyCode.RIGHT);
+            awaitProjectFiles(shell, path -> path.endsWith("/dependency-1"));
+            shell.selectPath(".vintelli-external-libraries/dependency-0");
+            pilot.press(KeyCode.ENTER);
+            assertTrue(shell.status().contains("cached-library.jar"), shell.status());
+        }
+        String expanded = renderText(shell);
+        assertTrue(expanded.contains("(Incomplete)"), expanded);
+        assertTrue(expanded.contains("1.2"), expanded);
+        assertTrue(expanded.contains("(optional, runtime)"), expanded);
+        assertTrue(expanded.contains("ansitive"), expanded);
+    }
+
+    @Test
+    void externalLibrariesDisclosureCanBeOpenedByPointer() throws Exception {
+        Files.writeString(project.resolve("pom.xml"), "<project/>");
+        ProjectDependencyGraph graph = new ProjectDependencyGraph(List.of(new Module("demo", List.of(
+                new LibraryDependency("example", "library", "1.0", "compile", Disposition.MISSING, null, List.of())))),
+                false, "Dependency artifact is not cached");
+        ProjectDependencyGraphProvider provider = new ProjectDependencyGraphProvider() {
+            @Override public boolean supports(Path projectRoot) { return true; }
+            @Override public ProjectDependencyGraph read(Path projectRoot) { return graph; }
+        };
+        VintelliShell shell = shellWithProject(project, provider);
+        awaitProjectFiles(shell, path -> path.equals(".vintelli-external-libraries"));
+
+        try (ToolkitTestRunner runner = ToolkitTestRunner.runTest(shell::root, new Size(160, 30))) {
+            runner.runner().styleEngine(shell.themes().engine());
+            runner.runner().eventRouter().addGlobalHandler(shell);
+            Pilot pilot = runner.pilot();
+            pilot.pause(Duration.ofMillis(100));
+            var area = pilot.findElement(ProjectPanel.ID);
+            int row = shell.projectFiles().indexOf(".vintelli-external-libraries");
+            shell.selectPath("README.md");
+            pilot.click(area.x() + 10, area.y() + row);
+            pilot.click(area.x() + 10, area.y() + row);
+            assertEquals(row, shell.fileIndex());
+            awaitProjectFiles(shell, path -> path.endsWith("/dependency-0"));
+        }
+        assertTrue(shell.projectFiles().contains(".vintelli-external-libraries/dependency-0"));
+    }
+
+    private static void awaitProjectFiles(VintelliShell shell, java.util.function.Predicate<String> condition)
+            throws InterruptedException {
+        long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+        while (System.nanoTime() < deadline && shell.projectFiles().stream().noneMatch(condition)) {
+            Thread.sleep(10);
+        }
+        assertTrue(shell.projectFiles().stream().anyMatch(condition), shell.projectFiles().toString());
     }
 
     @Test

@@ -3,6 +3,9 @@ package dev.omatheusmesmo.vintelli.tui;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.ProjectFileOperations;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
+import dev.omatheusmesmo.vintelli.api.dependencies.ProjectDependencyGraph;
+import dev.omatheusmesmo.vintelli.api.dependencies.ProjectDependencyGraph.LibraryDependency;
+import dev.omatheusmesmo.vintelli.api.dependencies.ProjectDependencyGraphProvider;
 import dev.omatheusmesmo.vintelli.api.search.ProjectSearch;
 import dev.omatheusmesmo.vintelli.tui.icons.JavaTypeKind;
 import dev.omatheusmesmo.vintelli.tui.icons.JavaTypeKinds;
@@ -50,6 +53,8 @@ final class ProjectTreeController {
     private final Runnable treeRefresh;
     private final Runnable vcsRefresh;
     private final JavaTypeKinds javaKinds;
+    private final ProjectDependencyGraphProvider dependencyGraphProvider;
+    private final ProjectNode externalLibraries;
     private final DoubleClickTracker doubleClick = new DoubleClickTracker();
     private final StringBuilder input = new StringBuilder();
     private final List<ProjectNode> rootNodes = new ArrayList<>();
@@ -81,6 +86,12 @@ final class ProjectTreeController {
     ProjectTreeController(Path projectRoot, ShellState state, ProjectSearch projectSearch,
             ProjectFileOperations fileOperations, Consumer<String> statusSink, Runnable treeRefresh,
             Runnable vcsRefresh, JavaTypeKinds javaKinds) {
+        this(projectRoot, state, projectSearch, fileOperations, statusSink, treeRefresh, vcsRefresh, javaKinds, null);
+    }
+
+    ProjectTreeController(Path projectRoot, ShellState state, ProjectSearch projectSearch,
+            ProjectFileOperations fileOperations, Consumer<String> statusSink, Runnable treeRefresh,
+            Runnable vcsRefresh, JavaTypeKinds javaKinds, ProjectDependencyGraphProvider dependencyGraphProvider) {
         this.projectRoot = projectRoot;
         this.state = state;
         this.projectSearch = projectSearch;
@@ -89,13 +100,77 @@ final class ProjectTreeController {
         this.treeRefresh = treeRefresh;
         this.vcsRefresh = vcsRefresh;
         this.javaKinds = javaKinds;
+        this.dependencyGraphProvider = dependencyGraphProvider;
+        this.externalLibraries = dependencyGraphProvider != null && dependencyGraphProvider.supports(projectRoot)
+                ? ProjectNode.externalLibraries(Path.of(".vintelli-external-libraries"), "External Libraries (Loading…)")
+                : null;
         this.files = projectSearch == null ? PROJECT_FILES : List.of();
         this.filesLoading = projectSearch != null;
     }
 
     void start() {
+        if (externalLibraries != null) {
+            rootNodes.add(externalLibraries);
+            recomputeVisible("");
+        }
         state.selectFile(files.isEmpty() ? "" : files.getFirst());
         syncedIndex = 0;
+    }
+
+    ProjectDependencyGraphProvider dependencyGraphProvider() {
+        return dependencyGraphProvider;
+    }
+
+    void finishDependencyLoad(ProjectDependencyGraph graph) {
+        if (externalLibraries == null) {
+            return;
+        }
+        externalLibraries.children.clear();
+        externalLibraries.status = graph.message();
+        externalLibraries.name = graph.modules().isEmpty() && !graph.complete()
+                ? "External Libraries (Unavailable)" : graph.complete()
+                        ? "External Libraries" : "External Libraries (Incomplete)";
+        boolean groupModules = graph.modules().size() > 1;
+        int[] sequence = {0};
+        for (ProjectDependencyGraph.Module module : graph.modules()) {
+            ProjectNode parent = externalLibraries;
+            if (groupModules) {
+                ProjectNode moduleNode = new ProjectNode(externalLibraries.relative.resolve("module-" + sequence[0]++),
+                        module.name(), true);
+                moduleNode.parent = externalLibraries;
+                externalLibraries.children.add(moduleNode);
+                parent = moduleNode;
+            }
+            appendDependencies(parent, module.dependencies(), sequence);
+        }
+        if (!graph.complete() && graph.modules().isEmpty()) {
+            ProjectNode detail = new ProjectNode(externalLibraries.relative.resolve("status"),
+                    graph.message().isBlank() ? "Dependency graph unavailable" : graph.message(), false);
+            detail.parent = externalLibraries;
+            externalLibraries.children.add(detail);
+        }
+        recomputeVisible(selectedRelative().orElse(""));
+    }
+
+    private static void appendDependencies(ProjectNode parent, List<LibraryDependency> dependencies, int[] sequence) {
+        for (LibraryDependency dependency : dependencies) {
+            String label = dependency.artifactId() + ":" + dependency.version();
+            if (dependency.disposition() == ProjectDependencyGraph.Disposition.OMITTED) {
+                label += " (omitted)";
+            } else if (dependency.disposition() == ProjectDependencyGraph.Disposition.MISSING) {
+                label += " (not cached)";
+            }
+            ProjectNode node = new ProjectNode(parent.relative.resolve("dependency-" + sequence[0]++), label,
+                    !dependency.children().isEmpty());
+            node.dependency = true;
+            node.scope = dependency.scope();
+            node.optional = dependency.optional();
+            node.disposition = dependency.disposition();
+            node.jar = dependency.jar();
+            node.parent = parent;
+            parent.children.add(node);
+            appendDependencies(node, dependency.children(), sequence);
+        }
     }
 
     void useClock(LongSupplier clock) {
@@ -178,6 +253,9 @@ final class ProjectTreeController {
     }
 
     JavaTypeKind javaKind(ProjectNode node) {
+        if (node.externalLibraries || node.dependency) {
+            return JavaTypeKind.CLASS;
+        }
         return javaKinds.kindOf(projectRoot.resolve(node.relative));
     }
 
@@ -190,7 +268,9 @@ final class ProjectTreeController {
     }
 
     Optional<Path> selectedPath() {
-        return selectedRelative().map(relative -> projectRoot.resolve(relative));
+        ProjectNode node = selectedNode();
+        return node != null && (node.externalLibraries || node.dependency)
+                ? Optional.ofNullable(node.jar) : selectedRelative().map(projectRoot::resolve);
     }
 
     VersionControlCapability.State vcsState(String relative) {
@@ -360,6 +440,9 @@ final class ProjectTreeController {
         unavailable = true;
         visibleNodes = List.of();
         rootNodes.clear();
+        if (externalLibraries != null) {
+            rootNodes.add(externalLibraries);
+        }
         revision++;
         state.selectFile("");
         statusSink.accept("Project files unavailable: " + detail);
@@ -394,6 +477,11 @@ final class ProjectTreeController {
             recomputeVisible(selectedRelative().orElse(""));
             statusSink.accept("Collapsed " + slashed(node.relative));
         }
+    }
+
+    boolean selectedDirectory() {
+        ProjectNode node = selectedNode();
+        return node != null && node.directory;
     }
 
     void toggleSelected() {
@@ -460,6 +548,27 @@ final class ProjectTreeController {
             return Optional.empty();
         }
         ProjectNode node = selectedNode();
+        if (node != null && node.externalLibraries) {
+            toggleSelected();
+            return Optional.empty();
+        }
+        if (node != null && node.dependency) {
+            if (node.jar != null) {
+                statusSink.accept("Dependency " + node.name + " — cached at " + node.jar.getFileName());
+                return Optional.empty();
+            }
+            if (!node.children.isEmpty()) {
+                toggleSelected();
+                return Optional.empty();
+            }
+            statusSink.accept("Dependency: " + node.name + " (" + node.scope + ") — "
+                    + (node.status.isBlank() ? "artifact is not cached" : node.status));
+            return Optional.empty();
+        }
+        if (node != null && node.directory) {
+            toggleSelected();
+            return Optional.empty();
+        }
         if (node != null && node.directory) {
             toggleSelected();
             return Optional.empty();
@@ -522,6 +631,11 @@ final class ProjectTreeController {
     }
 
     boolean beginInput(InputMode mode) {
+        ProjectNode selectedNode = selectedNode();
+        if (selectedNode != null && (selectedNode.externalLibraries || selectedNode.dependency)) {
+            statusSink.accept("External libraries are read-only");
+            return false;
+        }
         if (fileOperations == null) {
             statusSink.accept("Project file operations unavailable");
             return false;
@@ -589,6 +703,10 @@ final class ProjectTreeController {
             return false;
         }
         ProjectNode parent = selectedNode();
+        if (parent != null && (parent.externalLibraries || parent.dependency)) {
+            statusSink.accept("External libraries are read-only");
+            return false;
+        }
         if (parent != null && !parent.directory) {
             parent = parent.parent;
         }
@@ -618,6 +736,10 @@ final class ProjectTreeController {
 
     boolean renameSelected(String newName) {
         ProjectNode node = selectedNode();
+        if (node != null && (node.externalLibraries || node.dependency)) {
+            statusSink.accept("External libraries are read-only");
+            return false;
+        }
         if (node == null) {
             statusSink.accept("No selection");
             return false;
@@ -645,6 +767,10 @@ final class ProjectTreeController {
 
     void requestDelete() {
         ProjectNode node = selectedNode();
+        if (node != null && (node.externalLibraries || node.dependency)) {
+            statusSink.accept("External libraries are read-only");
+            return;
+        }
         if (node == null) {
             statusSink.accept("No selection");
             return;
@@ -724,6 +850,10 @@ final class ProjectTreeController {
         sortNodes(newRoots);
         rootNodes.clear();
         rootNodes.addAll(newRoots);
+        if (externalLibraries != null) {
+            externalLibraries.parent = null;
+            rootNodes.add(externalLibraries);
+        }
     }
 
     private static void collectExpanded(List<ProjectNode> nodes, Set<Path> expanded) {
