@@ -81,8 +81,8 @@
       "path": "DEFAULT_NUMBER.FOREGROUND"
     },
     "editor-constant": {
-      "file": "dark-scheme-source.xml",
-      "path": "DEFAULT_CONSTANT.FOREGROUND"
+      "file": "dark-theme-source.json",
+      "path": "colors.Blue9"
     },
     "editor-selection": {
       "file": "darcula-scheme-source.xml",

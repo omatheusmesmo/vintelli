@@ -19,7 +19,9 @@ committed under `vintelli-tui/src/test/resources`:
   `DefaultColorSchemesManager.xml`).
 - `dark` (default): New UI Dark chrome (`themes/expUI/expUI_dark.theme.json`)
   plus the New UI Dark editor color scheme
-  (`themes/expUI/expUI_darkScheme.xml`).
+  (`themes/expUI/expUI_darkScheme.xml`). Its `$editor-constant` role uses
+  the New UI `Blue9` accent (`#6B9BFA`) instead of the scheme's pink
+  `DEFAULT_CONSTANT` color; this also colors quick fixes and warning markers.
 
 Themes are configurable at three levels:
 
@@ -103,7 +105,14 @@ neighbouring official element instead of a role-named one:
 | `$editor-keyword` | `#CC7832` | 173 | `#CF8E6D` | 173 | editor scheme `DEFAULT_KEYWORD` |
 | `$editor-string` | `#6A8759` | 65 | `#6AAB73` | 71 | editor scheme `DEFAULT_STRING` |
 | `$editor-comment` | `#808080` | 244 | `#7A7E85` | 244 | editor scheme `DEFAULT_LINE_COMMENT` |
+| `$editor-constant` | `#9876AA` | 103 | `#6B9BFA` | 69 | Darcula editor scheme `DEFAULT_CONSTANT`; dark uses New UI `colors.Blue9` |
 | `$editor-caret-row` | `#323232` | 236 | `#26282E` | 235 | editor scheme `CARET_ROW_COLOR` |
+
+The dark theme intentionally diverges from the upstream editor scheme for
+`$editor-constant`: its source pointer in `dark-palette.json` resolves the
+New UI `colors.Blue9` value, while the untouched platform excerpt still
+records the upstream `DEFAULT_CONSTANT` value. The blue accent is used for
+constants, quick fixes, and warning markers; the 256-color mapping is index 69.
 
 The depth the shell renders with is chosen by the `vintelli.tui.color-level`
 property:

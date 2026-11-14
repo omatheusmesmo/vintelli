@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Convert `tmux capture-pane -p -e` output into a self-contained HTML fragment.
 
-Standard library only. Supports the 16, 256 and 24-bit SGR colors, bold, dim,
+Standard library only. Supports the 16, 256 and 24-bit SGR foreground,
+background and underline colors, bold, dim,
 italic, underline, reverse and strikethrough, escapes HTML, and refuses a
 capture that is empty, still contains a scrubbed value, or contains an em or
 en dash.
@@ -64,6 +65,7 @@ class Style:
     def reset(self):
         self.foreground = None
         self.background = None
+        self.underline_color = None
         self.bold = False
         self.dim = False
         self.italic = False
@@ -93,6 +95,8 @@ class Style:
             decorations.append("line-through")
         if decorations:
             declarations.append("text-decoration:" + " ".join(decorations))
+            if self.underline_color and self.underline:
+                declarations.append("text-decoration-color:" + self.underline_color)
         return ";".join(declarations)
 
 
@@ -140,6 +144,8 @@ def apply_sgr(style, parameters):
             style.foreground = None
         elif code == 49:
             style.background = None
+        elif code == 59:
+            style.underline_color = None
         elif 30 <= code <= 37:
             style.foreground = BASIC_PALETTE[code - 30]
         elif 90 <= code <= 97:
@@ -148,12 +154,14 @@ def apply_sgr(style, parameters):
             style.background = BASIC_PALETTE[code - 40]
         elif 100 <= code <= 107:
             style.background = BASIC_PALETTE[code - 100 + 8]
-        elif code in (38, 48):
+        elif code in (38, 48, 58):
             color, consumed = extended_color(codes, index)
             if code == 38:
                 style.foreground = color or style.foreground
-            else:
+            elif code == 48:
                 style.background = color or style.background
+            else:
+                style.underline_color = color or style.underline_color
             index += consumed
             continue
         index += 1

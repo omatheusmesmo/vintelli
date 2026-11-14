@@ -63,7 +63,7 @@ class PaletteDowngradeTest {
             entry("editor-string", 71),
             entry("editor-comment", 244),
             entry("editor-number", 37),
-            entry("editor-constant", 175),
+            entry("editor-constant", 69),
             entry("editor-selection", 24),
             entry("editor-sel-fg", 250),
             entry("editor-caret-row", 235));

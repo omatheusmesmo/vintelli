@@ -7,10 +7,12 @@ on:
     paths:
       - 'site/**'
       - 'docs/**'
+      - 'vintelli-tui/src/main/resources/dev/omatheusmesmo/vintelli/tui/themes/**'
   pull_request:
     paths:
       - 'site/**'
       - 'docs/**'
+      - 'vintelli-tui/src/main/resources/dev/omatheusmesmo/vintelli/tui/themes/**'
   workflow_dispatch:
 
 permissions:
