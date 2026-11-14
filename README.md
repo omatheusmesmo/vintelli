@@ -16,7 +16,7 @@ It runs with open tooling only. IntelliJ IDEA is an optional extra.
 - 🔌 **Other agents can drive it.** The MCP server reads the shell state and pushes highlights and diffs into the TUI.
 - 🧠 **Language support over LSP.** Configurable profiles, with jdtls as the first one.
 - 📚 **Trace Maven dependencies.** Expand `External Libraries` in the project tree to follow module dependencies, scopes and cached transitives; resolution stays offline and clearly marks metadata missing from `~/.m2`.
-- 🪲 **Optional Java debugging.** An experimental DAP provider uses Java Debug through jdtls. Toggle persistent source breakpoints from the editor gutter or with `Ctrl+F8`; see [Java Debug Adapter setup](docs/language-servers.md#java-debug-adapter).
+- 🪲 **Optional Java debugging.** An experimental DAP provider uses Java Debug through jdtls. Inspect sessions, threads, call stacks, scopes and variables in the Debug tool window, and toggle persistent source breakpoints from the editor gutter or with `Ctrl+F8`; see [Java Debug Adapter setup](docs/language-servers.md#java-debug-adapter) and [debugging](docs/debug-launch.md).
 - ⌨️ **Familiar keys and colors.** The `intellij` keymap is the default, and the themes come from IntelliJ IDEA's color files.
 
 ## Install

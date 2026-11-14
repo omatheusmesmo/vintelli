@@ -41,6 +41,12 @@ import org.eclipse.lsp4j.debug.SetBreakpointsResponse;
 import org.eclipse.lsp4j.debug.SourceBreakpoint;
 import org.eclipse.lsp4j.debug.Breakpoint;
 import org.eclipse.lsp4j.debug.Source;
+import org.eclipse.lsp4j.debug.ScopesArguments;
+import org.eclipse.lsp4j.debug.ScopesResponse;
+import org.eclipse.lsp4j.debug.Scope;
+import org.eclipse.lsp4j.debug.VariablesArguments;
+import org.eclipse.lsp4j.debug.VariablesResponse;
+import org.eclipse.lsp4j.debug.Variable;
 import org.eclipse.lsp4j.debug.launch.DSPLauncher;
 import org.eclipse.lsp4j.debug.services.IDebugProtocolClient;
 import org.eclipse.lsp4j.debug.services.IDebugProtocolServer;
@@ -313,6 +319,19 @@ final class DapTwin implements AutoCloseable {
                 }
                 return CompletableFuture.completedFuture(stackTraceResponse(
                         mode == Mode.STALE_STACK_TRACE && request > 1 ? 20 : 12));
+            }
+
+            @Override public CompletableFuture<ScopesResponse> scopes(ScopesArguments arguments) {
+                Scope scope = new Scope(); scope.setName("Locals"); scope.setVariablesReference(22);
+                ScopesResponse response = new ScopesResponse(); response.setScopes(new Scope[] { scope });
+                return CompletableFuture.completedFuture(response);
+            }
+
+            @Override public CompletableFuture<VariablesResponse> variables(VariablesArguments arguments) {
+                Variable variable = new Variable(); variable.setName("answer"); variable.setValue("42");
+                variable.setType("int"); variable.setVariablesReference(0);
+                VariablesResponse response = new VariablesResponse(); response.setVariables(new Variable[] { variable });
+                return CompletableFuture.completedFuture(response);
             }
 
             private StackTraceResponse stackTraceResponse(int line) {

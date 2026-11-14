@@ -72,6 +72,7 @@ layout_bottom_taller,Alt+.,,vintelli-only,"Grows the bottom tool window; no Inte
 layout_bottom_shorter,"Alt+,",,vintelli-only,"Shrinks the bottom tool window; no IntelliJ chord confirmed"
 shell.theme.switch,Ctrl+T,,vintelli-only,"Switches the shell theme; Ctrl+T is Update Project in IntelliJ and stays here as the theme switch (docs/keymap.md)"
 ActivateProjectToolWindow,Alt+1,Alt+1,same,""
+ActivateDebugToolWindow,Alt+3 | 3,,vintelli-only,"Opens the debugger inspection window"
 ActivateRunToolWindow,Alt+4 | 4,Alt+4,same,""
 ActivateTerminalToolWindow,Alt+F12 | Alt+2 | 2,Alt+F12,different,"IntelliJ uses Alt+F12 for Terminal (#364); Alt+2 stays as a second binding because the owner kept it, and the bare 2 is the shortcut while no input has focus"
 ActivateProblemsToolWindow,Alt+6 | 6,Alt+6,same,""

@@ -54,6 +54,16 @@ class LocalTerminalCapabilityTest {
         return tokens.stream().map(LocalTerminalCapabilityTest::quoted).reduce((a, b) -> a + " " + b).orElse("");
     }
 
+    private static String launchCompiled(Path classes, String className, String... args) {
+        List<String> tokens = new ArrayList<>();
+        tokens.add(TestProcesses.javaExecutable().toString());
+        tokens.add("-cp");
+        tokens.add(classes.toString());
+        tokens.add(className);
+        tokens.addAll(List.of(args));
+        return tokens.stream().map(LocalTerminalCapabilityTest::quoted).reduce((a, b) -> a + " " + b).orElse("");
+    }
+
     private static String quoted(String token) {
         if (!token.strip().contains(" ")) {
             return token;
@@ -438,9 +448,10 @@ class LocalTerminalCapabilityTest {
     @Test
     void keepsTheOutputReadSoFarWhenTheCommandTimesOut() throws IOException {
         Path pumper = TestProcesses.extractSource(temp, "Pumper.java");
+        TestProcesses.compileSource(pumper);
 
         var result = LocalTerminalCapability.of(new LocalProjectRoot(temp), Duration.ofSeconds(5))
-                .execute(new TerminalRequest(launch(pumper, "100"), temp, true));
+                .execute(new TerminalRequest(launchCompiled(pumper.getParent(), "Pumper", "100"), temp, true));
 
         assertTrue(result.isFailure());
         var failure = assertInstanceOf(CapabilityResult.Failed.class, result).failure();

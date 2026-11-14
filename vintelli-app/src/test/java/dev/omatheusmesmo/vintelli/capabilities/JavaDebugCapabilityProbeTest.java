@@ -40,6 +40,14 @@ class JavaDebugCapabilityProbeTest {
     }
 
     @Test
+    void fullCdiToolWindowRegistryIncludesDebugWithoutShortcutCollisions() {
+        var response = given().get(PROBE).then().statusCode(200).extract();
+        List<String> windows = response.path("toolWindows");
+        assertTrue(windows.contains("debug:3"), windows.toString());
+        assertTrue(windows.contains("problems:6"), windows.toString());
+    }
+
+    @Test
     void attachReportsRealThreadsAndDetachesWithoutStoppingTheExternalDebuggee() throws Exception {
         Process debuggee = startExternalDebuggee(JavaDebugCapabilityProbeResource.attachPort());
         try {
@@ -90,6 +98,27 @@ class JavaDebugCapabilityProbeTest {
                     JavaDebugCapabilityProbeResource.adapter().executionActions());
             given().delete(PROBE).then().statusCode(200);
             assertTrue(debuggee.isAlive(), "detaching after stepping must preserve the external debuggee");
+        } finally {
+            given().delete(PROBE).then().statusCode(200);
+            destroy(debuggee);
+        }
+    }
+
+    @Test
+    void packagedProviderSerializesInspectionDataFromTheHeadlessDapTwin() throws Exception {
+        Process debuggee = startExternalDebuggee(JavaDebugCapabilityProbeResource.attachPort());
+        try {
+            assertTrue(debuggeeReady(debuggee), "the external JDWP debuggee did not start");
+            var response = given().queryParam("kind", "inspection").post(PROBE).then().statusCode(200).extract();
+            assertTrue(Boolean.TRUE.equals(response.path("available")));
+            assertEquals("STOPPED", response.path("snapshot.state"));
+            assertEquals(JavaDebugCapabilityProbeResource.projectRoot().resolve("Main.java").toString(),
+                    response.path("frames[0].sourcePath"));
+            assertEquals("Locals", response.path("scopes[0].name"));
+            assertEquals("inspectionTwin", response.path("variables[0].name"));
+            assertEquals("available", response.path("variables[0].value"));
+            given().delete(PROBE).then().statusCode(200);
+            assertTrue(debuggee.isAlive(), "inspection and detach must preserve the external debuggee");
         } finally {
             given().delete(PROBE).then().statusCode(200);
             destroy(debuggee);
