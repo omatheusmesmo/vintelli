@@ -1,7 +1,10 @@
 package dev.omatheusmesmo.vintelli.tui.maven;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
@@ -51,6 +54,8 @@ public final class MavenToolWindow implements ToolWindow {
     private final AtomicLong loadSequence = new AtomicLong();
     private volatile Consumer<MavenGoal> runHandler;
     private volatile Rect lastArea = Rect.ZERO;
+    private volatile String loadedPomFingerprint;
+    private volatile boolean loading;
 
     @Inject
     public MavenToolWindow(Provider<ShellThemes> themes,
@@ -99,13 +104,23 @@ public final class MavenToolWindow implements ToolWindow {
     /** Reads the project tree on a virtual thread; the window shows its loading state until the read ends. */
     public void load() {
         long sequence = loadSequence.incrementAndGet();
+        loading = true;
         controller.startLoading();
         Thread.ofVirtual().name("vintelli-maven-load").start(() -> {
             MavenProjectLoad result = MavenProjectReader.read(projectRoot);
             if (sequence == loadSequence.get()) {
+                loadedPomFingerprint = pomFingerprint();
+                loading = false;
                 controller.finishLoading(result);
             }
         });
+    }
+
+    /** Refreshes the tree when an observed pom.xml changed since the last load. */
+    public void refreshIfChanged() {
+        if (!loading && loadedPomFingerprint != null && !loadedPomFingerprint.equals(pomFingerprint())) {
+            load();
+        }
     }
 
     public void setRunHandler(Consumer<MavenGoal> handler) {
@@ -168,6 +183,12 @@ public final class MavenToolWindow implements ToolWindow {
         }
         if (event.isKey(KeyCode.LEFT)) {
             return KeyActions.MAVEN_COLLAPSE;
+        }
+        if (event.code() == KeyCode.CHAR && event.codePoint() == 's' && !event.hasCtrl() && !event.hasAlt()) {
+            return KeyActions.MAVEN_TOGGLE_SKIP_TESTS;
+        }
+        if (event.code() == KeyCode.CHAR && event.codePoint() == 'r' && !event.hasCtrl() && !event.hasAlt()) {
+            return KeyActions.MAVEN_REFRESH;
         }
         return null;
     }
@@ -233,6 +254,8 @@ public final class MavenToolWindow implements ToolWindow {
             case KeyActions.MAVEN_SELECT_PREVIOUS -> controller.selectPrevious();
             case KeyActions.MAVEN_EXPAND -> controller.expandSelected();
             case KeyActions.MAVEN_COLLAPSE -> controller.collapseSelected();
+            case KeyActions.MAVEN_TOGGLE_SKIP_TESTS -> controller.toggleSkipTests();
+            case KeyActions.MAVEN_REFRESH -> load();
             default -> {
                 return false;
             }
@@ -242,6 +265,7 @@ public final class MavenToolWindow implements ToolWindow {
 
     @Override
     public void render(Frame frame, Rect area) {
+        refreshIfChanged();
         lastArea = area;
         controller.fitViewport(area.height());
         Style style = themes.get().resolver("tool-window").toStyle();
@@ -271,6 +295,27 @@ public final class MavenToolWindow implements ToolWindow {
                 .build(), area);
     }
 
+    private String pomFingerprint() {
+        try (var paths = Files.walk(projectRoot)) {
+            return paths.filter(path -> path.getFileName().toString().equals("pom.xml"))
+                    .sorted(Comparator.comparing(Path::toString))
+                    .map(this::pomStamp)
+                    .reduce((left, right) -> left + "\n" + right)
+                    .orElse("");
+        } catch (IOException e) {
+            return "unreadable:" + e.getClass().getName();
+        }
+    }
+
+    private String pomStamp(Path path) {
+        try {
+            return projectRoot.relativize(path) + ":" + Files.size(path) + ":"
+                    + Files.getLastModifiedTime(path).toMillis();
+        } catch (IOException e) {
+            return projectRoot.relativize(path) + ":unreadable:" + e.getClass().getName();
+        }
+    }
+
     private void runGoal(MavenGoal goal) {
         Consumer<MavenGoal> handler = runHandler;
         if (handler != null) {
@@ -297,9 +342,10 @@ public final class MavenToolWindow implements ToolWindow {
     private static String prefix(Row row) {
         String indent = "  ".repeat(row.depth());
         return switch (row.kind()) {
-            case PHASE, PROFILES -> indent;
+            case LIFECYCLE, PHASE, PROFILES, PLUGINS -> indent;
             case PROFILE -> indent + (row.checked() ? "[x] " : "[ ] ");
-            case MODULE -> indent + (row.expanded() ? "▾ " : "▸ ");
+            case MODULE, PLUGIN -> indent + (row.expanded() ? "▾ " : "▸ ");
+            case GOAL -> indent;
         };
     }
 

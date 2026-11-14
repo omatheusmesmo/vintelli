@@ -64,6 +64,24 @@ class MavenToolWindowMarqueeTest {
         assertTrue(render(window).startsWith("› ▾ short"), render(window));
     }
 
+    @Test
+    void refreshesTheTreeAfterAPomChanges() throws Exception {
+        Path pom = root.resolve("pom.xml");
+        Files.writeString(pom, pom("before"));
+        ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
+        MavenToolWindow window = new MavenToolWindow(() -> themes, root);
+        window.load();
+        awaitLoaded(window);
+        assertTrue(render(window).contains("before"), render(window));
+
+        Files.writeString(pom, pom("after"));
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (!render(window).contains("after") && System.nanoTime() < deadline) {
+            Thread.sleep(10);
+        }
+        assertTrue(render(window).contains("after"), render(window));
+    }
+
     private static void awaitLoaded(MavenToolWindow window) throws InterruptedException {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
         while (!render(window).contains("▾") && System.nanoTime() < deadline) {

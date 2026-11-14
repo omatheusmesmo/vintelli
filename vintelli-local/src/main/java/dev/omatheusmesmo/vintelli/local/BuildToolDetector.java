@@ -123,8 +123,8 @@ final class BuildToolDetector {
 
     /**
      * The command for one run request: a listed configuration without
-     * arguments, or a Maven lifecycle phase with the request arguments
-     * appended after the phase. Plugin goals never resolve here.
+     * arguments, or a Maven lifecycle phase or plugin goal with the request
+     * arguments appended after it.
      */
     Optional<RunConfigurationSpecification> specification(String identifier, List<String> arguments) {
         for (RunConfigurationSpecification listed : specifications()) {
@@ -136,13 +136,19 @@ final class BuildToolDetector {
             return Optional.empty();
         }
         String phase = identifier.substring(MavenLifecycle.GOAL_PREFIX.length());
-        if (!MavenLifecycle.isPhase(phase)) {
+        if (!MavenLifecycle.isPhase(phase) && !isPluginGoal(phase)) {
             return Optional.empty();
         }
         List<String> command = new ArrayList<>(effectiveCommand);
         command.add(phase);
         command.addAll(arguments);
         return Optional.of(new RunConfigurationSpecification(identifier, List.copyOf(command)));
+    }
+
+    private static boolean isPluginGoal(String goal) {
+        int separator = goal.indexOf(':');
+        return separator > 0 && separator < goal.length() - 1 && goal.indexOf(':', separator + 1) < 0
+                && goal.chars().noneMatch(Character::isWhitespace) && !goal.startsWith("-");
     }
 
     private List<RunConfigurationSpecification> lifecycle(String toolLabel, List<String> goals) {

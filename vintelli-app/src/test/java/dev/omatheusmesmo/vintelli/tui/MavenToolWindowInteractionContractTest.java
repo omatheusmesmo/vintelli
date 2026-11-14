@@ -49,8 +49,8 @@ class MavenToolWindowInteractionContractTest {
 
     private static final Size VIEWPORT = new Size(100, 20);
     private static final String PHASE_ROW = "validate";
-    private static final int PHASE_VALIDATE_INDEX = 2;
-    private static final int PROFILE_CI_INDEX = MavenLifecycle.PHASES.size() + 2;
+    private static final int PHASE_VALIDATE_INDEX = 3;
+    private static final int PROFILE_CI_INDEX = MavenLifecycle.PHASES.size() + 3;
 
     @TempDir
     Path project;
@@ -253,7 +253,7 @@ class MavenToolWindowInteractionContractTest {
         ToolWindowPilotFixture fixture = session.fixture();
         MavenContext context = session.context(MavenContext.class);
         openMaven(fixture);
-        int steps = PHASE_ORDER.indexOf(phase) + 1;
+        int steps = PHASE_ORDER.indexOf(phase) + 2;
         for (int step = 0; step < steps; step++) {
             fixture.press(KeyCode.DOWN);
         }

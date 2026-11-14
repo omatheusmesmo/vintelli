@@ -98,6 +98,8 @@ public final class KeyActions {
     public static final String MAVEN_SELECT_PREVIOUS = "maven.select-previous";
     public static final String MAVEN_EXPAND = "maven.expand";
     public static final String MAVEN_COLLAPSE = "maven.collapse";
+    public static final String MAVEN_TOGGLE_SKIP_TESTS = "maven.toggle-skip-tests";
+    public static final String MAVEN_REFRESH = "maven.refresh";
     public static final String TERMINAL_EXECUTE = "terminal.execute";
     public static final String ACP_CHAT_NEW = "acp.chat.new";
     public static final String ACP_CHAT_SEND = "acp.chat.send";
@@ -152,6 +154,8 @@ public final class KeyActions {
                 new KeyAction(RUN_REFRESH, "Refresh Run Configurations"),
                 new KeyAction(RUN_CHOOSE_CONFIGURATION, "Choose Run Configuration"),
                 new KeyAction(RUN_STOP, "Stop Current Run"),
+                new KeyAction(MAVEN_TOGGLE_SKIP_TESTS, "Toggle Maven Skip Tests"),
+                new KeyAction(MAVEN_REFRESH, "Refresh Maven Project"),
                 new KeyAction(DEBUG_RESUME, "Resume Debug Session"),
                 new KeyAction(DEBUG_PAUSE, "Pause Debug Session"),
                 new KeyAction(DEBUG_STEP_OVER, "Step Over"),

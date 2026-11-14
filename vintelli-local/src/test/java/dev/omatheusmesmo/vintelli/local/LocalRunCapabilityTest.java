@@ -214,16 +214,30 @@ class LocalRunCapabilityTest {
     }
 
     @Test
-    void refusesPluginGoalsEvenWhenTheyAreNamedLikeAMavenRun() throws IOException {
+    void runsAConfiguredGoalWithProfilesAndSkipTests() throws IOException {
         mavenProject("args");
 
         LocalRunCapability capability = LocalRunCapability.of(root(), GENEROUS);
+        List<String> observed = new CopyOnWriteArrayList<>();
+        assertOk(capability.start(new RunCapability.RunRequest("maven:test", temp, Map.of(),
+                List.of("-Pci,fast", "-DskipTests")), observed::add));
+
+        awaitSummary(observed);
+        assertTrue(observed.contains("args:test -Pci,fast -DskipTests"), observed.toString());
+    }
+
+    @Test
+    void runsPluginGoalsDiscoveredFromTheMavenWindow() throws IOException {
+        mavenProject("args");
+
+        LocalRunCapability capability = LocalRunCapability.of(root(), GENEROUS);
+        List<String> observed = new CopyOnWriteArrayList<>();
 
         CapabilityResult<RunCapability.RunHandle> result = capability.start(
-                new RunCapability.RunRequest("maven:dependency:tree", temp, Map.of()), line -> {
-                });
-        assertTrue(result.isFailure());
-        assertEquals("Unknown run configuration 'maven:dependency:tree'", failureReason(result));
+                new RunCapability.RunRequest("maven:dependency:tree", temp, Map.of()), observed::add);
+        assertOk(result);
+        awaitSummary(observed);
+        assertTrue(observed.contains("args:dependency:tree"), observed.toString());
     }
 
     @Test
