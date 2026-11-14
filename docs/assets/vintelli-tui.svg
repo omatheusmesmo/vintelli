@@ -1,0 +1,283 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1446" height="852" viewBox="0 0 1446 852" role="img" aria-labelledby="title desc">
+<title id="title">Vintelli terminal user interface</title>
+<desc id="desc">Vintelli project view with editor tabs and tool windows.</desc>
+<rect width="100%" height="100%" fill="#1e1f22"/>
+<g font-family="DejaVu Sans Mono, Consolas, monospace" font-size="14" dominant-baseline="hanging">
+<rect x="12" y="12" width="1341" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="12" fill="#bbbbbb" opacity="1"> =  repo v                                                                                                                          maven:clean v  &gt; </text>
+<rect x="1353" y="12" width="18" height="18" fill="#3c3f41" opacity="0.6"/>
+<text x="1353" y="12" fill="#bbbbbb" opacity="0.6"> d</text>
+<rect x="12" y="30" width="18" height="18" fill="#365880" opacity="1"/>
+<text x="12" y="30" fill="#dedede" opacity="1"> P</text>
+<rect x="30" y="30" width="9" height="18" fill="#3c3f41" opacity="0.6"/>
+<text x="30" y="30" fill="#466d94" opacity="0.6" text-decoration="underline">|</text>
+<rect x="39" y="30" width="90" height="18" fill="#3c3f41" opacity="0.6"/>
+<text x="39" y="30" fill="#dedede" opacity="0.6" font-weight="bold" text-decoration="underline"> Project ▾</text>
+<rect x="129" y="30" width="63" height="18" fill="#3c3f41" opacity="0.6"/>
+<text x="129" y="30" fill="#bbbbbb" opacity="0.6" text-decoration="underline">       </text>
+<rect x="192" y="30" width="9" height="18" fill="#3c3f41" opacity="0.6"/>
+<text x="192" y="30" fill="#dedede" opacity="0.6" font-weight="bold" text-decoration="underline">+</text>
+<rect x="201" y="30" width="9" height="18" fill="#3c3f41" opacity="0.6"/>
+<text x="201" y="30" fill="#bbbbbb" opacity="0.6" text-decoration="underline"> </text>
+<rect x="210" y="30" width="9" height="18" fill="#3c3f41" opacity="0.6"/>
+<text x="210" y="30" fill="#dedede" opacity="0.6" font-weight="bold" text-decoration="underline">◎</text>
+<rect x="219" y="30" width="9" height="18" fill="#3c3f41" opacity="0.6"/>
+<text x="219" y="30" fill="#bbbbbb" opacity="0.6" text-decoration="underline"> </text>
+<rect x="228" y="30" width="9" height="18" fill="#3c3f41" opacity="0.6"/>
+<text x="228" y="30" fill="#dedede" opacity="0.6" font-weight="bold" text-decoration="underline">⊞</text>
+<rect x="237" y="30" width="9" height="18" fill="#3c3f41" opacity="0.6"/>
+<text x="237" y="30" fill="#bbbbbb" opacity="0.6" text-decoration="underline"> </text>
+<rect x="246" y="30" width="9" height="18" fill="#3c3f41" opacity="0.6"/>
+<text x="246" y="30" fill="#dedede" opacity="0.6" font-weight="bold" text-decoration="underline">⊟</text>
+<rect x="255" y="30" width="9" height="18" fill="#3c3f41" opacity="0.6"/>
+<text x="255" y="30" fill="#bbbbbb" opacity="0.6" text-decoration="underline"> </text>
+<rect x="264" y="30" width="9" height="18" fill="#3c3f41" opacity="0.6"/>
+<text x="264" y="30" fill="#dedede" opacity="0.6" font-weight="bold" text-decoration="underline">⋮</text>
+<rect x="273" y="30" width="9" height="18" fill="#3c3f41" opacity="0.6"/>
+<text x="273" y="30" fill="#bbbbbb" opacity="0.6" text-decoration="underline"> </text>
+<rect x="282" y="30" width="9" height="18" fill="#3c3f41" opacity="0.6"/>
+<text x="282" y="30" fill="#dedede" opacity="0.6" font-weight="bold" text-decoration="underline">─</text>
+<rect x="291" y="30" width="9" height="18" fill="#2b2b2b" opacity="0.6"/>
+<text x="291" y="30" fill="#3c3f41" opacity="0.6" text-decoration="underline">▝</text>
+<rect x="300" y="30" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="300" y="30" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="309" y="30" width="9" height="18" fill="#2b2b2b" opacity="0.6"/>
+<text x="309" y="30" fill="#3c3f41" opacity="0.6" text-decoration="underline">▘</text>
+<rect x="318" y="30" width="63" height="18" fill="#2b2b2b" opacity="0.6"/>
+<text x="318" y="30" fill="#808080" opacity="0.6" text-decoration="underline"> Editor</text>
+<rect x="381" y="30" width="1044" height="18" fill="#2b2b2b" opacity="0.6"/>
+<text x="381" y="30" fill="#a9b7c6" opacity="0.6" text-decoration="underline">                                                                                                                    </text>
+<rect x="1425" y="30" width="9" height="18" fill="#2b2b2b" opacity="0.6"/>
+<text x="1425" y="30" fill="#3c3f41" opacity="0.6" text-decoration="underline">▝</text>
+<rect x="12" y="48" width="18" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="48" fill="#bbbbbb" opacity="1">  </text>
+<rect x="30" y="48" width="270" height="18" fill="#2f65ca" opacity="1"/>
+<text x="30" y="48" fill="#dedede" opacity="1">&gt; ▸ / docs                    </text>
+<rect x="300" y="48" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="300" y="48" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="309" y="48" width="1125" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="309" y="48" fill="#a9b7c6" opacity="1">                                                                                                                             </text>
+<rect x="12" y="66" width="288" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="66" fill="#bbbbbb" opacity="1">    ▸ / scripts                 </text>
+<rect x="300" y="66" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="300" y="66" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="309" y="66" width="1125" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="309" y="66" fill="#a9b7c6" opacity="1">                                                 repo                                                                        </text>
+<rect x="12" y="84" width="288" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="84" fill="#bbbbbb" opacity="1">    ▸ / site                    </text>
+<rect x="300" y="84" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="300" y="84" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="309" y="84" width="1125" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="309" y="84" fill="#a9b7c6" opacity="1">                                                                                                                             </text>
+<rect x="12" y="102" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="102" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="21" y="102" width="630" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="21" y="102" fill="#a9b7c6" opacity="1">                                                 Go to File           </text>
+<rect x="651" y="102" width="54" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="651" y="102" fill="#787878" opacity="1">Ctrl+o</text>
+<rect x="705" y="102" width="441" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="705" y="102" fill="#a9b7c6" opacity="1">                                                 </text>
+<rect x="12" y="120" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="120" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="21" y="120" width="630" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="21" y="120" fill="#a9b7c6" opacity="1">                                                 Find in Files        </text>
+<rect x="651" y="120" width="54" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="651" y="120" fill="#787878" opacity="1">Alt+f </text>
+<rect x="705" y="120" width="441" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="705" y="120" fill="#a9b7c6" opacity="1">                                                 </text>
+<rect x="12" y="138" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="138" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="21" y="138" width="630" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="21" y="138" fill="#a9b7c6" opacity="1">                                                 Search Everywhere    </text>
+<rect x="651" y="138" width="54" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="651" y="138" fill="#787878" opacity="1">Ctrl+p</text>
+<rect x="705" y="138" width="441" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="705" y="138" fill="#a9b7c6" opacity="1">                                                 </text>
+<rect x="12" y="156" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="156" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="21" y="156" width="630" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="21" y="156" fill="#a9b7c6" opacity="1">                                                 Open Menu            </text>
+<rect x="651" y="156" width="54" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="651" y="156" fill="#787878" opacity="1">F10   </text>
+<rect x="705" y="156" width="441" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="705" y="156" fill="#a9b7c6" opacity="1">                                                 </text>
+<rect x="12" y="174" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="174" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="21" y="174" width="630" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="21" y="174" fill="#a9b7c6" opacity="1">                                                 Keymap Help          </text>
+<rect x="651" y="174" width="54" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="651" y="174" fill="#787878" opacity="1">F1    </text>
+<rect x="705" y="174" width="441" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="705" y="174" fill="#a9b7c6" opacity="1">                                                 </text>
+<rect x="12" y="192" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="192" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="21" y="192" width="1125" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="21" y="192" fill="#a9b7c6" opacity="1">                                                                                                                             </text>
+<rect x="12" y="210" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="210" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="21" y="210" width="1125" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="21" y="210" fill="#a9b7c6" opacity="1">                                                                                                                             </text>
+<rect x="12" y="228" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="228" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="21" y="228" width="1125" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="21" y="228" fill="#a9b7c6" opacity="1">                                                                                                                             </text>
+<rect x="12" y="246" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="246" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="21" y="246" width="1125" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="21" y="246" fill="#a9b7c6" opacity="1">                                                                                                                             </text>
+<rect x="12" y="264" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="264" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="21" y="264" width="1125" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="21" y="264" fill="#a9b7c6" opacity="1">                                                                                                                             </text>
+<rect x="12" y="282" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="282" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="21" y="282" width="1125" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="21" y="282" fill="#a9b7c6" opacity="1">                                                                                                                             </text>
+<rect x="12" y="300" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="300" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="21" y="300" width="1125" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="21" y="300" fill="#a9b7c6" opacity="1">                                                                                                                             </text>
+<rect x="12" y="318" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="318" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="21" y="318" width="1125" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="21" y="318" fill="#a9b7c6" opacity="1">                                                                                                                             </text>
+<rect x="12" y="336" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="336" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="21" y="336" width="1125" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="21" y="336" fill="#a9b7c6" opacity="1">                                                                                                                             </text>
+<rect x="12" y="354" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="354" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="21" y="354" width="1125" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="21" y="354" fill="#a9b7c6" opacity="1">                                                                                                                             </text>
+<rect x="12" y="372" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="372" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="21" y="372" width="1125" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="21" y="372" fill="#a9b7c6" opacity="1">                                                                                                                             </text>
+<rect x="12" y="390" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="390" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="21" y="390" width="1125" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="21" y="390" fill="#a9b7c6" opacity="1">                                                                                                                             </text>
+<rect x="12" y="408" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="408" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="21" y="408" width="1125" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="21" y="408" fill="#a9b7c6" opacity="1">                                                                                                                             </text>
+<rect x="12" y="426" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="426" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="21" y="426" width="1125" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="21" y="426" fill="#a9b7c6" opacity="1">                                                                                                                             </text>
+<rect x="12" y="444" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="444" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="21" y="444" width="1125" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="21" y="444" fill="#a9b7c6" opacity="1">                                                                                                                             </text>
+<rect x="12" y="462" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="462" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="21" y="462" width="1125" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="21" y="462" fill="#a9b7c6" opacity="1">                                                                                                                             </text>
+<rect x="12" y="480" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="480" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="21" y="480" width="1125" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="21" y="480" fill="#a9b7c6" opacity="1">                                                                                                                             </text>
+<rect x="12" y="498" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="498" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="21" y="498" width="1125" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="21" y="498" fill="#a9b7c6" opacity="1">                                                                                                                             </text>
+<rect x="12" y="516" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="516" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="21" y="516" width="1125" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="21" y="516" fill="#a9b7c6" opacity="1">                                                                                                                             </text>
+<rect x="12" y="534" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="534" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="21" y="534" width="1125" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="21" y="534" fill="#a9b7c6" opacity="1">                                                                                                                             </text>
+<rect x="12" y="552" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="552" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="21" y="552" width="1125" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="21" y="552" fill="#a9b7c6" opacity="1">                                                                                                                             </text>
+<rect x="12" y="570" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="570" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="21" y="570" width="9" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="21" y="570" fill="#3c3f41" opacity="1">▖</text>
+<rect x="30" y="570" width="1107" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="30" y="570" fill="#a9b7c6" opacity="1">                                                                                                                           </text>
+<rect x="1137" y="570" width="9" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="1137" y="570" fill="#3c3f41" opacity="1">▗</text>
+<rect x="12" y="588" width="1134" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="588" fill="#2b2b2b" opacity="1"> ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄</text>
+<rect x="12" y="606" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="606" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="21" y="606" width="9" height="18" fill="#2b2b2b" opacity="0.6"/>
+<text x="21" y="606" fill="#3c3f41" opacity="0.6" text-decoration="underline">▘</text>
+<rect x="30" y="606" width="9" height="18" fill="#2b2b2b" opacity="0.6"/>
+<text x="30" y="606" fill="#787878" opacity="0.6" text-decoration="underline">4</text>
+<rect x="39" y="606" width="36" height="18" fill="#2b2b2b" opacity="0.6"/>
+<text x="39" y="606" fill="#dedede" opacity="0.6" font-weight="bold" text-decoration="underline"> Run</text>
+<rect x="75" y="606" width="18" height="18" fill="#2b2b2b" opacity="0.6"/>
+<text x="75" y="606" fill="#bbbbbb" opacity="0.6" text-decoration="underline">  </text>
+<rect x="93" y="606" width="9" height="18" fill="#2b2b2b" opacity="0.6"/>
+<text x="93" y="606" fill="#787878" opacity="0.6" text-decoration="underline">2</text>
+<rect x="102" y="606" width="81" height="18" fill="#2b2b2b" opacity="0.6"/>
+<text x="102" y="606" fill="#808080" opacity="0.6" text-decoration="underline"> Terminal</text>
+<rect x="183" y="606" width="18" height="18" fill="#2b2b2b" opacity="0.6"/>
+<text x="183" y="606" fill="#bbbbbb" opacity="0.6" text-decoration="underline">  </text>
+<rect x="201" y="606" width="9" height="18" fill="#2b2b2b" opacity="0.6"/>
+<text x="201" y="606" fill="#787878" opacity="0.6" text-decoration="underline">6</text>
+<rect x="210" y="606" width="81" height="18" fill="#2b2b2b" opacity="0.6"/>
+<text x="210" y="606" fill="#808080" opacity="0.6" text-decoration="underline"> Problems</text>
+<rect x="291" y="606" width="846" height="18" fill="#2b2b2b" opacity="0.6"/>
+<text x="291" y="606" fill="#bbbbbb" opacity="0.6" text-decoration="underline">                                                                                              </text>
+<rect x="1137" y="606" width="9" height="18" fill="#2b2b2b" opacity="0.6"/>
+<text x="1137" y="606" fill="#3c3f41" opacity="0.6" text-decoration="underline">▝</text>
+<rect x="12" y="624" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="624" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="21" y="624" width="9" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="21" y="624" fill="#bbbbbb" opacity="1"> </text>
+<rect x="30" y="624" width="45" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="30" y="624" fill="#466d94" opacity="1">-----</text>
+<rect x="75" y="624" width="1071" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="75" y="624" fill="#bbbbbb" opacity="1">                                                                                                                       </text>
+<rect x="12" y="642" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="642" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="21" y="642" width="9" height="18" fill="#3c3f41" opacity="0.6"/>
+<text x="21" y="642" fill="#466d94" opacity="0.6" text-decoration="underline"> </text>
+<rect x="30" y="642" width="36" height="18" fill="#3c3f41" opacity="0.6"/>
+<text x="30" y="642" fill="#808080" opacity="0.6" text-decoration="underline"> Run</text>
+<rect x="66" y="642" width="1080" height="18" fill="#3c3f41" opacity="0.6"/>
+<text x="66" y="642" fill="#bbbbbb" opacity="0.6" text-decoration="underline">                                                                                                                        </text>
+<rect x="12" y="660" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="660" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="12" y="678" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="678" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="12" y="696" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="696" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="12" y="714" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="714" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="12" y="732" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="732" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="12" y="750" width="18" height="18" fill="#365880" opacity="1"/>
+<text x="12" y="750" fill="#dedede" opacity="1"> R</text>
+<rect x="30" y="750" width="270" height="18" fill="#3c3f41" opacity="1"/>
+<text x="30" y="750" fill="#bbbbbb" opacity="1">                              </text>
+<rect x="300" y="750" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="300" y="750" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="12" y="768" width="18" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="768" fill="#808080" opacity="1"> T</text>
+<rect x="30" y="768" width="270" height="18" fill="#3c3f41" opacity="1"/>
+<text x="30" y="768" fill="#bbbbbb" opacity="1">                              </text>
+<rect x="300" y="768" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="300" y="768" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="12" y="786" width="18" height="18" fill="#3c3f41" opacity="1"/>
+<text x="12" y="786" fill="#808080" opacity="1"> P</text>
+<rect x="30" y="786" width="9" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="30" y="786" fill="#3c3f41" opacity="1">▖</text>
+<rect x="39" y="786" width="261" height="18" fill="#3c3f41" opacity="1"/>
+<text x="39" y="786" fill="#808080" opacity="1"> Read File: local (local fil…</text>
+<rect x="300" y="786" width="9" height="18" fill="#3c3f41" opacity="1"/>
+<text x="300" y="786" fill="#2b2b2b" opacity="1">▐</text>
+<rect x="309" y="786" width="9" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="309" y="786" fill="#3c3f41" opacity="1">▖</text>
+<rect x="318" y="786" width="1107" height="18" fill="#3c3f41" opacity="1"/>
+<text x="318" y="786" fill="#bbbbbb" opacity="1">                                                                                                                           </text>
+<rect x="1425" y="786" width="9" height="18" fill="#2b2b2b" opacity="1"/>
+<text x="1425" y="786" fill="#3c3f41" opacity="1">▗</text>
+</g>
+</svg>
