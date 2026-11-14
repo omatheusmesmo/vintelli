@@ -48,6 +48,20 @@ class BasicColorTest(unittest.TestCase):
         self.assertIn("color:#010203", style)
         self.assertIn("background-color:#fafbfc", style)
 
+    def test_24_bit_underline_color_does_not_become_background(self):
+        rendered = ansi_to_html.convert(f"{ESC}4;58;2;43;45;48mheader{ESC}59;24mplain")
+        style = span_style(rendered, "header")
+        self.assertIn("text-decoration:underline", style)
+        self.assertIn("text-decoration-color:#2b2d30", style)
+        self.assertNotIn("background-color", style)
+        self.assertNotIn("background-color:#cd00cd", rendered)
+        self.assertIn("</span>plain</pre>", rendered)
+
+    def test_256_color_underline_color_and_reset(self):
+        rendered = ansi_to_html.convert(f"{ESC}4;58;5;62mblue{ESC}59mplain")
+        self.assertIn("text-decoration-color:#5f5fd7", span_style(rendered, "blue"))
+        self.assertNotIn("text-decoration-color", span_style(rendered, "plain"))
+
     def test_default_color_reset(self):
         rendered = ansi_to_html.convert(f"{ESC}31mred{ESC}39mplain")
         self.assertIn(f'{SPAN_OPEN}color:#cd0000">red</span>plain', rendered)

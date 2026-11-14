@@ -7,7 +7,9 @@
  * sections of the platform file themes/expUI/expUI_dark.theme.json; editor
  * values are taken from the platform file themes/expUI/expUI_darkScheme.xml
  * (the New UI Dark editor scheme, which keeps the SELECTION_BACKGROUND of
- * its Darcula editor parent from DefaultColorSchemesManager.xml). Source
+ * its Darcula editor parent from DefaultColorSchemesManager.xml), except
+ * $editor-constant, which uses the New UI Blue9 accent in place of its pink
+ * source color. Source
  * keys are cited on every variable against verbatim excerpts of those files;
  * the packaged `theme-source-*` test resolves both. One role reuses a value
  * chosen from a neighbouring official element rather than one named for
@@ -43,7 +45,7 @@ $editor-keyword   : #CF8E6D;       /* editor scheme DEFAULT_KEYWORD */
 $editor-string    : #6AAB73;       /* editor scheme DEFAULT_STRING */
 $editor-comment   : #7A7E85;       /* editor scheme DEFAULT_LINE_COMMENT */
 $editor-number    : #2AACB8;       /* editor scheme DEFAULT_NUMBER */
-$editor-constant  : #C77DBB;       /* editor scheme DEFAULT_CONSTANT */
+$editor-constant  : #6B9BFA;       /* chosen from: colors.Blue9, for a readable blue constant and warning accent */
 $editor-selection : #214283;       /* editor scheme SELECTION_BACKGROUND, inherited from the Darcula editor parent */
 $editor-sel-fg    : #BCBEC4;       /* editor scheme TEXT foreground */
 $editor-caret-row : #26282E;       /* editor scheme CARET_ROW_COLOR */
