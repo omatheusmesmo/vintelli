@@ -54,6 +54,12 @@ import org.eclipse.lsp4j.debug.StackTraceResponse;
 import org.eclipse.lsp4j.debug.StepInArguments;
 import org.eclipse.lsp4j.debug.StepOutArguments;
 import org.eclipse.lsp4j.debug.StackFrame;
+import org.eclipse.lsp4j.debug.ScopesArguments;
+import org.eclipse.lsp4j.debug.ScopesResponse;
+import org.eclipse.lsp4j.debug.Scope;
+import org.eclipse.lsp4j.debug.VariablesArguments;
+import org.eclipse.lsp4j.debug.VariablesResponse;
+import org.eclipse.lsp4j.debug.Variable;
 import org.eclipse.lsp4j.debug.SetBreakpointsArguments;
 import org.eclipse.lsp4j.debug.SetBreakpointsResponse;
 import org.eclipse.lsp4j.debug.Source;
@@ -421,6 +427,19 @@ public final class JavaDebugCapability implements DebugCapability {
         }
         String message = cause.getMessage();
         return message == null || message.isBlank() ? cause.getClass().getSimpleName() : message;
+    }
+
+    static <T> T awaitInspection(CompletableFuture<T> response, Duration timeout) throws Exception {
+        try {
+            return response.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException interrupted) {
+            response.cancel(true);
+            Thread.currentThread().interrupt();
+            throw interrupted;
+        } catch (TimeoutException timeoutFailure) {
+            response.cancel(true);
+            throw timeoutFailure;
+        }
     }
 
     private static CapabilityResult<DebugSession> unavailable(String reason) {
@@ -996,13 +1015,18 @@ public final class JavaDebugCapability implements DebugCapability {
         }
 
         @Override
+        public synchronized long inspectionGeneration() {
+            return stopGeneration;
+        }
+
+        @Override
         public CapabilityResult<List<DebugThread>> threads() {
             IDebugProtocolServer protocol = server;
             if (protocol == null || isTerminal()) {
                 return CapabilityResult.failed(new CapabilityFailure("The debug session is not active", ""));
             }
             try {
-                ThreadsResponse response = protocol.threads().get(requestTimeout.toMillis(), TimeUnit.MILLISECONDS);
+                ThreadsResponse response = awaitInspection(protocol.threads(), requestTimeout);
                 List<DebugThread> threads = response == null || response.getThreads() == null
                         ? List.of()
                         : Arrays.stream(response.getThreads())
@@ -1017,6 +1041,82 @@ public final class JavaDebugCapability implements DebugCapability {
             } catch (Exception failure) {
                 return CapabilityResult.failed(new CapabilityFailure(failureReason(failure), ""));
             }
+        }
+
+        @Override
+        public CapabilityResult<List<DebugFrame>> stackTrace(int threadId) {
+            IDebugProtocolServer protocol = server;
+            if (protocol == null || isTerminal() || snapshot().state() != State.STOPPED) return inspectionUnavailable();
+            try {
+                StackTraceArguments args = new StackTraceArguments();
+                args.setThreadId(threadId);
+                args.setStartFrame(0);
+                args.setLevels(200);
+                StackTraceResponse response = awaitInspection(protocol.stackTrace(args), requestTimeout);
+                List<DebugFrame> result = response == null || response.getStackFrames() == null ? List.of()
+                        : Arrays.stream(response.getStackFrames()).filter(Objects::nonNull)
+                                .filter(frame -> frame.getLine() > 0)
+                                .limit(200)
+                                .map(frame -> new DebugFrame(frame.getName(),
+                                        frame.getSource() == null ? "" : frame.getSource().getPath(), frame.getLine(),
+                                        Math.max(1, frame.getColumn()), frame.getId()))
+                                .toList();
+                return CapabilityResult.ok(result);
+            } catch (Exception failure) { return CapabilityResult.failed(new CapabilityFailure(failureReason(failure), "")); }
+        }
+
+        @Override
+        public CapabilityResult<List<DebugScope>> scopes(int frameId) {
+            IDebugProtocolServer protocol = server;
+            if (protocol == null || isTerminal() || snapshot().state() != State.STOPPED) return inspectionUnavailable();
+            try {
+                ScopesArguments args = new ScopesArguments();
+                args.setFrameId(frameId);
+                ScopesResponse response = awaitInspection(protocol.scopes(args), requestTimeout);
+                List<DebugScope> result = response == null || response.getScopes() == null ? List.of()
+                        : Arrays.stream(response.getScopes()).filter(Objects::nonNull).limit(64)
+                                .map(scope -> new DebugScope(scope.getName(), scope.getVariablesReference(),
+                                        Boolean.TRUE.equals(scope.isExpensive()))).toList();
+                return CapabilityResult.ok(result);
+            } catch (Exception failure) { return CapabilityResult.failed(new CapabilityFailure(failureReason(failure), "")); }
+        }
+
+        @Override
+        public CapabilityResult<List<DebugVariable>> variables(int variablesReference) {
+            IDebugProtocolServer protocol = server;
+            if (protocol == null || isTerminal() || snapshot().state() != State.STOPPED || variablesReference <= 0)
+                return inspectionUnavailable();
+            try {
+                VariablesArguments args = new VariablesArguments();
+                args.setVariablesReference(variablesReference);
+                VariablesResponse response = awaitInspection(protocol.variables(args), requestTimeout);
+                List<DebugVariable> result = response == null || response.getVariables() == null ? List.of()
+                        : Arrays.stream(response.getVariables()).filter(Objects::nonNull).limit(200)
+                                .map(variable -> new DebugVariable(variable.getName(), variable.getValue(), variable.getType(),
+                                        variable.getVariablesReference(), variable.getVariablesReference() > 0)).toList();
+                return CapabilityResult.ok(result);
+            } catch (Exception failure) { return CapabilityResult.failed(new CapabilityFailure(failureReason(failure), "")); }
+        }
+
+        @Override
+        public CapabilityResult<Boolean> selectFrame(DebugFrame frame) {
+            return selectFrame(frame, inspectionGeneration());
+        }
+
+        @Override
+        public synchronized CapabilityResult<Boolean> selectFrame(DebugFrame frame, long expectedInspectionGeneration) {
+            if (stopGeneration != expectedInspectionGeneration) {
+                return CapabilityResult.failed(new CapabilityFailure("The debug stop changed before frame selection", ""));
+            }
+            if (frame == null || isTerminal() || snapshot().state() != State.STOPPED)
+                return CapabilityResult.failed(new CapabilityFailure("The debug session is not stopped", ""));
+            update(value -> new DebugSessionSnapshot(id, label, value.state(), value.threads(), value.reason(),
+                    value.stoppedReason(), value.stoppedThreadId(), frame, debugCapabilities));
+            return CapabilityResult.ok(true);
+        }
+
+        private <T> CapabilityResult<List<T>> inspectionUnavailable() {
+            return CapabilityResult.failed(new CapabilityFailure("The debug session is not stopped", ""));
         }
 
         @Override public CapabilityResult<Boolean> resume() { return requestExecution(SteppingAction.RESUME); }

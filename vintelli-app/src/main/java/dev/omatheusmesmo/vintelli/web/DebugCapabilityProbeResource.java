@@ -11,8 +11,12 @@ import dev.omatheusmesmo.vintelli.api.capability.CapabilitySelection;
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability;
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugSession;
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugSessionSnapshot;
+import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugFrame;
+import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugScope;
+import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugVariable;
 import dev.omatheusmesmo.vintelli.api.capability.RunCapability;
 import dev.omatheusmesmo.vintelli.local.LocalProjectRoot;
+import dev.omatheusmesmo.vintelli.tui.ToolWindowRegistry;
 import io.smallrye.common.annotation.Blocking;
 import jakarta.annotation.PreDestroy;
 import jakarta.inject.Inject;
@@ -38,19 +42,24 @@ public final class DebugCapabilityProbeResource {
 
     private final CapabilityRegistry registry;
     private final LocalProjectRoot projectRoot;
+    private final ToolWindowRegistry toolWindows;
     private final boolean enabled;
     private final int attachPort;
     private volatile List<String> output = new CopyOnWriteArrayList<>();
     private volatile List<DebugCapability.SourceBreakpoint> breakpoints = List.of();
+    private volatile List<DebugFrame> frames = List.of();
+    private volatile List<DebugScope> scopes = List.of();
+    private volatile List<DebugVariable> variables = List.of();
     private DebugSession session;
     private String error = "";
 
     @Inject
-    public DebugCapabilityProbeResource(CapabilityRegistry registry, LocalProjectRoot projectRoot,
+    public DebugCapabilityProbeResource(CapabilityRegistry registry, LocalProjectRoot projectRoot, ToolWindowRegistry toolWindows,
             @ConfigProperty(name = "vintelli.inspect.enabled", defaultValue = "false") boolean enabled,
             @ConfigProperty(name = "vintelli.debug.probe.attach-port", defaultValue = "5005") int attachPort) {
         this.registry = registry;
         this.projectRoot = projectRoot;
+        this.toolWindows = toolWindows;
         this.enabled = enabled;
         this.attachPort = attachPort;
     }
@@ -59,7 +68,7 @@ public final class DebugCapabilityProbeResource {
     public synchronized View start(@QueryParam("kind") @DefaultValue("attach") String kind) {
         checkEnabled();
         if (!kind.equals("attach") && !kind.equals("launch") && !kind.equals("breakpoints")
-                && !kind.equals("stepping")) {
+                && !kind.equals("stepping") && !kind.equals("inspection")) {
             throw new BadRequestException("Unknown debug probe kind");
         }
         CapabilitySelection<DebugCapability> selection = registry.debug();
@@ -76,6 +85,7 @@ public final class DebugCapabilityProbeResource {
         output = sessionOutput;
         error = "";
         breakpoints = List.of();
+        frames = List.of(); scopes = List.of(); variables = List.of();
         CapabilityResult<DebugSession> result;
         if (!kind.equals("launch")) {
             result = provider.attach(new DebugCapability.AttachRequest(attachPort, "native probe attach"),
@@ -104,11 +114,16 @@ public final class DebugCapabilityProbeResource {
         if (threads instanceof CapabilityResult.Failed<List<DebugCapability.DebugThread>> failed) {
             error = failed.failure().reason();
         }
-        if (kind.equals("stepping")) {
-            CapabilityResult<Boolean> paused = session.pause();
-            if (paused instanceof CapabilityResult.Failed<Boolean> failed) error = failed.failure().reason();
-            for (CapabilityResult<Boolean> action : List.of(session.stepOver(), session.stepInto(), session.stepOut())) {
-                if (action instanceof CapabilityResult.Failed<Boolean> failed) error = failed.failure().reason();
+        if (kind.equals("stepping") || kind.equals("inspection")) {
+            if (kind.equals("stepping")) {
+                CapabilityResult<Boolean> paused = session.pause();
+                if (paused instanceof CapabilityResult.Failed<Boolean> failed) error = failed.failure().reason();
+                for (CapabilityResult<Boolean> action : List.of(session.stepOver(), session.stepInto(), session.stepOut())) {
+                    if (action instanceof CapabilityResult.Failed<Boolean> failed) error = failed.failure().reason();
+                }
+            } else if (session.snapshot().state() != DebugCapability.State.STOPPED) {
+                CapabilityResult<Boolean> paused = session.pause();
+                if (paused instanceof CapabilityResult.Failed<Boolean> failed) error = failed.failure().reason();
             }
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
             while (session.snapshot().currentFrame() == null && System.nanoTime() < deadline) {
@@ -119,6 +134,27 @@ public final class DebugCapabilityProbeResource {
                     break;
                 }
             }
+            DebugSessionSnapshot stopped = session.snapshot();
+            if (stopped.state() == DebugCapability.State.STOPPED && stopped.stoppedThreadId() > 0) {
+                CapabilityResult<List<DebugFrame>> stack = session.stackTrace(stopped.stoppedThreadId());
+                if (stack instanceof CapabilityResult.Ok<List<DebugFrame>> ok) {
+                    frames = ok.value();
+                    if (!frames.isEmpty()) {
+                        DebugFrame frame = frames.getFirst(); session.selectFrame(frame);
+                        CapabilityResult<List<DebugScope>> scopeResult = session.scopes(frame.frameId());
+                        if (scopeResult instanceof CapabilityResult.Ok<List<DebugScope>> okScopes) {
+                            scopes = okScopes.value();
+                            if (!scopes.isEmpty() && scopes.getFirst().variablesReference() > 0) {
+                                CapabilityResult<List<DebugVariable>> variableResult = session.variables(
+                                        scopes.getFirst().variablesReference());
+                                if (variableResult instanceof CapabilityResult.Ok<List<DebugVariable>> okVariables)
+                                    variables = okVariables.value();
+                                else error = variableResult.failureOf().map(failure -> failure.reason()).orElse("Variable inspection failed");
+                            }
+                        } else error = scopeResult.failureOf().map(failure -> failure.reason()).orElse("Scope inspection failed");
+                    }
+                } else error = stack.failureOf().map(failure -> failure.reason()).orElse("Stack inspection failed");
+            }
         }
         return view(provider, true);
     }
@@ -128,7 +164,8 @@ public final class DebugCapabilityProbeResource {
         checkEnabled();
         CapabilitySelection<DebugCapability> selection = registry.debug();
         if (selection instanceof CapabilitySelection.Unavailable<DebugCapability> unavailable) {
-            return new View(false, unavailable.reason(), null, List.of(), List.copyOf(output), List.copyOf(breakpoints));
+            return new View(false, unavailable.reason(), null, List.of(), List.copyOf(output), List.copyOf(breakpoints),
+                    List.of(), List.of(), List.of(), registeredWindows());
         }
         return view(((CapabilitySelection.Selected<DebugCapability>) selection).provider(), true);
     }
@@ -155,7 +192,14 @@ public final class DebugCapabilityProbeResource {
     private View view(DebugCapability provider, boolean available) {
         DebugSessionSnapshot snapshot = session == null ? null : session.snapshot();
         return new View(available, error, snapshot, provider == null ? List.of() : provider.snapshot(),
-                List.copyOf(output), List.copyOf(breakpoints));
+                List.copyOf(output), List.copyOf(breakpoints), List.copyOf(frames), List.copyOf(scopes), List.copyOf(variables),
+                registeredWindows());
+    }
+
+    private List<String> registeredWindows() {
+        return toolWindows.toolWindows().stream()
+                .map(window -> window.id() + ":" + window.shortcut())
+                .toList();
     }
 
     private void append(List<String> target, String line) {
@@ -173,6 +217,7 @@ public final class DebugCapabilityProbeResource {
     /** Read-only result returned by the inspect-gated probe. */
     public record View(boolean available, String error, DebugSessionSnapshot snapshot,
             List<DebugSessionSnapshot> sessions, List<String> output,
-            List<DebugCapability.SourceBreakpoint> breakpoints) {
+            List<DebugCapability.SourceBreakpoint> breakpoints, List<DebugFrame> frames,
+            List<DebugScope> scopes, List<DebugVariable> variables, List<String> toolWindows) {
     }
 }

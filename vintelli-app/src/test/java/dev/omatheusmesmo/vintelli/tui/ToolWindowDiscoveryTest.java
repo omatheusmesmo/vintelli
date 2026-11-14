@@ -29,6 +29,7 @@ class ToolWindowDiscoveryTest {
     void discoversToolWindowBeansInTabOrderIncludingTestOnes() {
         assertEquals(List.of(
                         "run",
+                        "debug",
                         "sample.extra",
                         "terminal",
                         "problems",

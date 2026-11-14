@@ -81,6 +81,8 @@ class ToolWindowInteractionInventoryTest {
         Map<String, InventoryEntry> entries = new LinkedHashMap<>();
         entries.put("run", contracted("dev.omatheusmesmo.vintelli.tui.RunToolWindowInteractionContractTest",
                 "keyboardEnterAndPointerRunButtonDispatchTheSameSelectedConfiguration"));
+        entries.put("debug", contracted("dev.omatheusmesmo.vintelli.tui.DebugToolWindowInteractionContractTest",
+                "keyboardAndPointerExpandTheSameSelectedScope"));
         entries.put("sample.extra", passive("Test-only registry fixture with no interactive controls"));
         entries.put("terminal", gap("Terminal tool window behavior is tracked by #4"));
         entries.put("problems", contracted("dev.omatheusmesmo.vintelli.tui.ProblemsToolWindowInteractionContractTest",
