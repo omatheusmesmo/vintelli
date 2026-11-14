@@ -410,6 +410,8 @@ adding it to that test on purpose.
 | problems.collapse | - | - | vintelli-only | Collapses the selected problem group; no IntelliJ chord confirmed on the reference page for the Problems window |
 | problems.toggle-group | - | - | vintelli-only | Toggles the selected problem group; no IntelliJ chord confirmed on the reference page for the Problems window |
 | project_show_hidden | - | - | vintelli-only | Shows hidden files from the project options menu; no IntelliJ chord confirmed on the reference page |
+| maven.toggle-skip-tests | - | - | vintelli-only | Toggles -DskipTests for the next Maven goal in the Maven tool window; no IntelliJ chord confirmed |
+| maven.refresh | - | - | vintelli-only | Refreshes the Maven project tree; no IntelliJ chord confirmed |
 
 ### Palette and help layout
 

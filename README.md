@@ -4,6 +4,7 @@
 
 A terminal IDE for Java with an IntelliJ IDEA-like layout.
 It runs with open tooling only. IntelliJ IDEA is an optional extra.
+The Maven tool window shows modules, lifecycle phases, plugin goals and profiles without running Maven.
 
 ## Why you will like it
 

@@ -82,6 +82,7 @@ public final class MavenProjectReader {
         String artifactId = childText(project, "artifactId")
                 .orElse(String.valueOf(real.getFileName()));
         List<String> profiles = profileIds(project);
+        List<MavenPlugin> plugins = plugins(project);
         List<MavenModule> children = new ArrayList<>();
         for (String name : moduleNames(project)) {
             if (++counted[0] > MAX_MODULES) {
@@ -89,7 +90,7 @@ public final class MavenProjectReader {
             }
             children.add(readModule(root, directory.resolve(name).normalize(), depth + 1, visited, counted));
         }
-        return new MavenModule(artifactId, selector(root, real), profiles, children);
+        return new MavenModule(artifactId, selector(root, real), profiles, plugins, children);
     }
 
     private static Path realDirectory(Path directory) {
@@ -153,6 +154,36 @@ public final class MavenProjectReader {
             }
         }
         return List.copyOf(ids);
+    }
+
+    private static List<MavenPlugin> plugins(Element project) {
+        List<MavenPlugin> found = new ArrayList<>();
+        for (Element build : childElements(project, "build")) {
+            for (Element plugins : childElements(build, "plugins")) {
+                for (Element plugin : childElements(plugins, "plugin")) {
+                    String artifactId = childText(plugin, "artifactId").orElse("");
+                    if (artifactId.isBlank()) {
+                        continue;
+                    }
+                    String groupId = childText(plugin, "groupId").orElse("org.apache.maven.plugins");
+                    Set<String> goals = new LinkedHashSet<>();
+                    for (Element executions : childElements(plugin, "executions")) {
+                        for (Element execution : childElements(executions, "execution")) {
+                            for (Element goalGroup : childElements(execution, "goals")) {
+                                for (Element goal : childElements(goalGroup, "goal")) {
+                                    String name = goal.getTextContent().trim();
+                                    if (!name.isBlank()) {
+                                        goals.add(name);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    found.add(new MavenPlugin(groupId, artifactId, List.copyOf(goals)));
+                }
+            }
+        }
+        return List.copyOf(found);
     }
 
     private static Optional<String> childText(Element parent, String name) {

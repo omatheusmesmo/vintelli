@@ -23,9 +23,13 @@ public final class MavenProjectController {
 
     public enum RowKind {
         MODULE,
+        LIFECYCLE,
         PHASE,
         PROFILES,
-        PROFILE
+        PROFILE,
+        PLUGINS,
+        PLUGIN,
+        GOAL
     }
 
     /**
@@ -46,6 +50,7 @@ public final class MavenProjectController {
     private int selected;
     private int scrollOffset;
     private int viewport;
+    private boolean skipTests;
 
     public MavenProjectController() {
         this(System::nanoTime);
@@ -160,6 +165,7 @@ public final class MavenProjectController {
         if (!open) {
             return;
         }
+        rows.add(new Row(RowKind.LIFECYCLE, module.selector(), depth + 1, "Lifecycle", null, true, false));
         for (String phase : MavenLifecycle.PHASES) {
             rows.add(new Row(RowKind.PHASE, module.selector(), depth + 1, phase, phase, false, false));
         }
@@ -169,6 +175,17 @@ public final class MavenProjectController {
             for (String id : module.profiles()) {
                 rows.add(new Row(RowKind.PROFILE, module.selector(), depth + 2, id, null, false,
                         selected.contains(id)));
+            }
+        }
+        if (!module.plugins().isEmpty()) {
+            rows.add(new Row(RowKind.PLUGINS, module.selector(), depth + 1, "Plugins", null, true, false));
+            for (MavenPlugin plugin : module.plugins()) {
+                rows.add(new Row(RowKind.PLUGIN, module.selector(), depth + 2, plugin.displayName(), null, true,
+                        false));
+                for (String goal : plugin.goals()) {
+                    String goalId = plugin.goalId(goal);
+                    rows.add(new Row(RowKind.GOAL, module.selector(), depth + 3, goalId, goalId, false, false));
+                }
             }
         }
         for (MavenModule child : module.modules()) {
@@ -251,12 +268,12 @@ public final class MavenProjectController {
         }
         Row current = row.get();
         switch (current.kind()) {
-            case PHASE -> {
+            case PHASE, GOAL -> {
                 return Optional.of(new MavenGoal(current.phase(), current.selector(),
-                        selectedProfileIds(current.selector())));
+                        selectedProfileIds(current.selector()), skipTests));
             }
             case PROFILE -> toggleProfile(current.selector(), current.label());
-            case PROFILES -> {
+            case LIFECYCLE, PROFILES, PLUGINS, PLUGIN -> {
             }
             case MODULE -> {
                 if (current.expanded()) {
@@ -268,6 +285,15 @@ public final class MavenProjectController {
             }
         }
         return Optional.empty();
+    }
+
+    public synchronized boolean skipTests() {
+        return skipTests;
+    }
+
+    public synchronized boolean toggleSkipTests() {
+        skipTests = !skipTests;
+        return skipTests;
     }
 
     /** Toggles the profile under the selection when it is a profile row, and reports whether it was one. */
@@ -362,7 +388,9 @@ public final class MavenProjectController {
         int depth = rows.get(index).depth();
         for (int candidate = index - 1; candidate >= 0; candidate--) {
             Row owner = rows.get(candidate);
-            boolean groupOwner = owner.kind() == RowKind.MODULE || owner.kind() == RowKind.PROFILES;
+            boolean groupOwner = owner.kind() == RowKind.MODULE || owner.kind() == RowKind.PROFILES
+                    || owner.kind() == RowKind.LIFECYCLE || owner.kind() == RowKind.PLUGINS
+                    || owner.kind() == RowKind.PLUGIN;
             if (groupOwner && owner.depth() == depth - 1) {
                 return candidate;
             }

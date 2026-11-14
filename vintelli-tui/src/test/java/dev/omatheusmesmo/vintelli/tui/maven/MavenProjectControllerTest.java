@@ -2,7 +2,6 @@ package dev.omatheusmesmo.vintelli.tui.maven;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -53,12 +52,13 @@ class MavenProjectControllerTest {
         assertEquals("vintelli", rows.getFirst().label());
         assertEquals(RowKind.MODULE, rows.getFirst().kind());
         assertTrue(rows.getFirst().expanded());
-        List<String> rootPhases = rows.subList(1, 1 + MavenLifecycle.PHASES.size()).stream()
+        assertEquals(RowKind.LIFECYCLE, rows.get(1).kind());
+        List<String> rootPhases = rows.subList(2, 2 + MavenLifecycle.PHASES.size()).stream()
                 .map(Row::phase).toList();
         assertEquals(MavenLifecycle.PHASES, rootPhases);
         assertEquals("clean", rootPhases.getFirst());
         assertEquals("site", rootPhases.getLast());
-        Row firstModule = rows.get(1 + MavenLifecycle.PHASES.size());
+        Row firstModule = rows.get(2 + MavenLifecycle.PHASES.size());
         assertEquals("vintelli-tui", firstModule.label());
         assertFalse(firstModule.expanded());
     }
@@ -120,7 +120,7 @@ class MavenProjectControllerTest {
         selectModule(controller, "vintelli-tui");
 
         controller.expandSelected();
-        assertEquals(rowsBefore + MavenLifecycle.PHASES.size(), controller.rows().size());
+        assertEquals(rowsBefore + MavenLifecycle.PHASES.size() + 1, controller.rows().size());
 
         controller.collapseSelected();
         assertEquals(rowsBefore, controller.rows().size());
@@ -246,13 +246,36 @@ class MavenProjectControllerTest {
         controller.finishLoading(new MavenProjectLoad.Loaded(ROOT));
 
         assertEquals(0, controller.selected());
-        assertEquals(1 + MavenLifecycle.PHASES.size() + 2, controller.rows().size());
+        assertEquals(2 + MavenLifecycle.PHASES.size() + 2, controller.rows().size());
     }
 
     @Test
-    void aGoalNamesOnlyALifecyclePhase() {
-        assertThrows(IllegalArgumentException.class, () -> new MavenGoal("dependency:tree", ""));
+    void aGoalAcceptsADeclaredPluginGoalOrLifecyclePhase() {
+        assertEquals("maven:dependency:tree", new MavenGoal("dependency:tree", "").identifier());
         assertEquals("maven:deploy", new MavenGoal("deploy", "").identifier());
+    }
+
+    @Test
+    void listsAndActivatesPluginGoalsWithTheMavenPrefix() {
+        MavenPlugin plugin = new MavenPlugin("org.apache.maven.plugins", "maven-compiler-plugin",
+                List.of("compile"));
+        MavenProjectController controller = new MavenProjectController();
+        controller.finishLoading(new MavenProjectLoad.Loaded(
+                new MavenModule("vintelli", "", List.of(), List.of(plugin), List.of())));
+
+        Row goalRow = controller.rows().stream().filter(row -> row.kind() == RowKind.GOAL).findFirst().orElseThrow();
+        assertEquals("compiler:compile", goalRow.phase());
+        controller.select(controller.rows().indexOf(goalRow));
+        assertEquals("maven:compiler:compile", controller.activateSelected().orElseThrow().identifier());
+    }
+
+    @Test
+    void skipTestsAndProfilesAreAppliedToTheNextGoal() {
+        MavenProjectController controller = loaded();
+        selectRow(controller, phaseOf("", "test"));
+        controller.toggleSkipTests();
+
+        assertEquals(List.of("-Pci", "-DskipTests"), new MavenGoal("test", "", List.of("ci"), true).arguments());
     }
 
     @Test

@@ -72,6 +72,11 @@ Vintelli after changing plugin declarations.
 
 ## Validation
 
+The Maven tool window separately reads root and child `pom.xml` files for
+modules, profiles and declared plugin execution goals without running Maven.
+It refreshes its tree when a descriptor changes; `r` also requests an
+immediate refresh. Invalid descriptors show their parse reason in the window.
+
 Unit tests cover Maven and Gradle detection, wrapper and installed-command
 selection, plain libraries, plugin management, malformed input and descriptor
 limits. Pilot tests drive toolbar and palette selection, Run window
