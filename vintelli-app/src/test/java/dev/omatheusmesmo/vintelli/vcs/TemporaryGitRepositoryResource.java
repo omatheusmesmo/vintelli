@@ -2,17 +2,22 @@ package dev.omatheusmesmo.vintelli.vcs;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.lang.System.Logger;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.DosFileAttributeView;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static java.util.stream.Collectors.joining;
 
@@ -43,7 +48,8 @@ public final class TemporaryGitRepositoryResource implements QuarkusTestResource
 
     private static final String AUTHOR = "Vintelli Test";
     private static final String EMAIL = "test@vintelli.invalid";
-    private static final Logger LOG = System.getLogger(TemporaryGitRepositoryResource.class.getName());
+    private static final Duration PROCESS_TERMINATION_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration PROCESS_KILL_TIMEOUT = Duration.ofSeconds(5);
     private static final Duration DELETE_TIMEOUT = Duration.ofSeconds(5);
     private static final Duration FIRST_RETRY_PAUSE = Duration.ofMillis(10);
     private static final Duration MAX_RETRY_PAUSE = Duration.ofMillis(250);
@@ -86,10 +92,12 @@ public final class TemporaryGitRepositoryResource implements QuarkusTestResource
     }
 
     /**
-     * Never throws: Quarkus closes the test resources before it stops the
-     * application under test, so a failure here would leave that process alive
-     * and holding its port for every later test. A repository that cannot be
-     * emptied in time is logged with its leftovers instead.
+     * Stops every process started with this repository before it is deleted.
+     * Quarkus closes the test resources before it stops the application under
+     * test, so that application is still alive, still holds its port and may
+     * still write into the repository at this point. A repository that still
+     * cannot be deleted fails with its real cause, and only after those processes
+     * are gone, so the next test never meets a busy port.
      */
     @Override
     public void stop() {
@@ -99,6 +107,7 @@ public final class TemporaryGitRepositoryResource implements QuarkusTestResource
         if (root == null) {
             return;
         }
+        stopProcessesUsing(root);
         deleteWithRetry(root);
     }
 
@@ -109,9 +118,64 @@ public final class TemporaryGitRepositoryResource implements QuarkusTestResource
      * without a fixed sleep.
      */
     private static void deleteWithRetry(Path root) {
-        DeleteRetry.withRealClock(DELETE_TIMEOUT, FIRST_RETRY_PAUSE, MAX_RETRY_PAUSE)
-                .run(() -> deleteTree(root))
-                .ifPresent(lastFailure -> LOG.log(Logger.Level.ERROR, leakReport(root, lastFailure)));
+        Optional<IOException> lastFailure = DeleteRetry
+                .withRealClock(DELETE_TIMEOUT, FIRST_RETRY_PAUSE, MAX_RETRY_PAUSE)
+                .run(() -> deleteTree(root));
+        if (lastFailure.isPresent()) {
+            throw new IllegalStateException(repositoryFailure(root, lastFailure.get()), lastFailure.get());
+        }
+    }
+
+    private static void stopProcessesUsing(Path root) {
+        List<ProcessHandle> users = processesUsing(root);
+        users.forEach(ProcessHandle::destroy);
+        List<ProcessHandle> survivors = awaitExit(users, PROCESS_TERMINATION_TIMEOUT);
+        survivors.forEach(ProcessHandle::destroyForcibly);
+        List<ProcessHandle> stuck = awaitExit(survivors, PROCESS_KILL_TIMEOUT);
+        if (!stuck.isEmpty()) {
+            throw new IllegalStateException("Cannot stop the processes using the temporary Git repository " + root
+                    + System.lineSeparator() + describeProcesses(stuck));
+        }
+    }
+
+    private static List<ProcessHandle> processesUsing(Path root) {
+        String location = root.toString();
+        long self = ProcessHandle.current().pid();
+        return ProcessHandle.allProcesses()
+                .filter(process -> process.pid() != self)
+                .filter(process -> process.info().arguments()
+                        .map(arguments -> Arrays.stream(arguments).anyMatch(argument -> names(argument, location)))
+                        .orElse(false))
+                .toList();
+    }
+
+    private static boolean names(String argument, String location) {
+        return argument.equals(location) || argument.endsWith("=" + location);
+    }
+
+    private static List<ProcessHandle> awaitExit(List<ProcessHandle> processes, Duration timeout) {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        List<ProcessHandle> running = new ArrayList<>();
+        for (ProcessHandle process : processes) {
+            if (!exitedBefore(process, deadline)) {
+                running.add(process);
+            }
+        }
+        return running;
+    }
+
+    private static boolean exitedBefore(ProcessHandle process, long deadline) {
+        try {
+            process.onExit().get(Math.max(deadline - System.nanoTime(), 0), TimeUnit.NANOSECONDS);
+            return true;
+        } catch (TimeoutException stillRunning) {
+            return false;
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while waiting for a process to exit", interrupted);
+        } catch (ExecutionException neverCompletesExceptionally) {
+            throw new IllegalStateException(neverCompletesExceptionally);
+        }
     }
 
     private static void deleteTree(Path root) throws IOException {
@@ -142,11 +206,11 @@ public final class TemporaryGitRepositoryResource implements QuarkusTestResource
         }
     }
 
-    private static String leakReport(Path root, IOException failure) {
-        return "LEAKED temporary Git repository " + root + " after " + DELETE_TIMEOUT + ": " + failure
+    private static String repositoryFailure(Path root, IOException failure) {
+        return "Cannot delete the temporary Git repository " + root + " after " + DELETE_TIMEOUT + ": " + failure
                 + System.lineSeparator() + "Leftover entries:" + System.lineSeparator() + describeLeftovers(root)
-                + System.lineSeparator() + "Live processes referencing the repository:"
-                + System.lineSeparator() + describeProcesses(root);
+                + System.lineSeparator() + "Live processes using the repository:"
+                + System.lineSeparator() + describeProcesses(processesUsing(root));
     }
 
     private static String describeLeftovers(Path root) {
@@ -170,13 +234,13 @@ public final class TemporaryGitRepositoryResource implements QuarkusTestResource
         }
     }
 
-    private static String describeProcesses(Path root) {
-        String needle = root.toString();
-        String listing = ProcessHandle.allProcesses()
-                .filter(process -> process.info().commandLine().orElse("").contains(needle))
+    private static String describeProcesses(List<ProcessHandle> processes) {
+        if (processes.isEmpty()) {
+            return "  (none)";
+        }
+        return processes.stream()
                 .map(process -> "  pid " + process.pid() + ": " + process.info().commandLine().orElse(""))
                 .collect(joining(System.lineSeparator()));
-        return listing.isEmpty() ? "  (none)" : listing;
     }
 
     private static void pinRepositoryConfiguration(Git git, Path emptyExcludes) throws IOException {
