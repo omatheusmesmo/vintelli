@@ -91,6 +91,50 @@ public interface VersionControlCapability extends ProviderDescriptor {
     CapabilityResult<Boolean> switchBranch(String branch, boolean confirmed);
 
     /**
+     * @return the local branches sorted by name, with the checked out one
+     *         marked as current. No branch is marked while HEAD is detached
+     */
+    default CapabilityResult<List<Branch>> branches() {
+        return CapabilityResult.failed(new CapabilityFailure(
+                "Branches unavailable", "The provider does not list branches"));
+    }
+
+    /**
+     * Creates a local branch at {@code HEAD} after the caller confirms. The
+     * new branch is not checked out.
+     */
+    default CapabilityResult<Boolean> createBranch(String name, boolean confirmed) {
+        return CapabilityResult.failed(new CapabilityFailure(
+                "Branch creation unavailable", "The provider does not support creating branches"));
+    }
+
+    /**
+     * Deletes a local branch after the caller confirms. The checked out branch
+     * is never deleted, and a branch with commits that are not merged into
+     * {@code HEAD} is deleted only when {@code force} is true.
+     */
+    default CapabilityResult<Boolean> deleteBranch(String name, boolean force, boolean confirmed) {
+        return CapabilityResult.failed(new CapabilityFailure(
+                "Branch deletion unavailable", "The provider does not support deleting branches"));
+    }
+
+    /**
+     * Renames a local branch after the caller confirms. Renaming the checked
+     * out branch keeps it checked out under the new name.
+     */
+    default CapabilityResult<Boolean> renameBranch(String oldName, String newName, boolean confirmed) {
+        return CapabilityResult.failed(new CapabilityFailure(
+                "Branch rename unavailable", "The provider does not support renaming branches"));
+    }
+
+    /**
+     * One local branch of the repository. {@code current} is true for the
+     * branch that HEAD points at.
+     */
+    record Branch(String name, boolean current) {
+    }
+
+    /**
      * Snapshot of the worktree status. {@code branch} names the checked out
      * branch and is {@code null} when HEAD is detached. {@code ahead} and
      * {@code behind} count commits against the upstream branch and are

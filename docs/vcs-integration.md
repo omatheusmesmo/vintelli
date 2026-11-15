@@ -30,6 +30,30 @@ both values for that commit without persisting them. Headless probe endpoints ar
 Branch switching does not force checkout, and paths are resolved under the
 configured project root before JGit sees them.
 
+## Branch operations
+
+The provider lists, creates, deletes and renames local branches. The TUI does
+not expose these operations yet. The port declares them as default methods
+that fail with an "unavailable" reason, so providers without branch support
+keep compiling and answer clearly.
+
+- `branches()` returns the local branches sorted by name. The checked out
+  branch is marked current. While HEAD is detached no branch is marked, and
+  `status()` reports the detached state.
+- `createBranch(name, confirmed)` creates the branch at `HEAD` and leaves the
+  current branch checked out. It fails for an existing name, an invalid name
+  (the reserved `HEAD` included) and a repository without any commit.
+- `deleteBranch(name, force, confirmed)` never deletes the checked out branch,
+  even with `force`. A branch with commits that are not merged into `HEAD` is
+  kept unless `force` is true.
+- `renameBranch(oldName, newName, confirmed)` fails for a missing source and
+  for an existing or invalid target. Renaming the checked out branch keeps it
+  checked out under the new name.
+
+Every write needs `confirmed=true`, and the check runs before the repository
+is opened. Names are stripped of surrounding whitespace and then checked with
+JGit's ref name rules.
+
 ## Headless write probe
 
 The opt-in `POST /vcs/commit` endpoint accepts `{"message":"..."}` for a new
