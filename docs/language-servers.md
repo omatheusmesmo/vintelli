@@ -132,6 +132,30 @@ integration tests cover the DAP twin. The opt-in contract against an installed
 real jdt.ls and Java Debug service is documented in
 [`java-debug-real-contract.md`](java-debug-real-contract.md).
 
+## Code actions and commands
+
+Quick fixes come from `textDocument/codeAction`. An action with a workspace
+edit applies it to the open file as one undoable step. An action with a
+command runs it through `workspace/executeCommand`. While the command runs, the
+server may ask for workspace edits with `workspace/applyEdit`: each one is
+collected and applied together with the action's own edit once the command
+completes, so the file changes in one undoable step.
+
+A command that does not complete leaves the document unchanged and the status
+line says why:
+
+- the server does not answer within 60 seconds (`timeout`);
+- the connection to the server drops while the command runs (`dropped`; the
+  next request starts the server again);
+- the server does not advertise the command (`not-advertised`), in which case
+  the request is not sent at all.
+
+A code action whose own edit the editor cannot apply is not run. A workspace
+edit the server sends during a command is refused when the editor cannot apply
+it: the server receives the reason and the other edits of that command are
+kept. Resource operations (create, rename, delete a file) are always refused,
+and edits of files other than the open one too.
+
 ## Real jdtls integration test
 
 `JdtlsFixtureTest` in `vintelli-lsp` runs the `LspClient` against the real jdt.ls

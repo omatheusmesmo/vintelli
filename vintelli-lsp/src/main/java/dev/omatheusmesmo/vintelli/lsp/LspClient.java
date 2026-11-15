@@ -66,10 +66,12 @@ public final class LspClient implements AutoCloseable, JavaDebugAdapterPort {
     private static final Logger LOG = Logger.getLogger(LspClient.class);
 
     private static final Duration DIAGNOSTICS_WAIT = Duration.ofSeconds(30);
+    private static final Duration COMMAND_TIMEOUT = Duration.ofSeconds(60);
     private static final String START_DEBUG_SESSION_COMMAND = "vscode.java.startDebugSession";
 
     private final LspProfileConfig profiles;
     private final LanguageServerDiscovery discovery;
+    private final Duration commandTimeout;
     private final Object lock = new Object();
     private volatile LspServerSession session;
     private volatile Optional<String> runtimeFailure = Optional.empty();
@@ -80,9 +82,19 @@ public final class LspClient implements AutoCloseable, JavaDebugAdapterPort {
                 Path.of(System.getProperty("user.dir"))));
     }
 
+    LspClient(LspProfileConfig profiles, Duration commandTimeout) {
+        this(profiles, LanguageServerDiscovery.system(profiles.discoveryEnabled(),
+                Path.of(System.getProperty("user.dir"))), commandTimeout);
+    }
+
     LspClient(LspProfileConfig profiles, LanguageServerDiscovery discovery) {
+        this(profiles, discovery, COMMAND_TIMEOUT);
+    }
+
+    LspClient(LspProfileConfig profiles, LanguageServerDiscovery discovery, Duration commandTimeout) {
         this.profiles = profiles;
         this.discovery = discovery;
+        this.commandTimeout = commandTimeout;
         checkRuntime();
     }
 
@@ -340,6 +352,39 @@ public final class LspClient implements AutoCloseable, JavaDebugAdapterPort {
     }
 
     /**
+     * Runs a command of a code action through {@code workspace/executeCommand}. The server may ask for
+     * workspace edits while the command runs; each one goes to the sink, and the sink's decision is the
+     * answer the server receives. A command the server does not advertise is refused before the request;
+     * a request that is not answered within the command timeout fails as {@code timeout}, and a lost
+     * connection as {@code dropped}, so the caller can tell them apart.
+     *
+     * @return the number of workspace edit requests received while the command ran
+     */
+    public CapabilityResult<Integer> executeCommand(CodeActionCapability.CommandRef command,
+            CodeActionCapability.WorkspaceEditSink edits) {
+        Selection selection = requestSelection();
+        if (selection.failure() != null) {
+            return CapabilityResult.failed(new CapabilityFailure("unavailable", selection.failure()));
+        }
+        LspServerSession current = null;
+        try {
+            current = ensureStarted(selection);
+            if (!current.supportsExecuteCommand(command.identifier())) {
+                return CapabilityResult.failed(new CapabilityFailure("not-advertised",
+                        "the language server of profile '" + selection.profile() + "' does not advertise '"
+                                + command.identifier() + "'"));
+            }
+            return CapabilityResult.ok(current.executeCommand(command.identifier(), command.arguments(), edits,
+                    commandTimeout));
+        } catch (ExecutionException | IOException | InterruptedException | TimeoutException | RuntimeException failure) {
+            if (failure instanceof InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+            return CapabilityResult.failed(commandFailure(selection, current, command.identifier(), failure));
+        }
+    }
+
+    /**
      * @return call sites that call the symbol under the position
      */
     public CapabilityResult<List<CallHierarchyCapability.CallSite>> callers(
@@ -455,6 +500,19 @@ public final class LspClient implements AutoCloseable, JavaDebugAdapterPort {
                 + LspServerSession.failureDetail(failure);
         LOG.debug(detail, failure);
         return new CapabilityFailure("unavailable", detail);
+    }
+
+    private CapabilityFailure commandFailure(Selection selection, LspServerSession session, String command,
+            Throwable failure) {
+        if (session != null && session.connectionLost()) {
+            return new CapabilityFailure("dropped", "the connection to the language server of profile '"
+                    + selection.profile() + "' dropped while it ran '" + command + "'");
+        }
+        if (failure instanceof TimeoutException) {
+            return new CapabilityFailure("timeout", "the language server of profile '" + selection.profile()
+                    + "' did not answer '" + command + "' within " + commandTimeout.toMillis() + " ms");
+        }
+        return failureDetail(selection, failure);
     }
 
 

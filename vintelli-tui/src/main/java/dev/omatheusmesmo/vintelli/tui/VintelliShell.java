@@ -283,7 +283,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         this.fileIcons = FileIcons.resolve();
         this.editorController = new EditorController(this.projectRoot, editor, projects, editorHost(), fileIcons);
         this.editorPanel = new EditorPanel(editorController, editor, themes, () -> overlays().keymap(), this.projectRoot);
-        this.quickFix = new QuickFixController(capabilityRegistry, editor, this::deliverToRenderThread);
+        this.quickFix = new QuickFixController(capabilityRegistry, editor, this::deliverToRenderThread,
+                message -> status = message);
         this.quickFixOverlay = new QuickFixOverlay(quickFix);
         Path projectRoot = editor == null ? Path.of("").toAbsolutePath().normalize() : editor.project();
         Path configRoot = persistLayout ? ConfigDirectory.configRoot(ConfigDirectory.sharedConfigDir(),

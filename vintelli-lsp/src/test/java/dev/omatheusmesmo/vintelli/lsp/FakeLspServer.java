@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -17,6 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import com.google.gson.JsonObject;
 
+import org.eclipse.lsp4j.ApplyWorkspaceEditParams;
 import org.eclipse.lsp4j.CallHierarchyIncomingCall;
 import org.eclipse.lsp4j.CallHierarchyIncomingCallsParams;
 import org.eclipse.lsp4j.CallHierarchyItem;
@@ -88,6 +90,9 @@ import org.eclipse.lsp4j.services.WorkspaceService;
  * end the process.
  */
 public final class FakeLspServer {
+
+    static final List<String> FIXTURE_COMMANDS = List.of("fake.apply", "fake.reject", "fake.hang", "fake.drop",
+            "fake.drop-after-edit");
 
     /**
      * Flags: {@code --ignore-exit} keeps the process alive after the exit
@@ -197,10 +202,7 @@ public final class FakeLspServer {
             capabilities.setCallHierarchyProvider(true);
             capabilities.setDocumentSymbolProvider(true);
             capabilities.setCodeActionProvider(true);
-            if (arguments.contains("--java-debug")) {
-                capabilities.setExecuteCommandProvider(new ExecuteCommandOptions(
-                        List.of("vscode.java.startDebugSession")));
-            }
+            capabilities.setExecuteCommandProvider(new ExecuteCommandOptions(advertisedCommands()));
             return CompletableFuture.completedFuture(new InitializeResult(capabilities,
                     new ServerInfo("fake-language-server", "1.0.0")));
         }
@@ -223,6 +225,14 @@ public final class FakeLspServer {
             if (!arguments.contains("--ignore-exit")) {
                 System.exit(0);
             }
+        }
+
+        private List<String> advertisedCommands() {
+            List<String> commands = new ArrayList<>(FIXTURE_COMMANDS);
+            if (arguments.contains("--java-debug")) {
+                commands.add("vscode.java.startDebugSession");
+            }
+            return commands;
         }
 
         private void spawnHoldingChild() {
@@ -480,6 +490,9 @@ public final class FakeLspServer {
         @Override
         public CompletableFuture<Object> executeCommand(ExecuteCommandParams params) {
             server.trace("executeCommand " + params.getCommand());
+            if (FIXTURE_COMMANDS.contains(params.getCommand())) {
+                return fixtureCommand(params.getCommand());
+            }
             if (!server.arguments.contains("--java-debug")
                     || !"vscode.java.startDebugSession".equals(params.getCommand())) {
                 return CompletableFuture.failedFuture(new IllegalArgumentException("unsupported command"));
@@ -495,6 +508,47 @@ public final class FakeLspServer {
                 }
             }
             return CompletableFuture.completedFuture(60001);
+        }
+
+        /**
+         * Answers the fixture commands: {@code fake.apply} asks the client for an edit of the
+         * document, {@code fake.reject} asks for a file creation the client cannot apply,
+         * {@code fake.hang} never answers, {@code fake.drop} ends the process at once and
+         * {@code fake.drop-after-edit} ends it after the client answered an edit.
+         */
+        private CompletableFuture<Object> fixtureCommand(String command) {
+            return switch (command) {
+                case "fake.apply" -> askForEdit(fixtureEdit(), "applied");
+                case "fake.reject" -> askForEdit(createFileEdit(), "rejected");
+                case "fake.drop-after-edit" -> askForEdit(fixtureEdit(), "unused")
+                        .thenApply(response -> dropConnection());
+                case "fake.drop" -> CompletableFuture.completedFuture(dropConnection());
+                default -> new CompletableFuture<>();
+            };
+        }
+
+        private CompletableFuture<Object> askForEdit(WorkspaceEdit edit, String result) {
+            return server.remoteClient.applyEdit(new ApplyWorkspaceEditParams(edit)).thenApply(response -> {
+                server.trace("applyEdit " + response.isApplied() + " " + response.getFailureReason());
+                return result;
+            });
+        }
+
+        private Object dropConnection() {
+            server.trace("drop");
+            System.exit(1);
+            return null;
+        }
+
+        private static WorkspaceEdit fixtureEdit() {
+            return new WorkspaceEdit(Map.of("file:///fake/Fake.java", List.of(new TextEdit(
+                    new Range(new Position(0, 0), new Position(0, 0)), "import java.util.List;\n"))));
+        }
+
+        private static WorkspaceEdit createFileEdit() {
+            List<Either<TextDocumentEdit, ResourceOperation>> changes = List.of(
+                    Either.forRight(new CreateFile("file:///fake/Missing.java")));
+            return new WorkspaceEdit(changes);
         }
 
         private static CompletableFuture<Object> portValue(String value) {

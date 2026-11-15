@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 
 import org.eclipse.lsp4j.ApplyWorkspaceEditParams;
 import org.eclipse.lsp4j.ApplyWorkspaceEditResponse;
@@ -19,6 +20,7 @@ import org.eclipse.lsp4j.RegistrationParams;
 import org.eclipse.lsp4j.ShowMessageRequestParams;
 import org.eclipse.lsp4j.UnregistrationParams;
 import org.eclipse.lsp4j.WorkDoneProgressCreateParams;
+import org.eclipse.lsp4j.WorkspaceEdit;
 import org.eclipse.lsp4j.services.LanguageClient;
 import org.jboss.logging.Logger;
 
@@ -31,8 +33,11 @@ import org.jboss.logging.Logger;
 final class VintelliLanguageClient implements LanguageClient {
 
     private static final Logger LOG = Logger.getLogger(VintelliLanguageClient.class);
+    private static final Function<WorkspaceEdit, ApplyWorkspaceEditResponse> NO_COMMAND_RUNNING = edit -> refused(
+            "no command is waiting for a workspace edit");
 
     private final Map<String, List<Diagnostic>> diagnosticsByUri = new ConcurrentHashMap<>();
+    private volatile Function<WorkspaceEdit, ApplyWorkspaceEditResponse> editHandler = NO_COMMAND_RUNNING;
     private final Map<String, Integer> publicationCounts = new ConcurrentHashMap<>();
     private final Object publicationMonitor = new Object();
 
@@ -80,8 +85,15 @@ final class VintelliLanguageClient implements LanguageClient {
 
     @Override
     public CompletableFuture<ApplyWorkspaceEditResponse> applyEdit(ApplyWorkspaceEditParams params) {
-        LOG.debug("Dropping an applied workspace edit: Vintelli does not host the edited documents");
-        return CompletableFuture.completedFuture(new ApplyWorkspaceEditResponse(false));
+        return CompletableFuture.completedFuture(editHandler.apply(params.getEdit()));
+    }
+
+    /**
+     * Routes the workspace edits the server asks for to the handler of the running command; {@code null}
+     * restores the refusal every edit gets while no command runs.
+     */
+    void answerEdits(Function<WorkspaceEdit, ApplyWorkspaceEditResponse> handler) {
+        editHandler = handler == null ? NO_COMMAND_RUNNING : handler;
     }
 
     @Override
@@ -119,6 +131,12 @@ final class VintelliLanguageClient implements LanguageClient {
 
     List<Diagnostic> knownDiagnostics(String uri) {
         return diagnosticsByUri.getOrDefault(uri, List.of());
+    }
+
+    static ApplyWorkspaceEditResponse refused(String reason) {
+        ApplyWorkspaceEditResponse response = new ApplyWorkspaceEditResponse(false);
+        response.setFailureReason(reason);
+        return response;
     }
 
     private static Logger.Level severity(MessageParams message) {
