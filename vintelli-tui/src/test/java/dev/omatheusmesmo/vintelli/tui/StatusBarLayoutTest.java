@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityStatus;
@@ -18,6 +19,9 @@ import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
 import dev.omatheusmesmo.vintelli.tui.StatusBarLayout.Line;
 import dev.omatheusmesmo.vintelli.tui.StatusBarLayout.Placement;
 import dev.omatheusmesmo.vintelli.tui.StatusBarLayout.Segment;
+import dev.omatheusmesmo.vintelli.tui.icons.FileIcon;
+import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
+import dev.omatheusmesmo.vintelli.tui.icons.FileIconsFixture;
 import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
 import dev.tamboui.buffer.Buffer;
 import dev.tamboui.layout.Rect;
@@ -30,6 +34,7 @@ import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
 import dev.tamboui.tui.pilot.Pilot;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class StatusBarLayoutTest {
 
@@ -163,6 +168,30 @@ class StatusBarLayoutTest {
         assertFalse(element.click(0, 2), "a click outside the popup is not consumed");
         assertFalse(element.popupOpen(), "a click outside the popup closes it");
         assertEquals(List.of(1), clicked, "closing the popup never selects a segment");
+    }
+
+    @Test
+    void theFileBreadcrumbDrawsItsGlyphInItsColourInTheNerdFace(@TempDir Path configDirectory) {
+        assertFileIconDrawn(FileIconsFixture.resolved(IconMode.NERD, configDirectory), IconMode.NERD, "");
+    }
+
+    @Test
+    void theFileBreadcrumbDrawsItsAsciiMarkerInItsColourInTheAsciiFace(@TempDir Path configDirectory) {
+        assertFileIconDrawn(FileIconsFixture.resolved(IconMode.ASCII, configDirectory), IconMode.ASCII, "J");
+    }
+
+    private static void assertFileIconDrawn(FileIcons icons, IconMode mode, String symbol) {
+        FileIcon icon = icons.iconFor("Main.java");
+        List<StatusBar.Breadcrumb> crumbs = StatusBar.pathBreadcrumbs(Path.of("work", "vintelli"),
+                Path.of("src", "Main.java"), icon);
+        StatusBar bar = new StatusBar(() -> "Ready", () -> false, null, null, List.of(),
+                new StatusBar.Glyphs(true, mode), () -> new StatusBar.Navigation(crumbs, crumbs.size() - 1, false));
+        Buffer buffer = drawOn(new StatusBarElement(bar, index -> { }), 80, 6);
+
+        String row = rowText(buffer, STATUS_ROW);
+        int column = row.indexOf(symbol + " Main.java");
+        assertTrue(column >= 0, row);
+        assertEquals(Optional.of(icon.color()), buffer.get(column, STATUS_ROW).style().fg(), row);
     }
 
     @Test

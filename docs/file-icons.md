@@ -125,8 +125,15 @@ changed. A user `ext.java` entry in the user mapping file replaces the kind
 icons for every Java file, so a user who wants the extension icon keeps it by
 choosing it there.
 
-The kind icons are chosen by the tree only. The editor tabs and the search
-overlay still show the extension icon.
+The kind icons are chosen by the tree only. The editor tabs, the search overlay
+and the navigation bar still show the extension icon.
+
+The search overlay draws the icon of each result before its path, in both the
+Go to File and the Find in Files rows: one icon cell, one separator cell, then
+the path, clipped to the cells that remain. The navigation bar draws the icon of
+the file segment at the end of the breadcrumb, in the colour of the mapping, and
+the ancestor folders have none. Both use the file name only and read no file
+while they draw, and both follow the face the session resolved.
 
 A user file `vintelli/file-icons.properties` inside the config directory
 (the shared `vintelli.config.dir` override first, then `XDG_CONFIG_HOME`,

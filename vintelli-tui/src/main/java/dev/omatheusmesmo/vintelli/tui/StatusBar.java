@@ -13,6 +13,7 @@ import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability;
 import dev.omatheusmesmo.vintelli.api.statusbar.StatusBarWidget;
 import dev.omatheusmesmo.vintelli.api.statusbar.StatusBarWidgetContributor;
 import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
+import dev.omatheusmesmo.vintelli.tui.icons.FileIcon;
 import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
 
 /**
@@ -25,8 +26,15 @@ import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
  */
 final class StatusBar {
 
-    /** One breadcrumb segment: its label, the path it opens and its line, or -1 for a path. */
-    record Breadcrumb(String label, Path path, int line) {
+    /**
+     * One breadcrumb segment: its label, the path it opens and its line, or -1 for a path.
+     * Only the file segment of the active document carries its icon; the others have none.
+     */
+    record Breadcrumb(String label, Path path, int line, FileIcon icon) {
+
+        Breadcrumb(String label, Path path, int line) {
+            this(label, path, line, null);
+        }
     }
 
     /** The breadcrumb the shell navigates, the selected segment and whether the keyboard has it. */
@@ -61,6 +69,7 @@ final class StatusBar {
     static final String BREADCRUMB_PREFIX = "crumb-";
     static final String PROVIDERS_ID = "providers";
     static final String GAP = "  ";
+    static final String ICON_SEPARATOR = " ";
 
     private static final String IDEA_SUFFIX = " | IDEA MCP: disconnected";
     private static final int COMPACT_MESSAGE_WIDTH = 8;
@@ -122,7 +131,7 @@ final class StatusBar {
         for (int i = 0; i < crumbs.size(); i++) {
             Breadcrumb crumb = crumbs.get(i);
             int priority = crumb.line() >= 0 ? PRIORITY_SYMBOL : i == fileIndex ? PRIORITY_FILE : PRIORITY_ANCESTOR + i;
-            segments.add(StatusBarLayout.Segment.of(BREADCRUMB_PREFIX + i, priority, crumb.label()));
+            segments.add(StatusBarLayout.Segment.of(BREADCRUMB_PREFIX + i, priority, breadcrumbText(crumb)));
         }
         return List.copyOf(segments);
     }
@@ -204,6 +213,25 @@ final class StatusBar {
         return navigation.get() == null ? Navigation.NONE : navigation.get();
     }
 
+    IconMode iconMode() {
+        return glyphs.icons();
+    }
+
+    static FileIcon fileIconOf(String segmentId, Navigation navigation) {
+        if (!segmentId.startsWith(BREADCRUMB_PREFIX)) {
+            return null;
+        }
+        int index = Integer.parseInt(segmentId.substring(BREADCRUMB_PREFIX.length()));
+        return index < navigation.segments().size() ? navigation.segments().get(index).icon() : null;
+    }
+
+    private String breadcrumbText(Breadcrumb crumb) {
+        if (crumb.icon() == null) {
+            return crumb.label();
+        }
+        return crumb.icon().symbol(glyphs.icons()) + ICON_SEPARATOR + crumb.label();
+    }
+
     static String providerText(CapabilityStatus status) {
         String label = CapabilityStateLine.label(status.capability());
         if (status.isAvailable()) {
@@ -233,6 +261,14 @@ final class StatusBar {
 
     /** The segments from the project root down to {@code relative}, the root segment first. */
     static List<Breadcrumb> pathBreadcrumbs(Path root, Path relative) {
+        return pathBreadcrumbs(root, relative, null);
+    }
+
+    /**
+     * The segments from the project root down to {@code relative}, the root segment first. The last
+     * segment is the file and carries {@code fileIcon} when it is not null.
+     */
+    static List<Breadcrumb> pathBreadcrumbs(Path root, Path relative, FileIcon fileIcon) {
         List<Breadcrumb> paths = new ArrayList<>();
         String rootLabel = root.getFileName() == null ? root.toString() : root.getFileName().toString();
         paths.add(new Breadcrumb(rootLabel, root, -1));
@@ -240,6 +276,10 @@ final class StatusBar {
         for (Path part : relative) {
             current = current.resolve(part);
             paths.add(new Breadcrumb(part.toString(), current, -1));
+        }
+        if (fileIcon != null && paths.size() > 1) {
+            Breadcrumb file = paths.removeLast();
+            paths.add(new Breadcrumb(file.label(), file.path(), file.line(), fileIcon));
         }
         return List.copyOf(paths);
     }

@@ -3,14 +3,18 @@ package dev.omatheusmesmo.vintelli.tui.search;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 import dev.omatheusmesmo.vintelli.api.search.ProjectSearch.FileMatch;
 import dev.omatheusmesmo.vintelli.api.search.ProjectSearch.TextMatch;
 import dev.omatheusmesmo.vintelli.tui.OverlayInput;
+import dev.omatheusmesmo.vintelli.tui.icons.FileIcon;
+import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.style.Style;
 import dev.tamboui.terminal.Frame;
+import dev.tamboui.text.CharWidth;
 import dev.tamboui.text.Line;
 import dev.tamboui.text.Span;
 import dev.tamboui.text.Text;
@@ -25,11 +29,14 @@ import dev.tamboui.widgets.paragraph.Paragraph;
 /** Immediate-mode renderer and keyboard handler for project search. */
 public final class ProjectSearchOverlay {
     private static final Style SELECTED = Style.create().reversed().bold();
+    private static final String FIELD_SEPARATOR = " ";
 
     private final ProjectSearchController controller;
+    private final FileIcons icons;
 
-    public ProjectSearchOverlay(ProjectSearchModel model) {
+    public ProjectSearchOverlay(ProjectSearchModel model, FileIcons icons) {
         this.controller = new ProjectSearchController(model);
+        this.icons = Objects.requireNonNull(icons, "icons");
     }
 
     /** Returns the confirmed path and zero-based line, or empty when consumed without confirmation. */
@@ -80,31 +87,44 @@ public final class ProjectSearchOverlay {
         return new Target(target.file(), target.line());
     }
 
-    private static void appendFiles(List<Line> lines, List<FileMatch> results, int first, int count,
-            int selected, int width) {
+    private void appendFiles(List<Line> lines, List<FileMatch> results, int first, int count, int selected,
+            int width) {
         for (int row = 0; row < count && first + row < results.size(); row++) {
-            FileMatch match = results.get(first + row);
-            String label = fit(match.file().toString().replace('\\', '/'), width);
-            lines.add(Line.from(Span.styled((first + row) == selected ? " " + label : " " + label,
-                    (first + row) == selected ? SELECTED : Style.create())));
+            Path file = results.get(first + row).file();
+            FileIcon icon = icons.iconFor(file.toString());
+            lines.add(resultRow(icon, displayPath(file), width, (first + row) == selected));
         }
     }
 
-    private static void appendText(List<Line> lines, List<TextMatch> results, int first, int count,
-            int selected, int width) {
+    private void appendText(List<Line> lines, List<TextMatch> results, int first, int count, int selected,
+            int width) {
         for (int row = 0; row < count && first + row < results.size(); row++) {
             TextMatch match = results.get(first + row);
-            String path = match.file().toString().replace('\\', '/') + ":" + (match.line() + 1) + ":";
-            int excerptWidth = Math.max(0, width - path.length() - 2);
-            String label = fit(path + " " + fit(match.text().strip(), excerptWidth), width);
-            lines.add(Line.from(Span.styled(" " + label,
-                    (first + row) == selected ? SELECTED : Style.create())));
+            FileIcon icon = icons.iconFor(match.file().toString());
+            String location = displayPath(match.file()) + ":" + (match.line() + 1) + ":";
+            int excerptWidth = labelWidth(icon, width) - CharWidth.of(location) - CharWidth.of(FIELD_SEPARATOR);
+            String label = location + FIELD_SEPARATOR + fit(match.text().strip(), excerptWidth);
+            lines.add(resultRow(icon, label, width, (first + row) == selected));
         }
+    }
+
+    private Line resultRow(FileIcon icon, String label, int width, boolean chosen) {
+        Span marker = chosen ? Span.styled(icon.symbol(icons.mode()), SELECTED) : icon.span(icons.mode());
+        Style style = chosen ? SELECTED : Style.create();
+        return Line.from(marker, Span.styled(FIELD_SEPARATOR + fit(label, labelWidth(icon, width)), style));
+    }
+
+    private int labelWidth(FileIcon icon, int width) {
+        return Math.max(0, width - icon.symbolWidth(icons.mode()) - CharWidth.of(FIELD_SEPARATOR));
+    }
+
+    private static String displayPath(Path file) {
+        return file.toString().replace('\\', '/');
     }
 
     private static String fit(String value, int width) {
         if (width <= 0) return "";
-        return value.length() <= width ? value : value.substring(0, width);
+        return CharWidth.of(value) <= width ? value : CharWidth.substringByWidth(value, width);
     }
 
     /** Results already on screen stay visible; the failure surfaces as a trailing line. */

@@ -6,6 +6,8 @@ import java.util.function.IntConsumer;
 
 import dev.omatheusmesmo.vintelli.tui.StatusBarLayout.Line;
 import dev.omatheusmesmo.vintelli.tui.StatusBarLayout.Placement;
+import dev.omatheusmesmo.vintelli.tui.icons.FileIcon;
+import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
 import dev.tamboui.buffer.Buffer;
 import dev.tamboui.buffer.Cell;
 import dev.tamboui.layout.Constraint;
@@ -101,11 +103,24 @@ final class StatusBarElement implements Element {
             if (placement.text().isEmpty()) {
                 continue;
             }
-            Style style = isSelected(placement.id(), navigation) ? base.reversed()
-                    : segmentStyle(placement.id(), base, context);
+            boolean selected = isSelected(placement.id(), navigation);
+            Style style = selected ? base.reversed() : segmentStyle(placement.id(), base, context);
             buffer.setString(area.x() + placement.x(), area.y(), placement.text(), style);
+            if (!selected) {
+                drawFileIcon(buffer, area, placement, navigation, base);
+            }
         }
         renderPopup(buffer, area, base);
+    }
+
+    private void drawFileIcon(Buffer buffer, Rect area, Placement placement, StatusBar.Navigation navigation,
+            Style base) {
+        FileIcon icon = StatusBar.fileIconOf(placement.id(), navigation);
+        if (icon == null) {
+            return;
+        }
+        IconMode mode = bar.iconMode();
+        buffer.setString(area.x() + placement.x(), area.y(), icon.symbol(mode), base.patch(icon.span(mode).style()));
     }
 
     @Override

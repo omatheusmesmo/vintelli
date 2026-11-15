@@ -276,11 +276,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         this.mavenWindows.forEach(window -> window.onMarqueeChange(ticker::sync));
         this.vcsActions = new VcsActions(vcsProviders, frameLock, message -> status = message, this::show,
                 projects, editor);
-        this.editorController = new EditorController(this.projectRoot, editor, projects, editorHost());
+        this.fileIcons = FileIcons.resolve();
+        this.editorController = new EditorController(this.projectRoot, editor, projects, editorHost(), fileIcons);
         this.editorPanel = new EditorPanel(editorController, editor, themes, () -> overlays().keymap(), this.projectRoot);
         this.quickFix = new QuickFixController(capabilityRegistry, editor, this::deliverToRenderThread);
         this.quickFixOverlay = new QuickFixOverlay(quickFix);
-        this.fileIcons = FileIcons.resolve();
         Path projectRoot = editor == null ? Path.of("").toAbsolutePath().normalize() : editor.project();
         Path configRoot = persistLayout ? ConfigDirectory.configRoot(ConfigDirectory.sharedConfigDir(),
                 System.getenv("XDG_CONFIG_HOME"), System.getenv("APPDATA"), System.getProperty("user.home")) : null;
@@ -374,7 +374,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         KeymapHelpOverlay keymapHelp = new KeymapHelpOverlay(keymap);
         MenuPopup menuPopup = new MenuPopup(MENUS, menuCatalog::entries, keymap::describeBindings,
                 MainToolbar.MENU_ORIGIN);
-        ProjectSearchOverlay searchOverlay = searchModel == null ? null : new ProjectSearchOverlay(searchModel);
+        ProjectSearchOverlay searchOverlay = searchModel == null ? null
+                : new ProjectSearchOverlay(searchModel, fileIcons);
         OverlayStack stack = new OverlayStack();
         GoToLineOverlay goToLine = new GoToLineOverlay();
         BreakpointConditionOverlay breakpointCondition = new BreakpointConditionOverlay();

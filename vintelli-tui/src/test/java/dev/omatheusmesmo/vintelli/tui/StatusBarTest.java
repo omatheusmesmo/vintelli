@@ -15,8 +15,11 @@ import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
 import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability;
 import dev.omatheusmesmo.vintelli.api.statusbar.StatusBarWidget;
 import dev.omatheusmesmo.vintelli.tui.StatusBarLayout.Segment;
+import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
+import dev.omatheusmesmo.vintelli.tui.icons.FileIconsFixture;
 import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class StatusBarTest {
 
@@ -76,6 +79,22 @@ class StatusBarTest {
         assertEquals(ROOT.resolve("src"), segments.get(1).path());
         assertEquals(ROOT.resolve("src").resolve("Main.java"), segments.get(2).path());
         assertTrue(segments.stream().allMatch(segment -> segment.line() == -1));
+    }
+
+    @Test
+    void theFileBreadcrumbLeadsWithItsIconInEachFaceAndTheAncestorsHaveNone(@TempDir Path configDirectory) {
+        assertEquals(List.of("vintelli", "src", " Main.java"),
+                breadcrumbTexts(FileIconsFixture.resolved(IconMode.NERD, configDirectory), IconMode.NERD));
+        assertEquals(List.of("vintelli", "src", "J Main.java"),
+                breadcrumbTexts(FileIconsFixture.resolved(IconMode.ASCII, configDirectory), IconMode.ASCII));
+    }
+
+    private static List<String> breadcrumbTexts(FileIcons icons, IconMode mode) {
+        List<StatusBar.Breadcrumb> crumbs = StatusBar.pathBreadcrumbs(ROOT, Path.of("src", "Main.java"),
+                icons.iconFor("Main.java"));
+        StatusBar bar = new StatusBar(() -> "Ready", () -> false, null, null, List.of(),
+                new StatusBar.Glyphs(true, mode), () -> new StatusBar.Navigation(crumbs, crumbs.size() - 1, false));
+        return bar.left().stream().map(Segment::text).toList();
     }
 
     @Test

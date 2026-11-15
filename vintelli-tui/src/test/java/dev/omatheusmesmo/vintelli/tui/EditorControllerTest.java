@@ -4,6 +4,9 @@ import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Diagnosti
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Severity;
 import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability;
 import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
+import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
+import dev.omatheusmesmo.vintelli.tui.icons.FileIconsFixture;
+import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,6 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EditorControllerTest {
@@ -27,6 +31,7 @@ class EditorControllerTest {
 
     private Path project;
     private BuiltinEditor editor;
+    private FileIcons icons;
     private EditorController controller;
     private final List<String> statuses = new ArrayList<>();
     private final List<String> focusTargets = new ArrayList<>();
@@ -43,7 +48,8 @@ class EditorControllerTest {
         editor = new BuiltinEditor(project, null, () -> null);
         ProjectTreeController projects = new ProjectTreeController(project, new ShellState(), null, null,
                 statuses::add, () -> { }, () -> { });
-        controller = new EditorController(project, editor, projects, host());
+        icons = FileIconsFixture.resolved(IconMode.ASCII, tempDir);
+        controller = new EditorController(project, editor, projects, host(), icons);
     }
 
     @Test
@@ -55,6 +61,9 @@ class EditorControllerTest {
         assertEquals(List.of(project.getFileName().toString(), "src", "Main.java"),
                 segments.stream().map(StatusBar.Breadcrumb::label).toList());
         assertEquals(project.resolve("src/Main.java"), segments.getLast().path());
+        assertEquals(icons.iconFor("Main.java"), segments.getLast().icon());
+        assertNull(segments.getFirst().icon());
+        assertNull(segments.get(1).icon());
     }
 
     @Test
