@@ -4,11 +4,23 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.time.Duration;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 
 class VintelliMainTest {
+
+    @Test
+    void anIdleShellTicksAtMostOncePerSecond() {
+        assertTrue(VintelliMain.shellConfig().tickRate().compareTo(Duration.ofSeconds(1)) >= 0,
+                "idle tick was " + VintelliMain.shellConfig().tickRate());
+    }
+
+    @Test
+    void resizeIsStillCheckedEveryFortyMilliseconds() {
+        assertEquals(Duration.ofMillis(40), VintelliMain.shellConfig().resizeGracePeriod());
+    }
 
     @Test
     void tuiFailureWithoutFileLoggingIsTheOneLineMessage() {

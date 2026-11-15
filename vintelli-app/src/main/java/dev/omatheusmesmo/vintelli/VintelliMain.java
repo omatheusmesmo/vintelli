@@ -27,11 +27,13 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 public final class VintelliMain implements QuarkusApplication {
 
     /**
-     * Idle redraw cadence. Background work that bypasses the UI work queue is only
-     * picked up on the next frame, so this bounds that delay while the shell is idle;
-     * queued work wakes the loop at once through {@link VintelliShell#bindRedraw}.
+     * Idle redraw cadence. Every tick forces a full frame, so an idle shell at 4 frames per
+     * second spends a visible share of a core redrawing an unchanged screen. Background work
+     * that bypasses the UI work queue is only picked up on the next frame, so this bounds that
+     * delay while the shell is idle; queued work wakes the loop at once through
+     * {@link VintelliShell#bindRedraw}.
      */
-    static final Duration IDLE_TICK = Duration.ofMillis(250);
+    static final Duration IDLE_TICK = Duration.ofSeconds(1);
     /** The scheduler period is the smaller of the tick and this grace, so resize detection keeps its latency. */
     static final Duration RESIZE_CHECK = Duration.ofMillis(40);
 
@@ -66,6 +68,13 @@ public final class VintelliMain implements QuarkusApplication {
                 TerminalBackground.consoleAttached() || TerminalBackground.recordedSession());
     }
 
+    static TuiConfig shellConfig() {
+        return TuiConfig.defaults().toBuilder()
+                .tickRate(IDLE_TICK)
+                .resizeGracePeriod(RESIZE_CHECK)
+                .build();
+    }
+
     static String tuiFailure(String message, boolean fileLogging, Optional<String> logFile) {
         String line = "Vintelli cannot start the TUI: " + message;
         if (fileLogging && logFile.isPresent()) {
@@ -84,10 +93,7 @@ public final class VintelliMain implements QuarkusApplication {
                 VintelliShell tuiShell = shell.get();
                 Keymap keymap = keymapRegistry.get().get();
                 try (ToolkitRunner runner = ToolkitRunner.builder()
-                        .config(TuiConfig.defaults().toBuilder()
-                                .tickRate(IDLE_TICK)
-                                .resizeGracePeriod(RESIZE_CHECK)
-                                .build())
+                        .config(shellConfig())
                         .bindings(keymap.bindings())
                         .styleEngine(shellThemes.engine())
                         .mouseCapture(true)
