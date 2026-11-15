@@ -46,7 +46,10 @@ final class ToolTabBarElement extends StyledElement<ToolTabBarElement> {
     private static final int OVERFLOW_RESERVE = 2;
     private static final int OVERFLOW_LEFT_RESERVE = 1;
 
-    record Label(String marker, String title) {
+    record Label(String marker, String title, String themeRole) {
+        Label(String marker, String title) {
+            this(marker, title, null);
+        }
     }
 
     record Glyphs(String underline, String overflowLeft, String overflowRight) {
@@ -141,10 +144,12 @@ final class ToolTabBarElement extends StyledElement<ToolTabBarElement> {
             }
             Label label = labels.get(index);
             boolean isSelected = index == selected;
+            Style stateStyle = label.themeRole() == null ? null : context.childStyle(label.themeRole());
             int start = x;
-            x = draw(buffer, x, limit, labelRow, label.marker(), shortcutStyle);
+            x = draw(buffer, x, limit, labelRow, label.marker(), stateStyle == null ? shortcutStyle : stateStyle);
             if (plan.shape().drawsTitle(isSelected)) {
-                x = draw(buffer, x, limit, labelRow, " " + label.title(), isSelected ? selectedStyle : tabStyle);
+                x = draw(buffer, x, limit, labelRow, " " + label.title(), stateStyle == null
+                        ? isSelected ? selectedStyle : tabStyle : stateStyle);
             }
             if (isSelected && rows > 1) {
                 draw(buffer, start, limit, labelRow + 1, glyphs.underline().repeat(x - start), underlineStyle);

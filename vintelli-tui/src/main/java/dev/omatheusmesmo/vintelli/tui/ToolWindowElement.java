@@ -37,15 +37,21 @@ final class ToolWindowElement extends StyledElement<ToolWindowElement> {
     private final ToolWindow window;
     private final Host host;
     private final int height;
+    private final boolean runBodyOnly;
 
     ToolWindowElement(ToolWindow window, Host host) {
         this(window, TOOL_WINDOW_HEIGHT, host);
     }
 
     ToolWindowElement(ToolWindow window, int height, Host host) {
+        this(window, height, host, false);
+    }
+
+    ToolWindowElement(ToolWindow window, int height, Host host, boolean runBodyOnly) {
         this.window = window;
         this.host = host;
         this.height = height;
+        this.runBodyOnly = runBodyOnly;
         id("tool-" + window.id());
         addClass("tool-window");
         focusable(host.isActive(window));
@@ -64,7 +70,11 @@ final class ToolWindowElement extends StyledElement<ToolWindowElement> {
     protected void renderContent(Frame frame, Rect area, RenderContext context) {
         host.rendered(window, area);
         try {
-            window.render(frame, area);
+            if (runBodyOnly && window instanceof RunToolWindow run) {
+                run.renderBody(frame, area);
+            } else {
+                window.render(frame, area);
+            }
         } catch (RuntimeException failure) {
             frame.renderWidget(failureParagraph(context, failure), area);
         }

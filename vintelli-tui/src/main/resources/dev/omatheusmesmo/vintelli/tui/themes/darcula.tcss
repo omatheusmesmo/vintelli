@@ -296,6 +296,26 @@ EditorTabBarElement-overflow {
   color: $chrome-fg-strong;
 }
 
+.run-accent {
+  color: $focus-border;
+}
+
+.run-warning {
+  color: $editor-constant;
+}
+
+.run-success {
+  color: $chrome-fg-strong;
+}
+
+.run-error {
+  color: $editor-keyword;
+}
+
+.run-muted {
+  color: $muted;
+}
+
 .pane-header {
   color: $soft;
 }

@@ -127,7 +127,8 @@ final class ToolStripes {
 
     private ToolStripElement.Icon icon(ToolWindow window, boolean bottomAnchored) {
         boolean active = window == host.activeWindow(window.anchor());
-        return new ToolStripElement.Icon(window.id(), glyph(window, mode), active, bottomAnchored);
+        String role = window instanceof RunToolWindow run ? run.stateThemeRole() : null;
+        return new ToolStripElement.Icon(window.id(), glyph(window, mode), active, bottomAnchored, role);
     }
 
     /**
@@ -136,6 +137,9 @@ final class ToolStripes {
      * its title.
      */
     static String glyph(ToolWindow window, IconMode mode) {
+        if (window instanceof RunToolWindow run && run.runState() != RunMotionState.IDLE) {
+            return run.stateGlyph(mode == IconMode.ASCII);
+        }
         return nerdIcon(window, mode).orElseGet(() -> titleLetter(window));
     }
 

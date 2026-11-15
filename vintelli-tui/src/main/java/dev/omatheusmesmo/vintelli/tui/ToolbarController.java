@@ -50,7 +50,9 @@ final class ToolbarController {
         boolean menuOpen = host.menuOpen();
         return new MainToolbar.Model(project, branch.get(),
                 run == null ? null : run.selectedConfigurationLabel(), run != null && run.running(),
-                menuOpen, menuOpen ? host.menuIndex() : -1, run != null && run.debugAvailable());
+                menuOpen, menuOpen ? host.menuIndex() : -1, run != null && run.debugAvailable(),
+                run == null ? null : run.toolbarGlyph(), run == null ? null : run.toolbarStateLabel(),
+                run == null ? null : run.stateThemeRole(), run == null ? null : run.toolbarElapsedText());
     }
 
     /**

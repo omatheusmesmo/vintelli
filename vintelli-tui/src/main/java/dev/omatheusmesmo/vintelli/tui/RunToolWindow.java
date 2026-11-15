@@ -2,6 +2,7 @@ package dev.omatheusmesmo.vintelli.tui;
 
 import java.nio.file.Path;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
@@ -10,6 +11,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.function.LongSupplier;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -27,9 +29,19 @@ import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugSessionSna
 import dev.omatheusmesmo.vintelli.api.capability.EditorBridge;
 import dev.omatheusmesmo.vintelli.api.capability.RunCapability;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
+import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
+import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.style.Style;
+import dev.tamboui.tfx.Fx;
+import dev.tamboui.tfx.Interpolation;
+import dev.tamboui.tfx.Motion;
+import dev.tamboui.tfx.toolkit.ToolkitEffects;
 import dev.tamboui.terminal.Frame;
+import dev.tamboui.text.Line;
+import dev.tamboui.text.CharWidth;
+import dev.tamboui.tfx.Effect;
+import dev.tamboui.text.Span;
 import dev.tamboui.text.Text;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
@@ -54,6 +66,7 @@ public final class RunToolWindow implements ToolWindow {
     private final Path workingDirectory;
     private final RunSelectionStore selectionStore;
     private final int debugPort;
+    private final IconMode iconMode;
     private volatile boolean debugging;
     private volatile RunCapability.DebugSupport debugSupport = new RunCapability.DebugSupport(false,
             "Select an available run configuration first");
@@ -71,15 +84,19 @@ public final class RunToolWindow implements ToolWindow {
     private volatile CapabilityStateLine.Summary capabilitySummary = CapabilityStateLine.checking(CapabilityType.RUN);
     private volatile String status = LOADING;
     private volatile RunCapability.RunHandle handle;
+    private final RunMotion motion;
+    private volatile String runIdentifier = "";
     private volatile DebugSession debugSession;
     private volatile EditorBridge debugEditorBridge;
-    private volatile boolean starting;
-    private volatile boolean running;
     private int selectedIndex;
     private int configurationRowsStart = -1;
     private int visibleConfigurationStart;
     private int visibleConfigurationCount;
     private Rect lastArea = Rect.ZERO;
+    private Rect headerArea = Rect.ZERO;
+    private boolean inlineHeader;
+    private volatile ToolkitEffects toolkitEffects;
+    private volatile RunMotionState pendingEffect;
 
     /** Standalone construction for registry and render tests. */
     public RunToolWindow(Provider<ShellThemes> themes) {
@@ -92,6 +109,8 @@ public final class RunToolWindow implements ToolWindow {
         this.status = "Run provider unavailable";
         this.capabilitySummary = CapabilityStateLine.notConfigured(CapabilityType.RUN);
         this.ideaConfigured = false;
+        this.motion = new RunMotion(System::nanoTime, false);
+        this.iconMode = FileIcons.resolve().mode();
     }
 
     public RunToolWindow(Provider<ShellThemes> themes, CapabilityRegistry capabilities, UiWorkQueue uiWork,
@@ -110,12 +129,47 @@ public final class RunToolWindow implements ToolWindow {
         this(themes, capabilities, uiWork, workingDirectory, selectionStore, debugPort, Optional.empty());
     }
 
-    @Inject
     public RunToolWindow(Provider<ShellThemes> themes, CapabilityRegistry capabilities, UiWorkQueue uiWork,
             @ConfigProperty(name = "vintelli.local.project-root", defaultValue = ".") String workingDirectory,
             RunSelectionStore selectionStore,
             @ConfigProperty(name = "vintelli.debug.port", defaultValue = "5005") int debugPort,
             @ConfigProperty(name = "vintelli.idea.mcp.url") Optional<String> ideaUrl) {
+        this(themes, capabilities, uiWork, workingDirectory, selectionStore, debugPort, ideaUrl,
+                "full", Optional.empty(), Optional.empty());
+    }
+
+    @Inject
+    public RunToolWindow(Provider<ShellThemes> themes, CapabilityRegistry capabilities, UiWorkQueue uiWork,
+            @ConfigProperty(name = "vintelli.local.project-root", defaultValue = ".") String workingDirectory,
+            RunSelectionStore selectionStore,
+            @ConfigProperty(name = "vintelli.debug.port", defaultValue = "5005") int debugPort,
+            @ConfigProperty(name = "vintelli.idea.mcp.url") Optional<String> ideaUrl,
+            @ConfigProperty(name = "vintelli.motion", defaultValue = "full") String motionMode,
+            @ConfigProperty(name = "term") Optional<String> term,
+            @ConfigProperty(name = "no.color") Optional<String> noColor) {
+        this(themes, capabilities, uiWork, workingDirectory, selectionStore, debugPort, ideaUrl,
+                System::nanoTime, reducedMotionEnabled(motionMode, term, noColor, System.getenv("NO_COLOR") != null),
+                FileIcons.resolve().mode());
+    }
+
+    static boolean reducedMotionEnabled(String motionMode, Optional<String> term,
+            Optional<String> noColor, boolean noColorEnvironment) {
+        return "reduced".equalsIgnoreCase(motionMode)
+                || term.map(value -> value.equalsIgnoreCase("dumb") || value.equalsIgnoreCase("vt100"))
+                        .orElse(false)
+                || noColor.isPresent() || noColorEnvironment;
+    }
+
+    RunToolWindow(Provider<ShellThemes> themes, CapabilityRegistry capabilities, UiWorkQueue uiWork,
+            String workingDirectory, RunSelectionStore selectionStore, int debugPort, Optional<String> ideaUrl,
+            LongSupplier clock, boolean reducedMotion) {
+        this(themes, capabilities, uiWork, workingDirectory, selectionStore, debugPort, ideaUrl,
+                clock, reducedMotion, FileIcons.resolve().mode());
+    }
+
+    RunToolWindow(Provider<ShellThemes> themes, CapabilityRegistry capabilities, UiWorkQueue uiWork,
+            String workingDirectory, RunSelectionStore selectionStore, int debugPort, Optional<String> ideaUrl,
+            LongSupplier clock, boolean reducedMotion, IconMode iconMode) {
         this.debugPort = debugPort;
         this.themes = themes;
         this.capabilities = capabilities;
@@ -124,6 +178,8 @@ public final class RunToolWindow implements ToolWindow {
         this.selectionStore = selectionStore;
         this.preferredConfiguration = selectionStore == null ? null : selectionStore.load().orElse(null);
         this.ideaConfigured = CapabilityStateLine.ideaConfigured(ideaUrl);
+        this.motion = new RunMotion(clock, reducedMotion);
+        this.iconMode = iconMode;
     }
 
     @PostConstruct
@@ -153,7 +209,46 @@ public final class RunToolWindow implements ToolWindow {
 
     @Override
     public String icon() {
-        return PLAY_GLYPH;
+        return motion.state() == RunMotionState.IDLE
+                ? iconMode == IconMode.ASCII ? ">" : PLAY_GLYPH
+                : motion.glyph(iconMode == IconMode.ASCII);
+    }
+
+    String stateGlyph(boolean ascii) {
+        return motion.state() == RunMotionState.IDLE ? "4" : motion.glyph(ascii || iconMode == IconMode.ASCII);
+    }
+
+    String toolbarGlyph() {
+        return motion.state() == RunMotionState.IDLE ? null : motion.glyph(iconMode == IconMode.ASCII);
+    }
+
+    String toolbarStateLabel() {
+        return motion.state() == RunMotionState.IDLE ? null : motion.state().label();
+    }
+
+    String toolbarElapsedText() {
+        return motion.active() ? elapsedText(motion.elapsedMillis()) : null;
+    }
+
+    String stateThemeRole() {
+        return motion.state() == RunMotionState.IDLE ? null : motion.state().themeRole();
+    }
+
+    String tabTitle() {
+        RunMotionState current = motion.state();
+        return current == RunMotionState.IDLE ? title() : title() + " · " + current.label();
+    }
+
+    void tickMotion() {
+        motion.tick();
+    }
+
+    boolean motionAnimating() {
+        return motion.animating();
+    }
+
+    Duration motionTickRate() {
+        return motion.tickRate();
     }
 
     @Override
@@ -179,7 +274,11 @@ public final class RunToolWindow implements ToolWindow {
             return KeyActions.RUN_EXECUTE;
         }
         if (event.isCharIgnoreCase('r')) {
-            return KeyActions.RUN_REFRESH;
+            return motion.state() == RunMotionState.IDLE || motion.active() || motion.animating()
+                    ? KeyActions.RUN_REFRESH : KeyActions.RUN_EXECUTE;
+        }
+        if (event.isCharIgnoreCase('s')) {
+            return motion.active() && handle != null && handle.supportsCancellation() ? KeyActions.RUN_STOP : null;
         }
         if (event.isKey(KeyCode.DOWN) || event.isCharIgnoreCase('j')) {
             return KeyActions.RUN_SELECT_NEXT;
@@ -192,35 +291,51 @@ public final class RunToolWindow implements ToolWindow {
 
     @Override
     public String actionForMouse(MouseEvent event) {
-        if (!event.isClick() || !event.isLeftButton() || !insideLastArea(event)) {
+        if (!event.isClick() || !event.isLeftButton()) {
+            return null;
+        }
+        if (motion.state() != RunMotionState.IDLE && headerArea.contains(event.x(), event.y())) {
+            return headerActionAt(event.x() - headerArea.x());
+        }
+        if (!insideLastArea(event)) {
             return null;
         }
         int row = event.y() - lastArea.y();
         int column = event.x() - lastArea.x();
-        if (row == 1 && column >= 0 && column < 18) {
+        if (motion.state() == RunMotionState.IDLE && row == 1 && column >= 0 && column < 18) {
             return KeyActions.RUN_EXECUTE;
         }
-        if (row == 1 && column >= 18 && column < 36) {
+        if (motion.state() == RunMotionState.IDLE && row == 1 && column >= 18 && column < 36) {
             return KeyActions.RUN_REFRESH;
         }
-        if (row == 1) {
-            String controls = controlsLine();
-            int stopStart = controls.indexOf("■ Stop");
-            if (handle != null && handle.supportsCancellation() && stopStart >= 0
-                    && column >= stopStart && column < stopStart + "■ Stop".length()) {
-                return KeyActions.RUN_STOP;
-            }
-            if (debugSession != null) {
-                String[] labels = { "Resume", "Pause", "Over", "Into", "Out" };
-                String[] actions = { KeyActions.DEBUG_RESUME, KeyActions.DEBUG_PAUSE,
-                        KeyActions.DEBUG_STEP_OVER, KeyActions.DEBUG_STEP_INTO, KeyActions.DEBUG_STEP_OUT };
-                int start = controls.indexOf(labels[0]);
-                int buttonStart = start;
-                for (int index = 0; index < labels.length; index++) {
-                    if (column >= buttonStart && column < buttonStart + labels[index].length()) return actions[index];
-                    buttonStart += labels[index].length() + 2;
-                }
-            }
+        if (debugSession != null && row == (motion.state() == RunMotionState.IDLE ? 1 : 0)) {
+            return debugActionAt(column, debugControlsLine());
+        }
+        return null;
+    }
+
+    private String headerActionAt(int column) {
+        String controls = runHeaderControls();
+        if (controls.isEmpty()) return null;
+        int start = CharWidth.of(runHeader().substring(0, runHeader().lastIndexOf(controls)));
+        int width = CharWidth.of(controls);
+        if (column < start || column >= start + width) return null;
+        if (motion.active()) {
+            return handle != null && handle.supportsCancellation() ? KeyActions.RUN_STOP : null;
+        }
+        return KeyActions.RUN_EXECUTE;
+    }
+
+    private static String debugActionAt(int column, String controls) {
+        String[] labels = { "Resume", "Pause", "Over", "Into", "Out" };
+        String[] actions = { KeyActions.DEBUG_RESUME, KeyActions.DEBUG_PAUSE,
+                KeyActions.DEBUG_STEP_OVER, KeyActions.DEBUG_STEP_INTO, KeyActions.DEBUG_STEP_OUT };
+        int start = controls.indexOf(labels[0]);
+        int buttonStart = CharWidth.of(controls.substring(0, start));
+        for (int index = 0; index < labels.length; index++) {
+            int width = CharWidth.of(labels[index]);
+            if (column >= buttonStart && column < buttonStart + width) return actions[index];
+            buttonStart += width + 2;
         }
         return null;
     }
@@ -230,7 +345,7 @@ public final class RunToolWindow implements ToolWindow {
         if (!event.isClick() || !event.isLeftButton() || !insideLastArea(event)) {
             return false;
         }
-        int row = event.y() - lastArea.y();
+        int row = event.y() - lastArea.y() - (inlineHeader && motion.state() != RunMotionState.IDLE ? 1 : 0);
         int index = visibleConfigurationStart + row - configurationRowsStart;
         if (configurationRowsStart >= 0 && row >= configurationRowsStart
                 && row < configurationRowsStart + visibleConfigurationCount
@@ -288,23 +403,46 @@ public final class RunToolWindow implements ToolWindow {
 
     @Override
     public void render(Frame frame, Rect area) {
+        render(frame, area, false);
+    }
+
+    void renderBody(Frame frame, Rect area) {
+        render(frame, area, true);
+    }
+
+    private void render(Frame frame, Rect area, boolean separateHeader) {
         if (capabilities != null && capabilityRequested.compareAndSet(false, true)) {
             refreshCapabilityLine();
         }
-        lastArea = area;
         configurationRowsStart = -1;
         visibleConfigurationCount = 0;
+        boolean showRunHeader = motion.state() != RunMotionState.IDLE;
+        inlineHeader = showRunHeader && !separateHeader;
         List<String> lines = new ArrayList<>();
-        lines.add(capabilitySummary.headline());
-        lines.add(controlsLine());
-        lines.add(status);
-        if (!debugSupport.available()) lines.add("Debug unavailable: " + debugSupport.reason());
-        lines.addAll(debugUnavailableActions());
-        lines.addAll(capabilitySummary.skipped());
+        if (!showRunHeader) {
+            lines.add(capabilitySummary.headline());
+            lines.add(controlsLine());
+            lines.add(status);
+        } else if (debugSession != null) {
+            lines.add(debugControlsLine());
+            lines.add(debugSnapshotLine());
+        }
+        if (!motion.active()) {
+            if (!debugSupport.available()) lines.add("Debug unavailable: " + debugSupport.reason());
+            lines.addAll(debugUnavailableActions());
+            lines.addAll(capabilitySummary.skipped());
+        } else {
+            lines.addAll(debugUnavailableActions());
+        }
 
-        int innerRows = Math.max(0, area.height());
+        Rect bodyArea = inlineHeader && area.height() > 0
+                ? new Rect(area.x(), area.y() + 1, area.width(), area.height() - 1) : area;
+        lastArea = bodyArea;
+        int innerRows = Math.max(0, bodyArea.height());
         int bodyRows = Math.max(0, innerRows - lines.size());
-        if (configurations.isEmpty()) {
+        if (motion.active()) {
+            appendConsole(lines, bodyRows);
+        } else if (configurations.isEmpty()) {
             int consoleRows = consoleRows(bodyRows);
             int messageRows = bodyRows - consoleRows;
             if (messageRows > 0) {
@@ -336,10 +474,79 @@ public final class RunToolWindow implements ToolWindow {
 
         ShellThemes activeThemes = themes.get();
         Style contentStyle = activeThemes.resolver("tool-window").toStyle();
+        if (inlineHeader && area.height() > 0) {
+            renderHeader(frame, new Rect(area.x(), area.y(), area.width(), 1));
+        } else if (!showRunHeader) {
+            headerArea = Rect.ZERO;
+        }
         frame.renderWidget(Paragraph.builder()
                 .text(Text.from(String.join("\n", lines)))
                 .style(contentStyle)
-                .build(), area);
+                .build(), bodyArea);
+    }
+
+    void renderHeader(Frame frame, Rect area) {
+        headerArea = area;
+        applyPendingEffect();
+        ShellThemes activeThemes = themes.get();
+        Line header = Line.from(Span.styled(runHeader(), activeThemes.resolver(motion.state().themeRole()).toStyle()));
+        frame.renderWidget(Paragraph.builder().text(Text.from(header))
+                .style(activeThemes.resolver("tool-window").toStyle()).build(), area);
+    }
+
+    void bindMotionEffects(ToolkitEffects effects) {
+        this.toolkitEffects = effects;
+    }
+
+    private void applyPendingEffect() {
+        ToolkitEffects effects = toolkitEffects;
+        RunMotionState state = pendingEffect;
+        if (effects == null || state == null) {
+            return;
+        }
+        pendingEffect = null;
+        effects.clear();
+        if (motion.reduced() || state != motion.state()
+                || (state == RunMotionState.SUCCEEDED || state == RunMotionState.FAILED) && !motion.animating()) {
+            return;
+        }
+        ShellThemes activeThemes = themes.get();
+        switch (state) {
+            case STARTING -> effects.addEffect("tool-tabs-bottom", Fx.sweepIn(Motion.LEFT_TO_RIGHT, 4, 0,
+                    activeThemes.color("focus-border"), 600, Interpolation.QuadOut));
+            case SUCCEEDED, FAILED -> effects.addEffect(RunHeaderElement.ID, completionEffect(state, activeThemes));
+            default -> { }
+        }
+    }
+
+    Effect completionEffect(RunMotionState state, ShellThemes activeThemes) {
+        return switch (state) {
+            case SUCCEEDED -> Fx.fadeFrom(activeThemes.color("focus-border"),
+                    activeThemes.color("chrome-fg-strong"), 600, Interpolation.QuadOut);
+            case FAILED -> Fx.paintBg(activeThemes.color("editor-keyword"), 400, Interpolation.QuadOut);
+            default -> throw new IllegalArgumentException("no completion effect for " + state);
+        };
+    }
+
+    private String runHeader() {
+        RunMotionState state = motion.state();
+        String elapsed = motion.active() ? "   " + elapsedText(motion.elapsedMillis()) : "";
+        return motion.glyph(iconMode == IconMode.ASCII) + " " + state.label() + "   " + runIdentifier
+                + elapsed + "   " + runHeaderControls();
+    }
+
+    private String runHeaderControls() {
+        String stop = iconMode == IconMode.ASCII ? "#" : "■";
+        if (motion.active()) {
+            return handle == null || !handle.supportsCancellation() ? "Stop unavailable" : stop + " Stop [s]";
+        }
+        if (motion.animating()) return "";
+        return iconMode == IconMode.ASCII ? "Rerun [r]" : "↻ Rerun [r]";
+    }
+
+    private static String elapsedText(long elapsedMillis) {
+        long seconds = Math.max(0, elapsedMillis / 1_000);
+        return "%02d:%02d".formatted(seconds / 60, seconds % 60);
     }
 
     private String emptyStateLine() {
@@ -363,16 +570,34 @@ public final class RunToolWindow implements ToolWindow {
     }
 
     private String controlsLine() {
-        return "▶ Run [Enter]     ↻ Refresh [r]     "
-                + (handle == null || !handle.supportsCancellation() ? "Stop unavailable" : "■ Stop")
-                + (debugSession == null ? "" : "     Resume  Pause  Over  Into  Out");
+        String play = iconMode == IconMode.ASCII ? ">" : "▶";
+        String refresh = iconMode == IconMode.ASCII ? "R" : "↻";
+        String stop = iconMode == IconMode.ASCII ? "#" : "■";
+        return play + " Run [Enter]     " + refresh + " Refresh [r]     "
+                + (handle == null || !handle.supportsCancellation() ? "Stop unavailable" : stop + " Stop")
+                + (debugSession == null ? "" : "     " + debugControlsLine());
+    }
+
+    private static String debugControlsLine() {
+        return "Resume  Pause  Over  Into  Out";
+    }
+
+    private String debugSnapshotLine() {
+        DebugSession active = debugSession;
+        if (active == null) return "";
+        DebugSessionSnapshot snapshot = active.snapshot();
+        DebugCapability.DebugFrame frame = snapshot.currentFrame();
+        if (frame == null) return "Debugger " + snapshot.state().name().toLowerCase(Locale.ROOT);
+        String source = frame.sourcePath().isBlank() ? frame.name() : frame.sourcePath();
+        return "Debugger " + snapshot.state().name().toLowerCase(Locale.ROOT) + " · " + source + ":" + frame.line();
     }
 
     private void appendConsole(List<String> lines, int rows) {
         if (rows <= 0) {
             return;
         }
-        lines.add("Console");
+        String pulse = motion.outputPulse(iconMode == IconMode.ASCII);
+        lines.add(pulse.isEmpty() ? "Console" : "Console   " + pulse);
         int outputRows = rows - 1;
         synchronized (output) {
             int skip = Math.max(0, output.size() - outputRows);
@@ -431,11 +656,11 @@ public final class RunToolWindow implements ToolWindow {
     }
 
     boolean debugAvailable() {
-        return debugSupport.available() && !starting && !running;
+        return debugSupport.available() && !motion.active();
     }
 
     boolean debugging() {
-        return debugging && (starting || running);
+        return debugging && motion.active();
     }
 
     DebugSession activeDebugSession() { return debugSession; }
@@ -450,7 +675,7 @@ public final class RunToolWindow implements ToolWindow {
 
     /** True while a configuration runs; the main toolbar shows Stop in its Run slot then. */
     boolean running() {
-        return handle != null;
+        return motion.active();
     }
 
     /** True when a running handle supports cancellation, the same check the Stop control makes. */
@@ -556,7 +781,7 @@ public final class RunToolWindow implements ToolWindow {
             status = "Run provider unavailable";
             return;
         }
-        if (starting || running) {
+        if (motion.active()) {
             return;
         }
         if (configurations.isEmpty() || selectedIndex >= configurations.size()) {
@@ -581,7 +806,7 @@ public final class RunToolWindow implements ToolWindow {
             status = "Run provider unavailable";
             return;
         }
-        if (starting || running) {
+        if (motion.active()) {
             status = "A run is already active; stop it first";
             return;
         }
@@ -597,9 +822,10 @@ public final class RunToolWindow implements ToolWindow {
             return;
         }
         long sequence = runSequence.incrementAndGet();
-        starting = true;
+        motion.start();
+        pendingEffect = RunMotionState.STARTING;
+        runIdentifier = identifier;
         debugging = debug;
-        running = true;
         handle = null;
         debugSession = null;
         status = "Starting " + identifier;
@@ -695,6 +921,7 @@ public final class RunToolWindow implements ToolWindow {
                 var request = new RunCapability.RunRequest(identifier, workingDirectory, Map.of(), arguments);
                 Consumer<String> outputLines = line -> uiWork.execute(() -> {
                     if (sequence == runSequence.get()) {
+                        motion.outputLine();
                         append(line);
                     }
                 });
@@ -755,7 +982,6 @@ public final class RunToolWindow implements ToolWindow {
                     disconnectAsync(session);
                     return;
                 }
-                starting = false;
                 if (result instanceof CapabilityResult.Failed<RunCapability.RunHandle> failed) {
                     failRun("Run failed: " + failed.failure().reason()
                             + (failed.failure().detail().isBlank() ? "" : " — " + failed.failure().detail()));
@@ -768,7 +994,8 @@ public final class RunToolWindow implements ToolWindow {
                     handle = ((CapabilityResult.Ok<RunCapability.RunHandle>) result).value();
                     debugSession = session;
                     debugEditorBridge = activeDebugEditor;
-                    running = true;
+                    motion.running();
+                    pendingEffect = RunMotionState.RUNNING;
                     status = (debug ? "Debug 127.0.0.1:" + debugPort + " · " : "Running ") + identifier;
                     if (session != null) watchDebugSession(sequence, session, activeDebugEditor);
                 }
@@ -779,7 +1006,7 @@ public final class RunToolWindow implements ToolWindow {
     private void stopCurrent() {
         RunCapability.RunHandle active = handle;
         if (active == null) {
-            status = running ? "Run is starting; stop is not available yet" : "No run is active";
+            status = motion.active() ? "Run is starting; stop is not available yet" : "No run is active";
             return;
         }
         if (!active.supportsCancellation()) {
@@ -791,6 +1018,8 @@ public final class RunToolWindow implements ToolWindow {
         clearExecutionMarker();
         debugEditorBridge = null;
         status = "Stop requested";
+        motion.stopping();
+        pendingEffect = RunMotionState.STOPPING;
         Thread.ofVirtual().name("vintelli-run-stop").start(() -> {
             try {
                 disconnect(activeDebugSession);
@@ -806,8 +1035,8 @@ public final class RunToolWindow implements ToolWindow {
         debugSession = null;
         clearExecutionMarker();
         debugEditorBridge = null;
-        starting = false;
-        running = false;
+        motion.failed();
+        pendingEffect = RunMotionState.FAILED;
         debugging = false;
         handle = null;
         status = failure;
@@ -823,8 +1052,8 @@ public final class RunToolWindow implements ToolWindow {
                 append(completion.summary());
             }
         }
-        starting = false;
-        running = false;
+        motion.completed(completion);
+        pendingEffect = motion.state();
         debugging = false;
         disconnectAsync(debugSession);
         debugSession = null;
@@ -1033,6 +1262,10 @@ public final class RunToolWindow implements ToolWindow {
 
     String statusMessage() {
         return status;
+    }
+
+    RunMotionState runState() {
+        return motion.state();
     }
 
     String providerLabel() {

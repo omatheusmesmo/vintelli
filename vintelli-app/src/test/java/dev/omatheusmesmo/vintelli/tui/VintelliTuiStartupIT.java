@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -25,9 +26,11 @@ import org.junit.jupiter.params.provider.ValueSource;
 /**
  * Starts the packaged runner (the Mandrel image under {@code -Dnative}, the
  * runnable jar otherwise) with no arguments and with the {@code --tui} alias,
- * and drives it headlessly through
- * TamboUI's Recording and Playback: a VHS tape waits for the tool window tabs and then
- * quits, and the frames are written to an asciinema cast. TamboUI resolves its
+ * and drives it headlessly through TamboUI's Recording and Playback. A VHS tape
+ * waits for the tool window tabs and then quits, and the frames are written to
+ * an asciinema cast. A second tape runs a controlled local Maven wrapper and
+ * observes the Run states and completion effects in those recorded frames.
+ * TamboUI resolves its
  * terminal backend through the ServiceLoader, which the native build disables,
  * so a missing provider registration shows at startup as
  * {@code none could be initialized}. Recording wraps the backend the provider
@@ -42,6 +45,15 @@ class VintelliTuiStartupIT {
     private static final String TAPE = """
             Wait@60s /Terminal/
             Sleep 500ms
+            Ctrl+C
+            """;
+    private static final String RUN_TAPE = """
+            Wait@60s /Terminal/
+            Alt+4
+            Wait@60s /Configurations/
+            Enter
+            Wait@60s /%s/
+            Wait@60s /Rerun/
             Ctrl+C
             """;
     private static final Pattern NERD_GLYPH = Pattern.compile("[\\uE000-\\uF8FF]|\\\\u[eEfF][0-9a-fA-F]{3}");
@@ -65,6 +77,75 @@ class VintelliTuiStartupIT {
         assertTrue(recorded.exited(), "The TUI did not exit within " + EXIT_TIMEOUT_SECONDS + "s\n" + recorded.report());
         assertTrue(recorded.castExists(), "No cast was recorded\n" + recorded.report());
         assertTrue(recorded.cast().contains(TOOL_WINDOW_MARKER), "The TUI never drew its tool windows\n" + recorded.report());
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = { 0, 1 })
+    void thePackagedRunSurfacesAndCompletionEffectsFollowTheProcessOutcome(int exitCode) throws Exception {
+        Path project = Files.createDirectories(workDir.resolve("run-fixture-" + exitCode));
+        Files.writeString(project.resolve("pom.xml"), """
+                <project xmlns="http://maven.apache.org/POM/4.0.0"
+                         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>dev.vintelli.test</groupId>
+                  <artifactId>run-motion-fixture</artifactId>
+                  <version>1</version>
+                </project>
+                """);
+        boolean windows = System.getProperty("os.name", "").toLowerCase().contains("windows");
+        Path wrapper = project.resolve(windows ? "mvnw.cmd" : "mvnw");
+        if (windows) {
+            Files.writeString(wrapper, """
+                    @echo off
+                    exit /b %VINTELLI_RUN_EXIT_CODE%
+                    """);
+        } else {
+            Files.writeString(wrapper, """
+                    #!/bin/sh
+                    exit "$VINTELLI_RUN_EXIT_CODE"
+                    """);
+            Files.setPosixFilePermissions(wrapper, EnumSet.of(
+                    java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+                    java.nio.file.attribute.PosixFilePermission.OWNER_WRITE,
+                    java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE));
+        }
+
+        String completion = exitCode == 0 ? "Succeeded" : "Failed";
+        Path cast = workDir.resolve("run-motion-" + exitCode + ".cast");
+        Path tape = Files.writeString(workDir.resolve("run-motion-" + exitCode + ".tape"),
+                RUN_TAPE.formatted(completion));
+        Path config = Files.createDirectories(workDir.resolve("run-motion-config-" + exitCode));
+        List<String> options = List.of(
+                "-Dtamboui.record=" + cast,
+                "-Dtamboui.record.config=" + tape,
+                "-Dtamboui.record.width=120",
+                "-Dtamboui.record.height=40",
+                "-Dtamboui.record.duration=" + RECORD_DURATION_MILLIS,
+                "-Dquarkus.http.port=0",
+                "-Dquarkus.log.file.enabled=false",
+                "-Dvintelli.config.dir=" + config,
+                "-Dvintelli.local.project-root=" + project,
+                "-Dvintelli.motion=full");
+        ProcessBuilder builder = new ProcessBuilder(runner(options));
+        builder.environment().keySet().removeAll(TERMINAL_ENVIRONMENT);
+        builder.environment().put("VINTELLI_RUN_EXIT_CODE", String.valueOf(exitCode));
+        Process process = builder.start();
+        process.getOutputStream().close();
+        CompletableFuture<String> stdout = read(process.getInputStream());
+        CompletableFuture<String> stderr = read(process.getErrorStream());
+        boolean exited = process.waitFor(EXIT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        if (!exited) {
+            process.destroyForcibly();
+        }
+        String out = stdout.get();
+        String castText = Files.exists(cast) ? Files.readString(cast, StandardCharsets.UTF_8) : "";
+        String report = describe(exited, process, out, stderr.get(), castText);
+
+        assertTrue(exited, "The TUI did not exit within " + EXIT_TIMEOUT_SECONDS + "s\n" + report);
+        assertTrue(castText.contains(completion + "   maven:clean"), "The completion header is missing\n" + report);
+        assertTrue(castText.contains("Run · " + completion), "The completion is not visible on the Run tab\n" + report);
+        assertTrue(castText.contains("Rerun"), "The completion effect never reached its settled frame\n" + report);
     }
 
     @ParameterizedTest

@@ -47,6 +47,7 @@ import dev.tamboui.layout.Constraint;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.terminal.Frame;
 import dev.tamboui.toolkit.Toolkit;
+import dev.tamboui.tfx.toolkit.ToolkitEffects;
 import dev.tamboui.toolkit.element.DefaultRenderContext;
 import dev.tamboui.toolkit.element.Element;
 import dev.tamboui.toolkit.element.RenderContext;
@@ -69,6 +70,7 @@ import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.nio.file.Files;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -275,7 +277,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         }
         this.projects.useMarquee(config.marquee());
         this.mavenWindows.forEach(window -> window.useMarquee(config.marquee()));
-        this.ticker = new ShellTicker(Marquee.STEP, frameLock, this::animating, this::advanceAnimations);
+        this.ticker = new ShellTicker(this::animationTickPeriod, frameLock, this::animating, this::advanceAnimations);
         this.projects.onMarqueeChange(ticker::sync);
         this.mavenWindows.forEach(window -> window.onMarqueeChange(ticker::sync));
         this.vcsActions = new VcsActions(vcsProviders, frameLock, message -> status = message, this::show,
@@ -1458,6 +1460,12 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         quitAction = action;
     }
 
+    public void bindMotionEffects(ToolkitEffects effects) {
+        if (runWindow != null) {
+            runWindow.bindMotionEffects(effects);
+        }
+    }
+
     /**
      * Lets a background update wake the render loop, so queued work reaches the
      * screen without waiting for the idle tick or an input event.
@@ -1475,10 +1483,16 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private void advanceAnimations() {
         projects.tickMarquee();
         mavenWindows.forEach(MavenToolWindow::tickMarquee);
+        if (runWindow != null) runWindow.tickMotion();
     }
 
     private boolean animating() {
-        return treeClipVisible() || mavenWindows.stream().anyMatch(this::mavenClipVisible);
+        return treeClipVisible() || mavenWindows.stream().anyMatch(this::mavenClipVisible)
+                || runWindow != null && runWindow.motionAnimating();
+    }
+
+    private Duration animationTickPeriod() {
+        return runWindow != null && runWindow.motionAnimating() ? runWindow.motionTickRate() : Marquee.STEP;
     }
 
     private boolean treeClipVisible() {

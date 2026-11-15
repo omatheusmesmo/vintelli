@@ -12,6 +12,7 @@ It runs with open tooling only. IntelliJ IDEA is an optional extra.
 - 🔓 **Open tools by default.** Maven, Gradle, terminal commands and Git (JGit) need no IDE.
 - 🌱 **Commit from the shell.** Stage or unstage the selected project file, write multiline commit messages, and amend the current commit after reviewing the staged-change summary. See [VCS integration](docs/vcs-integration.md).
 - ▶️ **Start the application.** Detect Quarkus, Spring Boot and configured Java application commands, choose them from the toolbar, and keep the choice per project. See [run configurations](docs/run-configurations.md).
+- ⏱️ **Track every run state.** The Run header, toolbar and tab show starting, running, stopping and completion states with elapsed time and a compact output pulse. Set `vintelli.motion=reduced` to keep motion still; `TERM=dumb` and `NO_COLOR` enable it automatically. See [run motion](docs/run-motion.md).
 - 🤖 **AI agents in a side panel.** Choose OpenCode, Claude Code or pi over ACP (`Alt+8`), with executable availability shown before starting a session. See [agent setup](docs/acp-agents.md).
 - 🔌 **Other agents can drive it.** The MCP server reads the shell state and pushes highlights and diffs into the TUI.
 - 🧠 **Language support over LSP.** Configurable profiles, with jdtls as the first one.
