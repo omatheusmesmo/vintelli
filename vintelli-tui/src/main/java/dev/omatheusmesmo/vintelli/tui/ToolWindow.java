@@ -171,6 +171,11 @@ public interface ToolWindow extends StatusBarWidgetContributor {
         return false;
     }
 
+    /** Handles mouse input with the active content bounds for windows whose hit targets follow layout. */
+    default boolean handleMouse(MouseEvent event, Rect area) {
+        return handleMouse(event);
+    }
+
     /**
      * Claims the whole keyboard while this tool window is active: the shell
      * routes every key to {@link #handleKey(KeyEvent)} except escape, which

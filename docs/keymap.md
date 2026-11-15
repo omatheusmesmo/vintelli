@@ -28,7 +28,7 @@ Key actions in the `intellij` profile:
 
 | Action | Keys (active) | IntelliJ reference |
 |---|---|---|
-| `Activate<Name>ToolWindow` | `Alt+1` Project, `Alt+4` Run, `Alt+6` Problems, `Alt+7` Structure, `Alt+F12` Terminal (`Alt+2` too), `Alt+8` ACP Agents, `Alt+9` Maven. Each tool window also takes its bare digit when no input has focus | `Alt+1` Project, `Alt+4` Run, `Alt+6` Problems, `Alt+7` Structure, `Alt+F12` Terminal; none for ACP Agents and Maven |
+| `Activate<Name>ToolWindow` | `Alt+1` Project, `Alt+3` Debug, `Alt+4` Run, `Alt+6` Problems, `Alt+7` Structure, `Alt+F12` Terminal (`Alt+2` too), `Alt+8` ACP Agents, `Alt+9` Maven. Each tool window also takes its bare digit when no input has focus | `Alt+1` Project, `Alt+4` Run, `Alt+6` Problems, `Alt+7` Structure, `Alt+F12` Terminal; none for Debug, ACP Agents and Maven |
 | `SearchEverywhere` | `Ctrl+P` | `Double Shift` |
 | `KeymapHelp` | `F1` | - |
 | `run.choose-configuration` | Palette: Choose Run Configuration; toolbar configuration name | - |
@@ -380,6 +380,7 @@ adding it to that test on purpose.
 | layout_bottom_shorter | Alt+, | - | vintelli-only | Shrinks the bottom tool window; no IntelliJ chord confirmed |
 | shell.theme.switch | Ctrl+T | - | vintelli-only | Switches the shell theme; Ctrl+T is Update Project in IntelliJ and stays here as the theme switch (docs/keymap.md) |
 | ActivateProjectToolWindow | Alt+1 | Alt+1 | same |  |
+| ActivateDebugToolWindow | Alt+3 \| 3 | - | vintelli-only | Opens the debugger inspection window |
 | ActivateRunToolWindow | Alt+4 \| 4 | Alt+4 | same |  |
 | ActivateTerminalToolWindow | Alt+F12 \| Alt+2 \| 2 | Alt+F12 | different | IntelliJ uses Alt+F12 for Terminal (#364); Alt+2 stays as a second binding because the owner kept it, and the bare 2 is the shortcut while no input has focus |
 | ActivateProblemsToolWindow | Alt+6 \| 6 | Alt+6 | same |  |

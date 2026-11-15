@@ -13,6 +13,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -44,9 +46,18 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class JavaDebugCapabilityTest {
+
+    @Test
+    void timedOutInspectionCancelsTheOutstandingDapFuture() {
+        CompletableFuture<String> response = new CompletableFuture<>();
+        assertThrows(TimeoutException.class,
+                () -> JavaDebugCapability.awaitInspection(response, Duration.ofMillis(1)));
+        assertTrue(response.isCancelled(), "a timed-out inspection must cancel its DAP request");
+    }
 
     private static final Duration TEST_TIMEOUT = Duration.ofSeconds(1);
 
@@ -117,6 +128,28 @@ class JavaDebugCapabilityTest {
                     twin.executionActions());
             session.disconnect();
             assertEquals(null, session.snapshot().currentFrame());
+        }
+    }
+
+    @Test
+    void inspectionReadsBoundedStackScopesAndVariablesAndSelectsEditorFrame() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.NORMAL)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "inspection"), ignored -> { }));
+            List<DebugCapability.DebugFrame> frames = ok(session.stackTrace(1));
+            assertEquals(1, frames.size());
+            assertEquals(1, frames.getFirst().frameId());
+            assertEquals("/project/Main.java", frames.getFirst().sourcePath());
+            assertTrue(session.selectFrame(frames.getFirst(), session.inspectionGeneration() - 1).isFailure(),
+                    "frame selection from a prior stop must not update the current frame");
+            assertTrue(session.selectFrame(frames.getFirst()) instanceof CapabilityResult.Ok<Boolean>);
+            List<DebugCapability.DebugScope> scopes = ok(session.scopes(frames.getFirst().frameId()));
+            assertEquals("Locals", scopes.getFirst().name());
+            List<DebugCapability.DebugVariable> variables = ok(session.variables(scopes.getFirst().variablesReference()));
+            assertEquals("answer", variables.getFirst().name());
+            assertEquals("42", variables.getFirst().value());
+            session.disconnect();
         }
     }
 

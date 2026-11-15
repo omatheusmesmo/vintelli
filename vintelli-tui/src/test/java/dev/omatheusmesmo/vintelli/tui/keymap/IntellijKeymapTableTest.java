@@ -1,6 +1,7 @@
 package dev.omatheusmesmo.vintelli.tui.keymap;
 
 import dev.omatheusmesmo.vintelli.tui.AcpAgentsToolWindow;
+import dev.omatheusmesmo.vintelli.tui.DebugToolWindow;
 import dev.omatheusmesmo.vintelli.tui.ProblemsToolWindow;
 import dev.omatheusmesmo.vintelli.tui.maven.MavenToolWindow;
 import dev.omatheusmesmo.vintelli.tui.RunToolWindow;
@@ -8,6 +9,7 @@ import dev.omatheusmesmo.vintelli.tui.ShellThemes;
 import dev.omatheusmesmo.vintelli.tui.StructureToolWindow;
 import dev.omatheusmesmo.vintelli.tui.TerminalToolWindow;
 import dev.omatheusmesmo.vintelli.tui.ToolWindow;
+import dev.omatheusmesmo.vintelli.tui.UiWorkQueue;
 import dev.tamboui.tui.bindings.DefaultBindings;
 import dev.tamboui.tui.bindings.InputTrigger;
 import dev.tamboui.tui.event.KeyCode;
@@ -52,7 +54,9 @@ class IntellijKeymapTableTest {
 
     private static List<ToolWindow> windowList() {
         ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
-        return List.of(new RunToolWindow(() -> themes), new TerminalToolWindow(() -> themes),
+        RunToolWindow run = new RunToolWindow(() -> themes);
+        return List.of(run, new DebugToolWindow(() -> themes, run, new UiWorkQueue()),
+                new TerminalToolWindow(() -> themes),
                 new ProblemsToolWindow(() -> themes), new AcpAgentsToolWindow(() -> themes),
                 new StructureToolWindow(themes), new MavenToolWindow(() -> themes, Path.of(".")));
     }

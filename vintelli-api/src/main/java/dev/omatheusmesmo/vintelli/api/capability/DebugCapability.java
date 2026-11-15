@@ -82,11 +82,27 @@ public interface DebugCapability extends ProviderDescriptor {
 
     enum SteppingAction { RESUME, PAUSE, STEP_OVER, STEP_INTO, STEP_OUT }
 
-    record DebugFrame(String name, String sourcePath, int line, int column) {
+    record DebugFrame(String name, String sourcePath, int line, int column, int frameId) {
         public DebugFrame {
             name = name == null ? "" : name;
             sourcePath = sourcePath == null ? "" : sourcePath;
             if (line < 1 || column < 1) throw new IllegalArgumentException("DAP frame locations are one based");
+        }
+
+        public DebugFrame(String name, String sourcePath, int line, int column) {
+            this(name, sourcePath, line, column, 0);
+        }
+    }
+
+    record DebugScope(String name, int variablesReference, boolean expensive) {
+        public DebugScope { name = name == null ? "" : name; }
+    }
+
+    record DebugVariable(String name, String value, String type, int variablesReference, boolean hasChildren) {
+        public DebugVariable {
+            name = name == null ? "" : name;
+            value = value == null ? "" : value;
+            type = type == null ? "" : type;
         }
     }
 
@@ -191,7 +207,23 @@ public interface DebugCapability extends ProviderDescriptor {
 
         DebugSessionSnapshot snapshot();
 
+        /** Changes whenever a new stopped event supersedes outstanding inspection requests. */
+        default long inspectionGeneration() { return 0L; }
+
         CapabilityResult<List<DebugThread>> threads();
+
+        default CapabilityResult<List<DebugFrame>> stackTrace(int threadId) { return unsupportedList("Stack trace"); }
+        default CapabilityResult<List<DebugScope>> scopes(int frameId) { return unsupportedList("Scopes"); }
+        default CapabilityResult<List<DebugVariable>> variables(int variablesReference) {
+            return CapabilityResult.failed(new CapabilityFailure("Variables are not supported", ""));
+        }
+        default CapabilityResult<Boolean> selectFrame(DebugFrame frame) { return unsupported("Frame selection"); }
+        default CapabilityResult<Boolean> selectFrame(DebugFrame frame, long expectedInspectionGeneration) {
+            if (inspectionGeneration() != expectedInspectionGeneration) {
+                return CapabilityResult.failed(new CapabilityFailure("The debug stop changed before frame selection", ""));
+            }
+            return selectFrame(frame);
+        }
 
         default CapabilityResult<Boolean> resume() { return unsupported("Resume"); }
         default CapabilityResult<Boolean> pause() { return unsupported("Pause"); }
@@ -200,6 +232,10 @@ public interface DebugCapability extends ProviderDescriptor {
         default CapabilityResult<Boolean> stepOut() { return unsupported("Step out"); }
 
         private static CapabilityResult<Boolean> unsupported(String action) {
+            return CapabilityResult.failed(new CapabilityFailure(action + " is not supported", ""));
+        }
+
+        private static <T> CapabilityResult<List<T>> unsupportedList(String action) {
             return CapabilityResult.failed(new CapabilityFailure(action + " is not supported", ""));
         }
 

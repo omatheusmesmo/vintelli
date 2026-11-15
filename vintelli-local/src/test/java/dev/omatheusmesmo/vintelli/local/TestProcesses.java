@@ -12,6 +12,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
+import javax.tools.JavaCompiler;
+import javax.tools.ToolProvider;
 
 /**
  * Real short process support for the local provider tests: the single file
@@ -60,6 +62,21 @@ final class TestProcesses {
             throw new UncheckedIOException(e);
         }
         return directory.resolve(fileName);
+    }
+
+    /**
+     * Compiles a source fixture next to itself so a timed child process can
+     * start directly from bytecode instead of spending its timeout compiling.
+     */
+    static void compileSource(Path source) throws IOException {
+        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+        if (compiler == null) {
+            throw new IllegalStateException("A JDK compiler is required for process test fixtures");
+        }
+        int exitCode = compiler.run(null, null, null, "-d", source.getParent().toString(), source.toString());
+        if (exitCode != 0) {
+            throw new IllegalStateException("Could not compile process test fixture " + source + " (exit " + exitCode + ")");
+        }
     }
 
     /**

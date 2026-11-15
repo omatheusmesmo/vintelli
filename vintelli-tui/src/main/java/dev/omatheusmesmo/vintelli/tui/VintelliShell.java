@@ -1180,7 +1180,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                     dispatch(parts, action);
                     return EventResult.HANDLED;
                 }
-                if (activeWindow.handleMouse(mouse)) {
+                if (activeWindow.handleMouse(mouse, activeArea)) {
                     focusToolWindow(activeWindow);
                     inputCaptured = activeWindow.capturesInput();
                     capturedWindow = inputCaptured ? activeWindow : null;

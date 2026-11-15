@@ -437,6 +437,9 @@ public final class RunToolWindow implements ToolWindow {
         return debugging && (starting || running);
     }
 
+    DebugSession activeDebugSession() { return debugSession; }
+    EditorBridge debugEditorBridge() { return debugEditorBridge; }
+
     private void refreshDebugSupport() {
         RunCapability current = provider;
         debugSupport = current == null || configurations.isEmpty() || selectedIndex >= configurations.size()

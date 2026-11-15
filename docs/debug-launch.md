@@ -50,6 +50,16 @@ The marker is transient and distinct from a breakpoint in both ASCII and Unicode
 icon modes. It clears when execution resumes, the session disconnects, the
 process exits, or attach fails. The marker never edits source text.
 
+## Debug tool window
+
+Open **Debug** from the tool-window stripe (shortcut `3`) while a session is
+active. Press `r` to refresh inspection data, use `j`/`k` or the arrow keys to
+move through threads and frames, and press Enter to select a frame or expand a
+scope/variable. Selecting a frame navigates the existing editor to its source
+location. Inspection is requested on demand and runs off the render thread;
+late results from a prior session or frame are discarded. The window reports
+unavailable, running, loading, empty and failed states separately.
+
 ## Source breakpoints
 
 Click a line's gutter marker or run **Toggle Line Breakpoint** (`Ctrl+F8`) to

@@ -7,10 +7,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.Optional;
 
@@ -23,6 +25,11 @@ import dev.omatheusmesmo.vintelli.api.capability.CapabilityStatus;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
 import dev.omatheusmesmo.vintelli.api.capability.CodeActionCapability;
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability;
+import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugCapabilities;
+import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugFrame;
+import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugScope;
+import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugThread;
+import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugVariable;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability;
 import dev.omatheusmesmo.vintelli.api.capability.EditorBridge;
@@ -36,6 +43,7 @@ import dev.tamboui.layout.Rect;
 import dev.tamboui.layout.Size;
 import dev.tamboui.terminal.Frame;
 import dev.tamboui.tui.event.KeyCode;
+import dev.tamboui.tui.event.KeyEvent;
 import dev.tamboui.tui.event.MouseButton;
 import dev.tamboui.tui.event.MouseEvent;
 import dev.tamboui.tui.pilot.Pilot;
@@ -91,6 +99,85 @@ class RunToolWindowTest {
 
         assertEquals(1L, runProvider.started.getCount(), "a missing DAP provider must not start a suspended process");
         assertFalse(window.debugging());
+    }
+
+    @Test
+    void debugToolWindowPilotLoadsAndExpandsInspectionAndSurvivesResize() throws Exception {
+        ShellThemes themes = themes();
+        UiWorkQueue uiWork = new UiWorkQueue();
+        FakeRunProvider runProvider = new FakeRunProvider();
+        FakeDebugProvider debugProvider = new FakeDebugProvider();
+        FakeRegistry registry = new FakeRegistry(runProvider);
+        registry.debugProvider = debugProvider;
+        RunToolWindow run = new RunToolWindow(() -> themes, registry, uiWork, ".");
+        run.refreshConfigurations();
+        assertTrue(runProvider.listed.await(5, TimeUnit.SECONDS));
+        awaitUi(uiWork, () -> run.configurations().size() == 2);
+        assertTrue(run.performAction(KeyActions.RUN_DEBUG));
+        assertTrue(runProvider.started.await(5, TimeUnit.SECONDS));
+        awaitUi(uiWork, () -> run.debugging());
+        awaitUi(uiWork, () -> run.activeDebugSession() != null);
+
+        DebugToolWindow debug = new DebugToolWindow(() -> themes, run, uiWork);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(run, debug), new ShellState(), themes));
+        try (ToolkitTestRunner test = runShell(shell, new Size(100, 28))) {
+            Pilot pilot = test.pilot();
+            pilot.pause(Duration.ofMillis(80));
+            debug.handleKey(KeyEvent.ofChar('r'));
+            awaitUi(uiWork, () -> debugProvider.firstScopesStarted.getCount() == 0);
+            debugProvider.inspectionGeneration.incrementAndGet(); // resume
+            debugProvider.inspectionGeneration.incrementAndGet(); // stop again before the old response returns
+            debugProvider.releaseFirstScopes.countDown();
+            awaitUi(uiWork, () -> debugProvider.firstScopesReturned.getCount() == 0);
+            uiWork.drain();
+            assertFalse(debug.statusMessage().equals("Scopes loaded"), "a response from the prior stop must be discarded");
+            debug.handleKey(KeyEvent.ofChar('r'));
+            awaitUi(uiWork, () -> debug.statusMessage().equals("Scopes loaded"));
+            long requestsBeforePaint = debugProvider.inspectionCalls.get();
+            Buffer frameBuffer = Buffer.empty(Rect.of(100, 28));
+            for (int paint = 0; paint < 10; paint++) {
+                debug.render(Frame.forTesting(frameBuffer), Rect.of(100, 28));
+            }
+            assertEquals(requestsBeforePaint, debugProvider.inspectionCalls.get(),
+                    "painting must use cached inspection data without issuing debugger requests");
+            String frameScreen = bufferText(frameBuffer);
+            assertTrue(frameScreen.contains("Call stack"), frameScreen);
+            assertTrue(frameScreen.contains("main @ /project/Main.java:12"), frameScreen);
+            assertTrue(frameScreen.contains("Locals"), frameScreen);
+
+            assertTrue(debug.handleMouse(MouseEvent.press(MouseButton.LEFT, 2, 7), Rect.of(100, 28)), frameScreen);
+            awaitUi(uiWork, () -> debug.statusMessage().equals("Variables loaded"));
+            Buffer inspection = Buffer.empty(Rect.of(100, 28));
+            debug.render(Frame.forTesting(inspection), Rect.of(100, 28));
+            String inspected = bufferText(inspection);
+            assertTrue(inspected.contains("answer = 42"), inspected);
+            assertTrue(inspected.contains("object = {}"), inspected);
+            debug.handleKey(KeyEvent.ofKey(KeyCode.DOWN));
+            debug.handleKey(KeyEvent.ofKey(KeyCode.DOWN));
+            debug.handleKey(KeyEvent.ofKey(KeyCode.ENTER));
+            awaitUi(uiWork, () -> debug.statusMessage().equals("Variables loaded"));
+            Buffer expanded = Buffer.empty(Rect.of(100, 28));
+            debug.render(Frame.forTesting(expanded), Rect.of(100, 28));
+            String expandedText = bufferText(expanded);
+            assertTrue(expandedText.contains("answer = 42"), expandedText);
+            assertTrue(expandedText.contains("nested = 7"), expandedText);
+            assertTrue(expandedText.contains("cycle to reference 23"), expandedText);
+            debug.handleKey(KeyEvent.ofKey(KeyCode.ENTER));
+            Buffer collapsed = Buffer.empty(Rect.of(100, 28));
+            debug.render(Frame.forTesting(collapsed), Rect.of(100, 28));
+            assertFalse(bufferText(collapsed).contains("nested = 7"), bufferText(collapsed));
+            assertFalse(inspected.chars().anyMatch(character -> character > 0x7f), inspected);
+
+            for (int index = 0; index < 20; index++) debug.handleKey(KeyEvent.ofKey(KeyCode.DOWN));
+            pilot.resize(70, 16);
+            pilot.pause(Duration.ofMillis(50));
+            Buffer resizedBuffer = Buffer.empty(Rect.of(70, 16));
+            debug.render(Frame.forTesting(resizedBuffer), Rect.of(70, 16));
+            String resized = bufferText(resizedBuffer);
+            assertTrue(resized.contains("value19"), resized);
+        }
+        assertTrue(run.performAction(KeyActions.RUN_STOP));
+        assertTrue(debugProvider.disconnected.await(5, TimeUnit.SECONDS));
     }
 
     @Test
@@ -427,6 +514,12 @@ class RunToolWindowTest {
         private final AtomicReference<Integer> attachedPort = new AtomicReference<>();
         private final AtomicReference<List<Integer>> synchronizedLines = new AtomicReference<>(List.of());
         private final CountDownLatch disconnected = new CountDownLatch(1);
+        private final CountDownLatch firstScopesStarted = new CountDownLatch(1);
+        private final CountDownLatch firstScopesReturned = new CountDownLatch(1);
+        private final CountDownLatch releaseFirstScopes = new CountDownLatch(1);
+        private final AtomicLong inspectionGeneration = new AtomicLong();
+        private final AtomicLong inspectionCalls = new AtomicLong();
+        private final java.util.concurrent.atomic.AtomicBoolean pauseFirstScopes = new java.util.concurrent.atomic.AtomicBoolean(true);
         private final java.util.concurrent.atomic.AtomicBoolean firstSync = new java.util.concurrent.atomic.AtomicBoolean(true);
         private volatile Runnable beforeFirstSync = () -> { };
 
@@ -444,10 +537,45 @@ class RunToolWindowTest {
             attachedPort.set(request.port());
             return CapabilityResult.ok(new DebugSession() {
                 @Override public DebugSessionSnapshot snapshot() {
-                    return new DebugSessionSnapshot("fake", request.label(), State.STOPPED, List.of(), "", "");
+                    return new DebugSessionSnapshot("fake", request.label(), State.STOPPED,
+                            List.of(new DebugThread(1, "main")), "", "breakpoint", 1,
+                            new DebugFrame("main", "/project/Main.java", 12, 1, 11),
+                            new DebugCapabilities(true, true, true, true, true));
                 }
+                @Override public long inspectionGeneration() { return inspectionGeneration.get(); }
                 @Override public CapabilityResult<List<DebugThread>> threads() {
-                    return CapabilityResult.ok(List.of());
+                    inspectionCalls.incrementAndGet();
+                    return CapabilityResult.ok(List.of(new DebugThread(1, "main")));
+                }
+                @Override public CapabilityResult<List<DebugFrame>> stackTrace(int threadId) {
+                    inspectionCalls.incrementAndGet();
+                    return CapabilityResult.ok(List.of(new DebugFrame("main", "/project/Main.java", 12, 1, 11)));
+                }
+                @Override public CapabilityResult<Boolean> selectFrame(DebugFrame frame) {
+                    return CapabilityResult.ok(true);
+                }
+                @Override public CapabilityResult<List<DebugScope>> scopes(int frameId) {
+                    inspectionCalls.incrementAndGet();
+                    if (pauseFirstScopes.compareAndSet(true, false)) {
+                        firstScopesStarted.countDown();
+                        try { releaseFirstScopes.await(5, TimeUnit.SECONDS); }
+                        catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); return CapabilityResult.failed(new CapabilityFailure("Interrupted", "")); }
+                        firstScopesReturned.countDown();
+                    }
+                    return CapabilityResult.ok(List.of(new DebugScope("Locals", 22, false)));
+                }
+                @Override public CapabilityResult<List<DebugVariable>> variables(int reference) {
+                    inspectionCalls.incrementAndGet();
+                    List<DebugVariable> values = new ArrayList<>();
+                    values.add(new DebugVariable("answer", "42", "int", 0, false));
+                    values.add(new DebugVariable("object", "{}", "Object", 23, true));
+                    for (int index = 0; index < 20; index++) {
+                        values.add(new DebugVariable("value" + index, Integer.toString(index), "int", 0, false));
+                    }
+                    if (reference == 23) return CapabilityResult.ok(List.of(
+                            new DebugVariable("nested", "7", "int", 0, false),
+                            new DebugVariable("self", "{}", "Object", 23, true)));
+                    return CapabilityResult.ok(List.copyOf(values));
                 }
                 @Override public CapabilityResult<Boolean> disconnect() {
                     disconnected.countDown();
