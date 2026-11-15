@@ -7,6 +7,7 @@ import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Diagnosti
 import dev.omatheusmesmo.vintelli.api.capability.EditorBridge.OpenRequest;
 import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability;
 import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
+import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 
 import java.io.IOException;
@@ -51,6 +52,7 @@ final class EditorController {
     private final BuiltinEditor editor;
     private final ProjectTreeController projects;
     private final Host host;
+    private final FileIcons icons;
     private volatile ShellHighlightTarget highlight;
     private volatile ShellUnifiedDiff diff;
     private boolean navigationBarFocused;
@@ -60,11 +62,13 @@ final class EditorController {
     private List<NavigationCapability.DocumentSymbol> navigationSymbols = List.of();
     private int lastDiagnosticIndex = -1;
 
-    EditorController(Path projectRoot, BuiltinEditor editor, ProjectTreeController projects, Host host) {
+    EditorController(Path projectRoot, BuiltinEditor editor, ProjectTreeController projects, Host host,
+            FileIcons icons) {
         this.projectRoot = projectRoot;
         this.editor = editor;
         this.projects = projects;
         this.host = host;
+        this.icons = icons;
     }
 
     List<StatusBar.Breadcrumb> navigationSegments() {
@@ -132,7 +136,8 @@ final class EditorController {
         Path root = projectRoot.toAbsolutePath().normalize();
         try {
             Path relative = root.relativize(file);
-            List<StatusBar.Breadcrumb> paths = new ArrayList<>(StatusBar.pathBreadcrumbs(root, relative));
+            List<StatusBar.Breadcrumb> paths = new ArrayList<>(
+                    StatusBar.pathBreadcrumbs(root, relative, icons.iconFor(file.toString())));
             if (!file.equals(navigationSymbolsFile)) {
                 navigationSymbolsFile = file;
                 navigationSymbols = List.of();

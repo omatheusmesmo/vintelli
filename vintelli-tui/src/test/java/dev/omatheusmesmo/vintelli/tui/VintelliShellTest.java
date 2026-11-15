@@ -931,17 +931,27 @@ class VintelliShellTest {
 
     @Test
     void wideShellDrawsTheBreadcrumbAndTheEditorWidgetsOnTheStatusRow() throws Exception {
-        EditorShell opened = openEditorShell("Main.java", "class Main {\n    void run() {\n    }\n}\n", 1);
-        try (MouseShellRunner test = runMouseShell(opened.shell(), WIDE)) {
-            Pilot pilot = test.pilot();
-            pilot.pause(STARTUP);
+        String previous = System.getProperty(IconMode.CONFIG_PROPERTY);
+        System.setProperty(IconMode.CONFIG_PROPERTY, "ascii");
+        try {
+            EditorShell opened = openEditorShell("Main.java", "class Main {\n    void run() {\n    }\n}\n", 1);
+            try (MouseShellRunner test = runMouseShell(opened.shell(), WIDE)) {
+                Pilot pilot = test.pilot();
+                pilot.pause(STARTUP);
 
-            String status = statusRow(test, WIDE);
-            assertTrue(status.startsWith(project.getFileName() + " › Main.java"), status);
-            assertTrue(status.matches("(?s).*\\d+:\\d+  LF  UTF-8  4 spaces$"), status);
-            assertFalse(status.contains("│"), status);
-            assertFalse(status.contains("IDEA"), status);
-            pressCtrlC(pilot);
+                String status = statusRow(test, WIDE);
+                assertTrue(status.startsWith(project.getFileName() + " › J Main.java"), status);
+                assertTrue(status.matches("(?s).*\\d+:\\d+  LF  UTF-8  4 spaces$"), status);
+                assertFalse(status.contains("│"), status);
+                assertFalse(status.contains("IDEA"), status);
+                pressCtrlC(pilot);
+            }
+        } finally {
+            if (previous == null) {
+                System.clearProperty(IconMode.CONFIG_PROPERTY);
+            } else {
+                System.setProperty(IconMode.CONFIG_PROPERTY, previous);
+            }
         }
     }
 
