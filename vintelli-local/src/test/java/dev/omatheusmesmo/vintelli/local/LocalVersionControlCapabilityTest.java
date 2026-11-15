@@ -30,6 +30,7 @@ import dev.omatheusmesmo.vintelli.api.capability.CapabilityFailure;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
+import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability.Branch;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability.Entry;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability.CommitAuthor;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability.State;
@@ -812,6 +813,166 @@ class LocalVersionControlCapabilityTest {
                 System.setProperty("user.home", previousHome);
             }
         }
+    }
+
+    @Test
+    void listsLocalBranchesSortedByNameAndMarksTheCheckedOutOne() throws IOException, GitAPIException {
+        Path repo = temp.resolve("list-repo");
+        Files.createDirectories(repo);
+        try (Git git = initRepository(repo)) {
+            Files.writeString(repo.resolve("a.txt"), "one\n");
+            commitAll(git, "initial");
+            git.branchCreate().setName("feature/b").call();
+            git.branchCreate().setName("alpha").call();
+
+            assertEquals(List.of(
+                    new Branch("alpha", false),
+                    new Branch("feature/b", false),
+                    new Branch("main", true)),
+                    value(capabilityAt(repo).branches()));
+        }
+    }
+
+    @Test
+    void marksNoBranchWhileHeadIsDetachedAndKeepsBranchWritesAvailable() throws IOException, GitAPIException {
+        Path repo = temp.resolve("detached-branches-repo");
+        Files.createDirectories(repo);
+        try (Git git = initRepository(repo)) {
+            Files.writeString(repo.resolve("a.txt"), "one\n");
+            commitAll(git, "initial");
+            git.checkout().setName(git.getRepository().resolve(Constants.HEAD).getName()).call();
+            var capability = capabilityAt(repo);
+
+            assertEquals(List.of(new Branch("main", false)), value(capability.branches()));
+            assertTrue(value(capability.createBranch("from-detached", true)));
+
+            assertTrue(value(capability.status()).isDetached());
+            assertEquals(List.of(new Branch("from-detached", false), new Branch("main", false)),
+                    value(capability.branches()));
+            assertTrue(value(capability.deleteBranch("from-detached", false, true)));
+        }
+    }
+
+    @Test
+    void createsABranchAtHeadWithoutCheckingItOut() throws IOException, GitAPIException {
+        Path repo = temp.resolve("create-repo");
+        Files.createDirectories(repo);
+        try (Git git = initRepository(repo)) {
+            Files.writeString(repo.resolve("a.txt"), "one\n");
+            commitAll(git, "initial");
+            var capability = capabilityAt(repo);
+
+            assertEquals("Confirmation is required for this Git operation",
+                    failure(capability.createBranch("feature", false)).reason());
+            assertTrue(value(capability.createBranch("feature", true)));
+
+            assertEquals("main", value(capability.status()).branch());
+            assertEquals(List.of(new Branch("feature", false), new Branch("main", true)),
+                    value(capability.branches()));
+            assertEquals(git.getRepository().resolve("main"), git.getRepository().resolve("feature"));
+        }
+    }
+
+    @Test
+    void createRefusesExistingInvalidAndReservedNamesAndAnUnbornRepository() throws IOException, GitAPIException {
+        Path repo = temp.resolve("create-refusals-repo");
+        Files.createDirectories(repo);
+        try (Git git = initRepository(repo)) {
+            Files.writeString(repo.resolve("a.txt"), "one\n");
+            commitAll(git, "initial");
+            git.branchCreate().setName("feature").call();
+            var capability = capabilityAt(repo);
+
+            assertEquals("Local branch already exists: feature",
+                    failure(capability.createBranch("feature", true)).detail());
+            assertEquals("Local branch already exists: main",
+                    failure(capability.createBranch("main", true)).detail());
+            for (String invalid : List.of("bad name", "a..b", "topic.lock", "HEAD", "feature/", "  ")) {
+                assertEquals("Invalid local branch name",
+                        failure(capability.createBranch(invalid, true)).detail(), invalid);
+            }
+            assertEquals("Invalid local branch name", failure(capability.createBranch(null, true)).detail());
+        }
+
+        Path unborn = temp.resolve("create-unborn-repo");
+        Files.createDirectories(unborn);
+        try (Git ignored = initRepository(unborn)) {
+            assertEquals("There is no commit to branch from",
+                    failure(capabilityAt(unborn).createBranch("feature", true)).detail());
+        }
+    }
+
+    @Test
+    void deleteRefusesTheCheckedOutBranchAndAnUnmergedBranchUnlessForced() throws IOException, GitAPIException {
+        Path repo = temp.resolve("delete-repo");
+        Files.createDirectories(repo);
+        try (Git git = initRepository(repo)) {
+            Files.writeString(repo.resolve("a.txt"), "one\n");
+            commitAll(git, "initial");
+            git.checkout().setCreateBranch(true).setName("topic").call();
+            Files.writeString(repo.resolve("a.txt"), "two\n");
+            commitAll(git, "topic work");
+            git.checkout().setName("main").call();
+            git.branchCreate().setName("merged").call();
+            var capability = capabilityAt(repo);
+
+            assertEquals("Confirmation is required for this Git operation",
+                    failure(capability.deleteBranch("topic", true, false)).reason());
+            assertEquals("The checked out branch cannot be deleted; check out another branch first",
+                    failure(capability.deleteBranch("main", true, true)).detail());
+            assertEquals("The branch has commits that are not merged into HEAD; force the deletion to discard them",
+                    failure(capability.deleteBranch("topic", false, true)).detail());
+            assertEquals("Local branch not found: missing",
+                    failure(capability.deleteBranch("missing", false, true)).detail());
+            assertEquals(List.of(new Branch("main", true), new Branch("merged", false), new Branch("topic", false)),
+                    value(capability.branches()));
+
+            assertTrue(value(capability.deleteBranch("merged", false, true)));
+            assertTrue(value(capability.deleteBranch("topic", true, true)));
+            assertEquals(List.of(new Branch("main", true)), value(capability.branches()));
+        }
+    }
+
+    @Test
+    void renamesABranchIncludingTheCheckedOutOneAndRefusesMissingExistingAndInvalidNames()
+            throws IOException, GitAPIException {
+        Path repo = temp.resolve("rename-repo");
+        Files.createDirectories(repo);
+        try (Git git = initRepository(repo)) {
+            Files.writeString(repo.resolve("a.txt"), "one\n");
+            commitAll(git, "initial");
+            git.branchCreate().setName("old").call();
+            git.branchCreate().setName("work").call();
+            git.checkout().setName("work").call();
+            var capability = capabilityAt(repo);
+
+            assertEquals("Confirmation is required for this Git operation",
+                    failure(capability.renameBranch("old", "fresh", false)).reason());
+            assertEquals("Local branch not found: missing",
+                    failure(capability.renameBranch("missing", "fresh", true)).detail());
+            assertEquals("Local branch already exists: main",
+                    failure(capability.renameBranch("old", "main", true)).detail());
+            assertEquals("Invalid local branch name",
+                    failure(capability.renameBranch("old", "bad name", true)).detail());
+
+            assertTrue(value(capability.renameBranch("old", "fresh", true)));
+            assertTrue(value(capability.renameBranch("work", "working", true)));
+            assertEquals("working", value(capability.status()).branch());
+            assertEquals(List.of(new Branch("fresh", false), new Branch("main", false), new Branch("working", true)),
+                    value(capability.branches()));
+        }
+    }
+
+    @Test
+    void everyBranchOperationFailsOutsideARepositoryWithTheNotARepositoryReason() throws IOException {
+        Path plain = temp.resolve("plain-branches");
+        Files.createDirectories(plain);
+        var capability = capabilityAt(plain);
+
+        assertEquals("Not a Git repository", failure(capability.branches()).reason());
+        assertEquals("Not a Git repository", failure(capability.createBranch("feature", true)).reason());
+        assertEquals("Not a Git repository", failure(capability.deleteBranch("feature", false, true)).reason());
+        assertEquals("Not a Git repository", failure(capability.renameBranch("feature", "other", true)).reason());
     }
 
     private static long openDescriptors(Path descriptors) throws IOException {

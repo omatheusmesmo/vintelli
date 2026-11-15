@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
+import org.eclipse.jgit.api.errors.NotMergedException;
 import org.eclipse.jgit.diff.DiffEntry;
 import org.eclipse.jgit.diff.DiffFormatter;
 import org.eclipse.jgit.dircache.DirCache;
@@ -32,6 +33,7 @@ import org.eclipse.jgit.lib.BranchTrackingStatus;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectReader;
+import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 import org.eclipse.jgit.treewalk.AbstractTreeIterator;
@@ -87,6 +89,10 @@ public final class LocalVersionControlCapability implements VersionControlCapabi
     private static final String COMMIT_FAILED = "The staged changes could not be committed";
     private static final String AMEND_FAILED = "The current commit could not be amended";
     private static final String BRANCH_SWITCH_FAILED = "The local branch could not be checked out";
+    private static final String BRANCH_CREATE_FAILED = "The local branch could not be created";
+    private static final String BRANCH_DELETE_FAILED = "The local branch could not be deleted";
+    private static final String BRANCH_RENAME_FAILED = "The local branch could not be renamed";
+    private static final String INVALID_BRANCH_NAME = "Invalid local branch name";
     private static final int MAX_COMMIT_MESSAGE_LENGTH = 1000;
     private static final int MAX_DIFF_BYTES = 256 * 1024;
     static final int MAX_STATUS_ENTRIES = 1000;
@@ -367,6 +373,124 @@ public final class LocalVersionControlCapability implements VersionControlCapabi
                 return CapabilityResult.failed(new CapabilityFailure(BRANCH_SWITCH_FAILED, messageOf(failure)));
             }
         });
+    }
+
+    @Override
+    public CapabilityResult<List<VersionControlCapability.Branch>> branches() {
+        return withRepository((repository, projectPrefix) -> {
+            String current = currentBranch(repository);
+            List<VersionControlCapability.Branch> branches = repository.getRefDatabase()
+                    .getRefsByPrefix(Constants.R_HEADS).stream()
+                    .map(Ref::getName)
+                    .map(name -> name.substring(Constants.R_HEADS.length()))
+                    .sorted()
+                    .map(name -> new VersionControlCapability.Branch(name, name.equals(current)))
+                    .toList();
+            return CapabilityResult.ok(branches);
+        });
+    }
+
+    @Override
+    public CapabilityResult<Boolean> createBranch(String name, boolean confirmed) {
+        if (!confirmed) {
+            return confirmationRequired();
+        }
+        Optional<String> branch = validBranchName(name);
+        if (branch.isEmpty()) {
+            return invalidBranchName(BRANCH_CREATE_FAILED);
+        }
+        return withRepository((repository, projectPrefix) -> {
+            if (repository.exactRef(Constants.R_HEADS + branch.get()) != null) {
+                return branchExists(BRANCH_CREATE_FAILED, branch.get());
+            }
+            if (repository.resolve(Constants.HEAD) == null) {
+                return CapabilityResult.failed(new CapabilityFailure(BRANCH_CREATE_FAILED,
+                        "There is no commit to branch from"));
+            }
+            try {
+                Git.wrap(repository).branchCreate().setName(branch.get()).call();
+                return CapabilityResult.ok(true);
+            } catch (GitAPIException failure) {
+                return CapabilityResult.failed(new CapabilityFailure(BRANCH_CREATE_FAILED, messageOf(failure)));
+            }
+        });
+    }
+
+    @Override
+    public CapabilityResult<Boolean> deleteBranch(String name, boolean force, boolean confirmed) {
+        if (!confirmed) {
+            return confirmationRequired();
+        }
+        Optional<String> branch = validBranchName(name);
+        if (branch.isEmpty()) {
+            return invalidBranchName(BRANCH_DELETE_FAILED);
+        }
+        return withRepository((repository, projectPrefix) -> {
+            if (repository.exactRef(Constants.R_HEADS + branch.get()) == null) {
+                return branchNotFound(BRANCH_DELETE_FAILED, branch.get());
+            }
+            if (branch.get().equals(currentBranch(repository))) {
+                return CapabilityResult.failed(new CapabilityFailure(BRANCH_DELETE_FAILED,
+                        "The checked out branch cannot be deleted; check out another branch first"));
+            }
+            try {
+                Git.wrap(repository).branchDelete().setBranchNames(branch.get()).setForce(force).call();
+                return CapabilityResult.ok(true);
+            } catch (NotMergedException failure) {
+                return CapabilityResult.failed(new CapabilityFailure(BRANCH_DELETE_FAILED,
+                        "The branch has commits that are not merged into HEAD; force the deletion to discard them"));
+            } catch (GitAPIException failure) {
+                return CapabilityResult.failed(new CapabilityFailure(BRANCH_DELETE_FAILED, messageOf(failure)));
+            }
+        });
+    }
+
+    @Override
+    public CapabilityResult<Boolean> renameBranch(String oldName, String newName, boolean confirmed) {
+        if (!confirmed) {
+            return confirmationRequired();
+        }
+        Optional<String> from = validBranchName(oldName);
+        Optional<String> to = validBranchName(newName);
+        if (from.isEmpty() || to.isEmpty()) {
+            return invalidBranchName(BRANCH_RENAME_FAILED);
+        }
+        return withRepository((repository, projectPrefix) -> {
+            if (repository.exactRef(Constants.R_HEADS + from.get()) == null) {
+                return branchNotFound(BRANCH_RENAME_FAILED, from.get());
+            }
+            if (repository.exactRef(Constants.R_HEADS + to.get()) != null) {
+                return branchExists(BRANCH_RENAME_FAILED, to.get());
+            }
+            try {
+                Git.wrap(repository).branchRename().setOldName(from.get()).setNewName(to.get()).call();
+                return CapabilityResult.ok(true);
+            } catch (GitAPIException failure) {
+                return CapabilityResult.failed(new CapabilityFailure(BRANCH_RENAME_FAILED, messageOf(failure)));
+            }
+        });
+    }
+
+    /**
+     * @return the stripped name when it is a valid local branch name that is
+     *         not the reserved {@code HEAD}, or empty otherwise
+     */
+    private static Optional<String> validBranchName(String name) {
+        String stripped = name == null ? "" : name.strip();
+        boolean valid = !stripped.equals(Constants.HEAD) && Repository.isValidRefName(Constants.R_HEADS + stripped);
+        return valid ? Optional.of(stripped) : Optional.empty();
+    }
+
+    private static <T> CapabilityResult<T> invalidBranchName(String reason) {
+        return CapabilityResult.failed(new CapabilityFailure(reason, INVALID_BRANCH_NAME));
+    }
+
+    private static <T> CapabilityResult<T> branchExists(String reason, String name) {
+        return CapabilityResult.failed(new CapabilityFailure(reason, "Local branch already exists: " + name));
+    }
+
+    private static <T> CapabilityResult<T> branchNotFound(String reason, String name) {
+        return CapabilityResult.failed(new CapabilityFailure(reason, "Local branch not found: " + name));
     }
 
     private static CapabilityResult<Boolean> confirmationRequired() {
