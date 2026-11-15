@@ -3,14 +3,17 @@ package dev.omatheusmesmo.vintelli.tui;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
@@ -49,7 +52,9 @@ class RunConfigurationPickerInteractionTest {
                     fixture.press(KeyCode.ENTER);
                 }
                 assertEquals("maven:compile", window.selectedConfigurationLabel());
-                assertEquals("maven:compile", store.load().orElseThrow());
+                fixture.await(() -> Optional.of("maven:compile").equals(store.load()), Duration.ofSeconds(5));
+                assertEquals(Optional.of("maven:compile"), store.load(),
+                        () -> persistenceDiagnosis(window, fixture, directory.resolve("config")));
                 assertEquals(previousFocus, fixture.testRunner().runner().focusManager().focusedId());
                 assertTrue(fixture.renderedText().lines().findFirst().orElseThrow().contains("maven:compile"), fixture.renderedText());
                 assertEquals(0, provider.starts.get());
@@ -91,6 +96,24 @@ class RunConfigurationPickerInteractionTest {
             assertEquals("configuration-13", window.selectedConfigurationLabel());
             assertEquals("configuration-13", store.load().orElseThrow());
             assertEquals(0, provider.starts.get());
+        }
+    }
+
+    private static String persistenceDiagnosis(RunToolWindow window, ToolWindowPilotFixture fixture, Path configRoot) {
+        return "saved run selection is missing: status=" + window.statusMessage()
+                + "; run output=" + window.consoleLines()
+                + "; files under the config root=" + regularFilesUnder(configRoot)
+                + "\n" + fixture.renderedText();
+    }
+
+    private static List<String> regularFilesUnder(Path root) {
+        if (!Files.exists(root)) {
+            return List.of("<no config root>");
+        }
+        try (Stream<Path> paths = Files.walk(root)) {
+            return paths.filter(Files::isRegularFile).map(root::relativize).map(Path::toString).toList();
+        } catch (IOException failure) {
+            return List.of("unreadable: " + failure);
         }
     }
 

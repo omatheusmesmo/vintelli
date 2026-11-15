@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -50,8 +51,12 @@ import dev.tamboui.tui.pilot.Pilot;
 import dev.tamboui.toolkit.app.ToolkitTestRunner;
 import dev.tamboui.toolkit.element.DefaultRenderContext;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class RunToolWindowTest {
+
+    @TempDir
+    Path directory;
 
     @Test
     void debugToolbarAttachesTheDebugCapabilityToTheStartedRunAndDetachesBeforeStop() throws Exception {
@@ -331,6 +336,26 @@ class RunToolWindowTest {
 
         assertTrue(window.configurations().isEmpty());
         assertEquals(1L, currentProvider.started.getCount());
+    }
+
+    @Test
+    void aSelectionThatCannotBeSavedIsReportedInTheStatusAndTheRunOutput() throws Exception {
+        ShellThemes themes = themes();
+        UiWorkQueue uiWork = new UiWorkQueue();
+        FakeRegistry registry = new FakeRegistry(new FakeRunProvider());
+        RunSelectionStore store = new RunSelectionStore(directory.resolve("config"), directory,
+                (source, target, atomic) -> {
+                    throw new AccessDeniedException(target.toString());
+                });
+        RunToolWindow window = new RunToolWindow(() -> themes, registry, uiWork, ".", store);
+        window.refreshConfigurations();
+        awaitUi(uiWork, () -> window.configurations().size() == 2);
+
+        assertTrue(window.selectConfiguration("idea:Second"));
+
+        assertEquals("idea:Second", window.selectedConfigurationLabel(), "the choice still applies to this window");
+        assertTrue(window.statusMessage().startsWith("Cannot save run selection: "), window.statusMessage());
+        assertTrue(window.consoleLines().contains(window.statusMessage()), window.consoleLines().toString());
     }
 
     private static void awaitUi(UiWorkQueue queue, java.util.function.BooleanSupplier condition) throws Exception {

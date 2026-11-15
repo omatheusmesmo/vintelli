@@ -424,7 +424,8 @@ public final class RunToolWindow implements ToolWindow {
             try {
                 selectionStore.save(preferredConfiguration);
             } catch (IOException failure) {
-                append("Cannot save run selection: " + message(failure));
+                status = "Cannot save run selection: " + message(failure);
+                append(status);
             }
         }
     }
