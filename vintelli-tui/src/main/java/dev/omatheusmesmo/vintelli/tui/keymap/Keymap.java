@@ -1,6 +1,7 @@
 package dev.omatheusmesmo.vintelli.tui.keymap;
 
 import dev.omatheusmesmo.vintelli.tui.ToolWindow;
+import dev.tamboui.terminal.KeyboardProtocol;
 import dev.tamboui.tui.bindings.BindingSets;
 import dev.tamboui.tui.bindings.Bindings;
 import dev.tamboui.tui.bindings.DefaultBindings;
@@ -19,10 +20,12 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.regex.Pattern;
 
 import static dev.omatheusmesmo.vintelli.tui.keymap.KeyActions.KEYMAP_HELP;
 import static dev.omatheusmesmo.vintelli.tui.keymap.KeyActions.MOVE_DOWN;
@@ -66,11 +69,31 @@ import static dev.omatheusmesmo.vintelli.tui.keymap.KeyActions.reservedActionIds
  * palette chord and the help chord are {@link #reserved} in the sense of the
  * {@link dev.omatheusmesmo.vintelli.tui.ToolWindow} SPI: they keep working
  * while an input has focus.
+ *
+ * <p>The shell runs the legacy keyboard protocol ({@link #KEYBOARD_PROTOCOL}),
+ * so the Kitty keyboard protocol of TamboUI 0.7 stays off. The profiles drop the
+ * chords that TamboUI 0.7 adds to its presets and that only the Kitty protocol
+ * could tell apart, see {@link #legacyKeyboardBindings(Bindings)}, and a user
+ * file cannot bind a trigger the legacy protocol never sends, see
+ * {@link #deliverableInLegacyProtocol(String)}.
  */
 public final class Keymap {
 
+    /**
+     * Keyboard protocol of every TUI runner of the shell. The legacy protocol
+     * keeps the terminal in its default mode, so the key bytes and the chords
+     * stay those of TamboUI 0.6; the Kitty keyboard protocol is a follow-up.
+     */
+    public static final KeyboardProtocol KEYBOARD_PROTOCOL = KeyboardProtocol.LEGACY;
+
     static final String PROFILE_PROPERTY = "vintelli.keymap";
     private static final String USER_KEYMAP_FILE = "vintelli/keymap.properties";
+    private static final Set<String> WORD_WISE_ACTIONS = Set.of("moveWordLeft", "moveWordRight",
+            "deleteWordBackward", "deleteWordForward");
+    private static final Set<String> UNSENT_MODIFIERS = Set.of("super", "hyper", "meta");
+    private static final Pattern UNSENT_FUNCTION_KEY = Pattern.compile("f(1[3-9]|2[0-9]|3[0-5])");
+    private static final String KEYPAD_KEY_PREFIX = "keypad_";
+    private static final String KEYPAD_CODE_MARK = "KP_";
 
     private final KeymapProfile profile;
     private final String source;
@@ -132,6 +155,51 @@ public final class Keymap {
         this.bindings = bindings;
         this.reserved = reserved;
         this.actions = List.copyOf(actions);
+    }
+
+    /**
+     * Drops the TamboUI 0.7 additions to a preset that the legacy keyboard protocol cannot use. The
+     * keypad aliases never fire: in numeric keypad mode a keypad key sends the bytes of its main key,
+     * Enter as a carriage return. The word-wise chords would change the text inputs, because a
+     * legacy terminal sends Ctrl+w as a plain control byte, so they are removed until the Kitty
+     * keyboard protocol decides them. Everything else stays as TamboUI defines it.
+     */
+    public static Bindings legacyKeyboardBindings(Bindings tamboui) {
+        Bindings.Builder builder = tamboui.toBuilder();
+        for (String action : WORD_WISE_ACTIONS) {
+            builder.unbind(action);
+        }
+        if (tamboui instanceof DefaultBindings defaultBindings) {
+            for (String action : defaultBindings.actions()) {
+                List<InputTrigger> triggers = tamboui.triggersFor(action);
+                if (triggers.stream().anyMatch(Keymap::isKeypadAlias)) {
+                    builder.unbind(action);
+                    triggers.stream().filter(trigger -> !isKeypadAlias(trigger))
+                            .forEach(trigger -> builder.bind(trigger, action));
+                }
+            }
+        }
+        return builder.build();
+    }
+
+    private static boolean isKeypadAlias(InputTrigger trigger) {
+        return trigger.describe().contains(KEYPAD_CODE_MARK);
+    }
+
+    /**
+     * Whether the legacy keyboard protocol can deliver a trigger written in a user keymap file.
+     * Super, Hyper and Meta modifiers, keypad keys and the function keys F13 to F35 are never sent
+     * by a legacy terminal, so such a trigger would never fire and fails fast instead.
+     */
+    public static boolean deliverableInLegacyProtocol(String trigger) {
+        String[] segments = trigger.split("\\+", -1);
+        for (int index = 0; index < segments.length - 1; index++) {
+            if (UNSENT_MODIFIERS.contains(segments[index].trim().toLowerCase(Locale.ROOT))) {
+                return false;
+            }
+        }
+        String key = segments[segments.length - 1].trim().toLowerCase(Locale.ROOT);
+        return !key.startsWith(KEYPAD_KEY_PREFIX) && !UNSENT_FUNCTION_KEY.matcher(key).matches();
     }
 
     private static Bindings buildBindings(KeymapProfile profile, List<ToolWindow> toolWindows) {
@@ -276,6 +344,7 @@ public final class Keymap {
             }
         }
         try {
+            validateLegacyDeliverable(lineNumbers, properties);
             Bindings.Builder builder = base.toBuilder();
             for (String action : properties.stringPropertyNames()) {
                 builder.unbind(bindingName(action));
@@ -290,6 +359,20 @@ public final class Keymap {
         } catch (IOException | IllegalArgumentException | TuiException e) {
             throw new IllegalStateException(
                     "invalid trigger in user keymap file '" + userKeymapFile + "': " + e.getMessage(), e);
+        }
+    }
+
+    private static void validateLegacyDeliverable(Map<String, Integer> lineNumbers, Properties properties) {
+        for (String action : new TreeSet<>(properties.stringPropertyNames())) {
+            for (String trigger : properties.getProperty(action).split(",")) {
+                String chord = trigger.trim();
+                if (!deliverableInLegacyProtocol(chord)) {
+                    throw new IllegalArgumentException("trigger '" + chord + "' of action '" + action
+                            + "' (line " + lineNumbers.getOrDefault(action, 0) + ") cannot be sent by the legacy "
+                            + "keyboard protocol the shell runs; Super, Hyper and Meta modifiers, keypad keys and "
+                            + "F13 to F35 need the Kitty keyboard protocol");
+                }
+            }
         }
     }
 

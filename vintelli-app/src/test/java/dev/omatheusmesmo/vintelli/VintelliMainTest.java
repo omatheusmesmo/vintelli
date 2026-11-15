@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.time.Duration;
 import java.util.Optional;
 
+import dev.tamboui.terminal.KeyboardProtocol;
 import org.junit.jupiter.api.Test;
 
 class VintelliMainTest {
@@ -15,6 +16,11 @@ class VintelliMainTest {
     void anIdleShellTicksAtMostOncePerSecond() {
         assertTrue(VintelliMain.shellConfig().tickRate().compareTo(Duration.ofSeconds(1)) >= 0,
                 "idle tick was " + VintelliMain.shellConfig().tickRate());
+    }
+
+    @Test
+    void theShellRunsTheLegacyKeyboardProtocolSoKittyKeysStayOff() {
+        assertEquals(KeyboardProtocol.LEGACY, VintelliMain.shellConfig().keyboardProtocol());
     }
 
     @Test
