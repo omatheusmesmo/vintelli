@@ -31,6 +31,23 @@ assert_contains() {
     fi
 }
 
+assert_not_contains() {
+    local haystack="$1"
+    local needle="$2"
+    local msg="$3"
+    if printf '%s' "$haystack" | grep -Fq -- "$needle"; then
+        fail "${msg}: expected output not to contain '${needle}', got: ${haystack}"
+    fi
+}
+
+run_font_case() {
+    local source_dir="$1"
+    shift
+    FONT_CASE_CODE=0
+    FONT_CASE_OUTPUT="$(env -i PATH="$PATH" VINTELLI_SHELL_PROFILE="${TEST_TMP}/font-profile" "$@" \
+        "$INSTALL_SCRIPT" --dry-run --source "$source_dir" --prefix "${TEST_TMP}/font-bin" 2>&1)" || FONT_CASE_CODE=$?
+}
+
 assert_exit_nonzero() {
     local desc="$1"
     shift
@@ -317,6 +334,65 @@ EOF
     native_ver="$("${native_prefix}/vintelli" --version)"
     assert_contains "$native_ver" "vintelli 1.0.0-SNAPSHOT (native)" "native binary version after source deletion"
     pass "Clone mode (native) installs persistent native binary that survives source tree deletion"
+
+    # 11. Font check: warns without a Nerd Font, never changes the exit code, honours the skip variable
+    local font_root="${TEST_TMP}/font-cases"
+    local empty_fonts="${font_root}/empty"
+    local depth4_fonts="${font_root}/depth4"
+    local depth5_fonts="${font_root}/depth5"
+    local file_as_fonts="${font_root}/not-a-directory"
+    mkdir -p "$empty_fonts" "${depth4_fonts}/a/b/c" "${depth5_fonts}/a/b/c/d"
+    touch "${depth4_fonts}/a/b/c/JetBrainsMonoNF-Regular.ttf" \
+        "${depth5_fonts}/a/b/c/d/JetBrainsMonoNerdFont-Regular.ttf" "$file_as_fonts"
+
+    run_font_case "$mock_src" VINTELLI_FONT_DIRS="$empty_fonts" TERM=xterm-256color TERM_PROGRAM=Apple_Terminal
+    [ "$FONT_CASE_CODE" -eq 0 ] || fail "Font check must not change the exit code: ${FONT_CASE_OUTPUT}"
+    assert_contains "$FONT_CASE_OUTPUT" "No Nerd Font was found" "warning without a Nerd Font"
+    assert_contains "$FONT_CASE_OUTPUT" "vintelli.icons=ascii" "warning names the ASCII fallback"
+    pass "Font check warns when no Nerd Font is installed and the terminal is unknown"
+
+    run_font_case "$mock_src" VINTELLI_FONT_DIRS="${empty_fonts}:${depth4_fonts}" TERM=xterm-256color
+    [ "$FONT_CASE_CODE" -eq 0 ] || fail "Font check must not change the exit code: ${FONT_CASE_OUTPUT}"
+    assert_not_contains "$FONT_CASE_OUTPUT" "No Nerd Font was found" "Nerd Font at depth 4 in a later directory"
+
+    run_font_case "$mock_src" VINTELLI_FONT_DIRS="$depth5_fonts" TERM=xterm-256color
+    [ "$FONT_CASE_CODE" -eq 0 ] || fail "Font check must not change the exit code: ${FONT_CASE_OUTPUT}"
+    assert_contains "$FONT_CASE_OUTPUT" "No Nerd Font was found" "Nerd Font at depth 5 is not found"
+    pass "Font directory walk is bounded to depth 4"
+
+    run_font_case "$mock_src" VINTELLI_FONT_DIRS="$file_as_fonts" TERM=xterm-256color
+    [ "$FONT_CASE_CODE" -eq 0 ] || fail "A font path that is not a directory must not fail: ${FONT_CASE_OUTPUT}"
+    assert_contains "$FONT_CASE_OUTPUT" "No Nerd Font was found" "font path that is a file counts as empty"
+
+    run_font_case "$mock_src" VINTELLI_FONT_DIRS="$empty_fonts" KITTY_WINDOW_ID=1 TERM=xterm-256color
+    [ "$FONT_CASE_CODE" -eq 0 ] || fail "Font check must not change the exit code: ${FONT_CASE_OUTPUT}"
+    assert_not_contains "$FONT_CASE_OUTPUT" "No Nerd Font was found" "kitty environment marker"
+
+    run_font_case "$mock_src" VINTELLI_FONT_DIRS="$empty_fonts" TERM_PROGRAM=WezTerm TERM=xterm-256color
+    [ "$FONT_CASE_CODE" -eq 0 ] || fail "Font check must not change the exit code: ${FONT_CASE_OUTPUT}"
+    assert_not_contains "$FONT_CASE_OUTPUT" "No Nerd Font was found" "WezTerm TERM_PROGRAM"
+
+    run_font_case "$mock_src" VINTELLI_FONT_DIRS="$empty_fonts" VINTELLI_SKIP_FONT_CHECK=1 TERM=xterm-256color
+    [ "$FONT_CASE_CODE" -eq 0 ] || fail "Font check must not change the exit code: ${FONT_CASE_OUTPUT}"
+    assert_not_contains "$FONT_CASE_OUTPUT" "No Nerd Font was found" "VINTELLI_SKIP_FONT_CHECK=1"
+    pass "Known Nerd Font terminals and VINTELLI_SKIP_FONT_CHECK=1 suppress the warning"
+
+    run_font_case "$mock_src" TERM=xterm-256color
+    [ "$FONT_CASE_CODE" -eq 0 ] || fail "Font check must not fail without HOME: ${FONT_CASE_OUTPUT}"
+    assert_not_contains "$FONT_CASE_OUTPUT" "unbound variable" "font check without HOME"
+    pass "Font check does not fail when HOME is unset"
+
+    local real_src="${TEST_TMP}/font-real-source"
+    local real_prefix="${TEST_TMP}/font-real/bin"
+    cp -R "$mock_src" "$real_src"
+    local real_out=""
+    real_out="$(env -i PATH="$PATH" VINTELLI_FONT_DIRS="$empty_fonts" VINTELLI_BUILD_MODE=jvm \
+        VINTELLI_RUNTIME_DIR="${TEST_TMP}/font-real/runtime" VINTELLI_SHELL_PROFILE="${TEST_TMP}/font-profile" \
+        VINTELLI_NONINTERACTIVE=true "$INSTALL_SCRIPT" --source "$real_src" --prefix "$real_prefix" 2>&1)" \
+        || fail "A missing Nerd Font must not fail the installation: ${real_out}"
+    [ -x "${real_prefix}/vintelli" ] || fail "Expected installed binary at ${real_prefix}/vintelli"
+    assert_contains "$real_out" "No Nerd Font was found" "font warning during a real install"
+    pass "Font check is non-fatal and does not block a real installation"
 
     printf '\nAll install.sh tests passed!\n'
 }

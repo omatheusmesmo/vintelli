@@ -909,6 +909,130 @@ perform_uninstall() {
     fi
 }
 
+font_env_is_set() {
+    local value="${!1:-}"
+    [ -n "${value//[[:space:]]/}" ]
+}
+
+terminal_name_has_nerd_glyphs() {
+    local name
+    name="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+    case "$name" in
+        kitty|xterm-kitty|ghostty|xterm-ghostty|wezterm)
+            return 0
+            ;;
+    esac
+    return 1
+}
+
+terminal_has_nerd_glyphs() {
+    if terminal_name_has_nerd_glyphs "${TERM_PROGRAM:-}" || terminal_name_has_nerd_glyphs "${TERM:-}"; then
+        return 0
+    fi
+    font_env_is_set KITTY_PID || font_env_is_set KITTY_WINDOW_ID \
+        || font_env_is_set GHOSTTY_RESOURCES_DIR || font_env_is_set WEZTERM_EXECUTABLE
+}
+
+absolute_font_dir() {
+    case "$1" in
+        /*)
+            printf '%s/fonts\n' "$1"
+            ;;
+    esac
+}
+
+list_font_directories() {
+    local data_dir
+    if [ -n "${VINTELLI_FONT_DIRS:-}" ]; then
+        printf '%s\n' "$VINTELLI_FONT_DIRS" | tr ':' '\n'
+        return 0
+    fi
+    if [ "$DETECTED_OS" = "darwin" ]; then
+        if [ -n "${HOME:-}" ]; then
+            printf '%s\n' "${HOME}/Library/Fonts"
+        fi
+        printf '%s\n' "/Library/Fonts"
+        return 0
+    fi
+    absolute_font_dir "${XDG_DATA_HOME:-}"
+    if [ -n "${HOME:-}" ]; then
+        printf '%s\n' "${HOME}/.local/share/fonts" "${HOME}/.fonts"
+    fi
+    printf '%s\n' "${XDG_DATA_DIRS:-}" | tr ':' '\n' | while IFS= read -r data_dir; do
+        absolute_font_dir "$data_dir"
+    done
+    printf '%s\n' "/usr/share/fonts" "/usr/local/share/fonts"
+}
+
+font_file_is_nerd() {
+    local file_name="$1"
+    local stem="${file_name%.*}"
+    local extension="${file_name##*.}"
+    local lower_name
+    [ "$extension" != "$file_name" ] && [ -n "$stem" ] || return 1
+    case "$(printf '%s' "$extension" | tr '[:upper:]' '[:lower:]')" in
+        ttf|otf|ttc|woff2)
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+    lower_name="$(printf '%s' "$file_name" | tr '[:upper:]' '[:lower:]')"
+    case "$lower_name" in
+        *nerdfont*|*"nerd font"*|*nerd-font*)
+            return 0
+            ;;
+    esac
+    [[ "$file_name" =~ (NF|NFM|NFP)[.-] ]]
+}
+
+directory_has_nerd_font() {
+    local directory="$1"
+    local file
+    [ -d "$directory" ] || return 1
+    while IFS= read -r file; do
+        if font_file_is_nerd "${file##*/}"; then
+            return 0
+        fi
+    done < <(find -L "$directory" -maxdepth 4 -type f 2>/dev/null)
+    return 1
+}
+
+nerd_font_installed() {
+    local directory
+    while IFS= read -r directory; do
+        if directory_has_nerd_font "$directory"; then
+            return 0
+        fi
+    done < <(list_font_directories)
+    return 1
+}
+
+print_font_warning() {
+    log_warn "No Nerd Font was found on this machine. The file icons, the tool window stripe icons and the tree arrows may show as boxes, blanks or overlapping characters."
+    log_warn "Install a Nerd Font, for example JetBrains Mono Nerd Font:"
+    log_warn "  macOS (Homebrew):  brew install --cask font-jetbrains-mono-nerd-font"
+    log_warn "  Windows (winget):  winget install DEVCOM.JetBrainsMonoNerdFont"
+    log_warn "  Linux:             copy the .ttf or .otf files to ~/.local/share/fonts, then run: fc-cache -f"
+    log_warn "  Any system:        https://www.nerdfonts.com/font-downloads"
+    log_warn "Then switch the font of your terminal to the Nerd Font. This check cannot read the terminal font, so it cannot confirm the switch."
+    log_warn "If the icons still look broken, use the safe fallback vintelli.icons=ascii. Set VINTELLI_SKIP_FONT_CHECK=1 to skip this check."
+}
+
+check_fonts() {
+    if [ "${VINTELLI_SKIP_FONT_CHECK:-}" = "1" ]; then
+        return 0
+    fi
+    if [ "$DETECTED_OS" = "windows" ]; then
+        log_info "Font check skipped under Git Bash or MSYS. Run scripts/install.ps1 for the Windows Terminal font check."
+        return 0
+    fi
+    if terminal_has_nerd_glyphs || nerd_font_installed; then
+        return 0
+    fi
+    print_font_warning
+}
+
 main() {
     parse_args "$@"
     resolve_install_paths
@@ -927,6 +1051,7 @@ main() {
     run_smoke_test
     cleanup_backup
     configure_path
+    check_fonts || log_warn "Font check could not complete; the installation is not affected."
 
     printf '\n'
     log_ok "Vintelli installation complete!"

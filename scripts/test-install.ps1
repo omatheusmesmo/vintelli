@@ -48,6 +48,18 @@ function Assert-Contains([string]$Haystack, [string]$Needle, [string]$Descriptio
     }
 }
 
+function Assert-NotContains([string]$Haystack, [string]$Needle, [string]$Description) {
+    if ($Haystack.Contains($Needle)) {
+        throw "[FAIL] ${Description}: expected output not to contain '$Needle', got:`n$Haystack"
+    }
+}
+
+function Assert-ExitZero($Result, [string]$Description) {
+    if ($Result.ExitCode -ne 0) {
+        throw "[FAIL] ${Description}: expected exit code 0, got $($Result.ExitCode): $($Result.Output)"
+    }
+}
+
 function New-MockSourceRepo([string]$SrcDir) {
     $quarkusAppDir = Join-Path $SrcDir 'vintelli-app\target\quarkus-app'
     New-Item -ItemType Directory -Path $quarkusAppDir -Force | Out-Null
@@ -324,6 +336,108 @@ internal static class NativeStub {
     }
     Assert-Contains -Haystack $nativeHelpOut -Needle 'Available commands:' -Description 'native help output after source removal'
     Write-Pass "Clone mode (native) installs standalone binary and works after source removal"
+
+    # 11. Font check: warns without a Nerd Font, reads the Windows Terminal face, never changes the exit code
+    $fontRoot = Join-Path $TestTmp 'font-cases'
+    $emptyFonts = Join-Path $fontRoot 'empty'
+    $depth4Fonts = Join-Path $fontRoot 'depth4'
+    $depth5Fonts = Join-Path $fontRoot 'depth5'
+    New-Item -ItemType Directory -Path $emptyFonts -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $depth4Fonts 'a\b\c') -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $depth5Fonts 'a\b\c\d') -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $depth4Fonts 'a\b\c\JetBrainsMonoNF-Regular.ttf') -Value 'font' -Encoding ASCII
+    Set-Content -LiteralPath (Join-Path $depth5Fonts 'a\b\c\d\JetBrainsMonoNerdFont-Regular.ttf') -Value 'font' -Encoding ASCII
+
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    $consolasSettings = Join-Path $TestTmp 'settings-consolas.json'
+    $consolasJson = @'
+// Test fixture: Windows Terminal settings with a comment and trailing commas
+{
+    "profiles": {
+        "defaults": {
+            "font": {
+                "face": "Consolas",
+            },
+        },
+        "list": [],
+    },
+}
+'@
+    [System.IO.File]::WriteAllText($consolasSettings, $consolasJson, $utf8NoBom)
+    $nerdSettings = Join-Path $TestTmp 'settings-nerd.json'
+    [System.IO.File]::WriteAllText($nerdSettings, '{ "profiles": { "defaults": { "font": { "face": "CaskaydiaCove NF" } } } }', $utf8NoBom)
+    $malformedSettings = Join-Path $TestTmp 'settings-malformed.json'
+    [System.IO.File]::WriteAllText($malformedSettings, '{ "profiles": ', $utf8NoBom)
+
+    $fontDryArgs = @('--dry-run', '--source', $mockSrc, '--prefix', $dryPrefix)
+    function Get-FontCheckEnvironment([hashtable]$Overrides = @{}) {
+        $environment = @{
+            TERM_PROGRAM             = ''
+            TERM                     = ''
+            KITTY_PID                = ''
+            KITTY_WINDOW_ID          = ''
+            GHOSTTY_RESOURCES_DIR    = ''
+            WEZTERM_EXECUTABLE       = ''
+            VINTELLI_SKIP_FONT_CHECK = ''
+            VINTELLI_FONT_DIRS       = $emptyFonts
+            VINTELLI_WT_SETTINGS     = (Join-Path $TestTmp 'no-settings.json')
+        }
+        foreach ($key in $Overrides.Keys) {
+            $environment[$key] = $Overrides[$key]
+        }
+        return $environment
+    }
+
+    $res = Invoke-Installer -InstallerArgs $fontDryArgs -EnvOverrides (Get-FontCheckEnvironment)
+    Assert-ExitZero -Result $res -Description 'font check without a Nerd Font'
+    Assert-Contains -Haystack $res.Output -Needle 'No Nerd Font was found' -Description 'font warning without a Nerd Font'
+    Assert-Contains -Haystack $res.Output -Needle 'vintelli.icons=ascii' -Description 'font warning names the ASCII fallback'
+    Write-Pass "Font check warns when no Nerd Font is installed and the terminal is unknown"
+
+    $res = Invoke-Installer -InstallerArgs $fontDryArgs -EnvOverrides (Get-FontCheckEnvironment -Overrides @{ VINTELLI_FONT_DIRS = "$emptyFonts;$depth4Fonts" })
+    Assert-ExitZero -Result $res -Description 'font check with a Nerd Font at depth 4'
+    Assert-NotContains -Haystack $res.Output -Needle 'No Nerd Font was found' -Description 'Nerd Font at depth 4 in a later directory'
+
+    $res = Invoke-Installer -InstallerArgs $fontDryArgs -EnvOverrides (Get-FontCheckEnvironment -Overrides @{ VINTELLI_FONT_DIRS = $depth5Fonts })
+    Assert-ExitZero -Result $res -Description 'font check with a Nerd Font at depth 5'
+    Assert-Contains -Haystack $res.Output -Needle 'No Nerd Font was found' -Description 'Nerd Font at depth 5 is not found'
+    Write-Pass "Font directory walk is bounded to depth 4"
+
+    $res = Invoke-Installer -InstallerArgs $fontDryArgs -EnvOverrides (Get-FontCheckEnvironment -Overrides @{ KITTY_WINDOW_ID = '1' })
+    Assert-ExitZero -Result $res -Description 'font check in kitty'
+    Assert-NotContains -Haystack $res.Output -Needle 'No Nerd Font was found' -Description 'kitty environment marker'
+
+    $res = Invoke-Installer -InstallerArgs $fontDryArgs -EnvOverrides (Get-FontCheckEnvironment -Overrides @{ TERM_PROGRAM = 'WezTerm' })
+    Assert-ExitZero -Result $res -Description 'font check in WezTerm'
+    Assert-NotContains -Haystack $res.Output -Needle 'No Nerd Font was found' -Description 'WezTerm TERM_PROGRAM'
+
+    $res = Invoke-Installer -InstallerArgs $fontDryArgs -EnvOverrides (Get-FontCheckEnvironment -Overrides @{ VINTELLI_SKIP_FONT_CHECK = '1' })
+    Assert-ExitZero -Result $res -Description 'font check skipped'
+    Assert-NotContains -Haystack $res.Output -Needle 'No Nerd Font was found' -Description 'VINTELLI_SKIP_FONT_CHECK=1'
+    Write-Pass "Known Nerd Font terminals and VINTELLI_SKIP_FONT_CHECK=1 suppress the warning"
+
+    $res = Invoke-Installer -InstallerArgs $fontDryArgs -EnvOverrides (Get-FontCheckEnvironment -Overrides @{ VINTELLI_WT_SETTINGS = $consolasSettings; VINTELLI_FONT_DIRS = $depth4Fonts })
+    Assert-ExitZero -Result $res -Description 'font check with Consolas as the Windows Terminal face'
+    Assert-Contains -Haystack $res.Output -Needle "'Consolas'" -Description 'Windows Terminal face warning names the face'
+    Assert-NotContains -Haystack $res.Output -Needle 'No Nerd Font was found' -Description 'face warning replaces the general warning'
+
+    $res = Invoke-Installer -InstallerArgs $fontDryArgs -EnvOverrides (Get-FontCheckEnvironment -Overrides @{ VINTELLI_WT_SETTINGS = $nerdSettings })
+    Assert-ExitZero -Result $res -Description 'font check with a Nerd Font face'
+    Assert-NotContains -Haystack $res.Output -Needle 'Windows Terminal uses the font' -Description 'Nerd Font face'
+    Assert-NotContains -Haystack $res.Output -Needle 'No Nerd Font was found' -Description 'Nerd Font face suppresses the warning'
+
+    $res = Invoke-Installer -InstallerArgs $fontDryArgs -EnvOverrides (Get-FontCheckEnvironment -Overrides @{ VINTELLI_WT_SETTINGS = $malformedSettings })
+    Assert-ExitZero -Result $res -Description 'font check with malformed Windows Terminal settings'
+    Assert-Contains -Haystack $res.Output -Needle 'No Nerd Font was found' -Description 'malformed settings fall back to the general check'
+
+    $res = Invoke-Installer -InstallerArgs $fontDryArgs -EnvOverrides (Get-FontCheckEnvironment -Overrides @{ VINTELLI_WT_SETTINGS = $consolasSettings; VINTELLI_SKIP_FONT_CHECK = '1' })
+    Assert-ExitZero -Result $res -Description 'skipped font check with Consolas'
+    Assert-NotContains -Haystack $res.Output -Needle 'Consolas' -Description 'VINTELLI_SKIP_FONT_CHECK=1 with a weak face'
+    Write-Pass "Windows Terminal face is read from settings.json and weak faces warn, Nerd Font faces do not"
+
+    $res = Invoke-Installer -InstallerArgs $fontDryArgs -EnvOverrides (Get-FontCheckEnvironment -Overrides @{ VINTELLI_FONT_DIRS = ''; LOCALAPPDATA = ''; WINDIR = ''; VINTELLI_WT_SETTINGS = '' })
+    Assert-ExitZero -Result $res -Description 'font check without LOCALAPPDATA and WINDIR'
+    Write-Pass "Font check does not fail when LOCALAPPDATA and WINDIR are unset"
 
     Write-Host "`nAll install.ps1 tests passed!"
 } finally {

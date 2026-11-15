@@ -941,6 +941,167 @@ function Invoke-Uninstall {
     }
 }
 
+function Test-TerminalWithNerdGlyphs {
+    foreach ($name in @($env:TERM_PROGRAM, $env:TERM)) {
+        if ($name -and (@('kitty', 'xterm-kitty', 'ghostty', 'xterm-ghostty', 'wezterm') -contains $name)) {
+            return $true
+        }
+    }
+    foreach ($key in @('KITTY_PID', 'KITTY_WINDOW_ID', 'GHOSTTY_RESOURCES_DIR', 'WEZTERM_EXECUTABLE')) {
+        if (-not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($key))) {
+            return $true
+        }
+    }
+    return $false
+}
+
+function Get-FontDirectories {
+    if (-not [string]::IsNullOrWhiteSpace($env:VINTELLI_FONT_DIRS)) {
+        return @($env:VINTELLI_FONT_DIRS -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    }
+    $directories = @()
+    if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        $directories += (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\Fonts')
+    }
+    if (-not [string]::IsNullOrWhiteSpace($env:WINDIR)) {
+        $directories += (Join-Path $env:WINDIR 'Fonts')
+    }
+    return $directories
+}
+
+function Test-NerdFontFileName([string]$FileName) {
+    $dot = $FileName.LastIndexOf('.')
+    if ($dot -le 0) {
+        return $false
+    }
+    $extension = $FileName.Substring($dot + 1).ToLowerInvariant()
+    if (@('ttf', 'otf', 'ttc', 'woff2') -notcontains $extension) {
+        return $false
+    }
+    $lower = $FileName.ToLowerInvariant()
+    foreach ($marker in @('nerdfont', 'nerd font', 'nerd-font')) {
+        if ($lower.Contains($marker)) {
+            return $true
+        }
+    }
+    return [regex]::IsMatch($FileName, '(NF|NFM|NFP)[.-]')
+}
+
+function Test-NerdFontDirectory([string]$Directory) {
+    if (-not (Test-Path -LiteralPath $Directory -PathType Container)) {
+        return $false
+    }
+    $pending = New-Object System.Collections.Stack
+    $pending.Push(@{ Path = $Directory; Level = 1 })
+    while ($pending.Count -gt 0) {
+        $current = $pending.Pop()
+        try {
+            foreach ($file in [System.IO.Directory]::GetFiles($current.Path)) {
+                if (Test-NerdFontFileName -FileName ([System.IO.Path]::GetFileName($file))) {
+                    return $true
+                }
+            }
+            if ($current.Level -lt 4) {
+                foreach ($subdirectory in [System.IO.Directory]::GetDirectories($current.Path)) {
+                    $pending.Push(@{ Path = $subdirectory; Level = $current.Level + 1 })
+                }
+            }
+        } catch {
+            continue
+        }
+    }
+    return $false
+}
+
+function Test-NerdFontInstalled {
+    foreach ($directory in (Get-FontDirectories)) {
+        if (Test-NerdFontDirectory -Directory $directory) {
+            return $true
+        }
+    }
+    return $false
+}
+
+function Get-WindowsTerminalSettingsFiles {
+    if (-not [string]::IsNullOrWhiteSpace($env:VINTELLI_WT_SETTINGS)) {
+        return @($env:VINTELLI_WT_SETTINGS)
+    }
+    if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        return @()
+    }
+    return @(
+        (Join-Path $env:LOCALAPPDATA 'Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json'),
+        (Join-Path $env:LOCALAPPDATA 'Packages\Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe\LocalState\settings.json'),
+        (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows Terminal\settings.json')
+    )
+}
+
+function Get-WindowsTerminalFontFace {
+    foreach ($settingsFile in (Get-WindowsTerminalSettingsFiles)) {
+        if (-not (Test-Path -LiteralPath $settingsFile -PathType Leaf)) {
+            continue
+        }
+        try {
+            $json = [System.IO.File]::ReadAllText($settingsFile)
+            $json = [regex]::Replace($json, '(?m)^\s*//.*$', '')
+            $json = [regex]::Replace($json, ',(\s*[}\]])', '$1')
+            $face = (ConvertFrom-Json -InputObject $json).profiles.defaults.font.face
+            if ($face -is [string] -and -not [string]::IsNullOrWhiteSpace($face)) {
+                return $face.Trim()
+            }
+        } catch {
+            continue
+        }
+    }
+    return $null
+}
+
+function Test-NerdFontName([string]$Name) {
+    $lower = $Name.ToLowerInvariant()
+    foreach ($marker in @('nerdfont', 'nerd font', 'nerd-font')) {
+        if ($lower.Contains($marker)) {
+            return $true
+        }
+    }
+    return [regex]::IsMatch($Name, '(^|[ -])(NF|NFM|NFP)($|[ -])')
+}
+
+function Write-FontWarning([string]$Headline) {
+    Write-WarnMsg $Headline
+    Write-WarnMsg 'Install a Nerd Font, for example JetBrains Mono Nerd Font:'
+    Write-WarnMsg '  macOS (Homebrew):  brew install --cask font-jetbrains-mono-nerd-font'
+    Write-WarnMsg '  Windows (winget):  winget install DEVCOM.JetBrainsMonoNerdFont'
+    Write-WarnMsg '  Linux:             copy the .ttf or .otf files to ~/.local/share/fonts, then run: fc-cache -f'
+    Write-WarnMsg '  Any system:        https://www.nerdfonts.com/font-downloads'
+    Write-WarnMsg 'Then switch the font of your terminal to the Nerd Font. This check cannot read the terminal font, so it cannot confirm the switch.'
+    Write-WarnMsg 'If the icons still look broken, use the safe fallback vintelli.icons=ascii. Set VINTELLI_SKIP_FONT_CHECK=1 to skip this check.'
+}
+
+function Invoke-FontCheck {
+    if ($env:VINTELLI_SKIP_FONT_CHECK -eq '1') {
+        return
+    }
+    try {
+        if (Test-TerminalWithNerdGlyphs) {
+            return
+        }
+        $face = Get-WindowsTerminalFontFace
+        if ($face -and (Test-NerdFontName -Name $face)) {
+            return
+        }
+        if ($face -and (@('Consolas', 'Courier New', 'Lucida Console', 'Cascadia Mono', 'Cascadia Code') -contains $face)) {
+            Write-FontWarning -Headline "Windows Terminal uses the font '$face' for the default profile, which has little or no Nerd Font glyph support. The file icons, the tool window stripe icons and the tree arrows may show as boxes, blanks or overlapping characters."
+            return
+        }
+        if (Test-NerdFontInstalled) {
+            return
+        }
+        Write-FontWarning -Headline 'No Nerd Font was found on this machine. The file icons, the tool window stripe icons and the tree arrows may show as boxes, blanks or overlapping characters.'
+    } catch {
+        Write-WarnMsg "Font check could not complete: $($_.Exception.Message)"
+    }
+}
+
 try {
     Parse-Arguments -InputArgs $args
     Resolve-InstallPaths
@@ -958,6 +1119,7 @@ try {
     Invoke-SmokeTest
     Remove-Backup
     Set-PathConfiguration
+    Invoke-FontCheck
 
     Write-Host ""
     Write-Ok "Vintelli installation complete!"

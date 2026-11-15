@@ -52,6 +52,9 @@ may still show boxes or blanks for the glyphs. In that case set
 `vintelli.icons=ascii`. The explicit values `nerd` and `ascii` always win and
 skip every rule above.
 
+The install scripts run the same kind of check once after installation and
+warn when no Nerd Font is found; see [font check](installation.md#font-check).
+
 On a terminal that is not kitty, Ghostty or WezTerm, a glyph from the private use area
 shows as a tofu box, a blank or an overlapping character, depending on the font.
 Set `vintelli.icons=nerd` there only when the font is patched. Each entry
