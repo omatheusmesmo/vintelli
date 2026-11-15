@@ -60,6 +60,7 @@ editor_definition,Ctrl+B,Ctrl+B,same,"Go to Declaration; F12 is Jump to Last Too
 editor_usages,Alt+F7,Alt+F7,same,"Find Usages"
 editor_toggleImportFold,Alt+I,,vintelli-only,"Folds or unfolds imports; no IntelliJ chord confirmed"
 editor_toggleBreakpoint,Ctrl+F8,Ctrl+F8,same,"Toggle Line Breakpoint; Ctrl+B is Go to Declaration"
+editor_editBreakpointCondition,Alt+F8,,vintelli-only,"Edits the condition of the breakpoint on the caret line; IntelliJ offers conditions only from its gutter menu"
 editor_nextProblem,F2,F2,same,"Next Highlighted Error; the bare F2 trigger refuses Shift, and F8 is left unbound (docs/keymap.md)"
 editor_previousProblem,Shift+F2,Shift+F2,same,"Previous Highlighted Error on its own Shift+F2 trigger (docs/keymap.md)"
 editor_quickFix,Alt+Enter,Alt+Enter,same,"Quick fixes from the language server for the selection or caret, offered in a popup (docs/keymap.md)"

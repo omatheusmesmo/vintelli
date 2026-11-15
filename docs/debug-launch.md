@@ -60,6 +60,32 @@ location. Inspection is requested on demand and runs off the render thread;
 late results from a prior session or frame are discarded. The window reports
 unavailable, running, loading, empty and failed states separately.
 
+## Evaluate an expression
+
+With a stopped frame selected in the Debug tool window, press `e`, type a Java
+expression and press Enter to review it. Evaluation runs code in the debuggee,
+so the window then asks for a second key: `y` runs the expression in the selected
+frame, and any other key cancels. Nothing runs on Enter alone. The result comes
+from the debug adapter's evaluate response, never from the displayed variable
+text. Values longer than 1000 characters are shortened and marked as truncated.
+The adapter has 5 seconds to answer. Adapter errors, unsupported evaluation and
+timeouts appear as a failed line in the window. If the debuggee resumes before the
+answer arrives, the result is reported as discarded instead of being shown as
+current. Side effects of a confirmed expression stay in the debuggee.
+
+## Conditional breakpoints
+
+Put the cursor on a breakpoint line and run **Edit Breakpoint Condition**
+(`Alt+F8`). Enter saves the Java condition and an empty condition clears it. The
+condition is one line of at most 500 characters and is stored with the breakpoint
+in the same per-project file as its line. Changing a condition keeps the line
+anchor, and the condition moves with the line when the text above it changes.
+The toolbar and each edit send the complete source breakpoint set, including
+conditions, to the Debug provider. The adapter reports a malformed condition as a
+rejected breakpoint with its message. An adapter that does not advertise
+conditional breakpoints rejects only the conditioned lines, and it never receives
+them as unconditional breakpoints.
+
 ## Source breakpoints
 
 Click a line's gutter marker or run **Toggle Line Breakpoint** (`Ctrl+F8`) to

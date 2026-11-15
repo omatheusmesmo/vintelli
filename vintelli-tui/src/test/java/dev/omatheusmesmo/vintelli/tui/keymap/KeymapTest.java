@@ -172,7 +172,7 @@ class KeymapTest {
                 "editor_cut", "editor_copy", "editor_paste", "editor_duplicateLine", "editor_selectAll",
                 "editor_close", "editor_nextTab", "editor_previousTab", "editor_definition",
                 "editor_usages", "editor_nextProblem", "editor_previousProblem", "editor_quickFix", "editor_toggleImportFold",
-                "editor_toggleBreakpoint",
+                "editor_toggleBreakpoint", "editor_editBreakpointCondition",
                 "navigation_goToFile", "navigation_findInFiles", "navigation_goToLine",
                 "navigation_focusBreadcrumbs",
                 "layout_project_wider", "layout_project_narrower", "layout_bottom_taller", "layout_bottom_shorter",

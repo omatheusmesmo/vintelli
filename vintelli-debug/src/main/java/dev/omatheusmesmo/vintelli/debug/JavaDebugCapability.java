@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -39,6 +40,8 @@ import java.util.stream.Collectors;
 
 import org.eclipse.lsp4j.debug.Capabilities;
 import org.eclipse.lsp4j.debug.ConfigurationDoneArguments;
+import org.eclipse.lsp4j.debug.EvaluateArguments;
+import org.eclipse.lsp4j.debug.EvaluateResponse;
 import org.eclipse.lsp4j.debug.ContinuedEventArguments;
 import org.eclipse.lsp4j.debug.DisconnectArguments;
 import org.eclipse.lsp4j.debug.InitializeRequestArguments;
@@ -84,6 +87,8 @@ import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugSessionSna
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugThread;
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugFrame;
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugCapabilities;
+import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.EvaluationRequest;
+import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.EvaluationResult;
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.State;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import dev.omatheusmesmo.vintelli.api.capability.RunCapability;
@@ -109,6 +114,9 @@ public final class JavaDebugCapability implements DebugCapability {
     private static final int MAX_ACTIVE_SESSIONS = 8;
     private static final int MAX_RETAINED_SESSIONS = 32;
     private static final int OUTPUT_QUEUE_CAPACITY = 256;
+    private static final int MAX_EVALUATION_VALUE_CHARS = 1000;
+    private static final int MAX_EVALUATION_TYPE_CHARS = 200;
+    private static final String CONDITIONS_UNSUPPORTED = "Conditional breakpoints are not supported by this adapter";
 
     private final boolean enabled;
     private final JavaDebugAdapterPort adapter;
@@ -347,7 +355,8 @@ public final class JavaDebugCapability implements DebugCapability {
             String resolvedSource = resolvedSources.size() == 1 ? resolvedSources.getFirst() : sourcePath;
             Integer resolvedLine = everyReportResolved && resolvedLines.size() == 1 && resolvedSources.size() == 1
                     ? resolvedLines.getFirst() : null;
-            return new DebugCapability.SourceBreakpoint(sourcePath, point.line(), state, message, resolvedLine, resolvedSource);
+            return new DebugCapability.SourceBreakpoint(sourcePath, point.line(), state, message, resolvedLine,
+                    resolvedSource, point.condition());
         }).toList();
         return CapabilityResult.ok(result);
     }
@@ -471,6 +480,7 @@ public final class JavaDebugCapability implements DebugCapability {
         private volatile RunHandle runHandle;
         private volatile boolean terminal;
         private volatile DebugCapabilities debugCapabilities = new DebugCapabilities(false, false, false, false, false);
+        private volatile boolean conditionalBreakpoints;
         private final AtomicBoolean executionRequestPending = new AtomicBoolean();
         private long stopGeneration;
         private PendingExecution pendingExecution;
@@ -538,6 +548,7 @@ public final class JavaDebugCapability implements DebugCapability {
                 throw new IOException("The Java debug adapter does not support configurationDone");
             }
             debugCapabilities = new DebugCapabilities(true, false, true, true, true, false);
+            conditionalBreakpoints = Boolean.TRUE.equals(capabilities.getSupportsConditionalBreakpoints());
             if (isTerminal()) {
                 throw new IOException("The debug adapter ended during initialization");
             }
@@ -1130,8 +1141,28 @@ public final class JavaDebugCapability implements DebugCapability {
             IDebugProtocolServer protocol = server;
             if (protocol == null || isTerminal()) {
                 return CapabilityResult.ok(requested.stream().map(point -> new DebugCapability.SourceBreakpoint(
-                        sourcePath, point.line())).toList());
+                        sourcePath, point.line(), DebugCapability.BreakpointState.PENDING, "", null, sourcePath,
+                        point.condition())).toList());
             }
+            List<DebugCapability.SourceBreakpoint> sendable = requested.stream().filter(this::conditionSupported).toList();
+            Iterator<DebugCapability.SourceBreakpoint> reported = sendSourceBreakpoints(protocol, sourcePath, sendable)
+                    .iterator();
+            List<DebugCapability.SourceBreakpoint> outcomes = new ArrayList<>(requested.size());
+            for (DebugCapability.SourceBreakpoint point : requested) {
+                outcomes.add(conditionSupported(point) ? reported.next()
+                        : new DebugCapability.SourceBreakpoint(sourcePath, point.line(),
+                                DebugCapability.BreakpointState.REJECTED, CONDITIONS_UNSUPPORTED, null, sourcePath,
+                                point.condition()));
+            }
+            return CapabilityResult.ok(List.copyOf(outcomes));
+        }
+
+        private boolean conditionSupported(DebugCapability.SourceBreakpoint point) {
+            return conditionalBreakpoints || point.condition().isBlank();
+        }
+
+        private List<DebugCapability.SourceBreakpoint> sendSourceBreakpoints(IDebugProtocolServer protocol,
+                String sourcePath, List<DebugCapability.SourceBreakpoint> requested) {
             Source source = new Source();
             source.setPath(sourcePath);
             SetBreakpointsArguments arguments = new SetBreakpointsArguments();
@@ -1158,12 +1189,60 @@ public final class JavaDebugCapability implements DebugCapability {
                     applied.add(new DebugCapability.SourceBreakpoint(sourcePath, point.line(), state, message,
                             resolvedLine, resolvedPath));
                 }
-                return CapabilityResult.ok(List.copyOf(applied));
+                return List.copyOf(applied);
             } catch (Exception failure) {
                 String reason = failureReason(failure);
-                return CapabilityResult.ok(requested.stream().map(point -> new DebugCapability.SourceBreakpoint(
-                        sourcePath, point.line(), DebugCapability.BreakpointState.REJECTED, reason)).toList());
+                return requested.stream().map(point -> new DebugCapability.SourceBreakpoint(
+                        sourcePath, point.line(), DebugCapability.BreakpointState.REJECTED, reason, null, sourcePath,
+                        point.condition())).toList();
             }
+        }
+
+        @Override
+        public CapabilityResult<DebugCapability.EvaluationResult> evaluate(DebugCapability.EvaluationRequest request) {
+            IDebugProtocolServer protocol = server;
+            if (protocol == null || isTerminal()) {
+                return CapabilityResult.failed(new CapabilityFailure("The debug session is not active", ""));
+            }
+            if (!request.confirmed()) {
+                return CapabilityResult.failed(new CapabilityFailure(
+                        "Evaluation runs code in the debuggee and requires explicit confirmation", ""));
+            }
+            long generation = request.expectedInspectionGeneration();
+            if (snapshot().state() != State.STOPPED || inspectionGeneration() != generation) {
+                return CapabilityResult.failed(new CapabilityFailure("The debug stop changed before evaluation", ""));
+            }
+            EvaluateArguments arguments = new EvaluateArguments();
+            arguments.setExpression(request.expression());
+            arguments.setFrameId(request.frameId());
+            arguments.setContext("repl");
+            try {
+                EvaluateResponse response = awaitInspection(protocol.evaluate(arguments), requestTimeout);
+                if (isTerminal() || inspectionGeneration() != generation) {
+                    return CapabilityResult.failed(new CapabilityFailure(
+                            "The debug stop changed during evaluation", ""));
+                }
+                return CapabilityResult.ok(boundedResult(response));
+            } catch (TimeoutException timedOut) {
+                return CapabilityResult.failed(new CapabilityFailure(
+                        "The debug adapter did not answer the evaluation within " + requestTimeout.toSeconds()
+                                + " seconds", ""));
+            } catch (Exception failure) {
+                if (isExplicitUnsupportedRequest(failure)) {
+                    return CapabilityResult.failed(new CapabilityFailure("Evaluation is not supported by this adapter", ""));
+                }
+                return CapabilityResult.failed(new CapabilityFailure(failureReason(failure), ""));
+            }
+        }
+
+        private DebugCapability.EvaluationResult boundedResult(EvaluateResponse response) {
+            String value = response.getResult() == null ? "" : response.getResult();
+            String type = response.getType() == null ? "" : response.getType();
+            boolean truncated = value.length() > MAX_EVALUATION_VALUE_CHARS;
+            return new DebugCapability.EvaluationResult(
+                    truncated ? value.substring(0, MAX_EVALUATION_VALUE_CHARS) + "..." : value,
+                    type.length() > MAX_EVALUATION_TYPE_CHARS ? type.substring(0, MAX_EVALUATION_TYPE_CHARS) : type,
+                    truncated);
         }
 
         @Override

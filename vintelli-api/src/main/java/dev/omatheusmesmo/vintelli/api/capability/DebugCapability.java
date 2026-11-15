@@ -130,7 +130,9 @@ public interface DebugCapability extends ProviderDescriptor {
     enum BreakpointState { PENDING, VERIFIED, REJECTED }
 
     record SourceBreakpoint(String sourcePath, int line, BreakpointState state, String message,
-            Integer resolvedLine, String resolvedSourcePath) {
+            Integer resolvedLine, String resolvedSourcePath, String condition) {
+        public static final int MAX_CONDITION_LENGTH = 500;
+
         public SourceBreakpoint {
             if (sourcePath == null || sourcePath.isBlank()) {
                 throw new IllegalArgumentException("Breakpoint source path is required");
@@ -146,14 +148,70 @@ public interface DebugCapability extends ProviderDescriptor {
             message = message == null ? "" : message;
             resolvedSourcePath = resolvedSourcePath == null || resolvedSourcePath.isBlank()
                     ? sourcePath : resolvedSourcePath.trim();
+            condition = normalizeCondition(condition);
+        }
+
+        public SourceBreakpoint(String sourcePath, int line, BreakpointState state, String message,
+                Integer resolvedLine, String resolvedSourcePath) {
+            this(sourcePath, line, state, message, resolvedLine, resolvedSourcePath, "");
         }
 
         public SourceBreakpoint(String sourcePath, int line) {
-            this(sourcePath, line, BreakpointState.PENDING, "", null, sourcePath);
+            this(sourcePath, line, BreakpointState.PENDING, "", null, sourcePath, "");
         }
 
         public SourceBreakpoint(String sourcePath, int line, BreakpointState state, String message) {
-            this(sourcePath, line, state, message, null, sourcePath);
+            this(sourcePath, line, state, message, null, sourcePath, "");
+        }
+
+        private static String normalizeCondition(String value) {
+            String trimmed = value == null ? "" : value.strip();
+            if (trimmed.indexOf('\n') >= 0 || trimmed.indexOf('\r') >= 0) {
+                throw new IllegalArgumentException("A breakpoint condition must be one line");
+            }
+            if (trimmed.length() > MAX_CONDITION_LENGTH) {
+                throw new IllegalArgumentException("A breakpoint condition can have at most "
+                        + MAX_CONDITION_LENGTH + " characters");
+            }
+            return trimmed;
+        }
+    }
+
+    /**
+     * An expression to evaluate in one stack frame of a suspended thread. Evaluation runs code in
+     * the debuggee, so providers require {@code confirmed} to be true.
+     *
+     * @param frameId the frame reported by {@link DebugSession#stackTrace(int)}
+     * @param expression one line of Java source, at most {@link #MAX_EXPRESSION_LENGTH} characters
+     * @param expectedInspectionGeneration the stop the frame was read from; a newer stop rejects the request
+     * @param confirmed true only after the user explicitly approved running the expression
+     */
+    record EvaluationRequest(int frameId, String expression, long expectedInspectionGeneration, boolean confirmed) {
+        public static final int MAX_EXPRESSION_LENGTH = 1000;
+
+        public EvaluationRequest {
+            if (frameId < 0) {
+                throw new IllegalArgumentException("Frame identifiers are not negative");
+            }
+            expression = expression == null ? "" : expression.strip();
+            if (expression.isEmpty()) {
+                throw new IllegalArgumentException("An expression is required");
+            }
+            if (expression.indexOf('\n') >= 0 || expression.indexOf('\r') >= 0) {
+                throw new IllegalArgumentException("An expression must be one line");
+            }
+            if (expression.length() > MAX_EXPRESSION_LENGTH) {
+                throw new IllegalArgumentException("An expression can have at most " + MAX_EXPRESSION_LENGTH
+                        + " characters");
+            }
+        }
+    }
+
+    /** The debuggee's answer to an evaluation; {@code truncated} is set when the value was shortened. */
+    record EvaluationResult(String value, String type, boolean truncated) {
+        public EvaluationResult {
+            value = value == null ? "" : value;
+            type = type == null ? "" : type;
         }
     }
 
@@ -223,6 +281,15 @@ public interface DebugCapability extends ProviderDescriptor {
                 return CapabilityResult.failed(new CapabilityFailure("The debug stop changed before frame selection", ""));
             }
             return selectFrame(frame);
+        }
+
+        /**
+         * Evaluates one expression in the requested frame of the current stop. Providers reject
+         * requests without confirmation, for a frame from an earlier stop, and results that arrive
+         * after the debuggee resumed.
+         */
+        default CapabilityResult<EvaluationResult> evaluate(EvaluationRequest request) {
+            return CapabilityResult.failed(new CapabilityFailure("Evaluation is not supported", ""));
         }
 
         default CapabilityResult<Boolean> resume() { return unsupported("Resume"); }

@@ -18,6 +18,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.eclipse.lsp4j.debug.Capabilities;
+import org.eclipse.lsp4j.debug.EvaluateArguments;
+import org.eclipse.lsp4j.debug.EvaluateResponse;
 import org.eclipse.lsp4j.debug.ConfigurationDoneArguments;
 import org.eclipse.lsp4j.debug.ContinueArguments;
 import org.eclipse.lsp4j.debug.ContinueResponse;
@@ -66,6 +68,9 @@ final class DapTwin implements AutoCloseable {
     private volatile List<Integer> breakpointLines = List.of();
     private final List<String> executionActions = new CopyOnWriteArrayList<>();
     private final AtomicInteger stackTraceCalls = new AtomicInteger();
+    private final List<String> evaluations = new CopyOnWriteArrayList<>();
+    private final AtomicInteger counter = new AtomicInteger();
+    private volatile List<String> breakpointConditions = List.of();
 
     DapTwin(Mode mode) throws IOException {
         this.mode = mode;
@@ -86,6 +91,8 @@ final class DapTwin implements AutoCloseable {
     }
 
     List<String> executionActions() { return List.copyOf(executionActions); }
+    List<String> evaluations() { return List.copyOf(evaluations); }
+    List<String> breakpointConditions() { return breakpointConditions; }
     int stackTraceCalls() { return stackTraceCalls.get(); }
     void releaseStaleStackTrace() { connections.forEach(Connection::releaseStaleStackTrace); }
 
@@ -144,7 +151,29 @@ final class DapTwin implements AutoCloseable {
         ACK_BEFORE_EVENT,
         UNSUPPORTED_PAUSE,
         PAUSE_NO_EVENT,
-        STALE_STACK_TRACE
+        STALE_STACK_TRACE,
+        UNSUPPORTED_CONDITIONS,
+        EVALUATE_UNSUPPORTED,
+        EVALUATE_NO_RESPONSE,
+        EVALUATE_HOLD
+    }
+
+    static EvaluateResponse evaluateResponse(String result, String type) {
+        EvaluateResponse response = new EvaluateResponse();
+        response.setResult(result);
+        response.setType(type);
+        response.setVariablesReference(0);
+        return response;
+    }
+
+    static boolean malformedCondition(String condition) {
+        if (condition == null || condition.isBlank()) {
+            return false;
+        }
+        long open = condition.chars().filter(character -> character == '(').count();
+        long close = condition.chars().filter(character -> character == ')').count();
+        String trimmed = condition.strip();
+        return open != close || List.of("&&", "||", "==", "!=", "+", "-", ".").stream().anyMatch(trimmed::endsWith);
     }
 
     final class Connection {
@@ -163,6 +192,7 @@ final class DapTwin implements AutoCloseable {
         private volatile Integer targetPort;
         private volatile CompletableFuture<StackTraceResponse> staleStackTrace;
         private volatile Runnable delayedExecutionEvent;
+        private volatile CompletableFuture<EvaluateResponse> heldEvaluation;
 
         private Connection(Socket socket, int connectionNumber) {
             this.socket = socket;
@@ -244,6 +274,10 @@ final class DapTwin implements AutoCloseable {
             CompletableFuture<StackTraceResponse> pending = staleStackTrace;
             if (pending != null) pending.complete(server.stackTraceResponse(12));
         }
+        void releaseHeldEvaluation() {
+            CompletableFuture<EvaluateResponse> held = heldEvaluation;
+            if (held != null) held.complete(evaluateResponse("42", "int"));
+        }
         void releaseDelayedExecutionEvent() {
             Runnable event = delayedExecutionEvent;
             if (event != null) event.run();
@@ -255,6 +289,7 @@ final class DapTwin implements AutoCloseable {
             public CompletableFuture<Capabilities> initialize(InitializeRequestArguments arguments) {
                 Capabilities capabilities = new Capabilities();
                 capabilities.setSupportsConfigurationDoneRequest(mode != Mode.UNSUPPORTED);
+                capabilities.setSupportsConditionalBreakpoints(mode != Mode.UNSUPPORTED_CONDITIONS);
                 return CompletableFuture.completedFuture(capabilities);
             }
 
@@ -365,6 +400,37 @@ final class DapTwin implements AutoCloseable {
                 return CompletableFuture.completedFuture(null);
             }
 
+            @Override public CompletableFuture<EvaluateResponse> evaluate(EvaluateArguments arguments) {
+                String expression = arguments.getExpression();
+                evaluations.add(expression);
+                if (mode == Mode.EVALUATE_UNSUPPORTED) {
+                    return CompletableFuture.failedFuture(new ResponseErrorException(new ResponseError(
+                            ResponseErrorCode.MethodNotFound, "Evaluate request is not supported", null)));
+                }
+                if (mode == Mode.EVALUATE_NO_RESPONSE) {
+                    return new CompletableFuture<>();
+                }
+                if (mode == Mode.EVALUATE_HOLD) {
+                    heldEvaluation = new CompletableFuture<>();
+                    return heldEvaluation;
+                }
+                if (expression.startsWith("missing")) {
+                    return CompletableFuture.failedFuture(new ResponseErrorException(new ResponseError(
+                            ResponseErrorCode.InternalError, "Cannot find symbol: " + expression, null)));
+                }
+                if ("counter++".equals(expression)) {
+                    return CompletableFuture.completedFuture(evaluateResponse(
+                            String.valueOf(counter.getAndIncrement()), "int"));
+                }
+                if ("counter".equals(expression)) {
+                    return CompletableFuture.completedFuture(evaluateResponse(String.valueOf(counter.get()), "int"));
+                }
+                if ("large".equals(expression)) {
+                    return CompletableFuture.completedFuture(evaluateResponse("x".repeat(2500), "String"));
+                }
+                return CompletableFuture.completedFuture(evaluateResponse("42", "int"));
+            }
+
             @Override public CompletableFuture<Void> next(NextArguments arguments) {
                 executionActions.add("stepOver");
                 if (mode == Mode.ACK_BEFORE_EVENT) {
@@ -398,12 +464,16 @@ final class DapTwin implements AutoCloseable {
                 List<SourceBreakpoint> requested = arguments.getBreakpoints() == null ? List.of()
                         : List.of(arguments.getBreakpoints());
                 breakpointLines = requested.stream().map(SourceBreakpoint::getLine).toList();
+                breakpointConditions = requested.stream()
+                        .map(sourceBreakpoint -> sourceBreakpoint.getCondition() == null ? "" : sourceBreakpoint.getCondition())
+                        .toList();
                 SetBreakpointsResponse response = new SetBreakpointsResponse();
                 response.setBreakpoints(requested.stream().map(sourceBreakpoint -> {
                     Breakpoint breakpoint = new Breakpoint();
                     breakpoint.setLine(sourceBreakpoint.getLine());
+                    boolean malformed = malformedCondition(sourceBreakpoint.getCondition());
                     boolean verified = (mode != Mode.REJECT_BREAKPOINT || sourceBreakpoint.getLine() != 4)
-                            && (mode != Mode.REJECT_SECOND_SESSION || connectionNumber != 2);
+                            && (mode != Mode.REJECT_SECOND_SESSION || connectionNumber != 2) && !malformed;
                     breakpoint.setVerified(verified);
                     if (mode == Mode.RESOLVE_BREAKPOINT) {
                         breakpoint.setLine(sourceBreakpoint.getLine() + 1);
@@ -411,7 +481,9 @@ final class DapTwin implements AutoCloseable {
                         resolved.setPath("/mapped/Main.java");
                         breakpoint.setSource(resolved);
                     }
-                    if (!verified) {
+                    if (malformed) {
+                        breakpoint.setMessage("Malformed breakpoint condition");
+                    } else if (!verified) {
                         breakpoint.setMessage("Source line is not executable");
                     }
                     return breakpoint;

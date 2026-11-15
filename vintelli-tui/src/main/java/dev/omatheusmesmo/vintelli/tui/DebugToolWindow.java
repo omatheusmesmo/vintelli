@@ -23,6 +23,8 @@ import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugVariable;
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugThread;
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugSession;
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugSessionSnapshot;
+import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.EvaluationRequest;
+import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.EvaluationResult;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.style.Style;
 import dev.tamboui.terminal.Frame;
@@ -60,6 +62,10 @@ public final class DebugToolWindow implements ToolWindow {
     private volatile Future<?> pending;
     private volatile String selectedSessionId = "";
     private volatile long selectedInspectionGeneration = -1;
+    private final DebugEvaluationPrompt evaluation = new DebugEvaluationPrompt();
+    private volatile String evaluatedExpression;
+    private volatile CapabilityResult<EvaluationResult> evaluationResult;
+    private volatile long evaluationStop = -1;
 
     @Inject
     public DebugToolWindow(Provider<ShellThemes> themes, RunToolWindow run, UiWorkQueue uiWork) {
@@ -79,6 +85,8 @@ public final class DebugToolWindow implements ToolWindow {
     String statusMessage() { return status; }
 
     @Override public boolean handleKey(KeyEvent event) {
+        if (evaluation.active()) { handleEvaluationKey(event); return true; }
+        if (event.isCharIgnoreCase('e')) { startEvaluation(); return true; }
         List<String> rows = renderModel(Rect.ZERO).rows();
         if (event.isKey(KeyCode.UP) || event.isCharIgnoreCase('k')) { selection = Math.max(0, selection - 1); return true; }
         if (event.isKey(KeyCode.DOWN) || event.isCharIgnoreCase('j')) { selection = Math.min(Math.max(0, rows.size()-1), selection + 1); return true; }
@@ -107,15 +115,100 @@ public final class DebugToolWindow implements ToolWindow {
         return true;
     }
 
+    private void startEvaluation() {
+        DebugSession session = run.activeDebugSession();
+        DebugSessionSnapshot snapshot = session == null ? null : session.snapshot();
+        boolean inspectable = snapshot != null && snapshot.state() == DebugCapability.State.STOPPED
+                && snapshot.id().equals(selectedSessionId) && selectedInspectionGeneration == session.inspectionGeneration()
+                && !frames.isEmpty();
+        if (!inspectable) { status = "Stop at a breakpoint and select a frame before evaluating"; return; }
+        evaluation.start();
+        status = "Type an expression for the selected frame; Enter reviews it";
+    }
+
+    private void handleEvaluationKey(KeyEvent event) {
+        if (evaluation.phase() == DebugEvaluationPrompt.Phase.CONFIRM) {
+            if (event.isCharIgnoreCase('y')) { evaluation.confirm().ifPresent(this::runEvaluation); }
+            else { evaluation.cancel(); status = "Evaluation cancelled"; }
+            return;
+        }
+        switch (OverlayInput.key(event)) {
+            case ESCAPE -> { evaluation.cancel(); status = "Evaluation cancelled"; }
+            case ENTER -> status = evaluation.submit()
+                    ? "Run \"" + evaluation.text() + "\" in the debuggee? It executes code and may change state; y runs it, any other key cancels"
+                    : "Evaluation cancelled: the expression is empty";
+            case BACKSPACE -> evaluation.backspace();
+            case TEXT -> evaluation.type(event.codePoint());
+            default -> { }
+        }
+    }
+
+    private void runEvaluation(String expression) {
+        DebugSession session = run.activeDebugSession();
+        if (session == null || frames.isEmpty()) { status = "Evaluation needs a stopped frame"; return; }
+        long inspectionGeneration = session.inspectionGeneration();
+        if (inspectionGeneration != selectedInspectionGeneration || session.snapshot().state() != DebugCapability.State.STOPPED) {
+            status = "The debug stop changed; press r to inspect again";
+            return;
+        }
+        DebugFrame frame = frames.get(Math.min(frameIndex, frames.size() - 1));
+        EvaluationRequest evaluationRequest;
+        try {
+            evaluationRequest = new EvaluationRequest(frame.frameId(), expression, inspectionGeneration, true);
+        } catch (IllegalArgumentException invalid) {
+            status = "Evaluation rejected: " + invalid.getMessage();
+            return;
+        }
+        evaluatedExpression = evaluationRequest.expression();
+        evaluationStop = inspectionGeneration;
+        evaluationResult = null;
+        status = "Evaluating...";
+        long token = generation.incrementAndGet();
+        request(session, token, inspectionGeneration, () -> session.evaluate(evaluationRequest), result -> {
+            evaluationResult = result;
+            status = result instanceof CapabilityResult.Ok ? "Evaluation finished" : "Evaluation failed";
+        });
+    }
+
+    private List<String> evaluationLines(long currentGeneration) {
+        List<String> lines = new ArrayList<>();
+        if (evaluation.active()) {
+            lines.add(evaluation.phase() == DebugEvaluationPrompt.Phase.CONFIRM
+                    ? "Run \"" + evaluation.text() + "\" in the debuggee? y runs it, any other key cancels"
+                    : "Evaluate: " + evaluation.text() + "_  (Enter reviews it, empty cancels)");
+        }
+        if (evaluatedExpression == null) return lines;
+        lines.add("Evaluation: " + evaluatedExpression);
+        CapabilityResult<EvaluationResult> result = evaluationResult;
+        if (evaluationStop != currentGeneration) {
+            lines.add("  discarded: the debug stop changed before the result arrived");
+        } else if (result == null) {
+            lines.add("  evaluating...");
+        } else if (result instanceof CapabilityResult.Ok<EvaluationResult> ok) {
+            EvaluationResult value = ok.value();
+            lines.add("  = " + value.value() + (value.type().isBlank() ? "" : " : " + value.type())
+                    + (value.truncated() ? " (truncated)" : ""));
+        } else {
+            lines.add("  failed: " + ((CapabilityResult.Failed<EvaluationResult>) result).failure().reason());
+        }
+        return lines;
+    }
+
+    private void clearEvaluation() {
+        evaluation.cancel(); evaluatedExpression = null; evaluationResult = null; evaluationStop = -1;
+    }
+
     private void refresh() {
         DebugSession session = run.activeDebugSession();
         if (session == null) {
+            clearEvaluation();
             cancelPending(); generation.incrementAndGet(); selectedSessionId = ""; selectedInspectionGeneration = -1;
             status = "No debug session is active"; threads = List.of(); frames = List.of(); clearInspection();
             return;
         }
         DebugSessionSnapshot snapshot = session.snapshot();
         if (!snapshot.id().equals(selectedSessionId)) {
+            clearEvaluation();
             cancelPending(); generation.incrementAndGet(); selectedSessionId = snapshot.id();
             selectedInspectionGeneration = -1;
             threads = List.of(); frames = List.of(); clearInspection(); threadIndex = frameIndex = selection = 0;
@@ -297,7 +390,8 @@ public final class DebugToolWindow implements ToolWindow {
             appendVariables(lines, selectableLines, rows, scope.variablesReference(), 1,
                     variableCache, expandedReferences, new HashSet<>(), remainingVariableRows);
         }
-        lines.add("j/k select  Enter inspect  r refresh");
+        if (session != null) lines.addAll(evaluationLines(inspectionGeneration));
+        lines.add("j/k select  Enter inspect  r refresh  e evaluate");
         int currentSelection = Math.clamp(selection, 0, Math.max(0, rows.size() - 1));
         if (!rows.isEmpty()) {
             int selectedLine = selectableLines.get(currentSelection);
