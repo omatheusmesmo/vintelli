@@ -9,8 +9,10 @@ import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import dev.omatheusmesmo.vintelli.tui.menu.MenuEntry;
 import dev.tamboui.layout.Constraint;
 import dev.tamboui.layout.Rect;
+import dev.tamboui.style.Style;
 import dev.tamboui.terminal.Frame;
 import dev.tamboui.text.CharWidth;
+import dev.tamboui.text.Span;
 import dev.tamboui.toolkit.Toolkit;
 import dev.tamboui.toolkit.element.DefaultRenderContext;
 import dev.tamboui.toolkit.element.Element;
@@ -45,6 +47,18 @@ final class ProjectPanel implements Element {
     private static final int INDENT_WIDTH = 2;
     private static final int MARKER_WIDTH = 2;
     private static final String ELLIPSIS = "…";
+    private static final Style DIM = Style.EMPTY.dim();
+
+    /**
+     * The text of a row, the cell column where its icon starts (-1 when the icon
+     * is cut away) and the icon span, which keeps the kind colour of the icon.
+     */
+    private record Label(String text, int iconColumn, Span icon) {
+
+        Label withText(String shown) {
+            return new Label(shown, iconColumn, icon);
+        }
+    }
 
     interface Host {
 
@@ -555,59 +569,101 @@ final class ProjectPanel implements Element {
         int selectedIndex = controller.selected();
         List<StyledElement<?>> labels = new ArrayList<>();
         for (int index = 0; index < nodes.size(); index++) {
-            String label = dropColumns(nodeLabel(nodes.get(index)), left);
+            ProjectNode node = nodes.get(index);
+            Label label = dropColumns(nodeLabel(node), left);
             if (clipped && index == selectedIndex) {
-                label = controller.marqueeEnabled() ? scrolledLabel(nodes.get(index), label)
-                        : clipEnd(label, viewColumns);
+                label = controller.marqueeEnabled() ? scrolledLabel(node, label)
+                        : label.withText(clipEnd(label.text(), viewColumns));
             }
-            labels.add(nodeRow(nodes.get(index), label));
+            labels.add(nodeRow(node, label));
         }
         return labels;
     }
 
-    private StyledElement<?> nodeRow(ProjectNode node, String label) {
-        if (!node.dependency || node.scope.isBlank()) {
-            return Toolkit.text(label);
-        }
-        String suffix = dependencySuffix(node);
-        if (!label.endsWith(suffix)) {
-            return Toolkit.text(label);
-        }
-        return Toolkit.row(Toolkit.text(label.substring(0, label.length() - suffix.length())),
-                Toolkit.text(suffix).dim()).spacing(0);
+    private StyledElement<?> nodeRow(ProjectNode node, Label label) {
+        String suffix = node.dependency && !node.scope.isBlank() ? dependencySuffix(node) : "";
+        int suffixStart = label.text().endsWith(suffix) ? label.text().length() - suffix.length()
+                : label.text().length();
+        return new ProjectRowElement(spans(label, suffixStart));
     }
 
-    private String nodeLabel(ProjectNode node) {
-        StringBuilder label = new StringBuilder(" ".repeat(node.depth() * INDENT_WIDTH));
-        if (node.directory) {
-            label.append(disclosureGlyph(node)).append(' ');
-        } else {
-            label.append(vcsSlot(node.relative.toString()));
-        }
+    private Label nodeLabel(ProjectNode node) {
+        String head = " ".repeat(node.depth() * INDENT_WIDTH)
+                + (node.directory ? disclosureGlyph(node) + " " : vcsSlot(node.relative.toString()));
         FileIcon icon = node.directory ? fileIcons.folderIconFor(node.name)
                 : fileIcons.iconFor(node.name, controller.javaKind(node));
+        StringBuilder label = new StringBuilder(head);
         label.append(icon.symbol(fileIcons.mode())).append(' ').append(node.compactName());
         if (node.dependency && !node.scope.isBlank()) {
             label.append(dependencySuffix(node));
         } else if (node.externalLibraries && !node.status.isBlank()) {
             label.append("  ").append(node.status);
         }
-        return label.toString();
+        return new Label(label.toString(), CharWidth.of(head), icon.span(fileIcons.mode()));
+    }
+
+    private static List<Span> spans(Label label, int suffixStart) {
+        String text = label.text();
+        List<Span> spans = new ArrayList<>();
+        int iconStart = iconStart(label);
+        if (iconStart < 0) {
+            addRange(spans, text, 0, suffixStart, Style.EMPTY);
+            addRange(spans, text, suffixStart, text.length(), DIM);
+            return spans;
+        }
+        int iconEnd = iconStart + label.icon().content().length();
+        int dimStart = Math.max(iconEnd, suffixStart);
+        addRange(spans, text, 0, iconStart, Style.EMPTY);
+        spans.add(label.icon());
+        addRange(spans, text, iconEnd, dimStart, Style.EMPTY);
+        addRange(spans, text, dimStart, text.length(), DIM);
+        return spans;
+    }
+
+    private static void addRange(List<Span> spans, String text, int from, int to, Style style) {
+        if (from < to) {
+            spans.add(Span.styled(text.substring(from, to), style));
+        }
+    }
+
+    /**
+     * The char index where the icon symbol starts in the shown text, or -1 when
+     * the icon is cut away or no longer sits at its column.
+     */
+    private static int iconStart(Label label) {
+        if (label.iconColumn() < 0) {
+            return -1;
+        }
+        int start = indexAtColumn(label.text(), label.iconColumn());
+        return start >= 0 && label.text().startsWith(label.icon().content(), start) ? start : -1;
+    }
+
+    private static int indexAtColumn(String text, int column) {
+        int cells = 0;
+        int index = 0;
+        while (index < text.length() && cells < column) {
+            int codePoint = text.codePointAt(index);
+            cells += CharWidth.of(codePoint);
+            index += Character.charCount(codePoint);
+        }
+        return cells == column ? index : -1;
     }
 
     private static String dependencySuffix(ProjectNode node) {
         return "  (" + (node.optional ? "optional, " : "") + node.scope + ")";
     }
 
-    private String scrolledLabel(ProjectNode node, String label) {
+    private Label scrolledLabel(ProjectNode node, Label label) {
         String name = node.compactName();
-        String prefix = label.substring(0, label.length() - name.length());
-        return prefix + Marquee.window(name, controller.marqueeOffset(), viewColumns - CharWidth.of(prefix));
+        String text = label.text();
+        String prefix = text.substring(0, text.length() - name.length());
+        return label.withText(prefix
+                + Marquee.window(name, controller.marqueeOffset(), viewColumns - CharWidth.of(prefix)));
     }
 
     private int selectedLabelWidth() {
         ProjectNode node = controller.selectedNode();
-        return node == null ? 0 : CharWidth.of(nodeLabel(node));
+        return node == null ? 0 : CharWidth.of(nodeLabel(node).text());
     }
 
     private int selectedNameWidth() {
@@ -618,6 +674,11 @@ final class ProjectPanel implements Element {
     private int viewWidth(Rect area) {
         boolean scrollbar = controller.fileCount() > area.height();
         return area.width() - HIGHLIGHT_WIDTH - (scrollbar ? 1 : 0);
+    }
+
+    private static Label dropColumns(Label label, int columns) {
+        int iconColumn = label.iconColumn() >= columns ? label.iconColumn() - columns : -1;
+        return new Label(dropColumns(label.text(), columns), iconColumn, label.icon());
     }
 
     private static String dropColumns(String label, int columns) {

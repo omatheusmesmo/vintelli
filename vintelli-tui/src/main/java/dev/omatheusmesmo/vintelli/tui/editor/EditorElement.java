@@ -96,7 +96,7 @@ final class EditorElement implements Element {
             String name = fileName(tab.file());
             String vcs = editor.vcsState(tab.file()).map(state -> " " + VcsMarkers.of(state)).orElse("");
             String dirty = tab.dirty() ? " " + (ascii ? DIRTY_MARK_ASCII : DIRTY_MARK) : "";
-            FileIcon icon = icons.iconFor(name);
+            FileIcon icon = icons.iconFor(name, editor.javaKindOf(tab.file()));
             labels.add(new EditorTabBarElement.Label(icon.span(icons.mode()), name + vcs + dirty));
             if (tab.active()) {
                 selected = index;

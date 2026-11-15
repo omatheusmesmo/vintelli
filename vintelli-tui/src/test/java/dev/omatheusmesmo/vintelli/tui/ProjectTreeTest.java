@@ -17,6 +17,7 @@ import dev.omatheusmesmo.vintelli.tui.icons.JavaTypeKind;
 import dev.tamboui.buffer.Buffer;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.layout.Size;
+import dev.tamboui.style.Modifier;
 import dev.tamboui.terminal.Frame;
 import dev.tamboui.toolkit.app.ToolkitTestRunner;
 import dev.tamboui.toolkit.element.DefaultRenderContext;
@@ -376,6 +377,58 @@ class ProjectTreeTest {
     private static LongSupplier steadyClock() {
         AtomicLong now = new AtomicLong();
         return () -> now.addAndGet(TimeUnit.MILLISECONDS.toNanos(1));
+    }
+
+    @Test
+    void theScopeOfALibraryRowStaysDimWhileItsIconIsPainted() throws Exception {
+        Files.writeString(project.resolve("pom.xml"), "<project/>");
+        Path jar = project.resolve("cached-library.jar");
+        Files.writeString(jar, "test jar");
+        ProjectDependencyGraph graph = new ProjectDependencyGraph(List.of(new Module("demo", List.of(
+                new LibraryDependency("example", "library", "1.2", "runtime", Disposition.RESOLVED, jar, List.of(),
+                        true)))), false, "Offline cache is incomplete");
+        ProjectDependencyGraphProvider provider = new ProjectDependencyGraphProvider() {
+            @Override public boolean supports(Path projectRoot) { return true; }
+            @Override public ProjectDependencyGraph read(Path projectRoot) { return graph; }
+        };
+        VintelliShell shell = shellWithProject(project, provider);
+        awaitProjectFiles(shell, path -> path.equals(".vintelli-external-libraries"));
+        shell.selectPath(".vintelli-external-libraries");
+        shell.expandSelected();
+        awaitProjectFiles(shell, path -> path.endsWith("/dependency-0"));
+        shell.selectPath(".vintelli-external-libraries/dependency-0");
+
+        Buffer buffer = renderBuffer(shell);
+        int y = rowContaining(buffer, "(optional, runtime)");
+        assertTrue(y >= 0, renderText(shell));
+        int x = rowText(buffer, y).indexOf("(optional, runtime)");
+        assertTrue(buffer.get(x, y).style().addModifiers().contains(Modifier.DIM), rowText(buffer, y));
+    }
+
+    private static Buffer renderBuffer(VintelliShell shell) {
+        Rect area = new Rect(0, 0, 160, 30);
+        Buffer buffer = Buffer.empty(area);
+        DefaultRenderContext context = DefaultRenderContext.createEmpty();
+        context.setStyleEngine(shell.themes().engine());
+        shell.root().render(Frame.forTesting(buffer), area, context);
+        return buffer;
+    }
+
+    private static String rowText(Buffer buffer, int y) {
+        StringBuilder text = new StringBuilder();
+        for (int x = 0; x < buffer.width(); x++) {
+            text.append(buffer.get(x, y).symbol());
+        }
+        return text.toString();
+    }
+
+    private static int rowContaining(Buffer buffer, String text) {
+        for (int y = 0; y < buffer.height(); y++) {
+            if (rowText(buffer, y).contains(text)) {
+                return y;
+            }
+        }
+        return -1;
     }
 
     private static void awaitProjectFiles(VintelliShell shell, java.util.function.Predicate<String> condition)

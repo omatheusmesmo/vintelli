@@ -15,6 +15,8 @@ import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
 import dev.omatheusmesmo.vintelli.tui.ShellThemes;
 import dev.omatheusmesmo.vintelli.tui.ToolWindow;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
+import dev.omatheusmesmo.vintelli.tui.icons.JavaTypeKind;
+import dev.omatheusmesmo.vintelli.tui.icons.JavaTypeKinds;
 import dev.omatheusmesmo.vintelli.tui.keymap.ConfigDirectory;
 import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeymapProfile;
@@ -93,6 +95,7 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     private Map<String, VersionControlCapability.State> vcsStates = Map.of();
     private Map<String, Set<Integer>> vcsChangedLines = Map.of();
     private FileIcons icons;
+    private JavaTypeKinds javaKinds;
     private final EditorClipboard clipboard;
     private Supplier<Keymap> keymap;
 
@@ -186,6 +189,12 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
             icons = FileIcons.resolve();
         }
         return icons;
+    }
+    public synchronized void useJavaTypeKinds(JavaTypeKinds kinds) {
+        javaKinds = kinds;
+    }
+    synchronized JavaTypeKind javaKindOf(String projectRelativeFile) {
+        return javaKinds == null ? null : javaKinds.kindOf(project.resolve(projectRelativeFile).normalize());
     }
     public synchronized void renderTabBar(Frame frame, Rect area, RenderContext context, boolean focused, String focusMark) {
         element.renderTabBar(frame, area, context, focused, focusMark);

@@ -10,7 +10,10 @@ file or folder name (`name.pom.xml`, `name..git`) and per extension
 The color is either a fixed `#RRGGBB` value or an ANSI name such as `red`. The
 built-in mapping uses fixed hex values close to the IntelliJ file type icons,
 so the icons look the same in every terminal theme; an ANSI name is painted in
-the palette of the terminal instead. Lookup order for a file: exact name, then the extension (case
+the palette of the terminal instead. The project tree and the editor tabs paint
+the color on the icon cell only; the file name keeps the text color. A selected
+row of the tree takes the colors of the selection, icon included, because the
+list applies its selection style over the whole row. Lookup order for a file: exact name, then the extension (case
 insensitive, after the last dot), then the default file icon. Folders use the
 exact name, then the default folder icon. Only the last path segment is
 matched, so whole paths can be passed.
@@ -128,8 +131,12 @@ changed. A user `ext.java` entry in the user mapping file replaces the kind
 icons for every Java file, so a user who wants the extension icon keeps it by
 choosing it there.
 
-The kind icons are chosen by the tree only. The editor tabs, the search overlay
-and the navigation bar still show the extension icon.
+The editor tabs take the kind icon from the same cache: a tab of a Java file
+draws the extension icon until its kind is known, then the kind icon, and the
+tab is never read from the file on the render thread. Both icons take one cell,
+so a tab keeps its place when the kind arrives. The kind is cached per file, so
+a change to the declaration shows after the next tree refresh, as it does in the
+tree.
 
 The search overlay draws the icon of each result before its path, in both the
 Go to File and the Find in Files rows: one icon cell, one separator cell, then

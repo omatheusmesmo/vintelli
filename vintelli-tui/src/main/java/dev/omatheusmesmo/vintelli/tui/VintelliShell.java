@@ -266,9 +266,13 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         this.projectRoot = resolvedRoot.normalize();
         ProjectDependencyGraphProvider dependencyGraphProvider = config.dependencyGraphProviders().stream()
                 .filter(provider -> provider.supports(this.projectRoot)).findFirst().orElse(null);
+        JavaTypeKinds javaKinds = JavaTypeKinds.ofFiles();
         this.projects = new ProjectTreeController(this.projectRoot, state, projectSearch, fileOperations,
                 message -> status = message, this::refreshProjectTree, this::refreshVcs,
-                JavaTypeKinds.ofFiles(), dependencyGraphProvider);
+                javaKinds, dependencyGraphProvider);
+        if (this.editor != null) {
+            this.editor.useJavaTypeKinds(javaKinds);
+        }
         this.projects.useMarquee(config.marquee());
         this.mavenWindows.forEach(window -> window.useMarquee(config.marquee()));
         this.ticker = new ShellTicker(Marquee.STEP, frameLock, this::animating, this::advanceAnimations);
