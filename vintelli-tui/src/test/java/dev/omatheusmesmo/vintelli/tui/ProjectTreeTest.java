@@ -34,6 +34,9 @@ import java.util.function.Consumer;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.LongSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -291,15 +294,8 @@ class ProjectTreeTest {
 
     @Test
     void externalLibrariesDisclosureCanBeOpenedByPointer() throws Exception {
-        Files.writeString(project.resolve("pom.xml"), "<project/>");
-        ProjectDependencyGraph graph = new ProjectDependencyGraph(List.of(new Module("demo", List.of(
-                new LibraryDependency("example", "library", "1.0", "compile", Disposition.MISSING, null, List.of())))),
-                false, "Dependency artifact is not cached");
-        ProjectDependencyGraphProvider provider = new ProjectDependencyGraphProvider() {
-            @Override public boolean supports(Path projectRoot) { return true; }
-            @Override public ProjectDependencyGraph read(Path projectRoot) { return graph; }
-        };
-        VintelliShell shell = shellWithProject(project, provider);
+        VintelliShell shell = missingDependencyShell();
+        shell.useClock(steadyClock());
         awaitProjectFiles(shell, path -> path.equals(".vintelli-external-libraries"));
 
         try (ToolkitTestRunner runner = ToolkitTestRunner.runTest(shell::root, new Size(160, 30))) {
@@ -316,6 +312,70 @@ class ProjectTreeTest {
             awaitProjectFiles(shell, path -> path.endsWith("/dependency-0"));
         }
         assertTrue(shell.projectFiles().contains(".vintelli-external-libraries/dependency-0"));
+    }
+
+    @Test
+    void pointerDoubleClickOnTheDisclosureIsTimedByTheShellClockNotTheRunnerSpeed() throws Exception {
+        AtomicLong now = new AtomicLong();
+        VintelliShell shell = missingDependencyShell();
+        shell.useClock(now::get);
+        awaitProjectFiles(shell, path -> path.equals(".vintelli-external-libraries"));
+
+        try (ToolkitTestRunner runner = ToolkitTestRunner.runTest(shell::root, new Size(160, 30))) {
+            runner.runner().styleEngine(shell.themes().engine());
+            runner.runner().eventRouter().addGlobalHandler(shell);
+            Pilot pilot = runner.pilot();
+            pilot.pause(Duration.ofMillis(100));
+            var area = pilot.findElement(ProjectPanel.ID);
+            int row = shell.projectFiles().indexOf(".vintelli-external-libraries");
+            shell.selectPath("README.md");
+            pilot.click(area.x() + 10, area.y() + row);
+            pilot.pause(Duration.ofMillis(600));
+            now.addAndGet(TimeUnit.MILLISECONDS.toNanos(100));
+            pilot.click(area.x() + 10, area.y() + row);
+            assertEquals(row, shell.fileIndex());
+            awaitProjectFiles(shell, path -> path.endsWith("/dependency-0"));
+        }
+    }
+
+    @Test
+    void pointerClicksSeparatedOnTheShellClockDoNotOpenTheDisclosure() throws Exception {
+        AtomicLong now = new AtomicLong();
+        VintelliShell shell = missingDependencyShell();
+        shell.useClock(now::get);
+        awaitProjectFiles(shell, path -> path.equals(".vintelli-external-libraries"));
+
+        try (ToolkitTestRunner runner = ToolkitTestRunner.runTest(shell::root, new Size(160, 30))) {
+            runner.runner().styleEngine(shell.themes().engine());
+            runner.runner().eventRouter().addGlobalHandler(shell);
+            Pilot pilot = runner.pilot();
+            pilot.pause(Duration.ofMillis(100));
+            var area = pilot.findElement(ProjectPanel.ID);
+            int row = shell.projectFiles().indexOf(".vintelli-external-libraries");
+            shell.selectPath("README.md");
+            pilot.click(area.x() + 10, area.y() + row);
+            now.addAndGet(TimeUnit.MILLISECONDS.toNanos(600));
+            pilot.click(area.x() + 10, area.y() + row);
+            assertEquals(row, shell.fileIndex());
+            assertEquals("Selected: .vintelli-external-libraries", shell.status());
+        }
+    }
+
+    private VintelliShell missingDependencyShell() throws Exception {
+        Files.writeString(project.resolve("pom.xml"), "<project/>");
+        ProjectDependencyGraph graph = new ProjectDependencyGraph(List.of(new Module("demo", List.of(
+                new LibraryDependency("example", "library", "1.0", "compile", Disposition.MISSING, null, List.of())))),
+                false, "Dependency artifact is not cached");
+        ProjectDependencyGraphProvider provider = new ProjectDependencyGraphProvider() {
+            @Override public boolean supports(Path projectRoot) { return true; }
+            @Override public ProjectDependencyGraph read(Path projectRoot) { return graph; }
+        };
+        return shellWithProject(project, provider);
+    }
+
+    private static LongSupplier steadyClock() {
+        AtomicLong now = new AtomicLong();
+        return () -> now.addAndGet(TimeUnit.MILLISECONDS.toNanos(1));
     }
 
     private static void awaitProjectFiles(VintelliShell shell, java.util.function.Predicate<String> condition)
