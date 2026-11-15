@@ -1,0 +1,14 @@
+{
+  "resources": {
+    "includes": [
+      {
+        "pattern": "META-INF/services/com\\.sun\\.jdi\\.connect\\.Connector"
+      }
+    ]
+  },
+  "bundles": [
+    {
+      "name": "com.sun.tools.jdi.resources.jdi"
+    }
+  ]
+}
