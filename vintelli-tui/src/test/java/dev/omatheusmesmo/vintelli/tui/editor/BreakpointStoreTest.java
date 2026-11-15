@@ -7,8 +7,10 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.io.Reader;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -63,5 +65,35 @@ class BreakpointStoreTest {
         }
 
         assertTrue(new BreakpointStore(storeFile).load(project).isEmpty());
+    }
+
+    @Test
+    void roundTripsConditionsOnlyForStoredBreakpointLinesAndDropsInvalidOnes() throws Exception {
+        Path project = Files.createDirectories(temporary.resolve("conditioned"));
+        Path storeFile = temporary.resolve("settings/conditions.properties");
+        BreakpointStore store = new BreakpointStore(storeFile);
+        Path canonicalProject = project.toRealPath();
+        store.save(project, List.of(new BreakpointStore.Source(project.resolve("src/Main.java"), List.of(3, 7),
+                Map.of(3, "  count > 3  ", 7, "   "))));
+
+        List<BreakpointStore.Source> restored = store.load(project);
+
+        assertEquals(Map.of(3, "count > 3"), restored.getFirst().conditions());
+        assertEquals(List.of(3, 7), restored.getFirst().lines());
+
+        Properties properties = new Properties();
+        try (Reader reader = Files.newBufferedReader(storeFile, StandardCharsets.UTF_8)) {
+            properties.load(reader);
+        }
+        properties.setProperty("breakpoint.0.condition.99", "orphan > 0");
+        properties.setProperty("breakpoint.0.condition.3", "x".repeat(501));
+        try (Writer writer = Files.newBufferedWriter(storeFile, StandardCharsets.UTF_8)) {
+            properties.store(writer, null);
+        }
+
+        List<BreakpointStore.Source> tampered = store.load(project);
+
+        assertTrue(tampered.getFirst().conditions().isEmpty(), "a condition without a stored line or beyond the bound is dropped");
+        assertEquals(canonicalProject.resolve("src/Main.java"), tampered.getFirst().file());
     }
 }

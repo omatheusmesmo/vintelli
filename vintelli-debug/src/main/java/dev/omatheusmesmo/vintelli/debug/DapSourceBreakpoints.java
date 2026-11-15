@@ -15,6 +15,9 @@ final class DapSourceBreakpoints {
         return breakpoints.stream().map(point -> {
             SourceBreakpoint breakpoint = new SourceBreakpoint();
             breakpoint.setLine(point.line());
+            if (!point.condition().isBlank()) {
+                breakpoint.setCondition(point.condition());
+            }
             return breakpoint;
         }).toArray(SourceBreakpoint[]::new);
     }

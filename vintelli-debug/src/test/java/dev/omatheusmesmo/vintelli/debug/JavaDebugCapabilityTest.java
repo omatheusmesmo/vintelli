@@ -549,6 +549,194 @@ class JavaDebugCapabilityTest {
         }
     }
 
+    @Test
+    void evaluatesAnExpressionInTheSelectedFrameAndBoundsTheResult() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.NORMAL)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "evaluation"), ignored -> { }));
+            awaitState(session, DebugCapability.State.STOPPED);
+            DebugCapability.DebugFrame frame = ok(session.stackTrace(1)).getFirst();
+
+            DebugCapability.EvaluationResult answer = ok(session.evaluate(new DebugCapability.EvaluationRequest(
+                    frame.frameId(), "answer", session.inspectionGeneration(), true)));
+            assertEquals("42", answer.value());
+            assertEquals("int", answer.type());
+            assertFalse(answer.truncated());
+
+            DebugCapability.EvaluationResult large = ok(session.evaluate(new DebugCapability.EvaluationRequest(
+                    frame.frameId(), "large", session.inspectionGeneration(), true)));
+            assertTrue(large.truncated(), "a value longer than the bound must be marked as truncated");
+            assertEquals(1003, large.value().length(), "the value keeps 1000 characters and an ellipsis");
+            session.disconnect();
+        }
+    }
+
+    @Test
+    void rejectsEvaluationWithoutConfirmationOrForAFrameFromAnEarlierStop() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.NORMAL)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "confirmation"), ignored -> { }));
+            awaitState(session, DebugCapability.State.STOPPED);
+            long generation = session.inspectionGeneration();
+
+            CapabilityResult<DebugCapability.EvaluationResult> unconfirmed = session.evaluate(
+                    new DebugCapability.EvaluationRequest(1, "answer", generation, false));
+            assertTrue(unconfirmed.isFailure());
+            assertTrue(unconfirmed.failureOf().orElseThrow().reason().contains("explicit confirmation"));
+
+            CapabilityResult<DebugCapability.EvaluationResult> stale = session.evaluate(
+                    new DebugCapability.EvaluationRequest(1, "answer", generation - 1, true));
+            assertTrue(stale.failureOf().orElseThrow().reason().contains("changed before evaluation"));
+            assertEquals(List.of(), twin.evaluations(), "rejected requests must never reach the debuggee");
+            session.disconnect();
+        }
+    }
+
+    @Test
+    void evaluatorErrorsAreReportedAndSideEffectsReachTheDebuggee() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.NORMAL)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "side effects"), ignored -> { }));
+            awaitState(session, DebugCapability.State.STOPPED);
+            DebugCapability.DebugFrame frame = ok(session.stackTrace(1)).getFirst();
+
+            CapabilityResult<DebugCapability.EvaluationResult> rejected = session.evaluate(
+                    new DebugCapability.EvaluationRequest(frame.frameId(), "missing value", session.inspectionGeneration(), true));
+            assertTrue(rejected.failureOf().orElseThrow().reason().contains("Cannot find symbol"));
+
+            assertEquals("0", ok(session.evaluate(new DebugCapability.EvaluationRequest(
+                    frame.frameId(), "counter++", session.inspectionGeneration(), true))).value());
+            assertEquals("1", ok(session.evaluate(new DebugCapability.EvaluationRequest(
+                    frame.frameId(), "counter++", session.inspectionGeneration(), true))).value());
+            assertEquals("2", ok(session.evaluate(new DebugCapability.EvaluationRequest(
+                    frame.frameId(), "counter", session.inspectionGeneration(), true))).value(),
+                    "confirmed expressions run in the debuggee, so their side effects persist");
+            session.disconnect();
+        }
+    }
+
+    @Test
+    void unsupportedEvaluatorAndSilentAdapterAreReportedAsBoundedFailures() throws Exception {
+        try (DapTwin unsupported = new DapTwin(DapTwin.Mode.EVALUATE_UNSUPPORTED)) {
+            JavaDebugCapability capability = enabled(unsupported.port(), new FakeRun());
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "unsupported evaluate"), ignored -> { }));
+            awaitState(session, DebugCapability.State.STOPPED);
+            CapabilityResult<DebugCapability.EvaluationResult> result = session.evaluate(
+                    new DebugCapability.EvaluationRequest(1, "answer", session.inspectionGeneration(), true));
+            assertEquals("Evaluation is not supported by this adapter", result.failureOf().orElseThrow().reason());
+            session.disconnect();
+        }
+        try (DapTwin silent = new DapTwin(DapTwin.Mode.EVALUATE_NO_RESPONSE)) {
+            JavaDebugCapability capability = enabled(silent.port(), new FakeRun());
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "silent evaluate"), ignored -> { }));
+            awaitState(session, DebugCapability.State.STOPPED);
+            CapabilityResult<DebugCapability.EvaluationResult> result = session.evaluate(
+                    new DebugCapability.EvaluationRequest(1, "answer", session.inspectionGeneration(), true));
+            assertTrue(result.failureOf().orElseThrow().reason().contains("did not answer"),
+                    "a silent adapter must release the caller after the request timeout");
+            session.disconnect();
+        }
+    }
+
+    @Test
+    void resumingDuringEvaluationDiscardsTheLateResult() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.EVALUATE_HOLD)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "stale evaluation"), ignored -> { }));
+            awaitState(session, DebugCapability.State.STOPPED);
+            ExecutorService worker = Executors.newSingleThreadExecutor();
+            try {
+                Future<CapabilityResult<DebugCapability.EvaluationResult>> pending = worker.submit(() -> session.evaluate(
+                        new DebugCapability.EvaluationRequest(1, "answer", session.inspectionGeneration(), true)));
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+                while (twin.evaluations().isEmpty() && System.nanoTime() < deadline) Thread.sleep(10);
+                assertTrue(session.resume() instanceof CapabilityResult.Ok<Boolean>);
+
+                twin.connection().releaseHeldEvaluation();
+                CapabilityResult<DebugCapability.EvaluationResult> late = pending.get(2, TimeUnit.SECONDS);
+                assertTrue(late.failureOf().orElseThrow().reason().contains("changed during evaluation"),
+                        "a result that arrives after the debuggee resumed must not be reported as current");
+            } finally {
+                worker.shutdownNow();
+                session.disconnect();
+            }
+        }
+    }
+
+    @Test
+    void disconnectedSessionRejectsEvaluationWithoutCallingTheAdapter() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.NORMAL)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "disconnected evaluate"), ignored -> { }));
+            awaitState(session, DebugCapability.State.STOPPED);
+            long generation = session.inspectionGeneration();
+            session.disconnect();
+
+            CapabilityResult<DebugCapability.EvaluationResult> result = session.evaluate(
+                    new DebugCapability.EvaluationRequest(1, "answer", generation, true));
+            assertTrue(result.failureOf().orElseThrow().reason().contains("not active"));
+            assertEquals(List.of(), twin.evaluations());
+        }
+    }
+
+    @Test
+    void conditionsAreSentWithSourceBreakpointsAndMalformedOnesAreRejectedPerLine() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.NORMAL)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "conditions"), ignored -> { }));
+
+            List<DebugCapability.SourceBreakpoint> applied = ok(capability.setBreakpoints("/project/Main.java",
+                    List.of(conditional(9, "answer > 1"), conditional(4, "(answer > 1"))));
+
+            assertEquals(List.of(4, 9), twin.breakpointLines());
+            assertEquals(List.of("(answer > 1", "answer > 1"), twin.breakpointConditions());
+            assertEquals(DebugCapability.BreakpointState.REJECTED, applied.getFirst().state());
+            assertEquals("Malformed breakpoint condition", applied.getFirst().message());
+            assertEquals("(answer > 1", applied.getFirst().condition());
+            assertEquals(DebugCapability.BreakpointState.VERIFIED, applied.get(1).state());
+            assertEquals("answer > 1", applied.get(1).condition(), "the editor anchor keeps its condition");
+            session.disconnect();
+        }
+    }
+
+    @Test
+    void adapterWithoutConditionalBreakpointsRejectsOnlyConditionedLines() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.UNSUPPORTED_CONDITIONS)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "no conditions"), ignored -> { }));
+
+            List<DebugCapability.SourceBreakpoint> applied = ok(capability.setBreakpoints("/project/Main.java",
+                    List.of(conditional(9, "answer > 1"), new DebugCapability.SourceBreakpoint("/project/Main.java", 4))));
+
+            assertEquals(List.of(4), twin.breakpointLines(), "unsupported conditions are never sent as unconditional breakpoints");
+            assertEquals(DebugCapability.BreakpointState.VERIFIED, applied.getFirst().state());
+            assertEquals(DebugCapability.BreakpointState.REJECTED, applied.get(1).state());
+            assertEquals("Conditional breakpoints are not supported by this adapter", applied.get(1).message());
+            session.disconnect();
+        }
+    }
+
+    private static DebugCapability.SourceBreakpoint conditional(int line, String condition) {
+        return new DebugCapability.SourceBreakpoint("/project/Main.java", line,
+                DebugCapability.BreakpointState.PENDING, "", null, "/project/Main.java", condition);
+    }
+
+    private static void awaitState(DebugCapability.DebugSession session, DebugCapability.State state)
+            throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        while (session.snapshot().state() != state && System.nanoTime() < deadline) Thread.sleep(10);
+        assertEquals(state, session.snapshot().state());
+    }
+
     private static JavaDebugCapability enabled(int adapterPort, FakeRun run) {
         return new JavaDebugCapability(true, new FakeAdapter(adapterPort), () -> new FakeRegistry(run),
                 TEST_TIMEOUT, TEST_TIMEOUT, TEST_TIMEOUT);

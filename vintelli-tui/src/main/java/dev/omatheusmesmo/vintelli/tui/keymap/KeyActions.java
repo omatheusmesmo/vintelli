@@ -42,6 +42,7 @@ public final class KeyActions {
     public static final String QUICK_FIX = "editor_quickFix";
     public static final String TOGGLE_IMPORT_FOLD = "editor_toggleImportFold";
     public static final String TOGGLE_BREAKPOINT = "editor_toggleBreakpoint";
+    public static final String EDIT_BREAKPOINT_CONDITION = "editor_editBreakpointCondition";
     public static final String DUPLICATE_LINE = "editor_duplicateLine";
     public static final String SELECT_ALL = "editor_selectAll";
     public static final String GO_TO_FILE = "navigation_goToFile";
@@ -135,6 +136,7 @@ public final class KeyActions {
                 new KeyAction(QUICK_FIX, "Quick Fix"),
                 new KeyAction(TOGGLE_IMPORT_FOLD, "Fold or Unfold Imports"),
                 new KeyAction(TOGGLE_BREAKPOINT, "Toggle Line Breakpoint"),
+                new KeyAction(EDIT_BREAKPOINT_CONDITION, "Edit Breakpoint Condition"),
                 new KeyAction(GO_TO_FILE, "Go to File"),
                 new KeyAction(GO_TO_LINE, "Go to Line"),
                 new KeyAction(FOCUS_NAVIGATION_BAR, "Focus Navigation Bar"),
