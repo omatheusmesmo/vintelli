@@ -4,7 +4,7 @@
   <parent><groupId>dev.omatheusmesmo</groupId><artifactId>vintelli</artifactId><version>1.0.0-SNAPSHOT</version><relativePath>../../..</relativePath></parent>
   <artifactId>debugger-native-spike</artifactId><packaging>pom</packaging>
   <properties><argLine></argLine><skipITs>false</skipITs></properties>
-  <modules><module>jdi</module><module>dap</module></modules>
+  <modules><module>jdi</module><module>jdi-registered</module><module>dap</module></modules>
   <dependencies>
     <dependency><groupId>io.quarkus</groupId><artifactId>quarkus-rest-jackson</artifactId></dependency>
     <dependency><groupId>io.quarkus</groupId><artifactId>quarkus-junit</artifactId><scope>test</scope></dependency>

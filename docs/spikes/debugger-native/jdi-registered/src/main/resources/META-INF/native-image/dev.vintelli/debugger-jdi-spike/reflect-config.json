@@ -1,0 +1,26 @@
+[
+  {
+    "name": "com.sun.tools.jdi.JDWP$EventKind",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "com.sun.tools.jdi.ProcessAttachingConnector",
+    "allPublicConstructors": true
+  },
+  {
+    "name": "com.sun.tools.jdi.RawCommandLineLauncher",
+    "allPublicConstructors": true
+  },
+  {
+    "name": "com.sun.tools.jdi.SocketAttachingConnector",
+    "allPublicConstructors": true
+  },
+  {
+    "name": "com.sun.tools.jdi.SocketListeningConnector",
+    "allPublicConstructors": true
+  },
+  {
+    "name": "com.sun.tools.jdi.SunCommandLineLauncher",
+    "allPublicConstructors": true
+  }
+]

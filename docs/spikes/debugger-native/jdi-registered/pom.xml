@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <parent><groupId>dev.omatheusmesmo</groupId><artifactId>debugger-native-spike</artifactId><version>1.0.0-SNAPSHOT</version></parent>
+  <artifactId>debugger-jdi-registered-spike</artifactId><packaging>quarkus</packaging>
+  <build>
+    <sourceDirectory>${project.basedir}/../jdi/src/main/java</sourceDirectory>
+    <testSourceDirectory>${project.basedir}/../jdi/src/test/java</testSourceDirectory>
+  </build>
+</project>

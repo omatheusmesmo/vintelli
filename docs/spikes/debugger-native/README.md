@@ -38,3 +38,40 @@ service-loader setting.
 The tests own bounded request/event waits and process cleanup. This is a happy-path
 architecture comparison, not the production provider's complete failure matrix.
 The [decision document](../spike-385-native-java-debugger.md) records results and links the remaining work.
+
+## Connector bootstrap probe (#391)
+
+`jdi-registered` reuses the `jdi` sources and adds only build-time metadata under
+`src/main/resources`: a resource bundle, reflection on `JDWP$EventKind`, and a
+classpath `META-INF/services` file with public constructors for the five connector
+providers. The `jdi` module keeps the recorded negative configuration unchanged.
+
+```sh
+./mvnw -f docs/spikes/debugger-native/pom.xml -pl jdi-registered verify
+./mvnw -f docs/spikes/debugger-native/pom.xml -pl jdi-registered verify -Dnative -Dquarkus.native.container-build
+```
+
+`jdi-connector` is a bounded standalone probe with no Maven module. It prints each
+connector provider's construction cause and the captured `System.err` of
+`Bootstrap.virtualMachineManager()`, then runs the same attach, breakpoint, step and
+state-read session. Compile it with the JDK pinned for the build, not the `javac`
+found first on `PATH`:
+
+```sh
+OUT=target/connector-probe
+"$JAVA_HOME/bin/javac" --release 25 -g -d "$OUT/classes" \
+  docs/spikes/debugger-native/jdi/src/test/java/dev/vintelli/spike/Debuggee.java \
+  docs/spikes/debugger-native/jdi-connector/src/main/java/dev/vintelli/spike/ConnectorProbe.java
+native-image --no-fallback -H:-UseServiceLoaderFeature \
+  -cp "$OUT/classes:docs/spikes/debugger-native/jdi-registered/src/main/resources" \
+  dev.vintelli.spike.ConnectorProbe -o "$OUT/connector-probe"
+"$OUT/connector-probe" providers
+"$OUT/connector-probe" bootstrap
+"$OUT/connector-probe" session "$JAVA_HOME/bin/java" "$OUT/classes"
+```
+
+Omit the metadata directory from `-cp` to reproduce the missing resource bundle
+failure on the standalone probe, and keep the global service loader feature enabled
+by omitting `-H:-UseServiceLoaderFeature` for the default feature path. The findings
+and the measured/unverified split are in the
+[#391 record](../spike-391-native-jdi-connector-bootstrap.md).
