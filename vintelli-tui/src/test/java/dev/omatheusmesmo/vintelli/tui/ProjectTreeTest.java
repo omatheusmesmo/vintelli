@@ -23,6 +23,7 @@ import dev.tamboui.toolkit.app.ToolkitTestRunner;
 import dev.tamboui.toolkit.element.DefaultRenderContext;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyModifiers;
+import dev.tamboui.tui.pilot.ElementNotFoundException;
 import dev.tamboui.tui.pilot.Pilot;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -273,8 +274,7 @@ class ProjectTreeTest {
             runner.runner().styleEngine(shell.themes().engine());
             runner.runner().eventRouter().addGlobalHandler(shell);
             Pilot pilot = runner.pilot();
-            pilot.pause(Duration.ofMillis(300));
-            var area = pilot.findElement(ProjectPanel.ID);
+            var area = awaitProjectPanel(pilot);
             int externalRow = shell.projectFiles().indexOf(".vintelli-external-libraries");
             pilot.click(area.x() + 10, area.y() + externalRow);
             pilot.press(KeyCode.ENTER);
@@ -303,8 +303,7 @@ class ProjectTreeTest {
             runner.runner().styleEngine(shell.themes().engine());
             runner.runner().eventRouter().addGlobalHandler(shell);
             Pilot pilot = runner.pilot();
-            pilot.pause(Duration.ofMillis(100));
-            var area = pilot.findElement(ProjectPanel.ID);
+            var area = awaitProjectPanel(pilot);
             int row = shell.projectFiles().indexOf(".vintelli-external-libraries");
             shell.selectPath("README.md");
             pilot.click(area.x() + 10, area.y() + row);
@@ -326,8 +325,7 @@ class ProjectTreeTest {
             runner.runner().styleEngine(shell.themes().engine());
             runner.runner().eventRouter().addGlobalHandler(shell);
             Pilot pilot = runner.pilot();
-            pilot.pause(Duration.ofMillis(100));
-            var area = pilot.findElement(ProjectPanel.ID);
+            var area = awaitProjectPanel(pilot);
             int row = shell.projectFiles().indexOf(".vintelli-external-libraries");
             shell.selectPath("README.md");
             pilot.click(area.x() + 10, area.y() + row);
@@ -350,8 +348,7 @@ class ProjectTreeTest {
             runner.runner().styleEngine(shell.themes().engine());
             runner.runner().eventRouter().addGlobalHandler(shell);
             Pilot pilot = runner.pilot();
-            pilot.pause(Duration.ofMillis(100));
-            var area = pilot.findElement(ProjectPanel.ID);
+            var area = awaitProjectPanel(pilot);
             int row = shell.projectFiles().indexOf(".vintelli-external-libraries");
             shell.selectPath("README.md");
             pilot.click(area.x() + 10, area.y() + row);
@@ -372,6 +369,34 @@ class ProjectTreeTest {
             @Override public ProjectDependencyGraph read(Path projectRoot) { return graph; }
         };
         return shellWithProject(project, provider);
+    }
+
+    private static Rect awaitProjectPanel(Pilot pilot) {
+        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        Rect area = projectPanelArea(pilot);
+        while (!isLaidOut(area) && System.nanoTime() < deadline) {
+            pilot.pause(Duration.ofMillis(10));
+            area = projectPanelArea(pilot);
+        }
+        if (!isLaidOut(area)) {
+            throw new AssertionError("the project panel was not laid out within 10 s");
+        }
+        return area;
+    }
+
+    private static Rect projectPanelArea(Pilot pilot) {
+        if (!pilot.hasElement(ProjectPanel.ID)) {
+            return null;
+        }
+        try {
+            return pilot.findElement(ProjectPanel.ID);
+        } catch (ElementNotFoundException clearedBeforeRender) {
+            return null;
+        }
+    }
+
+    private static boolean isLaidOut(Rect area) {
+        return area != null && area.width() > 0 && area.height() > 0;
     }
 
     private static LongSupplier steadyClock() {
