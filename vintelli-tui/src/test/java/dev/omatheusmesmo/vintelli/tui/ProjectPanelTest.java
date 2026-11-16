@@ -9,6 +9,7 @@ import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
 import dev.tamboui.buffer.Buffer;
 import dev.tamboui.layout.Rect;
+import dev.tamboui.style.Color;
 import dev.tamboui.terminal.Frame;
 import dev.tamboui.toolkit.element.DefaultRenderContext;
 import dev.tamboui.toolkit.event.EventResult;
@@ -29,6 +30,7 @@ import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ProjectPanelTest {
@@ -39,9 +41,73 @@ class ProjectPanelTest {
     private static final String DEEP_FILE = DEEP_DIRECTORY + "/deep-clipping-test-file-name-here.txt";
     private static final String DEEP_SIBLING = DEEP_DIRECTORY + "/other.txt";
     private static final String DEEP_NAME = "deep-clipping-test-file-name-here.txt";
+    private static final String USER_MAPPING_PROPERTY = "vintelli.icons.file";
 
     @TempDir
     Path root;
+
+    @TempDir
+    Path mappings;
+
+    /**
+     * The file is drawn on an unselected row: the selected row takes the selection
+     * colours of the list, which the list applies over the whole row.
+     */
+    @Test
+    void theIconOfAFileIsPaintedInItsKindColourInBothFaces() throws IOException {
+        Files.writeString(root.resolve("Shape.java"), "public interface Shape {}");
+        Files.writeString(root.resolve("README.md"), "# readme");
+        for (String face : List.of("nerd", "ascii")) {
+            withProperty(IconMode.CONFIG_PROPERTY, face, () -> {
+                List<Runnable> scans = new ArrayList<>();
+                ProjectTreeController controller = controller(scans);
+                controller.selectPath("README.md");
+                ProjectPanel panel = panel(controller);
+                render(panel);
+                scans.forEach(Runnable::run);
+                FileIcons icons = FileIcons.resolve();
+
+                Buffer buffer = renderBuffer(panel);
+                int y = rowContaining(buffer, "Shape.java");
+                assertTrue(y >= 0, render(panel));
+                String symbol = icons.iconFor("Shape.java", JavaTypeKind.INTERFACE).symbol(icons.mode());
+                int x = rowText(buffer, y).indexOf(symbol + " Shape.java");
+                assertTrue(x >= 0, rowText(buffer, y));
+                assertEquals(Color.hex("#6CBF6C"), buffer.get(x, y).style().fg().orElse(null),
+                        "the icon cell carries the interface colour in " + face);
+                assertNotEquals(Color.hex("#6CBF6C"), buffer.get(x + 2, y).style().fg().orElse(null),
+                        "the file name keeps the text colour in " + face);
+                if (icons.mode() == IconMode.ASCII) {
+                    assertTrue(rowText(buffer, y).chars().allMatch(character -> character < 0x80),
+                            "the ASCII face draws no non-ASCII glyph: " + rowText(buffer, y));
+                }
+            });
+        }
+    }
+
+    @Test
+    void anAnsiColourNameIsPaintedOnTheIconCellToo() throws IOException {
+        Files.writeString(root.resolve("Shape.java"), "public interface Shape {}");
+        Path mapping = mappings.resolve("file-icons.properties");
+        Files.writeString(mapping, "type.interface.color=light-green\n");
+        Files.writeString(root.resolve("README.md"), "# readme");
+        withProperty(IconMode.CONFIG_PROPERTY, "nerd", () -> withProperty(USER_MAPPING_PROPERTY, mapping.toString(), () -> {
+            List<Runnable> scans = new ArrayList<>();
+            ProjectTreeController controller = controller(scans);
+            controller.selectPath("README.md");
+            ProjectPanel panel = panel(controller);
+            render(panel);
+            scans.forEach(Runnable::run);
+            FileIcons icons = FileIcons.resolve();
+
+            Buffer buffer = renderBuffer(panel);
+            int y = rowContaining(buffer, "Shape.java");
+            String symbol = icons.iconFor("Shape.java", JavaTypeKind.INTERFACE).symbol(icons.mode());
+            int x = rowText(buffer, y).indexOf(symbol + " Shape.java");
+            assertTrue(x >= 0, rowText(buffer, y));
+            assertEquals(Color.LIGHT_GREEN, buffer.get(x, y).style().fg().orElse(null));
+        }));
+    }
 
     @Test
     void theRowDrawsTheExtensionIconUntilTheScanAnswersThenTheKindIcon() throws IOException {
@@ -274,18 +340,51 @@ class ProjectPanelTest {
     }
 
     private static String render(ProjectPanel panel) {
+        Buffer buffer = renderBuffer(panel);
+        StringBuilder text = new StringBuilder();
+        for (int y = 0; y < buffer.height(); y++) {
+            text.append(rowText(buffer, y)).append('\n');
+        }
+        return text.toString();
+    }
+
+    private static Buffer renderBuffer(ProjectPanel panel) {
         Buffer buffer = Buffer.empty(AREA);
         DefaultRenderContext context = DefaultRenderContext.createEmpty();
         context.setStyleEngine(new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null).engine());
         panel.render(Frame.forTesting(buffer), AREA, context);
+        return buffer;
+    }
+
+    private static String rowText(Buffer buffer, int y) {
         StringBuilder text = new StringBuilder();
-        for (int y = 0; y < buffer.height(); y++) {
-            for (int x = 0; x < buffer.width(); x++) {
-                text.append(buffer.get(x, y).symbol());
-            }
-            text.append('\n');
+        for (int x = 0; x < buffer.width(); x++) {
+            text.append(buffer.get(x, y).symbol());
         }
         return text.toString();
+    }
+
+    private static int rowContaining(Buffer buffer, String text) {
+        for (int y = 0; y < buffer.height(); y++) {
+            if (rowText(buffer, y).contains(text)) {
+                return y;
+            }
+        }
+        return -1;
+    }
+
+    private static void withProperty(String key, String value, Runnable body) {
+        String previous = System.getProperty(key);
+        System.setProperty(key, value);
+        try {
+            body.run();
+        } finally {
+            if (previous == null) {
+                System.clearProperty(key);
+            } else {
+                System.setProperty(key, previous);
+            }
+        }
     }
 
     private static ProjectPanel.Host host() {
