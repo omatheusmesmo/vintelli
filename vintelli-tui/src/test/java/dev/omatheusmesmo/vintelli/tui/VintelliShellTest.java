@@ -6676,7 +6676,7 @@ class VintelliShellTest {
                 QuickFixFixtures.registryWith(QuickFixFixtures.answering(file -> CapabilityResult.ok(
                         List.of(QuickFixFixtures.replaceCaretLine(file),
                                 QuickFixFixtures.suppressWithCommand())))));
-        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+        try (MouseShellRunner test = runQuickFixShell(fixture)) {
             Pilot pilot = test.pilot();
             fixture.editor().requestFocus();
             settle(pilot);
@@ -6694,7 +6694,7 @@ class VintelliShellTest {
                 QuickFixFixtures.registryWith(QuickFixFixtures.answering(file -> CapabilityResult.ok(
                         List.of(QuickFixFixtures.replaceCaretLine(file))))));
         String original = numberedLines(10);
-        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+        try (MouseShellRunner test = runQuickFixShell(fixture)) {
             Pilot pilot = test.pilot();
             fixture.editor().requestFocus();
             settle(pilot);
@@ -6727,10 +6727,7 @@ class VintelliShellTest {
                     }
                     return CapabilityResult.ok(List.of());
                 })));
-        UiWorkQueue uiWork = new UiWorkQueue();
-        fixture.shell().useUiWorkQueue(uiWork);
-        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
-            fixture.shell().bindRedraw(() -> test.runner().tuiRunner().dispatch(TickEvent.of(0)));
+        try (MouseShellRunner test = runQuickFixShell(fixture)) {
             Pilot pilot = test.pilot();
             fixture.editor().requestFocus();
             settle(pilot);
@@ -6749,7 +6746,7 @@ class VintelliShellTest {
         EditorShell fixture = openQuickFixShell("Unavailable.txt", numberedLines(10), 2,
                 QuickFixFixtures.registryWith(CapabilitySelection.unavailable(CapabilityType.CODE_ACTION,
                         "no language server profile is configured")));
-        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+        try (MouseShellRunner test = runQuickFixShell(fixture)) {
             Pilot pilot = test.pilot();
             fixture.editor().requestFocus();
             settle(pilot);
@@ -6768,7 +6765,7 @@ class VintelliShellTest {
         EditorShell fixture = openQuickFixShell("Failure.txt", numberedLines(10), 2,
                 QuickFixFixtures.registryWith(QuickFixFixtures.answering(
                         file -> QuickFixFixtures.failure("malformed", "bad code action payload"))));
-        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+        try (MouseShellRunner test = runQuickFixShell(fixture)) {
             Pilot pilot = test.pilot();
             fixture.editor().requestFocus();
             settle(pilot);
@@ -6791,7 +6788,7 @@ class VintelliShellTest {
                 QuickFixFixtures.registryWith(QuickFixFixtures.answering(file -> CapabilityResult.ok(
                         List.of(QuickFixFixtures.replaceCaretLine(file),
                                 QuickFixFixtures.suppressWithCommand())))));
-        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+        try (MouseShellRunner test = runQuickFixShell(fixture)) {
             Pilot pilot = test.pilot();
             fixture.editor().requestFocus();
             settle(pilot);
@@ -6823,7 +6820,16 @@ class VintelliShellTest {
         windows.add(editor);
         ShellConfig config = ShellConfig.of(new ToolWindowRegistry(windows).toolWindows(), new ShellState(), themes)
                 .withCapabilityRegistry(registry);
-        return new EditorShell(new VintelliShell(config), editor, clipboard);
+        VintelliShell shell = new VintelliShell(config);
+        shell.useUiWorkQueue(new UiWorkQueue());
+        return new EditorShell(shell, editor, clipboard);
+    }
+
+    /** Runs a quick fix shell with the render loop wired to wake when the worker publishes its answer. */
+    private MouseShellRunner runQuickFixShell(EditorShell fixture) throws Exception {
+        MouseShellRunner test = runMouseShell(fixture.shell(), SIZE);
+        fixture.shell().bindRedraw(() -> test.runner().tuiRunner().dispatch(TickEvent.of(0)));
+        return test;
     }
 
     private static int firstForegroundColumn(Buffer buffer, int row, Color foreground) {
