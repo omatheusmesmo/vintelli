@@ -14,6 +14,7 @@ import dev.omatheusmesmo.vintelli.api.capability.CodeActionCapability.SourceRang
 import dev.omatheusmesmo.vintelli.api.capability.CodeActionCapability.WorkspaceEdit;
 import dev.omatheusmesmo.vintelli.api.capability.CodeActionCapability.WorkspaceEdit.DocumentEdit;
 import dev.omatheusmesmo.vintelli.api.capability.CodeActionCapability.WorkspaceEdit.TextEdit;
+import dev.omatheusmesmo.vintelli.api.capability.CodeActionCapability.WorkspaceEditSink;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Diagnostic;
 import dev.omatheusmesmo.vintelli.api.capability.EditorBridge;
@@ -54,15 +55,42 @@ final class QuickFixFixtures {
     }
 
     static CapabilitySelection<CodeActionCapability> answering(Function<Path, CapabilityResult<List<CodeAction>>> answer) {
-        return CapabilitySelection.selected(CapabilityType.CODE_ACTION, new Actions(answer));
+        return answering(answer, null);
+    }
+
+    static CapabilitySelection<CodeActionCapability> answering(Function<Path, CapabilityResult<List<CodeAction>>> answer,
+            CommandHandler commands) {
+        return CapabilitySelection.selected(CapabilityType.CODE_ACTION, new Actions(answer, commands));
+    }
+
+    /**
+     * Answers the {@code executeCommand} call of a provider that runs commands.
+     */
+    @FunctionalInterface
+    interface CommandHandler {
+
+        CapabilityResult<Integer> run(CommandRef command, WorkspaceEditSink edits);
     }
 
     static final class Actions implements CodeActionCapability {
 
         private final Function<Path, CapabilityResult<List<CodeAction>>> answer;
+        private final CommandHandler commands;
 
-        Actions(Function<Path, CapabilityResult<List<CodeAction>>> answer) {
+        Actions(Function<Path, CapabilityResult<List<CodeAction>>> answer, CommandHandler commands) {
             this.answer = answer;
+            this.commands = commands;
+        }
+
+        @Override
+        public boolean supportsCommands() {
+            return commands != null;
+        }
+
+        @Override
+        public CapabilityResult<Integer> executeCommand(CommandRef command, WorkspaceEditSink edits) {
+            return commands == null ? CodeActionCapability.super.executeCommand(command, edits)
+                    : commands.run(command, edits);
         }
 
         @Override

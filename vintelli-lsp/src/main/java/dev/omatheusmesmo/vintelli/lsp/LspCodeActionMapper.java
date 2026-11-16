@@ -129,10 +129,13 @@ final class LspCodeActionMapper {
         if (command.getCommand() == null || command.getCommand().isBlank()) {
             throw new MalformedPayload("the command of '" + title + "' has no identifier");
         }
-        return new CodeActionCapability.CommandRef(command.getCommand(), command.getTitle());
+        return new CodeActionCapability.CommandRef(command.getCommand(), command.getTitle(), command.getArguments());
     }
 
-    private static CodeActionCapability.WorkspaceEdit editOf(WorkspaceEdit edit) {
+    static CodeActionCapability.WorkspaceEdit editOf(WorkspaceEdit edit) {
+        if (edit == null) {
+            throw new MalformedPayload("the workspace edit is empty");
+        }
         List<CodeActionCapability.WorkspaceEdit.DocumentEdit> documents = new ArrayList<>();
         List<CodeActionCapability.WorkspaceEdit.UnsupportedChange> unsupported = new ArrayList<>();
         if (edit.getDocumentChanges() != null) {

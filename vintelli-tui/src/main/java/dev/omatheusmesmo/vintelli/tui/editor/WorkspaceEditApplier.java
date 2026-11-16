@@ -49,17 +49,12 @@ public final class WorkspaceEditApplier {
      *         documents are rejected because the editor cannot apply them yet
      */
     public static Result apply(EditorDocument document, WorkspaceEdit edit) {
-        if (!edit.unsupported().isEmpty()) {
-            UnsupportedChange change = edit.unsupported().getFirst();
-            return new Rejected("the editor cannot apply the " + change.kind() + " change of '" + change.target()
-                    + "' yet");
+        String refusal = refusal(document.file(), edit);
+        if (refusal != null) {
+            return new Rejected(refusal);
         }
-        Path open = document.file().toAbsolutePath().normalize();
         List<TextEdit> edits = new ArrayList<>();
         for (DocumentEdit documentEdit : edit.documents()) {
-            if (!documentEdit.file().toAbsolutePath().normalize().equals(open)) {
-                return new Rejected("the edit changes '" + documentEdit.file() + "', which is not the open document");
-            }
             edits.addAll(documentEdit.edits());
         }
         if (edits.isEmpty()) {
@@ -71,6 +66,25 @@ public final class WorkspaceEditApplier {
             return new Rejected(invalid.getMessage());
         }
         return new Applied(edits.size());
+    }
+
+    /**
+     * @param open the open file the edit has to change
+     * @param edit the edit to check
+     * @return why the editor cannot apply the edit to the open file, or null when it can
+     */
+    static String refusal(Path open, WorkspaceEdit edit) {
+        if (!edit.unsupported().isEmpty()) {
+            UnsupportedChange change = edit.unsupported().getFirst();
+            return "the editor cannot apply the " + change.kind() + " change of '" + change.target() + "' yet";
+        }
+        Path normalized = open.toAbsolutePath().normalize();
+        for (DocumentEdit documentEdit : edit.documents()) {
+            if (!documentEdit.file().toAbsolutePath().normalize().equals(normalized)) {
+                return "the edit changes '" + documentEdit.file() + "', which is not the open document";
+            }
+        }
+        return null;
     }
 
     /**

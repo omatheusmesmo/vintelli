@@ -22,8 +22,11 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import com.google.gson.JsonParser;
+
+import dev.omatheusmesmo.vintelli.api.capability.CodeActionCapability;
 
 import org.eclipse.lsp4j.CallHierarchyIncomingCall;
 import org.eclipse.lsp4j.CallHierarchyIncomingCallsParams;
@@ -32,6 +35,7 @@ import org.eclipse.lsp4j.CallHierarchyOutgoingCall;
 import org.eclipse.lsp4j.CallHierarchyOutgoingCallsParams;
 import org.eclipse.lsp4j.CallHierarchyPrepareParams;
 import org.eclipse.lsp4j.ClientCapabilities;
+import org.eclipse.lsp4j.ApplyWorkspaceEditResponse;
 import org.eclipse.lsp4j.ClientInfo;
 import org.eclipse.lsp4j.CodeAction;
 import org.eclipse.lsp4j.CodeActionCapabilities;
@@ -76,6 +80,7 @@ import org.eclipse.lsp4j.TextDocumentIdentifier;
 import org.eclipse.lsp4j.TextDocumentItem;
 import org.eclipse.lsp4j.VersionedTextDocumentIdentifier;
 import org.eclipse.lsp4j.WorkspaceClientCapabilities;
+import org.eclipse.lsp4j.WorkspaceEdit;
 import org.eclipse.lsp4j.WorkspaceFolder;
 import org.eclipse.lsp4j.jsonrpc.Launcher;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
@@ -125,6 +130,7 @@ final class LspServerSession implements AutoCloseable {
     private final InitializeResult initializeResult;
     private final Set<String> openDocuments = ConcurrentHashMap.newKeySet();
     private final Map<String, Integer> documentVersions = new ConcurrentHashMap<>();
+    private final Object commandMonitor = new Object();
     private volatile boolean closed;
 
     /**
@@ -207,7 +213,15 @@ final class LspServerSession implements AutoCloseable {
     }
 
     boolean isLive() {
-        return !closed && process.isAlive();
+        return !closed && !connectionLost();
+    }
+
+    /**
+     * @return whether the server process ended or its output closed, which leaves
+     *         no way to receive an answer
+     */
+    boolean connectionLost() {
+        return !process.isAlive() || listening.isDone();
     }
 
     boolean supportsExecuteCommand(String command) {
@@ -220,6 +234,45 @@ final class LspServerSession implements AutoCloseable {
         return server.getWorkspaceService()
                 .executeCommand(new ExecuteCommandParams(command, List.of()))
                 .get(REQUEST_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+    }
+
+    /**
+     * Runs one command of an action. The workspace edits the server asks for while the command runs
+     * are answered by the sink, and only during this call: commands run one at a time.
+     *
+     * @return the number of workspace edit requests the server sent while the command ran
+     */
+    int executeCommand(String command, List<Object> arguments, CodeActionCapability.WorkspaceEditSink sink,
+            Duration timeout) throws ExecutionException, InterruptedException, TimeoutException {
+        synchronized (commandMonitor) {
+            AtomicInteger requests = new AtomicInteger();
+            listener.answerEdits(edit -> {
+                requests.incrementAndGet();
+                return answer(edit, sink);
+            });
+            try {
+                server.getWorkspaceService()
+                        .executeCommand(new ExecuteCommandParams(command, arguments))
+                        .get(timeout.toNanos(), TimeUnit.NANOSECONDS);
+            } finally {
+                listener.answerEdits(null);
+            }
+            return requests.get();
+        }
+    }
+
+    private static ApplyWorkspaceEditResponse answer(WorkspaceEdit edit, CodeActionCapability.WorkspaceEditSink sink) {
+        try {
+            CodeActionCapability.WorkspaceEditSink.Decision decision = sink.accept(LspCodeActionMapper.editOf(edit));
+            if (decision.accepted()) {
+                return new ApplyWorkspaceEditResponse(true);
+            }
+            return VintelliLanguageClient.refused(decision.reason());
+        } catch (LspCodeActionMapper.MalformedPayload malformed) {
+            return VintelliLanguageClient.refused("the workspace edit is malformed: " + malformed.getMessage());
+        } catch (RuntimeException failure) {
+            return VintelliLanguageClient.refused(failureDetail(failure));
+        }
     }
 
     Hover hover(String uri, Position position) throws ExecutionException, InterruptedException, TimeoutException {

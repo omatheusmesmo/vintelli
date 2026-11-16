@@ -1,6 +1,8 @@
 package dev.omatheusmesmo.vintelli.api.capability;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
@@ -23,6 +25,29 @@ public interface CodeActionCapability extends ProviderDescriptor {
             List<DiagnosticsCapability.Diagnostic> diagnostics);
 
     /**
+     * @return whether {@link #executeCommand} runs commands; the editor runs command actions only
+     *         through providers that do
+     */
+    default boolean supportsCommands() {
+        return false;
+    }
+
+    /**
+     * Runs the command of an action. While the command runs, the server may ask for workspace edits;
+     * each one is handed to {@code edits}, whose decision is the answer the server gets.
+     *
+     * @param command the command the action carries
+     * @param edits receives every workspace edit the server asks to apply during the command
+     * @return the number of workspace edit requests the server sent while the command ran, or a failed
+     *         result with reason {@code timeout} when the server did not answer in time, {@code dropped}
+     *         when the connection to the server was lost, or {@code not-advertised} when the server does
+     *         not offer the command
+     */
+    default CapabilityResult<Integer> executeCommand(CommandRef command, WorkspaceEditSink edits) {
+        return CapabilityResult.failed(new CapabilityFailure("not-supported", "the provider cannot run commands"));
+    }
+
+    /**
      * Zero based range with the UTF-16 column semantics of the Language Server Protocol.
      *
      * @param startLine zero based start line
@@ -34,8 +59,8 @@ public interface CodeActionCapability extends ProviderDescriptor {
     }
 
     /**
-     * One action the provider offers. An action carries an edit, a command, or both; a
-     * command-only action cannot be applied by the editor yet.
+     * One action the provider offers. An action carries an edit, a command, or both; the editor
+     * applies the edit and runs the command through {@link #executeCommand}.
      *
      * @param title text shown to the user
      * @param kind action kind such as {@code quickfix}, empty when the provider sent none
@@ -58,12 +83,48 @@ public interface CodeActionCapability extends ProviderDescriptor {
      *
      * @param identifier command identifier the server understands
      * @param title text of the command
+     * @param arguments arguments the server sent with the command, handed back unchanged
      */
-    record CommandRef(String identifier, String title) {
+    record CommandRef(String identifier, String title, List<Object> arguments) {
 
         public CommandRef {
             Objects.requireNonNull(identifier, "identifier");
             title = title == null ? "" : title;
+            arguments = arguments == null ? List.of() : Collections.unmodifiableList(new ArrayList<>(arguments));
+        }
+
+        public CommandRef(String identifier, String title) {
+            this(identifier, title, List.of());
+        }
+    }
+
+    /**
+     * Receives a workspace edit the server asks to apply while a command runs. The decision is the
+     * answer sent back to the server: an accepted edit is applied by the caller, a refused one carries
+     * the reason the server gets.
+     */
+    @FunctionalInterface
+    interface WorkspaceEditSink {
+
+        Decision accept(WorkspaceEdit edit);
+
+        /**
+         * @param accepted whether the edit is taken
+         * @param reason why the edit was refused, empty when it was accepted
+         */
+        record Decision(boolean accepted, String reason) {
+
+            public Decision {
+                reason = reason == null ? "" : reason;
+            }
+
+            public static Decision accept() {
+                return new Decision(true, "");
+            }
+
+            public static Decision refuse(String reason) {
+                return new Decision(false, reason);
+            }
         }
     }
 

@@ -106,7 +106,7 @@ public final class QuickFixOverlay {
     }
 
     private static String title(CodeAction action) {
-        return QuickFixMenu.appliesEdit(action) ? action.title() : action.title() + " (needs a command)";
+        return action.edit() != null || action.command() == null ? action.title() : action.title() + " (command)";
     }
 
     private static String truncate(String value, int width) {

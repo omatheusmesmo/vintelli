@@ -45,4 +45,15 @@ public final class LspCodeActionProvider implements CodeActionCapability {
             List<DiagnosticsCapability.Diagnostic> diagnostics) {
         return client.codeActions(file, range, diagnostics);
     }
+
+    @Override
+    public boolean supportsCommands() {
+        return true;
+    }
+
+    @Override
+    public CapabilityResult<Integer> executeCommand(CodeActionCapability.CommandRef command,
+            CodeActionCapability.WorkspaceEditSink edits) {
+        return client.executeCommand(command, edits);
+    }
 }
