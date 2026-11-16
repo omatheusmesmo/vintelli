@@ -3,6 +3,7 @@ package dev.omatheusmesmo.vintelli.tui;
 import java.util.ArrayList;
 import java.util.List;
 
+import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
 import dev.tamboui.buffer.Buffer;
 import dev.tamboui.buffer.Cell;
 import dev.tamboui.css.cascade.PseudoClassState;
@@ -21,8 +22,12 @@ import dev.tamboui.toolkit.element.StyledElement;
  * otherwise. Clicks are answered from the cells this element drew, so
  * {@link #tabAt} agrees with what is on screen.
  *
- * <p>Tabs that do not fit are not drawn, never cut: the row scrolls to keep the
- * selected tab whole, a {@code »} glyph on the right marks more tabs and a
+ * <p>When the row is too narrow for every label, the other tabs shrink to their
+ * markers first, so the row holds as many tabs as it can. The selected tab keeps
+ * its title whenever a window of the row can hold it, and the row scrolls to
+ * that window. Only when no window holds the selected title does the selected
+ * tab keep its marker alone, and then the row shows every marker that fits. A
+ * {@code »} glyph on the right marks tabs that follow the drawn ones and a
  * {@code «} glyph at the left edge marks tabs scrolled away on the left. Both
  * glyph cells belong to no tab, so a click on them selects nothing.
  *
@@ -45,9 +50,26 @@ final class ToolTabBarElement extends StyledElement<ToolTabBarElement> {
     }
 
     record Glyphs(String underline, String overflowLeft, String overflowRight) {
+
+        static Glyphs forMode(IconMode mode) {
+            return mode == IconMode.ASCII
+                    ? new Glyphs("-", "<", ">")
+                    : new Glyphs("━", "«", "»");
+        }
     }
 
-    private record Window(int first, int last, boolean overflowRight) {
+    /** Which tabs are drawn with their title; the rest show their marker only. */
+    private enum Shape {
+        WHOLE,
+        SELECTED_WHOLE,
+        MARKS_ONLY;
+
+        boolean drawsTitle(boolean selectedTab) {
+            return this == WHOLE || (this == SELECTED_WHOLE && selectedTab);
+        }
+    }
+
+    private record Plan(int first, int last, boolean overflowRight, Shape shape) {
     }
 
     private record Slot(int index, int start, int end) {
@@ -103,23 +125,27 @@ final class ToolTabBarElement extends StyledElement<ToolTabBarElement> {
         Style overflowStyle = context.childStyle("overflow");
 
         int labelRow = area.y();
-        int[] widths = new int[labels.size()];
-        for (int index = 0; index < widths.length; index++) {
-            widths[index] = labelWidth(labels.get(index));
+        int[] whole = new int[labels.size()];
+        int[] marked = new int[labels.size()];
+        for (int index = 0; index < whole.length; index++) {
+            whole[index] = labelWidth(labels.get(index));
+            marked[index] = CharWidth.of(labels.get(index).marker());
         }
-        Window window = window(widths, selected, area.width() - LEAD);
-        int limit = window.overflowRight() ? area.right() - OVERFLOW_RESERVE : area.right();
-        int x = area.x() + LEAD + leftReserve(window.first());
+        Plan plan = plan(whole, marked, selected, area.width() - LEAD);
+        int limit = plan.overflowRight() ? area.right() - OVERFLOW_RESERVE : area.right();
+        int x = area.x() + LEAD + leftReserve(plan.first());
         List<Slot> visible = new ArrayList<>();
-        for (int index = window.first(); index <= window.last(); index++) {
-            if (index > window.first()) {
+        for (int index = plan.first(); index <= plan.last(); index++) {
+            if (index > plan.first()) {
                 x += GAP;
             }
             Label label = labels.get(index);
             boolean isSelected = index == selected;
             int start = x;
             x = draw(buffer, x, limit, labelRow, label.marker(), shortcutStyle);
-            x = draw(buffer, x, limit, labelRow, " " + label.title(), isSelected ? selectedStyle : tabStyle);
+            if (plan.shape().drawsTitle(isSelected)) {
+                x = draw(buffer, x, limit, labelRow, " " + label.title(), isSelected ? selectedStyle : tabStyle);
+            }
             if (isSelected && rows > 1) {
                 draw(buffer, start, limit, labelRow + 1, glyphs.underline().repeat(x - start), underlineStyle);
             }
@@ -127,10 +153,10 @@ final class ToolTabBarElement extends StyledElement<ToolTabBarElement> {
         }
         buffer.setStyle(new Rect(area.x(), labelRow, area.width(), 1),
                 PaneGapElement.headerUnderline(context.childStyle("header-rule").fg().orElse(null)));
-        if (window.first() > 0) {
+        if (plan.first() > 0) {
             draw(buffer, area.x(), area.x() + 1, labelRow, glyphs.overflowLeft(), overflowStyle);
         }
-        if (window.overflowRight()) {
+        if (plan.overflowRight()) {
             draw(buffer, area.right() - 1, area.right(), labelRow, glyphs.overflowRight(), overflowStyle);
         }
         slots = List.copyOf(visible);
@@ -158,11 +184,41 @@ final class ToolTabBarElement extends StyledElement<ToolTabBarElement> {
     }
 
     /**
-     * The tabs shown: the first window, scanning from the left, in which the
-     * selected tab fits whole. The row shows the tabs from there on, and marks
-     * the right edge when tabs follow that do not fit beside the selection.
+     * The tabs drawn in the row, in this order: every tab whole when they all
+     * fit; the other tabs shortened to their markers when that makes every tab
+     * fit; a window that keeps the selected tab whole; only then every tab as a
+     * marker, and a window of markers when even that does not fit.
      */
-    private static Window window(int[] widths, int selected, int region) {
+    private static Plan plan(int[] whole, int[] marked, int selected, int region) {
+        int count = whole.length;
+        int[] wholeWidths = widths(whole, marked, selected, Shape.WHOLE);
+        int[] selectedWidths = widths(whole, marked, selected, Shape.SELECTED_WHOLE);
+        int[] markerWidths = widths(whole, marked, selected, Shape.MARKS_ONLY);
+        if (spanWidth(wholeWidths, 0, count - 1) <= region) {
+            return new Plan(0, count - 1, false, Shape.WHOLE);
+        }
+        if (spanWidth(selectedWidths, 0, count - 1) <= region) {
+            return new Plan(0, count - 1, false, Shape.SELECTED_WHOLE);
+        }
+        Plan scrolled = scroll(selectedWidths, selected, region, Shape.SELECTED_WHOLE);
+        if (scrolled != null) {
+            return scrolled;
+        }
+        if (spanWidth(markerWidths, 0, count - 1) <= region) {
+            return new Plan(0, count - 1, false, Shape.MARKS_ONLY);
+        }
+        scrolled = scroll(markerWidths, selected, region, Shape.MARKS_ONLY);
+        if (scrolled != null) {
+            return scrolled;
+        }
+        return new Plan(selected, selected, selected < count - 1, Shape.MARKS_ONLY);
+    }
+
+    /**
+     * The first window, scanning from the left, in which the selected tab fits
+     * whole; null when it does not fit in any window of this shape.
+     */
+    private static Plan scroll(int[] widths, int selected, int region, Shape shape) {
         int count = widths.length;
         for (int first = 0; first <= selected; first++) {
             int budget = region - leftReserve(first);
@@ -170,14 +226,22 @@ final class ToolTabBarElement extends StyledElement<ToolTabBarElement> {
                 continue;
             }
             if (spanWidth(widths, first, count - 1) <= budget) {
-                return new Window(first, count - 1, false);
+                return new Plan(first, count - 1, false, shape);
             }
             int reserved = budget - OVERFLOW_RESERVE;
             if (spanWidth(widths, first, selected) <= reserved) {
-                return new Window(first, lastFitting(widths, first, reserved), true);
+                return new Plan(first, lastFitting(widths, first, reserved), true, shape);
             }
         }
-        return new Window(selected, selected, selected < count - 1);
+        return null;
+    }
+
+    private static int[] widths(int[] whole, int[] marked, int selected, Shape shape) {
+        int[] widths = new int[whole.length];
+        for (int index = 0; index < widths.length; index++) {
+            widths[index] = shape.drawsTitle(index == selected) ? whole[index] : marked[index];
+        }
+        return widths;
     }
 
     private static int leftReserve(int first) {

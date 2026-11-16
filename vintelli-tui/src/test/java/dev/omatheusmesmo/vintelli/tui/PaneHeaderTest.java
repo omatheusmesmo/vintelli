@@ -32,6 +32,35 @@ class PaneHeaderTest {
     }
 
     @Test
+    void aFooterCutInsideAVariationSelectorStillEndsWithTheEllipsisInsideItsArea() {
+        String row = row(paint("⚠️ warn: here and more words", false), AREA.width());
+
+        assertEquals("  ⚠️ warn: here and…", row.stripTrailing(),
+                "the cut counts the emoji as two columns, so the ellipsis lands on the last column: " + row);
+    }
+
+    @Test
+    void aFooterCutInsideAJoinedEmojiKeepsTheWholeClusterOrNone() {
+        String row = row(paint("👨‍👩‍👧 family members of the project root", false), AREA.width());
+
+        assertEquals("  👨‍👩‍👧 family members…", row.stripTrailing(), "the family emoji is kept whole: " + row);
+    }
+
+    @Test
+    void aFooterOfWideCharactersCountsEachAsTwoColumns() {
+        String row = row(paint("日本語のファイル名を表示します", false), AREA.width());
+
+        assertEquals("  日本語のファイル…", row.stripTrailing(), "eight wide characters fill the 16 columns before the ellipsis: " + row);
+    }
+
+    @Test
+    void aFooterWithOneColumnForItsTitleShowsOnlyTheEllipsis() {
+        String row = row(paint(new Rect(0, 0, 3, 2), LONG_TITLE, false), 3);
+
+        assertEquals("  …", row, "the ellipsis is the only cell left for the title: " + row);
+    }
+
+    @Test
     void anUnruledTitleThatFitsIsDrawnWhole() {
         String row = row(paint("Read File: local", false), AREA.width());
 
@@ -47,9 +76,13 @@ class PaneHeaderTest {
     }
 
     private static Buffer paint(String title, boolean ruled) {
+        return paint(AREA, title, ruled);
+    }
+
+    private static Buffer paint(Rect area, String title, boolean ruled) {
         Buffer buffer = Buffer.empty(new Rect(0, 0, 40, 2));
         ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
-        PaneHeader.paint(Frame.forTesting(buffer), AREA, title, false, themes, " ", ruled);
+        PaneHeader.paint(Frame.forTesting(buffer), area, title, false, themes, " ", ruled);
         return buffer;
     }
 

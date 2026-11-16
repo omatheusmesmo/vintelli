@@ -28,6 +28,8 @@ final class PaneHeader extends StyledElement<PaneHeader> {
     static final String FOCUS_MARK = "▌";
     static final String FOCUS_MARK_ASCII = "|";
 
+    private static final String ELLIPSIS = "…";
+
     private final Predicate<RenderContext> focused;
     private final Supplier<String> title;
     private final Supplier<ShellThemes> themes;
@@ -80,7 +82,7 @@ final class PaneHeader extends StyledElement<PaneHeader> {
         Style markerStyle = themes.resolver("pane-marker").toStyle();
         Style titleStyle = themes.resolver(focused ? "pane-header-focused" : "pane-header").toStyle();
         String marker = focused ? focusMark : " ";
-        String shown = ruled ? title : ProjectPanel.clipEnd(title, Math.max(1, area.width() - CharWidth.of(marker) - 1));
+        String shown = ruled ? title : fitWithEllipsis(title, area.width() - CharWidth.of(marker) - 1);
         Line line = Line.from(
                 Span.styled(marker, markerStyle),
                 Span.styled(" " + shown, titleStyle));
@@ -90,6 +92,21 @@ final class PaneHeader extends StyledElement<PaneHeader> {
             frame.buffer().setStyle(header, PaneGapElement.headerUnderline(rule));
         }
         return body;
+    }
+
+    /**
+     * The text cut to {@code columns} display columns, ending with an ellipsis
+     * when it does not fit. Cuts follow grapheme clusters, so a variation
+     * selector or a joined emoji is never split from its base.
+     */
+    static String fitWithEllipsis(String text, int columns) {
+        if (CharWidth.of(text) <= columns) {
+            return text;
+        }
+        if (columns <= 1) {
+            return columns == 1 ? ELLIPSIS : "";
+        }
+        return CharWidth.truncateWithEllipsis(text, columns, ELLIPSIS, CharWidth.TruncatePosition.END);
     }
 
     @Override
