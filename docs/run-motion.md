@@ -16,8 +16,12 @@ elapsed time. `full` enables motion. Reduced motion is automatic for `TERM=dumb`
 `NO_COLOR`, and terminals without color. ASCII mode uses plain state glyphs and
 an ASCII output pulse. Completion effects run once and then stop.
 
-## Validation still pending
+## Validation
 
-This implementation is under review in the draft for #295. The latest scheduler
-changes still need a native idle-CPU comparison with main and fresh packaged
-startup, completion-effects and terminal-resize validation before release.
+The JVM tests on Linux, Windows and macOS and the native image job cover the
+startup and completion-effect recordings in `VintelliTuiStartupIT`. Unit tests
+check that `ShellTicker` schedules no frame while nothing runs, that an active
+run ticks between 80 ms and 1 s, and that reduced motion ticks once per second.
+
+Still pending: a native idle-CPU comparison with main and a packaged
+terminal-resize check. #295 stays open until both are done.
