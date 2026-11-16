@@ -447,6 +447,55 @@ check_clone_prerequisites() {
     fi
 }
 
+native_toolchain_search_roots() {
+    if [ -n "${VINTELLI_TOOLCHAIN_DIRS:-}" ]; then
+        printf '%s\n' "$VINTELLI_TOOLCHAIN_DIRS" | tr ':' '\n'
+        return 0
+    fi
+    printf '%s\n' \
+        "${SDKMAN_DIR:-${HOME:-}/.sdkman}/candidates/java" \
+        "${HOME:-}/.local/share/mise/installs/java" \
+        "${HOME:-}/.asdf/installs/java" \
+        "${HOME:-}/.jdks" \
+        "/usr/lib/jvm"
+}
+
+find_installed_native_toolchain() {
+    local root candidate major
+    while IFS= read -r root; do
+        [ -n "$root" ] && [ -d "$root" ] || continue
+        for candidate in "$root"/*/; do
+            candidate="${candidate%/}"
+            [ "$(basename "$candidate")" != "current" ] || continue
+            [ -x "${candidate}/bin/native-image" ] && [ -x "${candidate}/bin/java" ] || continue
+            major="$("${candidate}/bin/java" -version 2>&1 | sed -n '1s/.*version "\([0-9][0-9]*\).*/\1/p' || true)"
+            [ -n "$major" ] && [ "$major" -ge "$REQUIRED_JAVA_MAJOR" ] || continue
+            printf '%s\t%s\n' "$(basename "$candidate")" "$candidate"
+        done
+    done < <(native_toolchain_search_roots) | sort -V | tail -n 1 | cut -f2
+}
+
+use_native_toolchain() {
+    if [ -n "${GRAALVM_HOME:-}" ] && [ -x "${GRAALVM_HOME}/bin/native-image" ]; then
+        log_ok "Native toolchain detected at ${GRAALVM_HOME}/bin/native-image"
+        return 0
+    elif [ -n "${JAVA_HOME:-}" ] && [ -x "${JAVA_HOME}/bin/native-image" ]; then
+        log_ok "Native toolchain detected at ${JAVA_HOME}/bin/native-image"
+        return 0
+    elif command -v native-image >/dev/null 2>&1; then
+        log_ok "Native toolchain detected at $(command -v native-image)"
+        return 0
+    fi
+    local installed
+    installed="$(find_installed_native_toolchain)"
+    if [ -n "$installed" ]; then
+        export GRAALVM_HOME="$installed"
+        log_ok "Native toolchain found at ${installed}/bin/native-image (not the active JDK; it is used for the build only)"
+        return 0
+    fi
+    return 1
+}
+
 detect_native_toolchain() {
     local build_mode="${VINTELLI_BUILD_MODE:-auto}"
     case "$build_mode" in
@@ -455,30 +504,12 @@ detect_native_toolchain() {
             return 1
             ;;
         native)
-            if [ -n "${GRAALVM_HOME:-}" ] && [ -x "${GRAALVM_HOME}/bin/native-image" ]; then
-                log_ok "Native toolchain detected at ${GRAALVM_HOME}/bin/native-image"
-                return 0
-            elif [ -n "${JAVA_HOME:-}" ] && [ -x "${JAVA_HOME}/bin/native-image" ]; then
-                log_ok "Native toolchain detected at ${JAVA_HOME}/bin/native-image"
-                return 0
-            elif command -v native-image >/dev/null 2>&1; then
-                log_ok "Native toolchain detected at $(command -v native-image)"
-                return 0
-            fi
-            die "VINTELLI_BUILD_MODE=native was requested, but 'native-image' (GraalVM/Mandrel) was not found."
+            use_native_toolchain && return 0
+            die "VINTELLI_BUILD_MODE=native was requested, but 'native-image' (GraalVM/Mandrel ${REQUIRED_JAVA_MAJOR}+) was not found in GRAALVM_HOME, JAVA_HOME, PATH or the installed JDKs (SDKMAN, mise, asdf, ~/.jdks, /usr/lib/jvm)."
             ;;
         auto)
-            if [ -n "${GRAALVM_HOME:-}" ] && [ -x "${GRAALVM_HOME}/bin/native-image" ]; then
-                log_ok "Native toolchain detected at ${GRAALVM_HOME}/bin/native-image"
-                return 0
-            elif [ -n "${JAVA_HOME:-}" ] && [ -x "${JAVA_HOME}/bin/native-image" ]; then
-                log_ok "Native toolchain detected at ${JAVA_HOME}/bin/native-image"
-                return 0
-            elif command -v native-image >/dev/null 2>&1; then
-                log_ok "Native toolchain detected at $(command -v native-image)"
-                return 0
-            fi
-            log_warn "GraalVM/Mandrel 'native-image' toolchain not found; falling back to JVM runner mode."
+            use_native_toolchain && return 0
+            log_warn "GraalVM/Mandrel 'native-image' toolchain not found; falling back to JVM runner mode. Install Mandrel ${REQUIRED_JAVA_MAJOR} (for example 'sdk install java ${REQUIRED_JAVA_MAJOR}-mandrel') for the native binary."
             return 1
             ;;
         *)

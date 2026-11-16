@@ -359,6 +359,37 @@ EOF
     assert_contains "$native_ver" "vintelli 1.0.0-SNAPSHOT (native)" "native binary version after source deletion"
     pass "Clone mode (native) installs persistent native binary that survives source tree deletion"
 
+    local toolchain_root="${TEST_TMP}/toolchains"
+    local mandrel_old="${toolchain_root}/24.0.1-mandrel"
+    local mandrel_new="${toolchain_root}/25.0.2.r25-mandrel"
+    local temurin_only="${toolchain_root}/25.0.5-tem"
+    local java_stub
+    for entry in "${mandrel_old}:24" "${mandrel_new}:25" "${temurin_only}:25"; do
+        mkdir -p "${entry%%:*}/bin"
+        java_stub="${entry%%:*}/bin/java"
+        printf '#!/usr/bin/env bash\nprintf '"'"'openjdk version "%s.0.1" 2026-01-20\\n'"'"' >&2\n' "${entry##*:}" > "$java_stub"
+        chmod 0755 "$java_stub"
+    done
+    printf '#!/usr/bin/env bash\nexit 0\n' > "${mandrel_old}/bin/native-image"
+    printf '#!/usr/bin/env bash\nexit 0\n' > "${mandrel_new}/bin/native-image"
+    chmod 0755 "${mandrel_old}/bin/native-image" "${mandrel_new}/bin/native-image"
+    local path_without_native_image="" path_entry
+    while IFS= read -r path_entry; do
+        [ -x "${path_entry}/native-image" ] || path_without_native_image="${path_without_native_image:+${path_without_native_image}:}${path_entry}"
+    done < <(printf '%s\n' "$PATH" | tr ':' '\n')
+    local toolchain_out
+    toolchain_out="$(env -i PATH="$path_without_native_image" VINTELLI_TOOLCHAIN_DIRS="$toolchain_root" VINTELLI_SHELL_PROFILE="${TEST_TMP}/font-profile" \
+        "$INSTALL_SCRIPT" --dry-run --source "$mock_src" --prefix "${TEST_TMP}/toolchain-bin" 2>&1)"
+    assert_contains "$toolchain_out" "Native toolchain found at ${mandrel_new}/bin/native-image" "installed Mandrel is found"
+    assert_contains "$toolchain_out" "clone-native (dry-run)" "installed Mandrel selects the native build"
+    pass "Auto mode finds an installed Mandrel that is not the active JDK and skips one older than the required Java"
+
+    toolchain_out="$(env -i PATH="$path_without_native_image" VINTELLI_TOOLCHAIN_DIRS="${toolchain_root}/missing" VINTELLI_SHELL_PROFILE="${TEST_TMP}/font-profile" \
+        "$INSTALL_SCRIPT" --dry-run --source "$mock_src" --prefix "${TEST_TMP}/toolchain-bin" 2>&1)"
+    assert_contains "$toolchain_out" "falling back to JVM runner mode" "no toolchain falls back to the JVM runner"
+    assert_contains "$toolchain_out" "sdk install java 25-mandrel" "fallback explains how to get Mandrel"
+    pass "Auto mode explains the JVM fallback when no Mandrel is installed"
+
     # 11. Font check: warns without a Nerd Font, never changes the exit code, honours the skip variable
     local font_root="${TEST_TMP}/font-cases"
     local empty_fonts="${font_root}/empty"
