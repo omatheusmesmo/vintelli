@@ -39,6 +39,18 @@ Supported flags on both scripts: `--source <dir>`, `--prefix <dir>`,
 and `--help`. After installation, `vintelli --version` and `vintelli --help`
 confirm the binary is ready.
 
+## Native build toolchain
+
+With no published release, `install.sh` builds from a clone. In the default
+`auto` mode it builds the native binary when it finds a `native-image` of
+GraalVM or Mandrel 25 or newer, and falls back to the JVM launcher otherwise.
+It looks, in this order, at `GRAALVM_HOME`, `JAVA_HOME`, the `PATH`, and then
+the JDKs installed by SDKMAN, mise and asdf, in `~/.jdks` and in
+`/usr/lib/jvm`. A Mandrel found there does not have to be the active JDK:
+the installer uses it for the build only and picks the highest version when
+there are several. `VINTELLI_BUILD_MODE=native` fails when none is found and
+`VINTELLI_BUILD_MODE=jvm` skips the search.
+
 ## Which Java runs Vintelli
 
 The JVM launcher that `install.sh` writes does not trust the `java` of the
