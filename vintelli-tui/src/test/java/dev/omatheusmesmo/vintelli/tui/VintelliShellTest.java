@@ -1554,10 +1554,15 @@ class VintelliShellTest {
         return countingModifiedVcs(changedPath, new AtomicInteger());
     }
 
+    /** The startup read of the branch widget runs its own status call, which is not part of a tree rebuild. */
+    private static final String TOOLBAR_VCS_THREAD = "vintelli-toolbar-vcs";
+
     private static VersionControlCapability countingModifiedVcs(String changedPath, AtomicInteger statusCalls) {
         return new VersionControlCapability() {
             @Override public CapabilityResult<Status> status() {
-                statusCalls.incrementAndGet();
+                if (!TOOLBAR_VCS_THREAD.equals(Thread.currentThread().getName())) {
+                    statusCalls.incrementAndGet();
+                }
                 return CapabilityResult.ok(new Status("main", 0, 0,
                         List.of(new Entry(State.MODIFIED, changedPath))));
             }
