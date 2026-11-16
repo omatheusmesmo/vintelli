@@ -72,6 +72,7 @@ public final class VintelliMain implements QuarkusApplication {
         return TuiConfig.defaults().toBuilder()
                 .tickRate(IDLE_TICK)
                 .resizeGracePeriod(RESIZE_CHECK)
+                .keyboardProtocol(Keymap.KEYBOARD_PROTOCOL)
                 .build();
     }
 

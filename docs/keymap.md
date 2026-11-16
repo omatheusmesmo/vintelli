@@ -18,7 +18,9 @@ names fail fast naming the file and the line, a trigger bound to two
 different actions fails fast, and actions that must stay reachable while an
 input has focus (the palette, the help overlay, the tool window
 activations) must keep at least one Ctrl/Alt/F-key chord; bare printable
-characters belong to the capturing input.
+characters belong to the capturing input. The shell runs the legacy keyboard
+protocol, so a trigger it never receives (a Super, Hyper or Meta modifier, a
+keypad key, F13 to F35) fails fast as well.
 
 The keymap is built only for the `--tui` session: headless and MCP-only
 processes never read the file, and a malformed file fails the TUI startup
@@ -203,8 +205,9 @@ and `docs/spikes/spike-49-per-terminal-capture.md`:
 Chords a terminal cannot deliver, and their alternatives:
 
 - **Double Shift** (Search Everywhere in IntelliJ): needs key release events
-  and the Kitty keyboard protocol, which TamboUI 0.6.0 does not support. Use
-  `Ctrl+P` to open the command palette.
+  and the Kitty keyboard protocol. The shell runs the legacy keyboard protocol
+  (TamboUI 0.7 offers Kitty too, not enabled yet). Use `Ctrl+P` to open the
+  command palette.
 - **`Ctrl+Shift+A`** (Find Action): `Ctrl+Shift+letter` sends the same bytes
   as `Ctrl+letter` in legacy mode. Use the command palette.
 - **`Ctrl+Shift+Z`** (Redo in IntelliJ): sends the same bytes as `Ctrl+Z`.

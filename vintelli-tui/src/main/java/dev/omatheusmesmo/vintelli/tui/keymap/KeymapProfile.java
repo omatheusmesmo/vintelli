@@ -43,8 +43,8 @@ public enum KeymapProfile {
      */
     Bindings navigation() {
         return switch (this) {
-            case INTELLIJ -> BindingSets.intellij();
-            case VIM -> BindingSets.vim();
+            case INTELLIJ -> Keymap.legacyKeyboardBindings(BindingSets.intellij());
+            case VIM -> Keymap.legacyKeyboardBindings(BindingSets.vim());
         };
     }
 

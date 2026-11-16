@@ -334,6 +334,44 @@ class KeymapTest {
     }
 
     @Test
+    void triggersTheLegacyProtocolNeverSendsFailFastNamingTheFile(@TempDir Path tempDir) throws Exception {
+        List<String> unsent = List.of("moveUp = Hyper+k", "moveUp = Meta+Enter", "moveUp = Keypad_Enter",
+                "moveUp = F13", "moveUp = Shift+F35");
+        for (int index = 0; index < unsent.size(); index++) {
+            Path userFile = Files.createDirectories(tempDir.resolve("case" + index)).resolve("keymap.properties");
+            Files.writeString(userFile, unsent.get(index) + "\n");
+
+            IllegalStateException failure = assertThrows(IllegalStateException.class,
+                    () -> Keymap.load(KeymapProfile.DEFAULT, WINDOWS, userFile));
+
+            assertTrue(failure.getMessage().contains(userFile.toString()), failure.getMessage());
+        }
+    }
+
+    @Test
+    void theLegacyProtocolDeliversTheFunctionKeysUpToF12AndNoModifierBeyondCtrlAltShift() {
+        assertTrue(Keymap.deliverableInLegacyProtocol("Ctrl+F12"));
+        assertTrue(Keymap.deliverableInLegacyProtocol("Shift+F2"));
+        assertTrue(Keymap.deliverableInLegacyProtocol("Ctrl+Alt+k"));
+        assertFalse(Keymap.deliverableInLegacyProtocol("F13"));
+        assertFalse(Keymap.deliverableInLegacyProtocol("Ctrl+Super+k"));
+    }
+
+    @Test
+    void theProfilesAnswerNoKeypadAliasAndNoWordWiseChordTheLegacyProtocolCannotTell() {
+        for (KeymapProfile profile : KeymapProfile.values()) {
+            Keymap keymap = Keymap.ofProfile(profile, WINDOWS);
+
+            assertFalse(keymap.bindings().matches(keypress('w', KeyModifiers.CTRL), "deleteWordBackward"),
+                    profile.displayName() + ": Ctrl+w must reach text inputs as before, not delete a word");
+            assertFalse(keymap.bindings().matches(KeyEvent.ofKey(KeyCode.KP_ENTER), "confirm"),
+                    profile.displayName() + ": the keypad Enter alias is a TamboUI 0.7 addition");
+            assertTrue(keymap.bindings().matches(KeyEvent.ofKey(KeyCode.ENTER), "confirm"),
+                    profile.displayName() + ": Enter still confirms");
+        }
+    }
+
+    @Test
     void malformedUnicodeEscapeInUserKeymapFileFailsFastNamingTheFileAndTheLine(@TempDir Path tempDir)
             throws Exception {
         Path userFile = tempDir.resolve("keymap.properties");
