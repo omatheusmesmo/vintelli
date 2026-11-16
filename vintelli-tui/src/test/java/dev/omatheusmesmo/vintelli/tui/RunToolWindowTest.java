@@ -10,11 +10,14 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.IntStream;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.Optional;
 
 import dev.omatheusmesmo.vintelli.api.capability.CallHierarchyCapability;
@@ -39,10 +42,14 @@ import dev.omatheusmesmo.vintelli.api.capability.RunCapability;
 import dev.omatheusmesmo.vintelli.api.capability.TerminalCapability;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
+import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
 import dev.tamboui.buffer.Buffer;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.layout.Size;
+import dev.tamboui.style.Style;
 import dev.tamboui.terminal.Frame;
+import dev.tamboui.tfx.Effect;
+import dev.tamboui.tfx.TFxDuration;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
 import dev.tamboui.tui.event.MouseButton;
@@ -57,6 +64,207 @@ class RunToolWindowTest {
 
     @TempDir
     Path directory;
+
+    @Test
+    void runCompletionMapsOutcomesToExplicitVisibleStates() {
+        assertEquals(RunMotionState.SUCCEEDED,
+                RunMotionState.completed(new RunCapability.RunCompletion(RunCapability.RunOutcome.EXITED,
+                        Optional.of(0))));
+        assertEquals(RunMotionState.FAILED,
+                RunMotionState.completed(new RunCapability.RunCompletion(RunCapability.RunOutcome.EXITED,
+                        Optional.of(1))));
+        assertEquals(RunMotionState.FAILED,
+                RunMotionState.completed(new RunCapability.RunCompletion(RunCapability.RunOutcome.TIMED_OUT,
+                        Optional.empty())));
+        assertEquals(RunMotionState.STOPPED,
+                RunMotionState.completed(new RunCapability.RunCompletion(RunCapability.RunOutcome.CANCELLED,
+                        Optional.empty())));
+    }
+
+    @Test
+    void reducedMotionFramesKeepTheLifecycleGlyphStaticAndAdvanceOnlyElapsedTime() throws Exception {
+        ShellThemes themes = themes();
+        UiWorkQueue uiWork = new UiWorkQueue();
+        FakeRunProvider provider = new FakeRunProvider();
+        AtomicLong now = new AtomicLong();
+        RunToolWindow window = new RunToolWindow(() -> themes, new FakeRegistry(provider), uiWork, ".",
+                null, 5005, Optional.empty(), now::get, true, IconMode.ASCII);
+        window.refreshConfigurations();
+        assertTrue(provider.listed.await(5, TimeUnit.SECONDS));
+        awaitUi(uiWork, () -> window.configurations().size() == 2);
+
+        assertEquals(">", window.icon());
+        window.performAction(KeyActions.RUN_EXECUTE);
+        assertTrue(provider.started.await(5, TimeUnit.SECONDS));
+        awaitUi(uiWork, () -> window.runState() == RunMotionState.RUNNING);
+        assertEquals("|", window.icon());
+        assertEquals("|", window.toolbarGlyph());
+        assertEquals("|", window.stateGlyph(false));
+        assertEquals(KeyActions.RUN_STOP, window.actionForKey(KeyEvent.ofChar('s')));
+        assertEquals("00:00", window.toolbarElapsedText());
+
+        String first = renderHeader(window, 0, 3);
+        now.set(9_000_000_000L);
+        String later = renderHeader(window, 0, 3);
+        assertEquals(first.replace("00:00", "elapsed"), later.replace("00:09", "elapsed"));
+        assertEquals("00:09", window.toolbarElapsedText());
+        assertTrue(first.chars().allMatch(character -> character < 128), first);
+    }
+
+    @Test
+    void activeRunAsciiPulseUsesAsciiGlyphsAndStopsWithTheLastSample() throws Exception {
+        ShellThemes themes = themes();
+        UiWorkQueue uiWork = new UiWorkQueue();
+        FakeRunProvider provider = new FakeRunProvider();
+        AtomicLong now = new AtomicLong();
+        RunToolWindow window = new RunToolWindow(() -> themes, new FakeRegistry(provider), uiWork, ".",
+                null, 5005, Optional.empty(), now::get, false, IconMode.ASCII);
+        window.refreshConfigurations();
+        assertTrue(provider.listed.await(5, TimeUnit.SECONDS));
+        awaitUi(uiWork, () -> window.configurations().size() == 2);
+        window.performAction(KeyActions.RUN_EXECUTE);
+        assertTrue(provider.started.await(5, TimeUnit.SECONDS));
+        awaitUi(uiWork, () -> window.runState() == RunMotionState.RUNNING);
+        assertEquals("|", window.icon());
+        assertEquals("|", window.toolbarGlyph());
+        assertEquals("|", window.stateGlyph(false));
+
+        now.set(1_000_000_000L);
+        window.tickMotion();
+        String body = renderedText(window, uiWork, Rect.of(100, 8));
+        assertTrue(body.contains("Console"), body);
+        assertTrue(body.chars().allMatch(character -> character < 128), body);
+
+        String console = body.lines().filter(line -> line.contains("Console")).findFirst().orElseThrow();
+        String frozenPulse = console.substring(console.indexOf("Console") + "Console   ".length()).strip();
+        assertEquals(12, frozenPulse.length(), frozenPulse);
+        assertTrue(frozenPulse.chars().allMatch(character -> "_.-^".indexOf(character) >= 0), frozenPulse);
+        window.performAction(KeyActions.RUN_STOP);
+        assertTrue(provider.cancelled.await(5, TimeUnit.SECONDS));
+        String stopping = renderedText(window, uiWork, Rect.of(100, 8));
+        String stoppingConsole = stopping.lines().filter(line -> line.contains("Console")).findFirst().orElseThrow();
+        assertEquals(frozenPulse,
+                stoppingConsole.substring(stoppingConsole.indexOf("Console") + "Console   ".length()).strip());
+    }
+
+    @Test
+    void completedHeaderRerunsAndClicksOnTheFormerBodyControlRowDoNothing() throws Exception {
+        ShellThemes themes = themes();
+        UiWorkQueue uiWork = new UiWorkQueue();
+        FakeRunProvider provider = new FakeRunProvider();
+        AtomicLong now = new AtomicLong();
+        RunToolWindow window = new RunToolWindow(() -> themes, new FakeRegistry(provider), uiWork, ".",
+                null, 5005, Optional.empty(), now::get, false, IconMode.ASCII);
+        window.refreshConfigurations();
+        assertTrue(provider.listed.await(5, TimeUnit.SECONDS));
+        awaitUi(uiWork, () -> window.configurations().size() == 2);
+        window.performAction(KeyActions.RUN_EXECUTE);
+        assertTrue(provider.started.await(5, TimeUnit.SECONDS));
+        awaitUi(uiWork, () -> window.runState() == RunMotionState.RUNNING);
+        provider.completion.accept(new RunCapability.RunCompletion(RunCapability.RunOutcome.EXITED, Optional.of(0)));
+        awaitUi(uiWork, () -> window.runState() == RunMotionState.SUCCEEDED);
+        assertNull(window.toolbarElapsedText(), "elapsed time is hidden when the run is complete");
+        now.addAndGet(600_000_000L);
+        assertFalse(window.motionAnimating());
+        assertEquals(KeyActions.RUN_EXECUTE, window.actionForKey(KeyEvent.ofChar('r')));
+
+        String header = renderHeader(window, 0, 3);
+        int rerunCell = -1;
+        for (int x = 0; x < 120; x++) {
+            if (KeyActions.RUN_EXECUTE.equals(window.actionForMouse(MouseEvent.press(MouseButton.LEFT, x, 3)))) {
+                rerunCell = x;
+                break;
+            }
+        }
+        assertTrue(rerunCell >= 0, "the rendered header did not expose its Rerun control: " + header);
+        window.renderBody(Frame.forTesting(Buffer.empty(new Rect(0, 4, 120, 8))), new Rect(0, 4, 120, 8));
+        assertNull(window.actionForMouse(MouseEvent.press(MouseButton.LEFT, 25, 5)),
+                "the first console row must not keep the old Run action hit target");
+    }
+
+    @Test
+    void theShellTickerSchedulesNoFrameWhileNoRunIsActiveAndStaysBoundedWhileOneRuns() throws Exception {
+        ShellThemes themes = themes();
+        UiWorkQueue uiWork = new UiWorkQueue();
+        FakeRunProvider provider = new FakeRunProvider();
+        AtomicLong now = new AtomicLong();
+        RunToolWindow window = new RunToolWindow(() -> themes, new FakeRegistry(provider), uiWork, ".",
+                null, 5005, Optional.empty(), now::get, false, IconMode.ASCII);
+        AtomicInteger redraws = new AtomicInteger();
+        ShellTicker ticker = new ShellTicker(window::motionTickRate, new ReentrantLock(), window::motionAnimating,
+                window::tickMotion);
+        ticker.bindRedraw(redraws::incrementAndGet);
+        window.refreshConfigurations();
+        assertTrue(provider.listed.await(5, TimeUnit.SECONDS));
+        awaitUi(uiWork, () -> window.configurations().size() == 2);
+
+        assertFalse(window.motionAnimating(), "an idle Run window animates nothing");
+        ticker.sync();
+        ticker.beat();
+        assertEquals(0, redraws.get(), "an idle Run window requests no frame");
+
+        window.performAction(KeyActions.RUN_EXECUTE);
+        assertTrue(provider.started.await(5, TimeUnit.SECONDS));
+        awaitUi(uiWork, () -> window.runState() == RunMotionState.RUNNING);
+        assertTrue(window.motionAnimating());
+        assertTrue(window.motionTickRate().compareTo(Duration.ofMillis(80)) >= 0, "the tick is bounded below");
+        assertTrue(window.motionTickRate().compareTo(Duration.ofSeconds(1)) <= 0, "the tick is bounded above");
+        ticker.beat();
+        assertEquals(1, redraws.get(), "a running run requests one frame per tick");
+
+        provider.completion.accept(new RunCapability.RunCompletion(RunCapability.RunOutcome.EXITED, Optional.of(0)));
+        awaitUi(uiWork, () -> window.runState() == RunMotionState.SUCCEEDED);
+        ticker.beat();
+        assertEquals(2, redraws.get(), "the completion effect still draws while it settles");
+        now.addAndGet(600_000_000L);
+        ticker.beat();
+        assertEquals(2, redraws.get(), "no frame is requested once the completion effect has settled");
+        ticker.sync();
+    }
+
+    @Test
+    void reducedMotionTicksOncePerSecondWhileARunIsActive() throws Exception {
+        ShellThemes themes = themes();
+        UiWorkQueue uiWork = new UiWorkQueue();
+        FakeRunProvider provider = new FakeRunProvider();
+        RunToolWindow window = new RunToolWindow(() -> themes, new FakeRegistry(provider), uiWork, ".",
+                null, 5005, Optional.empty(), System::nanoTime, true, IconMode.ASCII);
+        window.refreshConfigurations();
+        assertTrue(provider.listed.await(5, TimeUnit.SECONDS));
+        awaitUi(uiWork, () -> window.configurations().size() == 2);
+        window.performAction(KeyActions.RUN_EXECUTE);
+        assertTrue(provider.started.await(5, TimeUnit.SECONDS));
+        awaitUi(uiWork, () -> window.runState() == RunMotionState.RUNNING);
+
+        assertTrue(window.motionAnimating());
+        assertEquals(Duration.ofSeconds(1), window.motionTickRate());
+    }
+
+    @Test
+    void completionToolkitEffectProducesASettledRenderedFrameAtItsInjectedDuration() {
+        ShellThemes themes = themes();
+        RunToolWindow window = new RunToolWindow(() -> themes);
+        Rect area = new Rect(0, 0, 120, 1);
+        Buffer buffer = Buffer.empty(area);
+        window.renderHeader(Frame.forTesting(buffer), area);
+        List<Style> initialFrame = IntStream.range(0, area.width())
+                .mapToObj(column -> buffer.get(column, 0).style()).toList();
+
+        Effect effect = window.completionEffect(RunMotionState.SUCCEEDED, themes);
+        effect.process(TFxDuration.fromMillis(600), buffer, area);
+        List<Style> settledFrame = IntStream.range(0, area.width())
+                .mapToObj(column -> buffer.get(column, 0).style()).toList();
+
+        assertTrue(effect.done(), "the 600 ms toolkit effect must be settled at its end time");
+        assertFalse(initialFrame.equals(settledFrame), "the toolkit effect must alter the rendered frame");
+    }
+
+    @Test
+    void vt100AndDumbTerminalsSelectReducedMotion() {
+        assertTrue(RunToolWindow.reducedMotionEnabled("full", Optional.of("vt100"), Optional.empty(), false));
+        assertTrue(RunToolWindow.reducedMotionEnabled("full", Optional.of("dumb"), Optional.empty(), false));
+        assertFalse(RunToolWindow.reducedMotionEnabled("full", Optional.of("xterm-256color"), Optional.empty(), false));
+    }
 
     @Test
     void debugToolbarAttachesTheDebugCapabilityToTheStartedRunAndDetachesBeforeStop() throws Exception {
@@ -84,6 +292,11 @@ class RunToolWindowTest {
         assertEquals(DebugCapability.BreakpointState.VERIFIED,
                 editorProvider.sourceBreakpoints().values().iterator().next().getFirst().state());
         assertTrue(window.debugging());
+        String debugRun = renderedText(window, uiWork);
+        assertTrue(debugRun.contains("Resume  Pause  Over  Into  Out"), debugRun);
+        assertTrue(debugRun.contains("Debugger stopped"), debugRun);
+        assertEquals(KeyActions.DEBUG_RESUME,
+                window.actionForMouse(MouseEvent.press(MouseButton.LEFT, 0, window.lastArea().y())));
         assertTrue(window.performAction(KeyActions.RUN_STOP));
         assertTrue(runProvider.cancelled.await(5, TimeUnit.SECONDS));
         assertTrue(debugProvider.disconnected.await(5, TimeUnit.SECONDS));
@@ -210,15 +423,18 @@ class RunToolWindowTest {
             pilot.pause(Duration.ofMillis(150));
             uiWork.drain();
             assertEquals("idea:Second", provider.startedConfiguration.get());
+            assertEquals(RunMotionState.RUNNING, window.runState());
             assertTrue(window.consoleLines().contains("Second output"));
             assertTrue(window.statusMessage().contains("Running idea:Second"));
-            Rect toolArea = pilot.findElement("tool-run");
+            Rect headerArea = pilot.findElement(RunHeaderElement.ID);
             awaitUi(uiWork, () -> window.providerLabel().equals("Run: idea (IDEA MCP)"));
             String screen = renderedShellText(shell, test, uiWork, new Size(100, 30));
-            assertTrue(screen.contains("Run: idea (IDEA MCP)"), screen);
-            assertTrue(screen.contains("▶ Run [Enter]"), screen);
-            assertTrue(screen.contains("Configurations"), screen);
-            assertTrue(screen.contains("› idea:Second"), screen);
+            assertTrue(screen.contains("Running   idea:Second"), screen);
+            assertTrue(screen.contains("Run · Running"), screen);
+            assertFalse(screen.contains("Run: idea (IDEA MCP)"), screen);
+            assertFalse(screen.contains("▶ Run [Enter]"), screen);
+            assertFalse(screen.contains("Configurations"), screen);
+            assertFalse(screen.contains("› idea:Second"), screen);
             assertTrue(screen.contains("Console"), screen);
             assertTrue(screen.contains("Second output"), screen);
 
@@ -228,14 +444,18 @@ class RunToolWindowTest {
             uiWork.drain();
             assertTrue(window.statusMessage().contains("Running idea:Second"));
             List<String> rows = screen.lines().toList();
-            int stopRow = rowContaining(rows, "■ Stop");
-            assertTrue(stopRow >= toolArea.y() && stopRow < toolArea.bottom(), screen);
-            int stopColumn = rows.get(stopRow).indexOf("■ Stop") + 2;
+            int stopRow = rowContaining(rows, "Stop");
+            assertTrue(stopRow >= headerArea.y() && stopRow < headerArea.bottom(), screen);
+            int stopColumn = rows.get(stopRow).indexOf("Stop") + 1;
             pilot.click(stopColumn, stopRow);
             assertTrue(provider.cancelled.await(5, TimeUnit.SECONDS));
             pilot.pause(Duration.ofMillis(50));
             uiWork.drain();
             assertEquals("Run cancelled", window.statusMessage());
+            assertEquals(RunMotionState.STOPPED, window.runState());
+            String completedScreen = renderedShellText(shell, test, uiWork, new Size(100, 30));
+            assertTrue(completedScreen.contains("Stopped"), completedScreen);
+            assertTrue(completedScreen.contains("idea:Second"), completedScreen);
         }
     }
 
@@ -287,7 +507,7 @@ class RunToolWindowTest {
         window.render(Frame.forTesting(buffer), Rect.of(100, 10));
         String screen = bufferText(buffer);
         assertTrue(screen.contains("Run: idea (IDEA MCP)"), screen);
-        assertTrue(screen.contains("▶ Run [Enter]"), screen);
+        assertTrue(screen.contains("Run [Enter]"), screen);
         assertTrue(screen.contains("Configurations"), screen);
         assertTrue(screen.contains("› idea:Config19"), screen);
         assertTrue(screen.contains("Console"), screen);
@@ -389,6 +609,13 @@ class RunToolWindowTest {
         uiWork.drain();
         window.render(Frame.forTesting(buffer), area);
         return bufferText(buffer);
+    }
+
+    private static String renderHeader(RunToolWindow window, int x, int y) {
+        Rect area = new Rect(x, y, 120, 1);
+        Buffer buffer = Buffer.empty(area);
+        window.renderHeader(Frame.forTesting(buffer), area);
+        return bufferText(buffer).stripTrailing();
     }
 
     private static String renderedShellText(VintelliShell shell, ToolkitTestRunner test,

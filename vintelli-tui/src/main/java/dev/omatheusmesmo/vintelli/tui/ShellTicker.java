@@ -7,6 +7,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 
 /**
  * The shared animation tick of the shell. While an animation is running it
@@ -16,15 +17,20 @@ import java.util.function.BooleanSupplier;
  */
 final class ShellTicker {
 
-    private final Duration period;
+    private final Supplier<Duration> period;
     private final Lock frameLock;
     private final BooleanSupplier animating;
     private final Runnable advance;
     private volatile Runnable redraw = () -> { };
     private ScheduledExecutorService scheduler;
     private ScheduledFuture<?> task;
+    private Duration scheduledPeriod;
 
     ShellTicker(Duration period, Lock frameLock, BooleanSupplier animating, Runnable advance) {
+        this(() -> period, frameLock, animating, advance);
+    }
+
+    ShellTicker(Supplier<Duration> period, Lock frameLock, BooleanSupplier animating, Runnable advance) {
         this.period = period;
         this.frameLock = frameLock;
         this.animating = animating;
@@ -40,7 +46,7 @@ final class ShellTicker {
         frameLock.lock();
         try {
             if (animating.getAsBoolean()) {
-                start();
+                start(period.get());
             } else {
                 stop();
             }
@@ -64,10 +70,11 @@ final class ShellTicker {
         redraw.run();
     }
 
-    private synchronized void start() {
-        if (task != null) {
+    private synchronized void start(Duration nextPeriod) {
+        if (task != null && nextPeriod.equals(scheduledPeriod)) {
             return;
         }
+        stop();
         if (scheduler == null) {
             scheduler = Executors.newSingleThreadScheduledExecutor(runnable -> {
                 Thread thread = new Thread(runnable, "vintelli-shell-tick");
@@ -75,7 +82,8 @@ final class ShellTicker {
                 return thread;
             });
         }
-        long millis = period.toMillis();
+        long millis = nextPeriod.toMillis();
+        scheduledPeriod = nextPeriod;
         task = scheduler.scheduleAtFixedRate(this::beat, millis, millis, TimeUnit.MILLISECONDS);
     }
 
@@ -83,6 +91,7 @@ final class ShellTicker {
         if (task != null) {
             task.cancel(false);
             task = null;
+            scheduledPeriod = null;
         }
     }
 }

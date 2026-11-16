@@ -222,6 +222,23 @@ class MainToolbarTest {
     }
 
     @Test
+    void activeRunToolbarShowsElapsedTimeAndCompletedRunDoesNot() {
+        MainToolbar.Model active = new MainToolbar.Model("vintelli", "main", "idea:First", true,
+                false, -1, false, "⠋", "Running", "run-accent", "00:42");
+        MainToolbar.Segment activeRun = segmentOf(MainToolbar.layout(WIDTH, active, MENUS, UNICODE),
+                MainToolbar.Kind.RUN_STOP);
+        assertTrue(activeRun.text().contains("Running"), activeRun.text());
+        assertTrue(activeRun.text().contains("00:42"), activeRun.text());
+
+        MainToolbar.Model completed = new MainToolbar.Model("vintelli", "main", "idea:First", false,
+                false, -1, false, "✓", "Succeeded", "run-success", null);
+        MainToolbar.Segment finishedRun = segmentOf(MainToolbar.layout(WIDTH, completed, MENUS, UNICODE),
+                MainToolbar.Kind.RUN);
+        assertTrue(finishedRun.text().contains("Succeeded"), finishedRun.text());
+        assertFalse(finishedRun.text().contains("00:42"), finishedRun.text());
+    }
+
+    @Test
     void runButtonDispatchesRunExecuteThroughTheRunToolWindow() throws Exception {
         FakeRunProvider provider = new FakeRunProvider(true);
         try (Fixture fixture = new Fixture(provider, WIDTH)) {
@@ -292,8 +309,8 @@ class MainToolbarTest {
             Pilot pilot = fixture.pilot();
             pilot.click(column(fixture.awaitRow("idea:First"), glyphs().play()), 0);
             assertTrue(provider.started.await(WAIT.toMillis(), TimeUnit.MILLISECONDS));
-            String row = fixture.awaitRow(glyphs().stop());
-            pilot.click(column(row, glyphs().stop()), 0);
+            String row = fixture.awaitRow("Running");
+            pilot.click(column(row, "Running"), 0);
             assertTrue(provider.cancelled.await(WAIT.toMillis(), TimeUnit.MILLISECONDS), "the stop button never cancelled");
         }
     }
@@ -305,8 +322,8 @@ class MainToolbarTest {
             Pilot pilot = fixture.pilot();
             pilot.click(column(fixture.awaitRow("idea:First"), glyphs().play()), 0);
             assertTrue(provider.started.await(WAIT.toMillis(), TimeUnit.MILLISECONDS));
-            String row = fixture.awaitRow(glyphs().stop());
-            pilot.click(column(row, glyphs().stop()), 0);
+            String row = fixture.awaitRow("Running");
+            pilot.click(column(row, "Running"), 0);
             fixture.awaitHandled();
             assertEquals(1L, provider.cancelled.getCount(), "a non cancellable run must not be stopped");
         }
@@ -327,8 +344,8 @@ class MainToolbarTest {
             Pilot pilot = fixture.pilot();
             pilot.click(column(fixture.awaitRow("idea:First"), glyphs().play()), 0);
             assertTrue(runProvider.started.await(WAIT.toMillis(), TimeUnit.MILLISECONDS));
-            String row = fixture.awaitRow(glyphs().stop());
-            pilot.click(column(row, glyphs().stop()), 0);
+            String row = fixture.awaitRow("Running");
+            pilot.click(column(row, "Running"), 0);
             assertTrue(runProvider.cancelled.await(WAIT.toMillis(), TimeUnit.MILLISECONDS), "the stop button never cancelled");
         }
     }

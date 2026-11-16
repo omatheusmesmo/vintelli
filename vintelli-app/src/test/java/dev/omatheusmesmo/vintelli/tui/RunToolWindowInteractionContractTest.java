@@ -99,13 +99,13 @@ class RunToolWindowInteractionContractTest {
         List<String> rows = fixture.renderedText().lines().toList();
         int runRow = -1;
         for (int row = area.y(); row < Math.min(area.bottom(), rows.size()); row++) {
-            if (rows.get(row).contains("▶ Run")) {
+            if (rows.get(row).contains("Run [Enter]")) {
                 runRow = row;
                 break;
             }
         }
         assertTrue(runRow >= 0, "the Run button is visible in the Run tool window");
-        fixture.pilot().click(rows.get(runRow).indexOf("▶ Run") + 2, runRow);
+        fixture.pilot().click(rows.get(runRow).indexOf("Run [Enter]") + 1, runRow);
         awaitUi(context.uiWork(), () -> context.provider().startedConfiguration.get() != null
                 && context.window().statusMessage().startsWith("Running "));
         fixture.press('r');

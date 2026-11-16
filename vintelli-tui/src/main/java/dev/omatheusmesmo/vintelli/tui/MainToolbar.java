@@ -85,7 +85,12 @@ final class MainToolbar extends StyledElement<MainToolbar> {
      * open.
      */
     record Model(String project, String branch, String run, boolean running, boolean menuOpen, int activeMenu,
-            boolean debugAvailable) {
+            boolean debugAvailable, String runGlyph, String runStateLabel, String runThemeRole, String runElapsed) {
+        Model(String project, String branch, String run, boolean running, boolean menuOpen, int activeMenu,
+                boolean debugAvailable) {
+            this(project, branch, run, running, menuOpen, activeMenu, debugAvailable, null, null, null, null);
+        }
+
         Model(String project, String branch, String run, boolean running, boolean menuOpen, int activeMenu) {
             this(project, branch, run, running, menuOpen, activeMenu, false);
         }
@@ -175,14 +180,21 @@ final class MainToolbar extends StyledElement<MainToolbar> {
         if (model.run() != null) {
             items.add(new Item(Kind.CONFIGURATION, " " + labelFor(model.run()) + " " + glyphs.dropdown(), -1));
             items.add(model.running()
-                    ? new Item(Kind.RUN_STOP, " " + glyphs.stop(), -1)
-                    : new Item(Kind.RUN, " " + glyphs.play(), -1));
+                    ? new Item(Kind.RUN_STOP, runButton(model, glyphs.stop()), -1)
+                    : new Item(Kind.RUN, runButton(model, glyphs.play()), -1));
         }
         items.add(new Item(Kind.DEBUG, " " + glyphs.debug(), -1));
         items.add(new Item(Kind.MORE, " " + glyphs.more(), -1));
         items.add(new Item(Kind.SEARCH, " " + glyphs.search(), -1));
         items.add(new Item(Kind.SETTINGS, " " + glyphs.settings(), -1));
         return items;
+    }
+
+    private static String runButton(Model model, String fallbackGlyph) {
+        String glyph = model.runGlyph() == null ? fallbackGlyph : model.runGlyph();
+        String state = model.runStateLabel() == null ? "" : " " + model.runStateLabel();
+        String elapsed = model.runElapsed() == null ? "" : " " + model.runElapsed();
+        return " " + glyph + state + elapsed;
     }
 
     private static List<Item> withoutBranch(List<Item> items) {
@@ -264,6 +276,8 @@ final class MainToolbar extends StyledElement<MainToolbar> {
                 yield theme.resolver(role).toStyle();
             }
             case DEBUG -> current.debugAvailable() ? base : base.dim();
+            case RUN, RUN_STOP -> current.runThemeRole() == null ? base
+                    : theme.resolver(current.runThemeRole()).toStyle();
             default -> base;
         };
     }

@@ -49,10 +49,13 @@ final class ToolWindowPanel {
             tabBars.remove(anchor);
             return Toolkit.text("").length(0);
         }
-        List<ToolTabBarElement.Label> labels = windows.stream()
-                .map(window -> new ToolTabBarElement.Label(tabMarker(window),
-                        anchor == ToolWindow.Anchor.RIGHT ? compactRightTabTitle(window) : window.title()))
-                .toList();
+        List<ToolTabBarElement.Label> labels = windows.stream().map(window -> {
+            String title = anchor == ToolWindow.Anchor.RIGHT ? compactRightTabTitle(window) : window.title();
+            if (window instanceof RunToolWindow run && run.runState() != RunMotionState.IDLE) {
+                return new ToolTabBarElement.Label(tabMarker(window), run.tabTitle(), run.stateThemeRole());
+            }
+            return new ToolTabBarElement.Label(tabMarker(window), title);
+        }).toList();
         int clampedTab = Math.min(Math.max(host.activeIndex(anchor), 0), windows.size() - 1);
         ToolTabBarElement tabs = new ToolTabBarElement(tabBarId(anchor), labels, clampedTab,
                 ToolTabBarElement.Glyphs.forMode(mode));
@@ -111,7 +114,7 @@ final class ToolWindowPanel {
         ToolWindow.Anchor anchor = window.anchor();
         if ((anchor == ToolWindow.Anchor.BOTTOM || anchor == ToolWindow.Anchor.RIGHT)
                 && window == host.activeWindow(anchor)) {
-            activeAreas.put(anchor, area);
+            activeAreas.compute(anchor, (ignored, previous) -> previous == null ? area : union(previous, area));
         }
     }
 
@@ -125,11 +128,25 @@ final class ToolWindowPanel {
             clamped = 0;
         }
         ToolWindow window = windows.get(clamped);
+        activeAreas.remove(anchor);
         Column pane = Toolkit.column().id("tool-pane-" + window.id());
         pane.add(new PaneHeader("tool-" + window.id(), context -> host.isFocused(window.id()), window::title,
                 () -> themes.get(), focusMark));
-        pane.add(new ToolWindowElement(window, -1, elements));
+        if (window instanceof RunToolWindow run && run.runState() != RunMotionState.IDLE) {
+            pane.add(new RunHeaderElement(run, elements));
+            pane.add(new ToolWindowElement(window, -1, elements, true));
+        } else {
+            pane.add(new ToolWindowElement(window, -1, elements));
+        }
         return anchor == ToolWindow.Anchor.BOTTOM ? pane.length(ToolWindowHost.TOOL_WINDOW_HEIGHT) : pane.fill();
+    }
+
+    private static Rect union(Rect left, Rect right) {
+        int x = Math.min(left.x(), right.x());
+        int y = Math.min(left.y(), right.y());
+        int bottom = Math.max(left.bottom(), right.bottom());
+        int rightEdge = Math.max(left.right(), right.right());
+        return new Rect(x, y, rightEdge - x, bottom - y);
     }
 
     private static String tabBarId(ToolWindow.Anchor anchor) {
@@ -137,6 +154,9 @@ final class ToolWindowPanel {
     }
 
     private String tabMarker(ToolWindow window) {
+        if (window instanceof RunToolWindow run && run.runState() != RunMotionState.IDLE) {
+            return run.stateGlyph(mode == IconMode.ASCII);
+        }
         return ToolStripes.nerdIcon(window, mode).orElseGet(() -> String.valueOf(window.shortcut()));
     }
 

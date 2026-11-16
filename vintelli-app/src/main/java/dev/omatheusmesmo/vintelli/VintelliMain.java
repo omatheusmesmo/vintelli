@@ -13,6 +13,8 @@ import dev.omatheusmesmo.vintelli.tui.VintelliShell;
 import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeymapRegistry;
 import dev.omatheusmesmo.vintelli.tui.terminal.TerminalBackground;
+import dev.tamboui.tfx.toolkit.ToolkitEffects;
+import dev.tamboui.toolkit.app.ToolkitPostRenderProcessor;
 import dev.tamboui.toolkit.app.ToolkitRunner;
 import dev.tamboui.tui.TuiConfig;
 import dev.tamboui.tui.event.TickEvent;
@@ -92,8 +94,16 @@ public final class VintelliMain implements QuarkusApplication {
             try {
                 ShellThemes shellThemes = themes.get();
                 VintelliShell tuiShell = shell.get();
+                ToolkitEffects motionEffects = new ToolkitEffects();
+                ToolkitPostRenderProcessor processMotionEffects = motionEffects.asPostRenderProcessor();
+                tuiShell.bindMotionEffects(motionEffects);
                 Keymap keymap = keymapRegistry.get().get();
                 try (ToolkitRunner runner = ToolkitRunner.builder()
+                        .postRenderProcessor((frame, elements, styledAreas, focus, elapsed) -> {
+                            if (motionEffects.registry().isRunning()) {
+                                processMotionEffects.process(frame, elements, styledAreas, focus, elapsed);
+                            }
+                        })
                         .config(shellConfig())
                         .bindings(keymap.bindings())
                         .styleEngine(shellThemes.engine())

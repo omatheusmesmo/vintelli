@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import java.util.stream.IntStream;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.EditorBridge;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
@@ -67,7 +68,12 @@ class DebugLaunchInteractionTest {
             assertTrue(window.statusMessage().contains("session is not stopped"));
 
             Rect area = fixture.pilot().findElement("tool-run");
-            fixture.pilot().click(area.x() + 57, area.y() + 1);
+            List<String> rows = fixture.renderedText().lines().toList();
+            int controlsRow = IntStream.range(area.y(), Math.min(area.bottom(), rows.size()))
+                    .filter(row -> rows.get(row).contains("Resume  Pause"))
+                    .findFirst().orElse(-1);
+            assertTrue(controlsRow >= 0, "the stepping controls are visible in the Run tool window");
+            fixture.pilot().click(rows.get(controlsRow).indexOf("Pause") + 1, controlsRow);
             await(queue, () -> window.statusMessage().equals("Pause requested"));
             focusRunTool(fixture, window);
             fixture.press('i');

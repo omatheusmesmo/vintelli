@@ -35,7 +35,10 @@ final class ToolStripElement extends StyledElement<ToolStripElement> {
         LEFT, RIGHT
     }
 
-    record Icon(String id, String glyph, boolean active, boolean bottomAnchored) {
+    record Icon(String id, String glyph, boolean active, boolean bottomAnchored, String themeRole) {
+        Icon(String id, String glyph, boolean active, boolean bottomAnchored) {
+            this(id, glyph, active, bottomAnchored, null);
+        }
     }
 
     private record Slot(String id, int row) {
@@ -94,9 +97,8 @@ final class ToolStripElement extends StyledElement<ToolStripElement> {
 
     private void draw(Buffer buffer, Rect area, int row, Icon icon, RenderContext context,
             List<Slot> placed) {
-        Style style = icon.active()
-                ? context.childStyle("icon", PseudoClassState.ofSelected())
-                : context.childStyle("icon");
+        Style style = icon.themeRole() != null ? context.childStyle(icon.themeRole()) : icon.active()
+                ? context.childStyle("icon", PseudoClassState.ofSelected()) : context.childStyle("icon");
         int iconWidth = area.width() - 1;
         String cell = CharWidth.substringByWidth(" " + icon.glyph() + " ", iconWidth);
         int column = side == Side.LEFT ? area.x() : area.x() + 1;
