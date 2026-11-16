@@ -128,6 +128,59 @@ public interface VersionControlCapability extends ProviderDescriptor {
     }
 
     /**
+     * Fetches one configured remote after the caller confirms. Only the
+     * remote-tracking refs move; the worktree and the checked out branch do not.
+     *
+     * @return a short summary of the refs that changed on the remote, or a
+     *         failed result when the remote is missing or cannot be reached
+     */
+    default CapabilityResult<String> fetch(String remote, boolean confirmed) {
+        return CapabilityResult.failed(new CapabilityFailure(
+                "Fetch unavailable", "The provider does not fetch from remotes"));
+    }
+
+    /**
+     * Fetches the upstream of the checked out branch and integrates it, as a
+     * fast-forward when possible and as a merge otherwise, after the caller
+     * confirms. A merge that conflicts fails with the conflicted paths as the
+     * detail and leaves the merge in progress for the user to resolve.
+     *
+     * @return a short summary of the integration, or a failed result when the
+     *         branch has no upstream, the remote cannot be reached or the merge
+     *         stops on conflicts
+     */
+    default CapabilityResult<String> pull(boolean confirmed) {
+        return CapabilityResult.failed(new CapabilityFailure(
+                "Pull unavailable", "The provider does not pull from remotes"));
+    }
+
+    /**
+     * Pushes the checked out branch to its upstream after the caller confirms.
+     * Nothing is forced: a remote branch that holds commits missing locally
+     * rejects the push.
+     *
+     * @return a short summary of the push, or a failed result when the branch
+     *         has no upstream, the remote cannot be reached or the push is rejected
+     */
+    default CapabilityResult<String> push(boolean confirmed) {
+        return CapabilityResult.failed(new CapabilityFailure(
+                "Push unavailable", "The provider does not push to remotes"));
+    }
+
+    /**
+     * Pushes the checked out branch to the named remote under the same name
+     * and records that remote branch as its upstream, after the caller confirms.
+     * The upstream is recorded only when the push succeeds.
+     *
+     * @return a short summary of the push, or a failed result when the remote
+     *         is missing, the remote cannot be reached or the push is rejected
+     */
+    default CapabilityResult<String> pushSetUpstream(String remote, boolean confirmed) {
+        return CapabilityResult.failed(new CapabilityFailure(
+                "Push with upstream unavailable", "The provider does not push to remotes"));
+    }
+
+    /**
      * One local branch of the repository. {@code current} is true for the
      * branch that HEAD points at.
      */

@@ -54,6 +54,39 @@ Every write needs `confirmed=true`, and the check runs before the repository
 is opened. Names are stripped of surrounding whitespace and then checked with
 JGit's ref name rules.
 
+## Remote operations
+
+The provider fetches, pulls and pushes through JGit (`GitRemoteSync`). The TUI
+does not expose these operations yet, and no progress is reported. The
+methods return a short summary on success and a failed result otherwise.
+
+- `fetch(remote, confirmed)` fetches one configured remote. Only the
+  remote-tracking refs move; the worktree and the checked out branch do not.
+- `pull(confirmed)` fetches the upstream of the checked out branch and
+  integrates it: a fast-forward when possible, a merge otherwise. Rebasing is
+  never chosen, whatever `pull.rebase` says. A conflicting merge fails with
+  reason "The pull stopped on merge conflicts" and the conflicted paths in the
+  detail. The merge stays in progress, as `git pull` leaves it, so the user
+  resolves those paths and commits.
+- `push(confirmed)` pushes the checked out branch to its upstream and never
+  forces. A remote branch that holds commits the local branch lacks rejects the
+  push, and the caller pulls first.
+- `pushSetUpstream(remote, confirmed)` pushes the branch to the remote branch of
+  the same name and records it as the upstream. The upstream is written only
+  after the push succeeds.
+
+Every call needs `confirmed=true`, checked before the repository is opened. A
+missing remote, a detached HEAD and a branch without an upstream each fail with
+an explicit reason. Messages never carry the userinfo of a remote URL. Vintelli
+stores no credential: authentication is whatever JGit does by default, with no
+credentials provider set. SSH remotes need the `org.eclipse.jgit.ssh.apache`
+module, which the local provider does not declare yet, and private HTTPS
+remotes have not been exercised.
+
+Not covered: TUI controls, progress and cancellation, force push, pull with
+rebase, tag management, submodules and the native image run. The tests use a
+local bare repository on disk, so no network is involved.
+
 ## Headless write probe
 
 The opt-in `POST /vcs/commit` endpoint accepts `{"message":"..."}` for a new

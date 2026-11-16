@@ -471,6 +471,38 @@ public final class LocalVersionControlCapability implements VersionControlCapabi
         });
     }
 
+    @Override
+    public CapabilityResult<String> fetch(String remote, boolean confirmed) {
+        if (!confirmed) {
+            return confirmationRequired();
+        }
+        return withRepository((repository, projectPrefix) -> GitRemoteSync.fetch(repository, remote));
+    }
+
+    @Override
+    public CapabilityResult<String> pull(boolean confirmed) {
+        if (!confirmed) {
+            return confirmationRequired();
+        }
+        return withRepository((repository, projectPrefix) -> GitRemoteSync.pull(repository));
+    }
+
+    @Override
+    public CapabilityResult<String> push(boolean confirmed) {
+        if (!confirmed) {
+            return confirmationRequired();
+        }
+        return withRepository((repository, projectPrefix) -> GitRemoteSync.push(repository));
+    }
+
+    @Override
+    public CapabilityResult<String> pushSetUpstream(String remote, boolean confirmed) {
+        if (!confirmed) {
+            return confirmationRequired();
+        }
+        return withRepository((repository, projectPrefix) -> GitRemoteSync.pushSetUpstream(repository, remote));
+    }
+
     /**
      * @return the stripped name when it is a valid local branch name that is
      *         not the reserved {@code HEAD}, or empty otherwise
@@ -493,7 +525,7 @@ public final class LocalVersionControlCapability implements VersionControlCapabi
         return CapabilityResult.failed(new CapabilityFailure(reason, "Local branch not found: " + name));
     }
 
-    private static CapabilityResult<Boolean> confirmationRequired() {
+    private static <T> CapabilityResult<T> confirmationRequired() {
         return CapabilityResult.failed(new CapabilityFailure(CONFIRMATION_REQUIRED, "Confirm the action first"));
     }
 
@@ -592,7 +624,7 @@ public final class LocalVersionControlCapability implements VersionControlCapabi
         states.merge(path, state, (current, incoming) -> current.compareTo(incoming) <= 0 ? current : incoming);
     }
 
-    private static String currentBranch(Repository repository) throws IOException {
+    static String currentBranch(Repository repository) throws IOException {
         String fullName = repository.getFullBranch();
         return fullName != null && fullName.startsWith(Constants.R_HEADS) ? repository.getBranch() : null;
     }

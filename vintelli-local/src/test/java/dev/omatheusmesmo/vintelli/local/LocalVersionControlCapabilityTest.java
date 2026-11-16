@@ -20,7 +20,12 @@ import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.errors.ConfigInvalidException;
 import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.lib.RepositoryState;
 import org.eclipse.jgit.storage.file.FileBasedConfig;
+import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
+import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.util.FS;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -973,6 +978,267 @@ class LocalVersionControlCapabilityTest {
         assertEquals("Not a Git repository", failure(capability.createBranch("feature", true)).reason());
         assertEquals("Not a Git repository", failure(capability.deleteBranch("feature", false, true)).reason());
         assertEquals("Not a Git repository", failure(capability.renameBranch("feature", "other", true)).reason());
+    }
+
+    @Test
+    void fetchBringsTheRemoteCommitIntoTheTrackingRefAndLeavesTheBranchWhereItWas()
+            throws IOException, GitAPIException {
+        Path origin = remoteWithBaseCommit();
+        Path work = temp.resolve("work");
+        Path other = temp.resolve("other");
+        try (Git workGit = cloneOf(origin, work); Git otherGit = cloneOf(origin, other)) {
+            ObjectId localHead = resolveIn(work.resolve(".git"), Constants.HEAD);
+            commitAndPush(otherGit, "remote.txt", "remote work\n", "remote work");
+            var capability = capabilityAt(work);
+
+            assertEquals("Fetched origin: 1 ref updated", value(capability.fetch("origin", true)));
+
+            assertEquals(localHead, resolveIn(work.resolve(".git"), Constants.HEAD));
+            assertEquals(resolveIn(origin, "refs/heads/main"),
+                    resolveIn(work.resolve(".git"), "refs/remotes/origin/main"));
+            Status status = value(capability.status());
+            assertEquals("main", status.branch());
+            assertEquals(0, status.ahead());
+            assertEquals(1, status.behind());
+            assertEquals("Fetched origin: already up to date", value(capability.fetch("origin", true)));
+        }
+    }
+
+    @Test
+    void pullFastForwardsTheBranchToItsUpstreamAndSaysSoOnceUpToDate() throws IOException, GitAPIException {
+        Path origin = remoteWithBaseCommit();
+        Path work = temp.resolve("work");
+        Path other = temp.resolve("other");
+        try (Git workGit = cloneOf(origin, work); Git otherGit = cloneOf(origin, other)) {
+            commitAndPush(otherGit, "remote.txt", "remote work\n", "remote work");
+            var capability = capabilityAt(work);
+
+            assertEquals("Fast-forwarded to origin/main", value(capability.pull(true)));
+
+            assertEquals(resolveIn(origin, "refs/heads/main"), resolveIn(work.resolve(".git"), Constants.HEAD));
+            assertEquals("remote work\n", Files.readString(work.resolve("remote.txt")));
+            Status status = value(capability.status());
+            assertEquals(0, status.ahead());
+            assertEquals(0, status.behind());
+            assertTrue(status.entries().isEmpty());
+            assertEquals("Already up to date with origin/main", value(capability.pull(true)));
+        }
+    }
+
+    @Test
+    void divergedHistoryWithAConflictingPathStopsTheMergeAndListsThePaths()
+            throws IOException, GitAPIException {
+        Path origin = remoteWithBaseCommit();
+        Path work = temp.resolve("work");
+        Path other = temp.resolve("other");
+        try (Git workGit = cloneOf(origin, work); Git otherGit = cloneOf(origin, other)) {
+            Files.writeString(work.resolve("shared.txt"), "work side\n");
+            commitAll(workGit, "work change");
+            ObjectId localHead = resolveIn(work.resolve(".git"), Constants.HEAD);
+            commitAndPush(otherGit, "shared.txt", "remote side\n", "remote change");
+            var capability = capabilityAt(work);
+
+            CapabilityFailure failure = failure(capability.pull(true));
+
+            assertEquals("The pull stopped on merge conflicts", failure.reason());
+            assertTrue(failure.detail().startsWith("Conflicted paths: shared.txt."), failure.detail());
+            assertEquals(RepositoryState.MERGING, repositoryState(work.resolve(".git")));
+            assertEquals(localHead, resolveIn(work.resolve(".git"), Constants.HEAD));
+            assertEquals(List.of(new Entry(State.UNMERGED, "shared.txt")),
+                    value(capability.status()).entries());
+        }
+    }
+
+    @Test
+    void pushUpdatesTheBareRemoteAndTheTrackingRefAndSaysWhenNothingIsLeftToPush()
+            throws IOException, GitAPIException {
+        Path origin = remoteWithBaseCommit();
+        Path work = temp.resolve("work");
+        try (Git workGit = cloneOf(origin, work)) {
+            Files.writeString(work.resolve("local.txt"), "local work\n");
+            commitAll(workGit, "local work");
+            var capability = capabilityAt(work);
+
+            assertEquals("Pushed main to origin/main", value(capability.push(true)));
+
+            assertEquals(resolveIn(work.resolve(".git"), Constants.HEAD), resolveIn(origin, "refs/heads/main"));
+            assertEquals(resolveIn(origin, "refs/heads/main"),
+                    resolveIn(work.resolve(".git"), "refs/remotes/origin/main"));
+            assertEquals("Nothing to push: origin/main is up to date", value(capability.push(true)));
+        }
+    }
+
+    @Test
+    void pushIsRejectedWhenTheRemoteBranchHoldsCommitsTheLocalBranchLacks()
+            throws IOException, GitAPIException {
+        Path origin = remoteWithBaseCommit();
+        Path work = temp.resolve("work");
+        Path other = temp.resolve("other");
+        try (Git workGit = cloneOf(origin, work); Git otherGit = cloneOf(origin, other)) {
+            commitAndPush(otherGit, "remote.txt", "remote work\n", "remote work");
+            Files.writeString(work.resolve("local.txt"), "local work\n");
+            commitAll(workGit, "local work");
+            ObjectId remoteHead = resolveIn(origin, "refs/heads/main");
+            var capability = capabilityAt(work);
+
+            CapabilityFailure failure = failure(capability.push(true));
+
+            assertEquals("The push was rejected", failure.reason());
+            assertEquals("origin/main has commits that are not in the local branch: pull first", failure.detail());
+            assertEquals(remoteHead, resolveIn(origin, "refs/heads/main"));
+        }
+    }
+
+    @Test
+    void pushSetUpstreamPublishesTheBranchAndRecordsItsTracking() throws IOException, GitAPIException {
+        Path origin = remoteWithBaseCommit();
+        Path work = temp.resolve("work");
+        try (Git workGit = cloneOf(origin, work)) {
+            workGit.checkout().setCreateBranch(true).setName("feature").call();
+            Files.writeString(work.resolve("feature.txt"), "feature\n");
+            commitAll(workGit, "feature work");
+            var capability = capabilityAt(work);
+
+            assertEquals("Confirmation is required for this Git operation",
+                    failure(capability.pushSetUpstream("origin", false)).reason());
+            assertEquals("The current branch has no upstream", failure(capability.push(true)).reason());
+            assertEquals("Remote not found: missing", failure(capability.pushSetUpstream("missing", true)).detail());
+
+            assertEquals("Pushed feature to origin/feature and set it as upstream",
+                    value(capability.pushSetUpstream("origin", true)));
+            assertEquals(resolveIn(work.resolve(".git"), Constants.HEAD), resolveIn(origin, "refs/heads/feature"));
+            Status status = value(capability.status());
+            assertEquals("feature", status.branch());
+            assertEquals(0, status.ahead());
+            assertEquals(0, status.behind());
+
+            Files.writeString(work.resolve("feature.txt"), "more\n");
+            commitAll(workGit, "more feature");
+            assertEquals("Pushed feature to origin/feature", value(capability.push(true)));
+            assertEquals(resolveIn(work.resolve(".git"), Constants.HEAD), resolveIn(origin, "refs/heads/feature"));
+        }
+    }
+
+    @Test
+    void remoteOperationsFailWithNoRemoteConfiguredAndLeaveTheRepositoryReadable()
+            throws IOException, GitAPIException {
+        Path repo = temp.resolve("no-remote-repo");
+        Files.createDirectories(repo);
+        try (Git git = initRepository(repo)) {
+            Files.writeString(repo.resolve("a.txt"), "one\n");
+            commitAll(git, "initial");
+            var capability = capabilityAt(repo);
+
+            assertEquals("No remote configured", failure(capability.fetch("origin", true)).reason());
+            assertEquals("No remote configured", failure(capability.pull(true)).reason());
+            assertEquals("No remote configured", failure(capability.push(true)).reason());
+            assertEquals("No remote configured", failure(capability.pushSetUpstream("origin", true)).reason());
+            assertEquals("main", value(capability.status()).branch());
+        }
+    }
+
+    @Test
+    void everyRemoteOperationDoesNothingUnlessTheCallerConfirms() throws IOException, GitAPIException {
+        Path origin = remoteWithBaseCommit();
+        Path work = temp.resolve("work");
+        Path other = temp.resolve("other");
+        try (Git workGit = cloneOf(origin, work); Git otherGit = cloneOf(origin, other)) {
+            commitAndPush(otherGit, "remote.txt", "remote work\n", "remote work");
+            Files.writeString(work.resolve("local.txt"), "local work\n");
+            commitAll(workGit, "local work");
+            ObjectId localHead = resolveIn(work.resolve(".git"), Constants.HEAD);
+            ObjectId remoteHead = resolveIn(origin, "refs/heads/main");
+            ObjectId tracking = resolveIn(work.resolve(".git"), "refs/remotes/origin/main");
+            var capability = capabilityAt(work);
+
+            assertEquals("Confirmation is required for this Git operation",
+                    failure(capability.fetch("origin", false)).reason());
+            assertEquals("Confirmation is required for this Git operation",
+                    failure(capability.pull(false)).reason());
+            assertEquals("Confirmation is required for this Git operation",
+                    failure(capability.push(false)).reason());
+            assertEquals("Confirmation is required for this Git operation",
+                    failure(capability.pushSetUpstream("origin", false)).reason());
+
+            assertEquals(localHead, resolveIn(work.resolve(".git"), Constants.HEAD));
+            assertEquals(remoteHead, resolveIn(origin, "refs/heads/main"));
+            assertEquals(tracking, resolveIn(work.resolve(".git"), "refs/remotes/origin/main"));
+            Status status = value(capability.status());
+            assertEquals(1, status.ahead());
+            assertEquals(0, status.behind());
+        }
+    }
+
+    @Test
+    void aTransportFailureNeverEchoesTheUserinfoOfTheRemoteUrl() throws IOException, GitAPIException {
+        Path repo = temp.resolve("userinfo-repo");
+        Files.createDirectories(repo);
+        try (Git git = initRepository(repo)) {
+            Files.writeString(repo.resolve("a.txt"), "one\n");
+            commitAll(git, "initial");
+            git.getRepository().getConfig().setString("remote", "origin", "url",
+                    "http://user:s3cret-token@127.0.0.1:1/repo.git");
+            git.getRepository().getConfig().setString("remote", "origin", "fetch",
+                    "+refs/heads/*:refs/remotes/origin/*");
+            git.getRepository().getConfig().save();
+
+            CapabilityFailure failure = failure(capabilityAt(repo).fetch("origin", true));
+
+            assertEquals("The remote could not be fetched", failure.reason());
+            assertFalse(failure.detail().contains("s3cret-token"), failure.detail());
+            assertFalse(failure.detail().contains("user:"), failure.detail());
+        }
+    }
+
+    @Test
+    void redactRemovesTheUserinfoOfEveryUrlAndKeepsTheRestOfTheText() {
+        assertEquals("https://***@host.example/repo.git",
+                GitRemoteSync.redact("https://user:pass@host.example/repo.git"));
+        assertEquals("cannot reach ssh://***@h/r, retry",
+                GitRemoteSync.redact("cannot reach ssh://git:token@h/r, retry"));
+        assertEquals("https://host.example/a@b", GitRemoteSync.redact("https://host.example/a@b"));
+    }
+
+    private Path remoteWithBaseCommit() throws IOException, GitAPIException {
+        Path seed = temp.resolve("seed");
+        Path origin = temp.resolve("origin.git");
+        Files.createDirectories(seed);
+        try (Git seedGit = initRepository(seed);
+                Git ignored = Git.init().setBare(true).setInitialBranch("main").setDirectory(origin.toFile()).call()) {
+            Files.writeString(seed.resolve("shared.txt"), "base\n");
+            commitAll(seedGit, "base");
+            seedGit.push().setRemote(origin.toAbsolutePath().toString())
+                    .setRefSpecs(new RefSpec("refs/heads/main:refs/heads/main")).call();
+        }
+        return origin;
+    }
+
+    private static Git cloneOf(Path origin, Path directory) throws GitAPIException {
+        return Git.cloneRepository().setURI(origin.toAbsolutePath().toString()).setDirectory(directory.toFile())
+                .call();
+    }
+
+    private static void commitAndPush(Git git, String file, String content, String message)
+            throws IOException, GitAPIException {
+        Files.writeString(git.getRepository().getWorkTree().toPath().resolve(file), content);
+        commitAll(git, message);
+        git.push().setRemote("origin").setRefSpecs(new RefSpec("refs/heads/main:refs/heads/main")).call();
+    }
+
+    private static ObjectId resolveIn(Path gitDir, String revision) throws IOException {
+        try (Repository repository = openGitDir(gitDir)) {
+            return repository.resolve(revision);
+        }
+    }
+
+    private static RepositoryState repositoryState(Path gitDir) throws IOException {
+        try (Repository repository = openGitDir(gitDir)) {
+            return repository.getRepositoryState();
+        }
+    }
+
+    private static Repository openGitDir(Path gitDir) throws IOException {
+        return new FileRepositoryBuilder().setGitDir(gitDir.toFile()).setMustExist(true).build();
     }
 
     private static long openDescriptors(Path descriptors) throws IOException {
