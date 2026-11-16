@@ -393,6 +393,7 @@ class ProjectTreeTest {
         };
         VintelliShell shell = shellWithProject(project, provider);
         awaitProjectFiles(shell, path -> path.equals(".vintelli-external-libraries"));
+        renderUntil(shell, "External Libraries (Incomplete)");
         shell.selectPath(".vintelli-external-libraries");
         shell.expandSelected();
         awaitProjectFiles(shell, path -> path.endsWith("/dependency-0"));
