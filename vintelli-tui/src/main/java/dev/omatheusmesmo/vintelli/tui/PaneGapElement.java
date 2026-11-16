@@ -27,7 +27,8 @@ import dev.tamboui.tui.event.MouseEvent;
  * Unicode a gap is a plain frame cell and no corner is drawn.
  *
  * <p>The gap cells are the rendered areas of the separator elements, which keep
- * the splitter hit areas. The islands and the separators are read from the
+ * the splitter hit areas, and the column of each tool strip that faces the
+ * panes. The islands and the separators are read from the
  * element registry by id, so a hidden pane or a hidden bottom pane leaves no gap
  * and no corner behind.
  */
@@ -83,6 +84,10 @@ final class PaneGapElement implements Element {
         Style gap = themes.resolver("pane-gap").toStyle();
         paintVerticalGap(buffer, vertical, glyphs ? HALF_RIGHT : PLAIN, gapRow, gap);
         paintVerticalGap(buffer, right, glyphs ? HALF_LEFT : PLAIN, gapRow, gap);
+        Rect leftStrip = stripGap(areaOf(registry, ToolStripes.LEFT_STRIP_ID), ToolStripElement.Side.LEFT);
+        Rect rightStrip = stripGap(areaOf(registry, ToolStripes.RIGHT_STRIP_ID), ToolStripElement.Side.RIGHT);
+        paintVerticalGap(buffer, leftStrip, glyphs ? HALF_RIGHT : PLAIN, -1, gap);
+        paintVerticalGap(buffer, rightStrip, glyphs ? HALF_LEFT : PLAIN, -1, gap);
         if (!horizontal.isEmpty()) {
             for (int x = horizontal.x(); x < horizontal.right(); x++) {
                 buffer.setString(x, horizontal.y(), glyphs ? HALF_BOTTOM : PLAIN, gap);
@@ -91,7 +96,7 @@ final class PaneGapElement implements Element {
         if (!glyphs) {
             return;
         }
-        List<Rect> gaps = List.of(vertical, right, horizontal);
+        List<Rect> gaps = List.of(vertical, right, horizontal, leftStrip, rightStrip);
         List<Rect> islands = ISLANDS.stream().map(id -> areaOf(registry, id)).filter(area -> !area.isEmpty()).toList();
         Style corner = themes.resolver("pane-corner").toStyle();
         for (Rect island : islands) {
@@ -102,6 +107,19 @@ final class PaneGapElement implements Element {
             paintCorner(buffer, islands, gaps, corner, island.x(), lastRow, -1, 1, QUARTER_BOTTOM_LEFT);
             paintCorner(buffer, islands, gaps, corner, lastColumn, lastRow, 1, 1, QUARTER_BOTTOM_RIGHT);
         }
+    }
+
+    /**
+     * The column of a tool strip that faces the panes, which is the gap between
+     * the strip and the pane beside it, or an empty rect when the strip is not
+     * drawn.
+     */
+    private static Rect stripGap(Rect strip, ToolStripElement.Side side) {
+        if (strip.isEmpty()) {
+            return Rect.ZERO;
+        }
+        int x = side == ToolStripElement.Side.LEFT ? strip.right() - 1 : strip.x();
+        return new Rect(x, strip.y(), 1, strip.height());
     }
 
     private static void paintVerticalGap(Buffer buffer, Rect gap, String glyph, int gapRow, Style style) {
