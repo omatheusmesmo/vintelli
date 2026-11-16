@@ -223,6 +223,30 @@ EOF
     assert_contains "$installed_ver" "vintelli " "installed vintelli --version after source deletion"
     pass "Clone mode (JVM) installs persistent binary that survives source tree deletion"
 
+    local old_java_dir="${TEST_TMP}/old-java"
+    mkdir -p "$old_java_dir"
+    cat > "${old_java_dir}/java" <<'EOF_OLD_JAVA'
+#!/usr/bin/env bash
+printf 'openjdk version "21.0.13" 2026-01-20 LTS\n' >&2
+exit 3
+EOF_OLD_JAVA
+    chmod 0755 "${old_java_dir}/java"
+    local old_java_ver
+    old_java_ver="$(env PATH="${old_java_dir}:${PATH}" "${jvm_prefix}/vintelli" --version)" \
+        || fail "Installed launcher must fall back to the install time JDK when the shell exposes an older Java"
+    assert_contains "$old_java_ver" "vintelli " "launcher with an older java first on PATH"
+    pass "Installed launcher skips a Java older than the required major and uses the install time JDK"
+
+    local broken_launcher="${TEST_TMP}/launcher-without-jdk"
+    sed -E 's|^readonly VINTELLI_INSTALL_JAVA=.*|readonly VINTELLI_INSTALL_JAVA="/nonexistent/bin/java"|' "${jvm_prefix}/vintelli" > "$broken_launcher"
+    chmod 0755 "$broken_launcher"
+    local sed_dir="${TEST_TMP}/sed-only"
+    mkdir -p "$sed_dir"
+    ln -sf "$(command -v sed)" "${sed_dir}/sed"
+    assert_exit_nonzero "launcher without a usable JDK" env -i PATH="${old_java_dir}:${sed_dir}" "$(command -v bash)" "$broken_launcher" --version
+    assert_contains "$LAST_FAILURE_OUT" "JDK 25+ not found" "launcher without a usable JDK"
+    pass "Installed launcher explains the missing JDK instead of failing with a class version error"
+
     # 7. Idempotency & --force: re-running does not corrupt install or duplicate PATH entry
     cp -R "$mock_src" "$jvm_src"
     VINTELLI_BUILD_MODE=jvm \

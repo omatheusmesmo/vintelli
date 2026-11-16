@@ -39,6 +39,23 @@ Supported flags on both scripts: `--source <dir>`, `--prefix <dir>`,
 and `--help`. After installation, `vintelli --version` and `vintelli --help`
 confirm the binary is ready.
 
+## Which Java runs Vintelli
+
+The JVM launcher that `install.sh` writes does not trust the `java` of the
+current shell blindly. Version managers such as SDKMAN, mise and jenv switch
+the Java per directory, so a project that pins JDK 21 would otherwise break
+`vintelli` with an `UnsupportedClassVersionError`. The launcher takes the first
+candidate that reports a major version of at least 25, in this order:
+
+1. `VINTELLI_JAVA`, the path to a `bin/java` you choose.
+2. `$JAVA_HOME/bin/java`.
+3. The `java` found on `PATH`.
+4. The JDK that passed the check during installation. Its real `java.home` is
+   recorded in the launcher, so a shim does not change the result.
+
+When none of them is usable, the launcher names the four places it checked and
+exits with a short message instead of a class version stack trace.
+
 ## Font check
 
 After the smoke test, both installers check whether the terminal can draw the

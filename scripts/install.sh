@@ -362,6 +362,62 @@ find_java_binary() {
     fi
 }
 
+resolve_install_java_home_bin() {
+    local java_bin="$1"
+    local java_home=""
+    java_home="$("$java_bin" -XshowSettings:properties -version 2>&1 | sed -n 's/^ *java\.home = //p' | head -n 1 || true)"
+    if [ -n "$java_home" ] && [ -x "${java_home}/bin/java" ]; then
+        echo "${java_home}/bin/java"
+    else
+        echo "$java_bin"
+    fi
+}
+
+write_jvm_wrapper() {
+    local target="$1"
+    local jar_path="$2"
+    local install_java="$3"
+    local template
+    template="$(cat <<'WRAPPER'
+#!/usr/bin/env bash
+set -euo pipefail
+readonly VINTELLI_JAR="__VINTELLI_JAR__"
+readonly VINTELLI_INSTALL_JAVA="__VINTELLI_INSTALL_JAVA__"
+readonly VINTELLI_REQUIRED_JAVA_MAJOR="__VINTELLI_REQUIRED_JAVA_MAJOR__"
+if [ ! -f "$VINTELLI_JAR" ]; then
+    printf 'vintelli error: runtime jar not found at %s\n' "$VINTELLI_JAR" >&2
+    exit 1
+fi
+usable_java() {
+    [ -x "$1" ] || return 1
+    local major
+    major="$("$1" -version 2>&1 | sed -n '1s/.*version "\([0-9][0-9]*\).*/\1/p' || true)"
+    [ -n "$major" ] && [ "$major" -ge "$VINTELLI_REQUIRED_JAVA_MAJOR" ]
+}
+JAVA_EXEC=""
+for candidate in "${VINTELLI_JAVA:-}" "${JAVA_HOME:+${JAVA_HOME}/bin/java}" "$(command -v java 2>/dev/null || true)" "$VINTELLI_INSTALL_JAVA"; do
+    if [ -n "$candidate" ] && usable_java "$candidate"; then
+        JAVA_EXEC="$candidate"
+        break
+    fi
+done
+if [ -z "$JAVA_EXEC" ]; then
+    printf 'vintelli error: JDK %s+ not found. Checked VINTELLI_JAVA, JAVA_HOME, the java on PATH and the JDK used at install time (%s).\n' "$VINTELLI_REQUIRED_JAVA_MAJOR" "$VINTELLI_INSTALL_JAVA" >&2
+    printf 'Install JDK %s+ or point VINTELLI_JAVA at its bin/java.\n' "$VINTELLI_REQUIRED_JAVA_MAJOR" >&2
+    exit 1
+fi
+if [ -n "${VINTELLI_LOG_LEVEL:-}" ]; then
+    exec "$JAVA_EXEC" -Dquarkus.log.level="${VINTELLI_LOG_LEVEL}" -jar "$VINTELLI_JAR" "$@"
+fi
+exec "$JAVA_EXEC" -jar "$VINTELLI_JAR" "$@"
+WRAPPER
+)"
+    template="${template//__VINTELLI_JAR__/$jar_path}"
+    template="${template//__VINTELLI_INSTALL_JAVA__/$install_java}"
+    template="${template//__VINTELLI_REQUIRED_JAVA_MAJOR__/$REQUIRED_JAVA_MAJOR}"
+    printf '%s\n' "$template" > "$target"
+}
+
 check_clone_prerequisites() {
     local need_git="$1"
     if [ "$need_git" = true ]; then
@@ -759,27 +815,7 @@ install_from_clone() {
 
         ensure_temp_dir
         local wrapper_tmp="${TMP_WORK_DIR}/vintelli-wrapper"
-        cat > "$wrapper_tmp" <<EOF
-#!/usr/bin/env bash
-set -euo pipefail
-readonly VINTELLI_JAR="${RUNTIME_DIR}/quarkus-app/quarkus-run.jar"
-if [ ! -f "\$VINTELLI_JAR" ]; then
-    printf 'vintelli error: runtime jar not found at %s\n' "\$VINTELLI_JAR" >&2
-    exit 1
-fi
-if [ -n "\${JAVA_HOME:-}" ] && [ -x "\${JAVA_HOME}/bin/java" ]; then
-    JAVA_EXEC="\${JAVA_HOME}/bin/java"
-elif command -v java >/dev/null 2>&1; then
-    JAVA_EXEC="\$(command -v java)"
-else
-    printf 'vintelli error: java (JDK ${REQUIRED_JAVA_MAJOR}+) not found on PATH or JAVA_HOME\n' >&2
-    exit 1
-fi
-if [ -n "\${VINTELLI_LOG_LEVEL:-}" ]; then
-    exec "\$JAVA_EXEC" -Dquarkus.log.level="\${VINTELLI_LOG_LEVEL}" -jar "\$VINTELLI_JAR" "\$@"
-fi
-exec "\$JAVA_EXEC" -jar "\$VINTELLI_JAR" "\$@"
-EOF
+        write_jvm_wrapper "$wrapper_tmp" "${RUNTIME_DIR}/quarkus-app/quarkus-run.jar" "$(resolve_install_java_home_bin "$JAVA_BIN")"
         chmod 0755 "$wrapper_tmp"
         run_privileged cp "$wrapper_tmp" "$INSTALL_BIN"
         run_privileged chmod 0755 "$INSTALL_BIN"
