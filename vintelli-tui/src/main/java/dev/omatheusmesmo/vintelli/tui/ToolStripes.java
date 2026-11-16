@@ -17,6 +17,8 @@ import dev.tamboui.text.CharWidth;
  */
 final class ToolStripes {
 
+    static final String LEFT_STRIP_ID = "tool-bar-left";
+    static final String RIGHT_STRIP_ID = "tool-bar-right";
     static final String PROJECT_STRIP_ID = "project";
     static final String PROJECT_GLYPH = "";
 
@@ -49,7 +51,7 @@ final class ToolStripes {
     }
 
     ToolStripElement leftElement() {
-        leftStrip = new ToolStripElement("tool-bar-left", this::leftIcons);
+        leftStrip = new ToolStripElement(LEFT_STRIP_ID, ToolStripElement.Side.LEFT, this::leftIcons);
         return leftStrip;
     }
 
@@ -59,7 +61,7 @@ final class ToolStripes {
             rightStrip = null;
             return null;
         }
-        rightStrip = new ToolStripElement("tool-bar-right", this::rightIcons);
+        rightStrip = new ToolStripElement(RIGHT_STRIP_ID, ToolStripElement.Side.RIGHT, this::rightIcons);
         return rightStrip;
     }
 

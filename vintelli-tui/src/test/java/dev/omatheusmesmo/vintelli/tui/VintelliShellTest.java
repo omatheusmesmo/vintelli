@@ -726,6 +726,8 @@ class VintelliShellTest {
                         gapColumns.add(pilot.findElement(gapId).x());
                     }
                 }
+                gapColumns.add(pilot.findElement(ToolStripes.LEFT_STRIP_ID).right() - 1);
+                gapColumns.add(pilot.findElement(ToolStripes.RIGHT_STRIP_ID).x());
             }
             Buffer buffer = offlineFrame(shell);
             int tabRow = findBottomTabRow(buffer);
@@ -4755,7 +4757,11 @@ class VintelliShellTest {
                         "the vertical gap is gone with the project pane");
                 Rect horizontal = pilot.findElement("pane-separator-horizontal");
                 String frame = test.renderedFrame();
-                assertNoGapGlyph(frame, "the project pane is hidden", List.of("▐"));
+                String frameBesideTheStrip = frame.lines()
+                        .map(line -> line.length() > VintelliShell.TOOL_STRIP_WIDTH
+                                ? line.substring(VintelliShell.TOOL_STRIP_WIDTH) : "")
+                        .collect(java.util.stream.Collectors.joining("\n"));
+                assertNoGapGlyph(frameBesideTheStrip, "the project pane is hidden", List.of("▐"));
                 String gapRow = frame.split("\n", -1)[horizontal.y()];
                 assertFalse(gapRow.substring(0, VintelliShell.TOOL_STRIP_WIDTH).contains("▄"),
                         "the bottom gap row starts at the editor, not at the strip: " + gapRow);
@@ -4915,7 +4921,7 @@ class VintelliShellTest {
         assertEquals(themes.color("focus-border"), beforeBuffer.get(EDITOR_HEADER_X + 1, bottomTabRow + 1).style().fg().orElse(null),
                 "the active theme colors the selected tab underline before the switch");
         // Project panel island background at an unselected row (2nd project row)
-        assertEquals(themes.color("editor-bg"), cellBg(beforeBuffer, 2, SECOND_PROJECT_ROW),
+        assertEquals(themes.color("editor-bg"), cellBg(beforeBuffer, PROJECT_X, SECOND_PROJECT_ROW),
                 "the active theme styles the project panel before the switch");
         assertEquals(themes.color("editor-bg"), cellBg(beforeBuffer, EDITOR_PROBE_X, EDITOR_PROBE_Y),
                 "the active theme styles the editor panel before the switch");
@@ -4929,7 +4935,7 @@ class VintelliShellTest {
         int afterTabRow = findBottomTabRow(afterBuffer);
         assertEquals(themes.color("focus-border"), afterBuffer.get(EDITOR_HEADER_X + 1, afterTabRow + 1).style().fg().orElse(null),
                 "the switched theme reaches the selected tab underline");
-        assertEquals(themes.color("panel"), cellBg(afterBuffer, 2, SECOND_PROJECT_ROW),
+        assertEquals(themes.color("panel"), cellBg(afterBuffer, PROJECT_X, SECOND_PROJECT_ROW),
                 "the switched theme reaches the project panel, which is panel toned in darcula");
         assertEquals(themes.color("editor-bg"), cellBg(afterBuffer, EDITOR_PROBE_X, EDITOR_PROBE_Y),
                 "the switched theme reaches the editor panel");

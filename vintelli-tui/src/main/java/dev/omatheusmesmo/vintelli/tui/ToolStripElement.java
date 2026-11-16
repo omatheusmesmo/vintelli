@@ -17,15 +17,23 @@ import dev.tamboui.toolkit.element.Size;
 import dev.tamboui.toolkit.element.StyledElement;
 
 /**
- * Two column icon strip at the edge of the shell: one icon per tool window of
- * its side. The icons stack from the top, and the icons flagged as bottom
+ * Three column icon strip at the edge of the shell: one icon per tool window of
+ * its side. The icon takes the two columns at the screen edge, and the third
+ * column, the one next to the panes, is left blank for the gap that
+ * {@link PaneGapElement} draws, so the selected icon never touches the pane
+ * beside it. The icons stack from the top, and the icons flagged as bottom
  * anchored stack from the bottom of the strip, as the left strip does for the
  * bottom windows. The active icon takes the {@code icon:selected} style, the
  * others the {@code icon} style, both from the {@code ToolStripElement-*} rules.
  */
 final class ToolStripElement extends StyledElement<ToolStripElement> {
 
-    static final int WIDTH = 2;
+    static final int WIDTH = 3;
+
+    /** The edge of the shell the strip sits at, which decides the side of its gap column. */
+    enum Side {
+        LEFT, RIGHT
+    }
 
     record Icon(String id, String glyph, boolean active, boolean bottomAnchored) {
     }
@@ -33,11 +41,13 @@ final class ToolStripElement extends StyledElement<ToolStripElement> {
     private record Slot(String id, int row) {
     }
 
+    private final Side side;
     private final Supplier<List<Icon>> icons;
     private volatile Rect renderedArea = Rect.ZERO;
     private volatile List<Slot> slots = List.of();
 
-    ToolStripElement(String id, Supplier<List<Icon>> icons) {
+    ToolStripElement(String id, Side side, Supplier<List<Icon>> icons) {
+        this.side = side;
         this.icons = icons;
         id(id);
         length(WIDTH);
@@ -82,13 +92,15 @@ final class ToolStripElement extends StyledElement<ToolStripElement> {
         slots = List.copyOf(placed);
     }
 
-    private static void draw(Buffer buffer, Rect area, int row, Icon icon, RenderContext context,
+    private void draw(Buffer buffer, Rect area, int row, Icon icon, RenderContext context,
             List<Slot> placed) {
         Style style = icon.active()
                 ? context.childStyle("icon", PseudoClassState.ofSelected())
                 : context.childStyle("icon");
-        String cell = CharWidth.substringByWidth(" " + icon.glyph() + " ", area.width());
-        buffer.setString(area.x(), row, cell, style);
+        int iconWidth = area.width() - 1;
+        String cell = CharWidth.substringByWidth(" " + icon.glyph() + " ", iconWidth);
+        int column = side == Side.LEFT ? area.x() : area.x() + 1;
+        buffer.setString(column, row, cell, style);
         placed.add(new Slot(icon.id(), row));
     }
 

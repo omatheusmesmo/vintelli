@@ -44,7 +44,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 class CapabilityStateInteractionContractTest {
 
-    private static final Size VIEWPORT = new Size(100, 30);
+    private static final Size VIEWPORT = new Size(104, 30);
     private static final String NO_PROVIDER = "no provider is wired";
     private static final String NOT_CONNECTED_YET = "disconnected: not connected yet";
     private static final String IDEA_URL = "http://127.0.0.1:64342/stream";
