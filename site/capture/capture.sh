@@ -25,7 +25,7 @@ tmux_site() {
 
 screen_keys() {
   case "$1" in
-    editor) echo "C-o" ;;
+    editor) echo "" ;;
     project) echo "M-1" ;;
     goto-file) echo "C-o" ;;
     search-everywhere) echo "C-p" ;;
@@ -36,40 +36,9 @@ screen_keys() {
   esac
 }
 
-# Text typed once the first keys have settled, such as a Go to File query.
-screen_text() {
-  case "$1" in
-    editor) echo "ShellLayout.java" ;;
-    *) echo "" ;;
-  esac
-}
-
-# Text the pane must show before the screen is captured, such as the opened file's first line.
-screen_ready_text() {
-  case "$1" in
-    editor) echo "1 package dev.omatheusmesmo" ;;
-    *) echo "" ;;
-  esac
-}
-
-wait_for_text() {
-  local text="$1" attempt
-  for attempt in $(seq 1 30); do
-    if plain_pane | grep -qF "$text"; then
-      return 0
-    fi
-    sleep 1
-  done
-  die "the pane never showed '$text'"
-}
-
-# Keys pressed once the typed text has settled, such as Enter on a filtered list.
-screen_confirm_keys() {
-  case "$1" in
-    editor) echo "Enter" ;;
-    *) echo "" ;;
-  esac
-}
+EDITOR_FILE="ShellLayout.java"
+EDITOR_FILE_PATH="omatheusmesmo/vintelli/tui/layout/Shell"
+EDITOR_FILE_FIRST_LINE="1 package dev.omatheusmesmo"
 
 [ -n "$JAR_ARGUMENT" ] || die "usage: capture.sh <quarkus-run.jar> [output-dir]"
 [ -f "$JAR_ARGUMENT" ] || die "runner jar not found: $JAR_ARGUMENT"
@@ -115,6 +84,42 @@ start_tui() {
   tmux_site set-option -g remain-on-exit on
 }
 
+# Waits up to a minute and a half for the pane to show the text; a slow runner
+# may still be indexing the project when the first screen is taken.
+wait_for_text() {
+  local text="$1" attempt
+  for attempt in $(seq 1 90); do
+    if plain_pane | grep -qF -- "$text"; then
+      return 0
+    fi
+    sleep 1
+  done
+  echo "capture: the pane at the time of the failure:" >&2
+  plain_pane >&2
+  die "the pane never showed '$text'"
+}
+
+# Opens the editor screen's file through Go to File, one step at a time: keys
+# sent while the popup is still opening reach the project tree instead.
+open_editor_file() {
+  local attempt
+  for attempt in 1 2 3; do
+    press C-o
+    sleep 1
+    if plain_pane | grep -qF "╭Go to File"; then
+      break
+    fi
+    press Escape
+    sleep 2
+  done
+  wait_for_text "╭Go to File"
+  press -l "$EDITOR_FILE"
+  wait_for_text "$EDITOR_FILE_PATH"
+  wait_until_settled
+  press Enter
+  wait_for_text "$EDITOR_FILE_FIRST_LINE"
+}
+
 wait_until_settled() {
   local previous="" current="" attempt
   for attempt in $(seq 1 60); do
@@ -137,27 +142,11 @@ capture_screen() {
   if [ -n "$keys" ]; then
     press $keys
   fi
+  if [ "$screen" = editor ]; then
+    open_editor_file
+  fi
   sleep 1
   wait_until_settled
-  local text confirm
-  text="$(screen_text "$screen")"
-  if [ -n "$text" ]; then
-    press -l "$text"
-    sleep 2
-    wait_until_settled
-  fi
-  confirm="$(screen_confirm_keys "$screen")"
-  if [ -n "$confirm" ]; then
-    press $confirm
-    sleep 2
-    wait_until_settled
-  fi
-  local ready
-  ready="$(screen_ready_text "$screen")"
-  if [ -n "$ready" ]; then
-    wait_for_text "$ready"
-    wait_until_settled
-  fi
   local dead status
   read -r dead status < <(pane_state)
   if [ "$dead" = 1 ]; then
