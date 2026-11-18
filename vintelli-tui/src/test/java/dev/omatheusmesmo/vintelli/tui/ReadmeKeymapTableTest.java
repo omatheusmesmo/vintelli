@@ -26,8 +26,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class ReadmeKeymapTableTest {
 
     private static final Path README = Path.of("..", "docs", "keymap.md");
-    private static final int TABLE_ROWS = 11;
-    private static final int COMPARABLE_ROWS = 6;
+    private static final int TABLE_ROWS = 12;
+    private static final int COMPARABLE_ROWS = 7;
     private static final String NO_REFERENCE = "-";
 
     @Test

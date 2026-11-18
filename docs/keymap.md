@@ -43,6 +43,7 @@ Key actions in the `intellij` profile:
 | `editor_selectAll` (Select All), Shift+arrows | `Ctrl+A` (`Ctrl+E` in the `vim` profile); `Shift` with the arrows, Home, End, PageUp and PageDown extend the selection | `Ctrl+A`, `Shift+arrows` |
 | `editor_quickFix` | `Alt+Enter` | `Alt+Enter` |
 | `editor_completion` | `Ctrl+Space` (`Ctrl+@` too) | `Ctrl+Space` |
+| `editor_quickDocumentation` | `Ctrl+Q` | `Ctrl+Q` |
 
 The command palette lists every action with its active chord and, when the
 IntelliJ chord differs and a terminal can send it, that chord too; it filters by
@@ -70,6 +71,21 @@ An item whose type is not imported yet also gets its import, as one step with th
 name. When the server sends that import only after it is asked, the insert waits
 up to a second for it; without an answer the name is inserted alone and the status
 line says why.
+
+### Quick documentation
+
+`Ctrl+Q` asks the language server for the documentation of the symbol at the
+caret and opens a popup beside it, with the signature on the first line and the
+documentation below. Markdown and the HTML of Javadoc are shown as text: code in
+a code colour, headings and bold text in bold, links as their text, and no tags
+or markers. The popup takes at most about half of the editor height. While it is
+open, `Up`, `Down`, `PageUp` and `PageDown` scroll it instead of moving the
+caret, and the mouse wheel scrolls it too. `Escape` closes it, and so does a
+click or any other key; that key then goes to the editor as usual. The popup
+shows `Loading...` while the server answers, `No documentation found` for an
+empty answer, and the reason when the server cannot answer. An answer that
+arrives after the caret or the text moved is dropped, so the popup never shows
+the documentation of a position the caret has left.
 
 ### Copy, cut and paste
 
@@ -466,6 +482,7 @@ adding it to that test on purpose.
 | editor_previousProblem | Shift+F2 | Shift+F2 | same | Previous Highlighted Error on its own Shift+F2 trigger (docs/keymap.md) |
 | editor_quickFix | Alt+Enter | Alt+Enter | same | Quick fixes from the language server for the selection or caret, offered in a popup (docs/keymap.md) |
 | editor_completion | Ctrl+Space \| Ctrl+@ | Ctrl+Space | same | Code completion from the language server at the caret, offered in a popup; Ctrl+@ is the NUL spelling of the same key that some terminals send (docs/keymap.md) |
+| editor_quickDocumentation | Ctrl+Q | Ctrl+Q | same | Quick documentation of the symbol at the caret from the language server, in a popup beside the caret (docs/keymap.md) |
 | moveWordLeft | Ctrl+Left | Ctrl+Left | same | Move Caret to Previous Word; the editor text area takes it under the Kitty keyboard protocol |
 | moveWordRight | Ctrl+Right | Ctrl+Right | same | Move Caret to Next Word; the editor text area takes it under the Kitty keyboard protocol |
 | deleteWordBackward | Ctrl+Backspace | - | vintelli-only | Deletes the word before the caret in the editor under the Kitty keyboard protocol; no IntelliJ chord is confirmed on the reference page for this action |

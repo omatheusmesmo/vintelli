@@ -14,6 +14,7 @@ public enum CapabilityType {
     CALL_HIERARCHY("call-hierarchy"),
     CODE_ACTION("code-action"),
     COMPLETION("completion"),
+    HOVER("hover"),
     DEBUG("debug"),
     EDITOR_BRIDGE("editor-bridge"),
     VERSION_CONTROL("vcs");

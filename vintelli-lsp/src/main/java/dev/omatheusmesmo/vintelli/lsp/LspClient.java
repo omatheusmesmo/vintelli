@@ -212,6 +212,20 @@ public final class LspClient implements AutoCloseable, JavaDebugAdapterPort {
     }
 
     /**
+     * Asks for the hover at the position after the session has received {@code content} as the text of the
+     * document, so the documentation sees unsaved edits. The change notification is sent without waiting for the
+     * diagnostics it triggers, so a documentation request never waits on them.
+     *
+     * @return the hover as markdown, empty when the server has no hover there
+     */
+    public CapabilityResult<String> hover(Path file, String content, int line, int column) {
+        return serve(requestSelection(), current -> {
+            current.synchronizeDocument(file, content);
+            return current.hover(LspServerSession.uriFor(file), new Position(line, column));
+        }, LspClient::hoverText);
+    }
+
+    /**
      * @return the problems the server publishes after the change notification
      */
     public CapabilityResult<List<DiagnosticsCapability.Diagnostic>> modifyDocument(Path file, String content) {

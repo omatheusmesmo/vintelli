@@ -312,6 +312,17 @@ public final class FakeLspServer {
     static final String RESOLVED_IMPORT = "import java.util.LinkedList;\n";
     static final String HANGING_DATA = "hang.";
     public static final String UNSAVED_MARKER = "unsaved-marker";
+    public static final int RICH_HOVER_LINE = 3;
+    public static final int EMPTY_HOVER_LINE = 4;
+    public static final int BUFFER_HOVER_LINE = 5;
+    public static final String RICH_HOVER = """
+            ```java
+            int String.length()
+            ```
+            ---
+            Returns the <code>length</code> of this string.<br>
+            <p>See <b>Unicode</b> &amp; the &lt;T&gt; notes.</p>
+            """;
 
     static final class FakeTextDocumentService implements TextDocumentService {
 
@@ -358,6 +369,19 @@ public final class FakeLspServer {
         @Override
         public CompletableFuture<Hover> hover(HoverParams params) {
             server.trace("hover");
+            int line = params.getPosition().getLine();
+            if (line == RICH_HOVER_LINE) {
+                return CompletableFuture.completedFuture(new Hover(new MarkupContent("markdown", RICH_HOVER)));
+            }
+            if (line == EMPTY_HOVER_LINE) {
+                return CompletableFuture.completedFuture(null);
+            }
+            if (line == BUFFER_HOVER_LINE) {
+                String text = texts.getOrDefault(params.getTextDocument().getUri(), "");
+                String source = text.contains(UNSAVED_MARKER) ? "unsaved" : "disk";
+                return CompletableFuture.completedFuture(new Hover(
+                        new MarkupContent("markdown", "buffer " + source)));
+            }
             return CompletableFuture.completedFuture(new Hover(
                     new MarkupContent("markdown", "# fake hover " + server.marker())));
         }

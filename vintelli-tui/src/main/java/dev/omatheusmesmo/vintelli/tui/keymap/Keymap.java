@@ -290,6 +290,7 @@ public final class Keymap {
         builder.bind(KeyTrigger.key(KeyCode.ENTER, false, true, false), KeyActions.QUICK_FIX);
         builder.bind(KeyTrigger.ctrl(' '), KeyActions.COMPLETION);
         builder.bind(KeyTrigger.ctrl('@'), KeyActions.COMPLETION);
+        builder.bind(KeyTrigger.ctrl('q'), KeyActions.QUICK_DOCUMENTATION);
         builder.bind(KeyTrigger.alt('='), KeyActions.PROJECT_WIDER);
         builder.bind(KeyTrigger.alt('-'), KeyActions.PROJECT_NARROWER);
         builder.bind(KeyTrigger.alt('.'), KeyActions.BOTTOM_TALLER);
