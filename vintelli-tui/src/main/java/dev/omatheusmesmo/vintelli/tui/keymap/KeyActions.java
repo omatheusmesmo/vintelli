@@ -55,6 +55,7 @@ public final class KeyActions {
     public static final String PROJECT_NARROWER = "layout_project_narrower";
     public static final String BOTTOM_TALLER = "layout_bottom_taller";
     public static final String BOTTOM_SHORTER = "layout_bottom_shorter";
+    public static final String FOCUS_EDITOR = "focusEditor";
     public static final String SWITCH_THEME = "shell.theme.switch";
     public static final String THEME_SWITCH = SWITCH_THEME;
     public static final String SWITCH_SHELL_THEME = SWITCH_THEME;
@@ -149,6 +150,7 @@ public final class KeyActions {
                 new KeyAction(PROJECT_NARROWER, "Narrow Project Panel"),
                 new KeyAction(BOTTOM_TALLER, "Grow Tool Window"),
                 new KeyAction(BOTTOM_SHORTER, "Shrink Tool Window"),
+                new KeyAction(FOCUS_EDITOR, "Focus Editor"),
                 new KeyAction(SWITCH_THEME, "Switch Shell Theme"),
                 new KeyAction(ACTIVATE_PROJECT, "Activate Project Tool Window"),
                 new KeyAction(SHELL_SETTINGS, "Open Settings"),

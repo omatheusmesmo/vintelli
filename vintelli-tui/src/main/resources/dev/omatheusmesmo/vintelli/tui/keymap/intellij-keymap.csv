@@ -27,6 +27,7 @@ moveLeft,Left | KP_LEFT,Left,same,"Move Caret Left on the arrow keys; the refere
 moveRight,Right | KP_RIGHT,Right,same,"Move Caret Right on the arrow keys; the reference page does not list arrows, the chord is the editor one"
 quit,Ctrl+C,,vintelli-only,"Terminal interrupt and the only quit chord; IntelliJ has no quit chord and Ctrl+C is Copy there (#365)"
 toggleDebugOverlay,Ctrl+Shift+F12,,vintelli-only,"TamboUI debug overlay; IntelliJ binds Ctrl+Shift+F12 to Hide All Tool Windows, which a terminal cannot deliver (#363)"
+focusEditor,Ctrl+F11,Ctrl+Shift+F12,different,"Focus Editor hides every tool window island; IntelliJ's Hide All Tool Windows is Ctrl+Shift+F12, which is toggleDebugOverlay here (#363), so Focus Editor takes Ctrl+F11, an F-key with a Ctrl modifier that no profile binds (docs/keymap.md)"
 SearchEverywhere,Ctrl+P,Double Shift,not-deliverable,"Double Shift needs key release events, which only the full Kitty keyboard mode sends and Vintelli does not enable; Ctrl+P is the command palette stand-in"
 KeymapHelp,F1,,vintelli-only,"F1 is not on the IntelliJ default keymap page (it lists Ctrl+F1 for Error Description and Ctrl+Q for Quick Documentation); here it opens the keymap help"
 shell_menu,F10,,vintelli-only,"Opens the shell menu; no IntelliJ chord confirmed against the reference page"

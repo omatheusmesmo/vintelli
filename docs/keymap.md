@@ -44,6 +44,7 @@ Key actions in the `intellij` profile:
 | `editor_quickFix` | `Alt+Enter` | `Alt+Enter` |
 | `editor_completion` | `Ctrl+Space` (`Ctrl+@` too) | `Ctrl+Space` |
 | `editor_quickDocumentation` | `Ctrl+Q` | `Ctrl+Q` |
+| `focusEditor` | `Ctrl+F11` | `Ctrl+Shift+F12` |
 
 The command palette lists every action with its active chord and, when the
 IntelliJ chord differs and a terminal can send it, that chord too; it filters by
@@ -230,6 +231,14 @@ Decisions behind the table:
 - **`Ctrl+A`** (Select All) is IntelliJ's chord and is free in both profiles.
   The `vim` profile uses `Ctrl+E` instead: Vim gives `Ctrl+A` to the increment
   command, which this editor does not have, so the chord stays free for it.
+- **`Ctrl+F11`** (Focus Editor) takes the place of IntelliJ's Hide All Tool
+  Windows, `Ctrl+Shift+F12`. That chord is `toggleDebugOverlay` here (the
+  TamboUI debug overlay, #363), and TamboUI's trigger ignores Shift unless it
+  asks for it, so a `Ctrl+F12` binding would also fire on `Ctrl+Shift+F12`.
+  `Alt` with a digit is intercepted by tmux and ghostty (see the spike 27
+  chord matrix), and `Ctrl+Alt+letter` does not reach the shell. An F-key with
+  a Ctrl modifier is sent by the legacy protocol (`ESC[23;5~`), and no profile
+  binds it. The comparison table keeps the IntelliJ chord as the reference.
 
 Terminal caveats, from the captures in `docs/spikes/spike-27-keyboard-and-colors.md`
 and `docs/spikes/spike-49-per-terminal-capture.md`:
@@ -374,6 +383,24 @@ and returns the focus to the text, `Escape` cancels and does the same. The
 status line shows the new position, and a target inside a folded import block
 expands the block to reach it.
 
+## Focus Editor
+
+`Focus Editor` (`Ctrl+F11` in both profiles, and the View menu or the command
+palette) hides every tool window island: the project pane, the bottom tool
+windows and the right tool windows. The editor takes the full width and height
+between the toolbar and the status row. The tool stripes, the toolbar and the
+status bar stay, so a window can still be opened with the mouse.
+
+- The first press enters the mode and the second press leaves it. Leaving it
+  restores the windows that were visible, the project pane, the bottom height,
+  the project width and the splitter ratios exactly as they were stored.
+- Opening any tool window leaves the mode and shows that window with the others
+  that were visible: a stripe icon, its shortcut (`Alt+1`, `Alt+4` and so on, or
+  the bare digit while no input has focus), or the project pane when a file is
+  revealed in it.
+- The mode is kept in the layout file, so a session that ends in focus mode
+  starts in it. A layout file without that entry starts as it always did.
+
 ## IntelliJ comparison table
 
 The file `vintelli-tui/src/main/resources/dev/omatheusmesmo/vintelli/tui/keymap/intellij-keymap.csv`
@@ -444,6 +471,7 @@ adding it to that test on purpose.
 | moveRight | Right \| KP_RIGHT | Right | same | Move Caret Right on the arrow keys; the reference page does not list arrows, the chord is the editor one |
 | quit | Ctrl+C | - | vintelli-only | Terminal interrupt and the only quit chord; IntelliJ has no quit chord and Ctrl+C is Copy there (#365) |
 | toggleDebugOverlay | Ctrl+Shift+F12 | - | vintelli-only | TamboUI debug overlay; IntelliJ binds Ctrl+Shift+F12 to Hide All Tool Windows, which a terminal cannot deliver (#363) |
+| focusEditor | Ctrl+F11 | Ctrl+Shift+F12 | different | Focus Editor hides every tool window island; IntelliJ's Hide All Tool Windows is Ctrl+Shift+F12, which is toggleDebugOverlay here (#363), so Focus Editor takes Ctrl+F11, an F-key with a Ctrl modifier that no profile binds (docs/keymap.md) |
 | SearchEverywhere | Ctrl+P | Double Shift | not-deliverable | Double Shift needs key release events, which only the full Kitty keyboard mode sends and Vintelli does not enable; Ctrl+P is the command palette stand-in |
 | KeymapHelp | F1 | - | vintelli-only | F1 is not on the IntelliJ default keymap page (it lists Ctrl+F1 for Error Description and Ctrl+Q for Quick Documentation); here it opens the keymap help |
 | shell_menu | F10 | - | vintelli-only | Opens the shell menu; no IntelliJ chord confirmed against the reference page |

@@ -134,16 +134,22 @@ final class PaneLayoutController {
      * a default-sized pane is drawn only while it fits the viewport.
      */
     boolean projectShown() {
-        if (!layout.isProjectVisible()) {
+        if (!layout.isProjectVisible() || layout.isEditorFocused()) {
             return false;
         }
         return layout.isSizeCustomized() || projectRevealed || defaultProjectFits(viewportWidth(), rightStripeWidth());
     }
 
-    /** Shows or hides the project pane by an explicit choice, which keeps it shown at a size that does not fit. */
+    /**
+     * Shows or hides the project pane by an explicit choice, which keeps it shown at a size that does not fit.
+     * Showing it leaves Focus Editor, as opening any tool window does.
+     */
     void setProjectShown(boolean visible) {
         layout.setProjectVisible(visible);
         projectRevealed = visible;
+        if (visible) {
+            layout.setEditorFocused(false);
+        }
     }
 
     /** The left column holds the project pane, a left tool window, or both. */
