@@ -16,6 +16,7 @@ public final class ShellLayout {
     private double projectRatio;
     private double bottomRatio;
     private boolean projectVisible = true;
+    private boolean editorFocused;
     private boolean sizeCustomized;
     private final Set<String> allWindows;
     private final Set<String> visibleWindows;
@@ -62,6 +63,11 @@ public final class ShellLayout {
         return visibleWindows.contains(windowId);
     }
 
+    /** Whether the window is drawn: its stored visibility, unless the editor is focused. */
+    public boolean isShown(String windowId) {
+        return !editorFocused && isVisible(windowId);
+    }
+
     public void setVisible(String windowId, boolean visible) {
         if (visible) {
             visibleWindows.add(windowId);
@@ -76,6 +82,18 @@ public final class ShellLayout {
 
     public void setProjectVisible(boolean visible) {
         projectVisible = visible;
+    }
+
+    /**
+     * Focus Editor: hides every tool window island while the stored visibility,
+     * the project flag and the sizes stay as they are, so leaving the mode restores them.
+     */
+    public boolean isEditorFocused() {
+        return editorFocused;
+    }
+
+    public void setEditorFocused(boolean focused) {
+        editorFocused = focused;
     }
 
     /** False until a splitter drag or a keyboard resize chooses a size; until then the shell keeps its fixed default sizes. */

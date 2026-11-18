@@ -323,7 +323,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         this.keymapSupplier = keymapSupplier;
         if (!this.toolWindows.isEmpty()) {
             state.selectToolWindow(this.toolWindows.get(0).id());
-            inputCaptured = this.toolWindows.get(0).capturesInput();
+            inputCaptured = this.toolWindows.get(0).capturesInput() && !shellLayout.isEditorFocused();
         }
         projects.start();
         this.projectPanel = new ProjectPanel(projects, fileIcons, ProjectTreeGlyphs.supportsUnicode(), frameLock,
@@ -813,6 +813,22 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     public void toggleToolWindow(String id) {
         toolWindowHost.toggle(id).ifPresent(window -> switchToToolWindow(toolWindows.indexOf(window)));
+    }
+
+    /**
+     * Focus Editor: hides every tool window island, or restores them. Entering the
+     * mode moves the focus and the input to the editor; the status line says which way it went.
+     */
+    private void toggleEditorFocus() {
+        pendingProjectFocus = false;
+        if (toolWindowHost.toggleEditorFocus()) {
+            inputCaptured = false;
+            capturedWindow = null;
+            editorController.leaveNavigationBar();
+            if (editor != null) {
+                editor.requestFocus();
+            }
+        }
     }
 
     private void requestProjectFocus() {
@@ -1689,6 +1705,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             case KeyActions.BOTTOM_SHORTER -> {
                 parts.stack().closeOverlays();
                 paneLayout.resizeBottom(-1);
+            }
+            case KeyActions.FOCUS_EDITOR -> {
+                parts.stack().closeOverlays();
+                toggleEditorFocus();
             }
             case KeyActions.SWITCH_THEME -> {
                 parts.stack().closeOverlays();

@@ -60,6 +60,7 @@ public final class ShellLayoutStore {
                     Double.parseDouble(values.getProperty("bottom.ratio")),
                     visible, allWindowIds);
             layout.setProjectVisible(!"false".equals(values.getProperty("project.visible")));
+            layout.setEditorFocused("true".equals(values.getProperty("editor.focused")));
             layout.setSizeCustomized(!"false".equals(values.getProperty("size.customized")));
             return layout;
         } catch (IOException | IllegalArgumentException | NullPointerException invalid) {
@@ -83,6 +84,7 @@ public final class ShellLayoutStore {
         values.setProperty("bottom.ratio", Double.toString(layout.bottomRatio()));
         values.setProperty("visible.windows", String.join(",", layout.visibleWindows()));
         values.setProperty("project.visible", Boolean.toString(layout.isProjectVisible()));
+        values.setProperty("editor.focused", Boolean.toString(layout.isEditorFocused()));
         values.setProperty("size.customized", Boolean.toString(layout.isSizeCustomized()));
         Path temporary = Files.createTempFile(file.getParent(), "layout-", ".tmp");
         try {

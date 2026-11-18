@@ -66,6 +66,7 @@ final class ShellMenuCatalog {
         addMenu(entries, "View", KeyActions.PROJECT_NARROWER, "Narrow Project Panel", "");
         addMenu(entries, "View", KeyActions.BOTTOM_TALLER, "Grow Tool Windows", "");
         addMenu(entries, "View", KeyActions.BOTTOM_SHORTER, "Shrink Tool Windows", "");
+        addMenu(entries, "View", KeyActions.FOCUS_EDITOR, "Focus Editor", "");
         addMenu(entries, "View", KeyActions.TOGGLE_IMPORT_FOLD, "Fold or Unfold Imports", canEdit ? "" : editorUnavailable);
         String searchUnavailable = host.projectSearchAvailable() ? "" : "Project search unavailable";
         addMenu(entries, "Navigate", KeyActions.GO_TO_FILE, "Go to File", searchUnavailable);

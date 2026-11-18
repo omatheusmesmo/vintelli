@@ -295,6 +295,7 @@ public final class Keymap {
         builder.bind(KeyTrigger.alt('-'), KeyActions.PROJECT_NARROWER);
         builder.bind(KeyTrigger.alt('.'), KeyActions.BOTTOM_TALLER);
         builder.bind(KeyTrigger.alt(','), KeyActions.BOTTOM_SHORTER);
+        builder.bind(KeyTrigger.key(KeyCode.F11, true, false, false), KeyActions.FOCUS_EDITOR);
         builder.bind(KeyTrigger.ctrl('t'), bindingName(KeyActions.SWITCH_THEME));
         builder.bind(KeyTrigger.alt('1'), KeyActions.ACTIVATE_PROJECT);
         bindProfileChords(builder, profile);

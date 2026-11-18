@@ -57,7 +57,7 @@ final class ToolWindowHost {
         this.windowsByAnchor = toolWindows.stream()
                 .collect(Collectors.groupingBy(ToolWindow::anchor, Collectors.toList()));
         for (ToolWindow.Anchor anchor : ToolWindow.Anchor.values()) {
-            List<ToolWindow> windows = visibleWindows(anchor);
+            List<ToolWindow> windows = storedVisibleWindows(anchor);
             if (!windows.isEmpty()) {
                 int selected = anchor == ToolWindow.Anchor.RIGHT
                         ? windows.stream().map(ToolWindow::id).toList().indexOf("structure")
@@ -79,7 +79,15 @@ final class ToolWindowHost {
         return !registered(anchor).isEmpty();
     }
 
+    /** The windows drawn at the anchor: the stored visibility, with Focus Editor hiding them all. */
     List<ToolWindow> visibleWindows(ToolWindow.Anchor anchor) {
+        return registered(anchor).stream()
+                .filter(window -> layout.isShown(window.id()))
+                .toList();
+    }
+
+    /** The windows the layout stores as visible at the anchor, whether Focus Editor hides them or not. */
+    private List<ToolWindow> storedVisibleWindows(ToolWindow.Anchor anchor) {
         return registered(anchor).stream()
                 .filter(window -> layout.isVisible(window.id()))
                 .toList();
@@ -96,7 +104,7 @@ final class ToolWindowHost {
     }
 
     boolean isVisible(String id) {
-        return layout.isVisible(id);
+        return layout.isShown(id);
     }
 
     boolean isFocused(String id) {
@@ -123,7 +131,7 @@ final class ToolWindowHost {
      * bottom pane the terminal size had hidden or shrunk.
      */
     void switchTo(ToolWindow window) {
-        if (!layout.isVisible(window.id())) {
+        if (!layout.isShown(window.id())) {
             show(window.id());
         }
         if (window.anchor() == ToolWindow.Anchor.BOTTOM) {
@@ -136,8 +144,13 @@ final class ToolWindowHost {
         focusWindow(window);
     }
 
+    /**
+     * Shows the window. Opening a window leaves Focus Editor, and the windows it
+     * hid come back as they were stored.
+     */
     void show(String id) {
         layout.setVisible(id, true);
+        layout.setEditorFocused(false);
         syncBottomReveal(id);
         host.persistLayout();
         host.status("Tool window shown: " + id);
@@ -154,14 +167,20 @@ final class ToolWindowHost {
      * Toggles the window and returns the window the shell must switch to when
      * hiding the active one left its anchor with another visible window. An
      * empty result means the shell keeps its state and the status line says
-     * whether the window is now shown or hidden.
+     * whether the window is now shown or hidden. A window that Focus Editor
+     * hides counts as not shown, so its toggle opens it and leaves the mode.
      */
     Optional<ToolWindow> toggle(String id) {
-        boolean wasVisible = layout.isVisible(id);
-        layout.toggle(id);
+        boolean wasShown = layout.isShown(id);
+        if (wasShown) {
+            layout.setVisible(id, false);
+        } else {
+            layout.setVisible(id, true);
+            layout.setEditorFocused(false);
+        }
         syncBottomReveal(id);
         host.persistLayout();
-        if (wasVisible && !layout.isVisible(id)) {
+        if (wasShown) {
             ToolWindow target = toolWindows.stream().filter(window -> window.id().equals(id)).findFirst().orElse(null);
             if (target != null) {
                 releaseHidden(target);
@@ -171,8 +190,34 @@ final class ToolWindowHost {
                 }
             }
         }
-        host.status(layout.isVisible(id) ? "Tool window shown: " + id : "Tool window hidden: " + id);
+        host.status(layout.isShown(id) ? "Tool window shown: " + id : "Tool window hidden: " + id);
         return Optional.empty();
+    }
+
+    /**
+     * Focus Editor: the first call hides every tool window island, the next one
+     * restores the stored set. Returns whether the editor is the focused island
+     * after the call. The shell releases its own input capture when it returns true.
+     */
+    boolean toggleEditorFocus() {
+        if (layout.isEditorFocused()) {
+            layout.setEditorFocused(false);
+            host.status("Focus Editor: tool windows restored");
+        } else {
+            layout.setEditorFocused(true);
+            ToolWindow focused = toolWindows.stream()
+                    .filter(window -> window.id().equals(focusedId))
+                    .findFirst()
+                    .orElse(null);
+            if (focused != null) {
+                host.windowHidden(focused);
+            }
+            clearFocus();
+            host.moveFocus(EDITOR_FOCUS);
+            host.status("Focus Editor: tool windows hidden");
+        }
+        host.persistLayout();
+        return layout.isEditorFocused();
     }
 
     private void releaseHidden(ToolWindow hidden) {
@@ -244,7 +289,7 @@ final class ToolWindowHost {
     }
 
     private void syncBottomReveal(String id) {
-        if (visibleWindows(ToolWindow.Anchor.BOTTOM).isEmpty()) {
+        if (storedVisibleWindows(ToolWindow.Anchor.BOTTOM).isEmpty()) {
             bottomRevealed = false;
         } else if (layout.isVisible(id) && isBottomWindow(id)) {
             bottomRevealed = true;

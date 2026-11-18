@@ -298,6 +298,8 @@ help). Its keys come from the active keymap, so a custom keymap file shows its o
 chords, and an action without a chord has no row.
 `Ctrl+O` opens Go to File, `Ctrl+G` goes to a line (`line` or `line:column`), `Alt+F` searches file contents, `Ctrl+B` requests a
 definition, `Alt+F7` requests references, and `F2` moves to the next diagnostic, and `Alt+I` folds or unfolds the import block.
+
+`Ctrl+F11` (View > Focus Editor, or the command palette) focuses the editor: it hides the project pane and every bottom and right tool window, and the editor takes the whole space between the toolbar and the status row. The tool stripes stay, so a click on a stripe icon, or any tool window shortcut, leaves the mode and opens that window with the others as they were. Pressing `Ctrl+F11` again restores them with their sizes. The mode is saved in the layout file. See [keymap](keymap.md#focus-editor).
 Alt+Enter asks the language server for quick fixes at the selection or the caret. A
 lightbulb (`*` in ASCII mode) marks the caret line when it has an error or a warning in an editable file; it does not ask the server, so Alt+Enter can still report no quick fixes. The
 popup lists the actions with their kinds: Up and Down move through them (wrapping at the
