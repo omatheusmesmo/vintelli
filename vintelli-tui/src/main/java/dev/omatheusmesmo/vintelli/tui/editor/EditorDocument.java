@@ -271,6 +271,27 @@ public final class EditorDocument {
     }
 
     /**
+     * Replaces the text between two document positions as one undoable step and puts the caret
+     * {@code caretOffset} characters into the replacement. The positions are document rows and columns.
+     */
+    void replaceRange(int startRow, int startColumn, int endRow, int endColumn, String replacement, int caretOffset) {
+        mutate(() -> {
+            int start = offsetOf(startRow, startColumn);
+            int end = offsetOf(endRow, endColumn);
+            String text = state.text();
+            String updated = text.substring(0, start) + replacement + text.substring(end);
+            int caret = start + caretOffset;
+            int caretRow = (int) updated.substring(0, caret).chars().filter(c -> c == '\n').count();
+            int caretColumn = caret - (updated.lastIndexOf('\n', caret - 1) + 1);
+            boolean folded = fold != null;
+            dropFold();
+            state.setText(updated);
+            position(caretRow, caretColumn);
+            if (folded) { foldImports(); }
+        });
+    }
+
+    /**
      * Removes the selected text inside an edit that is already a single undo step, so a typed
      * character or Backspace applies to the selection instead of the characters around the caret.
      */

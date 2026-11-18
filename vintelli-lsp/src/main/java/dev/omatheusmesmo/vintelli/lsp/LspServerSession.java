@@ -353,6 +353,14 @@ final class LspServerSession implements AutoCloseable {
         openDocuments.add(uri);
     }
 
+    synchronized void synchronizeDocument(Path file, String content) {
+        if (openDocuments.contains(uriFor(file))) {
+            changeDocument(file, content);
+        } else {
+            openDocument(file, content);
+        }
+    }
+
     void changeDocument(Path file, String content) {
         String uri = uriFor(file);
         if (!openDocuments.contains(uri)) {

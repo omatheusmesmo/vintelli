@@ -47,6 +47,13 @@ public interface CapabilityRegistry {
     CapabilitySelection<CodeActionCapability> codeActions();
 
     /**
+     * @return the current code completion provider, or an explicit unavailable state
+     */
+    default CapabilitySelection<CompletionCapability> completion() {
+        return CapabilitySelection.unavailable(CapabilityType.COMPLETION, "No completion provider is installed");
+    }
+
+    /**
      * @return the current debug provider, or an explicit unavailable state
      */
     default CapabilitySelection<DebugCapability> debug() {

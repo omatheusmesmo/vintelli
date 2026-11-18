@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -34,9 +35,13 @@ import org.eclipse.lsp4j.TextDocumentEdit;
 import org.eclipse.lsp4j.TextEdit;
 import org.eclipse.lsp4j.WorkspaceEdit;
 import org.eclipse.lsp4j.CompletionItem;
+import org.eclipse.lsp4j.CompletionItemKind;
 import org.eclipse.lsp4j.CompletionList;
 import org.eclipse.lsp4j.CompletionOptions;
 import org.eclipse.lsp4j.CompletionParams;
+import org.eclipse.lsp4j.InsertReplaceEdit;
+import org.eclipse.lsp4j.InsertTextFormat;
+import org.eclipse.lsp4j.TextEdit;
 import org.eclipse.lsp4j.DefinitionParams;
 import org.eclipse.lsp4j.Diagnostic;
 import org.eclipse.lsp4j.DiagnosticSeverity;
@@ -298,9 +303,14 @@ public final class FakeLspServer {
         }
     }
 
+    public static final int RICH_COMPLETION_LINE = 1;
+    public static final int BUFFER_COMPLETION_LINE = 2;
+    public static final String UNSAVED_MARKER = "unsaved-marker";
+
     static final class FakeTextDocumentService implements TextDocumentService {
 
         private final FakeLanguageServer server;
+        private final Map<String, String> texts = new ConcurrentHashMap<>();
 
         FakeTextDocumentService(FakeLanguageServer server) {
             this.server = server;
@@ -309,6 +319,7 @@ public final class FakeLspServer {
         @Override
         public void didOpen(DidOpenTextDocumentParams params) {
             server.trace("didOpen");
+            texts.put(params.getTextDocument().getUri(), params.getTextDocument().getText());
             Diagnostic opened = new Diagnostic(
                     new Range(new Position(0, 0), new Position(0, 5)),
                     "fake problem on " + params.getTextDocument().getUri(),
@@ -322,6 +333,7 @@ public final class FakeLspServer {
         @Override
         public void didChange(DidChangeTextDocumentParams params) {
             server.trace("didChange");
+            texts.put(params.getTextDocument().getUri(), params.getContentChanges().getFirst().getText());
             server.publish(params.getTextDocument().getUri(), List.of(new Diagnostic(
                     new Range(new Position(0, 0), new Position(0, 5)), "fake problem changed",
                     DiagnosticSeverity.Warning, "fake")));
@@ -363,9 +375,46 @@ public final class FakeLspServer {
         @Override
         public CompletableFuture<Either<List<CompletionItem>, CompletionList>> completion(CompletionParams params) {
             server.trace("completion");
+            int line = params.getPosition().getLine();
+            if (line == RICH_COMPLETION_LINE) {
+                return CompletableFuture.completedFuture(Either.forLeft(richCompletions()));
+            }
+            if (line == BUFFER_COMPLETION_LINE) {
+                String text = texts.getOrDefault(params.getTextDocument().getUri(), "");
+                String source = text.contains(UNSAVED_MARKER) ? "unsaved" : "disk";
+                return CompletableFuture.completedFuture(Either.forLeft(List.of(
+                        new CompletionItem("buffer_" + source))));
+            }
             return CompletableFuture.completedFuture(Either.forLeft(List.of(
                     new CompletionItem("fake_completion_" + server.marker()),
                     new CompletionItem("fake_second"))));
+        }
+
+        private static List<CompletionItem> richCompletions() {
+            CompletionItem zeta = new CompletionItem("zeta");
+            zeta.setKind(CompletionItemKind.Field);
+            zeta.setDetail("int");
+            zeta.setSortText("0004");
+            CompletionItem gamma = new CompletionItem("gamma");
+            gamma.setKind(CompletionItemKind.Method);
+            gamma.setTextEdit(Either.forRight(new InsertReplaceEdit("gamma()",
+                    new Range(new Position(RICH_COMPLETION_LINE, 0), new Position(RICH_COMPLETION_LINE, 2)),
+                    new Range(new Position(RICH_COMPLETION_LINE, 0), new Position(RICH_COMPLETION_LINE, 4)))));
+            gamma.setSortText("0003");
+            CompletionItem beta = new CompletionItem("beta");
+            beta.setKind(CompletionItemKind.Method);
+            beta.setTextEdit(Either.forLeft(new TextEdit(
+                    new Range(new Position(RICH_COMPLETION_LINE, 0), new Position(RICH_COMPLETION_LINE, 4)),
+                    "beta()")));
+            beta.setSortText("0002");
+            CompletionItem alpha = new CompletionItem("alpha");
+            alpha.setKind(CompletionItemKind.Snippet);
+            alpha.setInsertTextFormat(InsertTextFormat.Snippet);
+            alpha.setInsertText("alpha(${1:value}) $0");
+            alpha.setDetail("(value: String)");
+            alpha.setFilterText("alphaFilter");
+            alpha.setSortText("0001");
+            return List.of(zeta, gamma, beta, alpha);
         }
 
         @Override

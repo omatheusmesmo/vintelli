@@ -36,6 +36,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class IntellijKeymapTableTest {
 
+    /**
+     * Ctrl+@ is the NUL byte some terminals send for Ctrl+Space, so it is the same key as the IntelliJ chord.
+     */
+    private static final String CTRL_AT_ALIAS = "Ctrl+@";
     private static final List<ToolWindow> WINDOWS = windowList();
     private static final Keymap KEYMAP = Keymap.ofProfile(KeymapProfile.DEFAULT, WINDOWS);
     private static final KeymapTable TABLE = KeymapTable.load();
@@ -181,7 +185,7 @@ class IntellijKeymapTableTest {
      */
     private static Set<String> withoutAliases(Collection<String> chords) {
         return normalized(chords.stream()
-                .filter(chord -> !chord.matches("[0-9]") && !chord.startsWith("KP_"))
+                .filter(chord -> !chord.matches("[0-9]") && !chord.startsWith("KP_") && !CTRL_AT_ALIAS.equals(chord))
                 .toList());
     }
 

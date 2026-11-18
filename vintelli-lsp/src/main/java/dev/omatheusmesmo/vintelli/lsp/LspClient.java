@@ -6,7 +6,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -22,6 +24,7 @@ import dev.omatheusmesmo.vintelli.api.capability.CallHierarchyCapability;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityFailure;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.CodeActionCapability;
+import dev.omatheusmesmo.vintelli.api.capability.CompletionCapability;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import jakarta.annotation.PreDestroy;
@@ -32,7 +35,11 @@ import org.eclipse.lsp4j.CallHierarchyItem;
 import org.eclipse.lsp4j.CallHierarchyOutgoingCall;
 import org.eclipse.lsp4j.SymbolInformation;
 import org.eclipse.lsp4j.CompletionItem;
+import org.eclipse.lsp4j.CompletionItemKind;
 import org.eclipse.lsp4j.CompletionList;
+import org.eclipse.lsp4j.InsertReplaceEdit;
+import org.eclipse.lsp4j.InsertTextFormat;
+import org.eclipse.lsp4j.TextEdit;
 import org.eclipse.lsp4j.Diagnostic;
 import org.eclipse.lsp4j.DiagnosticSeverity;
 import org.eclipse.lsp4j.DiagnosticTag;
@@ -270,12 +277,27 @@ public final class LspClient implements AutoCloseable, JavaDebugAdapterPort {
     }
 
     /**
-     * @return the completion labels at the file position
+     * @return the completions at the file position for the text the server already holds; the client neither
+     *         reads the file nor opens or replaces the document
      */
     public CapabilityResult<List<CompletionEntry>> completion(Path file, int line, int column) {
         return serve(requestSelection(),
                 current -> current.completion(LspServerSession.uriFor(file), new Position(line, column)),
                 LspClient::completionEntries);
+    }
+
+    /**
+     * Asks for the completions at the position after the session has received {@code content} as the text of
+     * the document, so the suggestions see unsaved edits. The change notification is sent without waiting for
+     * the diagnostics it triggers, which can take longer than the completion answer is worth.
+     *
+     * @return the completions in the order the server ranks them
+     */
+    public CapabilityResult<List<CompletionEntry>> completion(Path file, String content, int line, int column) {
+        return serve(requestSelection(), current -> {
+            current.synchronizeDocument(file, content);
+            return current.completion(LspServerSession.uriFor(file), new Position(line, column));
+        }, LspClient::completionEntries);
     }
 
     /**
@@ -604,10 +626,56 @@ public final class LspClient implements AutoCloseable, JavaDebugAdapterPort {
     private static List<CompletionEntry> completionEntries(
             Either<List<CompletionItem>, CompletionList> completion) {
         List<CompletionItem> items = completion.isLeft() ? completion.getLeft() : completion.getRight().getItems();
+        if (items == null) {
+            return List.of();
+        }
         return items.stream()
-                .map(item -> new CompletionEntry(item.getLabel(),
-                        item.getDetail() == null ? "" : item.getDetail()))
+                .map(LspClient::completionEntryOf)
+                .sorted(Comparator.comparing(LspClient::completionSortKey))
                 .toList();
+    }
+
+    private static String completionSortKey(CompletionEntry entry) {
+        return entry.sortText() == null ? entry.label() : entry.sortText();
+    }
+
+    private static CompletionEntry completionEntryOf(CompletionItem item) {
+        return new CompletionEntry(item.getLabel(), completionKindOf(item.getKind()), item.getDetail(),
+                completionReplacementOf(item.getTextEdit()), item.getInsertText(),
+                InsertTextFormat.Snippet.equals(item.getInsertTextFormat()), item.getFilterText(),
+                item.getSortText());
+    }
+
+    private static CompletionCapability.Kind completionKindOf(CompletionItemKind kind) {
+        if (kind == null) {
+            return CompletionCapability.Kind.UNKNOWN;
+        }
+        try {
+            return CompletionCapability.Kind.valueOf(kind.name()
+                    .replaceAll("([a-z])([A-Z])", "$1_$2").toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException unknown) {
+            return CompletionCapability.Kind.UNKNOWN;
+        }
+    }
+
+    private static CompletionCapability.Replacement completionReplacementOf(
+            Either<TextEdit, InsertReplaceEdit> edit) {
+        if (edit == null) {
+            return null;
+        }
+        if (edit.isLeft()) {
+            return replacementOf(edit.getLeft().getRange(), edit.getLeft().getNewText());
+        }
+        InsertReplaceEdit insertReplace = edit.getRight();
+        return replacementOf(insertReplace.getInsert(), insertReplace.getNewText());
+    }
+
+    private static CompletionCapability.Replacement replacementOf(Range range, String newText) {
+        if (range == null) {
+            return null;
+        }
+        return new CompletionCapability.Replacement(range.getStart().getLine(), range.getStart().getCharacter(),
+                range.getEnd().getLine(), range.getEnd().getCharacter(), newText);
     }
 
     private static CallHierarchyCapability.CallSite callSiteOf(CallHierarchyItem item) {

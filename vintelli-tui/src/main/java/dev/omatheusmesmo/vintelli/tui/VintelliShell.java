@@ -13,6 +13,8 @@ import dev.omatheusmesmo.vintelli.tui.keymap.KeymapHelpOverlay;
 import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeymapRegistry;
 import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
+import dev.omatheusmesmo.vintelli.tui.editor.CompletionController;
+import dev.omatheusmesmo.vintelli.tui.editor.CompletionOverlay;
 import dev.omatheusmesmo.vintelli.tui.editor.GoToLine;
 import dev.omatheusmesmo.vintelli.tui.editor.BreakpointConditionOverlay;
 import dev.omatheusmesmo.vintelli.tui.editor.GoToLineOverlay;
@@ -185,6 +187,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private final EditorPanel editorPanel;
     private final QuickFixController quickFix;
     private final QuickFixOverlay quickFixOverlay;
+    private final CompletionController completion;
+    private final CompletionOverlay completionOverlay;
     private Column centerPanel;
     private Column paneSeparatorVertical;
     private Column paneSeparatorHorizontal;
@@ -288,6 +292,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         this.quickFix = new QuickFixController(capabilityRegistry, editor, this::deliverToRenderThread,
                 message -> status = message);
         this.quickFixOverlay = new QuickFixOverlay(quickFix);
+        this.completion = new CompletionController(capabilityRegistry, editor, this::deliverToRenderThread);
+        this.completionOverlay = new CompletionOverlay(completion);
+        if (editor != null) {
+            editor.attachCompletion(completion);
+        }
         Path projectRoot = editor == null ? Path.of("").toAbsolutePath().normalize() : editor.project();
         Path configRoot = persistLayout ? ConfigDirectory.configRoot(ConfigDirectory.sharedConfigDir(),
                 System.getenv("XDG_CONFIG_HOME"), System.getenv("APPDATA"), System.getProperty("user.home")) : null;
@@ -472,6 +481,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         StackElement stack = Toolkit.stack();
         stack.add(Toolkit.lazy(this::shellLayout));
         stack.add(Toolkit.lazy(this::overlayElements));
+        stack.add(Toolkit.lazy(this::completionElement));
         return stack;
     }
 
@@ -1077,6 +1087,14 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         return layers;
     }
 
+    private Element completionElement() {
+        if (editor == null || !completion.isOpen() || TerminalSizeNotice.tooSmall(shellArea)) {
+            return null;
+        }
+        return new OverlayElement("completion", (frame, area) -> completionOverlay.render(frame, area,
+                editor.caretCell()));
+    }
+
     private Element overlayElement(KeymapParts parts, Kind kind) {
         return switch (kind) {
             case COMMAND_PALETTE -> new OverlayElement("command-palette", parts.commandPalette()::render);
@@ -1139,6 +1157,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         }
         if (top == Kind.QUICK_FIX) {
             handleQuickFixPointer(mouse);
+            return EventResult.HANDLED;
+        }
+        if (top == null && handleCompletionPointer(mouse)) {
             return EventResult.HANDLED;
         }
         if (top == Kind.RUN_CONFIGURATION) {
@@ -1296,6 +1317,28 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         if (!(event instanceof KeyEvent key)) {
             return EventResult.UNHANDLED;
         }
+        if (editor != null && completion.isOpen()) {
+            Optional<String> taken = completion.press(key);
+            if (taken.isPresent()) {
+                if (!taken.get().isEmpty()) {
+                    status = taken.get();
+                }
+                return EventResult.HANDLED;
+            }
+        }
+        long ticketBefore = completion.ticket();
+        EventResult result = route(key);
+        if (editor != null) {
+            if (overlays().stack().overlayOpen() || inputCaptured || projects.inputActive()) {
+                completion.close();
+            } else {
+                completion.afterShellKey(key, ticketBefore);
+            }
+        }
+        return result;
+    }
+
+    private EventResult route(KeyEvent key) {
         syncFileSelection();
         if (statusBarElement.escape(key)) {
             return EventResult.HANDLED;
@@ -1595,6 +1638,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 parts.stack().closeOverlays();
                 openQuickFix(parts);
             }
+            case KeyActions.COMPLETION -> {
+                parts.stack().closeOverlays();
+                inputCaptured = false;
+                status = editor == null ? "Open a file to complete code in" : completion.openAtCaret();
+            }
             case KeyActions.PROJECT_WIDER -> {
                 parts.stack().closeOverlays();
                 paneLayout.resizeProject(2);
@@ -1767,6 +1815,24 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     private void handleQuickFixKey(KeyEvent key) {
         afterQuickFixInput(quickFix.press(OverlayInput.key(key)));
+    }
+
+    private boolean handleCompletionPointer(MouseEvent mouse) {
+        if (editor == null || !completion.isOpen()) {
+            return false;
+        }
+        Optional<String> taken = completion.pointer(mouse.x(), mouse.y(), mouse.isClick(),
+                OverlayInput.scrollDirection(mouse));
+        if (taken.isPresent()) {
+            if (!taken.get().isEmpty()) {
+                status = taken.get();
+            }
+            return true;
+        }
+        if (mouse.isClick()) {
+            completion.close();
+        }
+        return false;
     }
 
     private void handleQuickFixPointer(MouseEvent mouse) {

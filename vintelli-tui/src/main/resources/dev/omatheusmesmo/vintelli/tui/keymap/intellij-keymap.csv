@@ -64,6 +64,7 @@ editor_editBreakpointCondition,Alt+F8,,vintelli-only,"Edits the condition of the
 editor_nextProblem,F2,F2,same,"Next Highlighted Error; the bare F2 trigger refuses Shift, and F8 is left unbound (docs/keymap.md)"
 editor_previousProblem,Shift+F2,Shift+F2,same,"Previous Highlighted Error on its own Shift+F2 trigger (docs/keymap.md)"
 editor_quickFix,Alt+Enter,Alt+Enter,same,"Quick fixes from the language server for the selection or caret, offered in a popup (docs/keymap.md)"
+editor_completion,Ctrl+Space | Ctrl+@,Ctrl+Space,same,"Code completion from the language server at the caret, offered in a popup; Ctrl+@ is the NUL spelling of the same key that some terminals send (docs/keymap.md)"
 moveWordLeft,Ctrl+Left,Ctrl+Left,same,"Move Caret to Previous Word; the editor text area takes it under the Kitty keyboard protocol"
 moveWordRight,Ctrl+Right,Ctrl+Right,same,"Move Caret to Next Word; the editor text area takes it under the Kitty keyboard protocol"
 deleteWordBackward,Ctrl+Backspace,,vintelli-only,"Deletes the word before the caret in the editor under the Kitty keyboard protocol; no IntelliJ chord is confirmed on the reference page for this action"
