@@ -12,6 +12,12 @@ import dev.omatheusmesmo.vintelli.tui.layout.ShellLayoutStore;
  * as plain values, and the element sizes go back out through {@link Host}.
  * The shell keeps arranging the elements, so the placement is the shell's
  * answer to {@link Host#placeProject(int)} and {@link Host#placeBottom(int)}.
+ *
+ * <p>A default-sized pane follows the viewport: the project pane shrinks and
+ * hides, and the bottom pane shrinks and hides, only while the editor would be
+ * too small. The decision is made at render time from the viewport and is never
+ * stored, so the panes come back when the terminal grows. A customized size and
+ * a pane the user showed explicitly keep their place at the minimum they allow.
  */
 final class PaneLayoutController {
 
@@ -20,6 +26,7 @@ final class PaneLayoutController {
     static final int ACP_SIDE_PANEL_WIDTH = 32;
     static final int TOOL_STRIP_WIDTH = ToolStripElement.WIDTH;
     static final int PANE_SEPARATOR_WIDTH = 1;
+    static final int DEFAULT_EDITOR_WIDTH = 40;
 
     /** A rectangle of terminal cells, free of any TamboUI type. */
     record Area(int x, int y, int width, int height) {
@@ -48,6 +55,10 @@ final class PaneLayoutController {
 
         int bottomRows(int availableHeight);
 
+        default boolean bottomRevealed() {
+            return false;
+        }
+
         boolean leftWindowsOpen();
 
         boolean rightRegistered();
@@ -72,6 +83,7 @@ final class PaneLayoutController {
     private final Host host;
     private SplitterDrag splitter;
     private boolean dragChanged;
+    private boolean projectRevealed;
 
     PaneLayoutController(ShellLayout layout, ShellLayoutStore store, Host host) {
         this.layout = layout;
@@ -79,17 +91,86 @@ final class PaneLayoutController {
         this.host = host;
     }
 
+    /**
+     * The project width a default-sized project pane takes in a viewport of the
+     * given width: the fixed width while the editor keeps
+     * {@link #DEFAULT_EDITOR_WIDTH} columns beside it, shrunk to leave the editor
+     * that many, and never below {@link ShellLayout#MIN_PROJECT_WIDTH}. An unknown
+     * viewport keeps the fixed width.
+     */
+    static int defaultProjectWidth(int viewportWidth, int rightStripeWidth) {
+        if (viewportWidth <= 0) {
+            return PROJECT_PANEL_WIDTH;
+        }
+        int projectAndEditor = projectAndEditorColumns(viewportWidth, rightStripeWidth);
+        return Math.max(ShellLayout.MIN_PROJECT_WIDTH,
+                Math.min(PROJECT_PANEL_WIDTH, projectAndEditor - DEFAULT_EDITOR_WIDTH));
+    }
+
+    /**
+     * Whether a default-sized project pane fits: even at its minimum width it
+     * must leave the editor {@link ShellLayout#MIN_EDITOR_WIDTH} columns. A pane
+     * that does not fit is not shown by default, and the left tool strip stays.
+     */
+    static boolean defaultProjectFits(int viewportWidth, int rightStripeWidth) {
+        if (viewportWidth <= 0) {
+            return true;
+        }
+        int editorAtMinimum = projectAndEditorColumns(viewportWidth, rightStripeWidth) - ShellLayout.MIN_PROJECT_WIDTH;
+        return editorAtMinimum >= ShellLayout.MIN_EDITOR_WIDTH;
+    }
+
+    private static int projectAndEditorColumns(int viewportWidth, int rightStripeWidth) {
+        return viewportWidth - TOOL_STRIP_WIDTH - PANE_SEPARATOR_WIDTH - rightStripeWidth;
+    }
+
     boolean isSizeCustomized() {
         return layout.isSizeCustomized();
     }
 
+    /**
+     * Whether the project pane is drawn. A stored hidden pane stays hidden. A
+     * customized size, or a pane shown by an explicit choice, is always drawn;
+     * a default-sized pane is drawn only while it fits the viewport.
+     */
+    boolean projectShown() {
+        if (!layout.isProjectVisible()) {
+            return false;
+        }
+        return layout.isSizeCustomized() || projectRevealed || defaultProjectFits(viewportWidth(), rightStripeWidth());
+    }
+
+    /** Shows or hides the project pane by an explicit choice, which keeps it shown at a size that does not fit. */
+    void setProjectShown(boolean visible) {
+        layout.setProjectVisible(visible);
+        projectRevealed = visible;
+    }
+
     /** The left column holds the project pane, a left tool window, or both. */
     boolean leftColumnShown() {
-        return layout.isProjectVisible() || host.leftWindowsOpen();
+        return projectShown() || host.leftWindowsOpen();
     }
 
     int leftRegionWidth(int projectWidth) {
         return TOOL_STRIP_WIDTH + (leftColumnShown() ? projectWidth + PANE_SEPARATOR_WIDTH : 0);
+    }
+
+    /** The width of the project column: the sized width once the user sized it, otherwise the default for the viewport. */
+    int projectWidth() {
+        if (layout.isSizeCustomized()) {
+            return sizedProjectWidth();
+        }
+        return defaultProjectWidth(viewportWidth(), reservedRightStripeWidth());
+    }
+
+    /**
+     * The right column a default project width leaves room for: the strip only,
+     * so opening a right window does not move a default project pane that still
+     * fits. A pane that does not fit beside an open right window is hidden by
+     * {@link #projectShown()} instead.
+     */
+    private int reservedRightStripeWidth() {
+        return host.rightRegistered() ? TOOL_STRIP_WIDTH : 0;
     }
 
     int rightStripeWidth() {
@@ -103,10 +184,14 @@ final class PaneLayoutController {
         return panelWidth + TOOL_STRIP_WIDTH;
     }
 
+    /**
+     * The height the bottom pane is measured against: the terminal height less
+     * the status row, which runs under the whole shell.
+     */
     int availableHeight() {
         Area viewport = host.viewport();
         if (viewport.height() > 1) {
-            return viewport.height() - 1;
+            return viewport.height() - ToolWindowHost.STATUS_ROWS;
         }
         return host.centerHeight() + ToolWindowHost.BOTTOM_HEIGHT;
     }
@@ -127,7 +212,7 @@ final class PaneLayoutController {
             return;
         }
         adoptDefaultSizes();
-        int current = layout.isProjectVisible() ? host.projectPanelWidth() : sizedProjectWidth();
+        int current = projectShown() ? host.projectPanelWidth() : sizedProjectWidth();
         setProjectWidth(current + delta);
         host.placeProject(leftRegionWidth(sizedProjectWidth()));
         persist();
@@ -263,14 +348,25 @@ final class PaneLayoutController {
     }
 
     /**
-     * Turns the fixed default sizes into ratios just before the first resize, so
-     * resizing one pane leaves the other at the size it has on screen.
+     * Turns the default sizes into ratios just before the first resize, so
+     * resizing one pane leaves the other at the size it has on screen. The sizes
+     * adopted are the ones drawn now, not the fixed defaults.
      */
     private void adoptDefaultSizes() {
         if (!layout.isSizeCustomized()) {
-            layout.projectWidth(PROJECT_PANEL_WIDTH, projectBase());
-            layout.bottomHeight(host.defaultBottomHeight(), availableHeight());
+            layout.projectWidth(projectWidth(), projectBase());
+            layout.bottomHeight(drawnDefaultBottomHeight(), availableHeight());
         }
+    }
+
+    private int drawnDefaultBottomHeight() {
+        int rows = ToolWindowHost.defaultBottomRows(host.defaultBottomHeight() - ToolWindowHost.STATUS_ROWS,
+                host.viewport().height(), host.bottomRevealed());
+        return rows > 0 ? rows + ToolWindowHost.STATUS_ROWS : host.defaultBottomHeight();
+    }
+
+    private int viewportWidth() {
+        return host.viewport().width();
     }
 
     /**

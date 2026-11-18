@@ -11,6 +11,8 @@ public final class ShellLayout {
     public static final int MIN_EDITOR_WIDTH = 17;
     public static final int MIN_BOTTOM_HEIGHT = 3;
     public static final int MIN_EDITOR_HEIGHT = 5;
+    public static final int MIN_TERMINAL_WIDTH = 40;
+    public static final int MIN_TERMINAL_HEIGHT = 10;
     private double projectRatio;
     private double bottomRatio;
     private boolean projectVisible = true;

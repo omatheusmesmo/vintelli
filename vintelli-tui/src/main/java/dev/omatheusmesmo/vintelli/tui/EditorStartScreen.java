@@ -2,12 +2,16 @@ package dev.omatheusmesmo.vintelli.tui;
 
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
+import dev.tamboui.layout.Rect;
 import dev.tamboui.style.Style;
+import dev.tamboui.terminal.Frame;
 import dev.tamboui.text.Line;
 import dev.tamboui.text.Span;
 import dev.tamboui.text.Text;
 import dev.tamboui.toolkit.Toolkit;
 import dev.tamboui.toolkit.element.Element;
+import dev.tamboui.toolkit.element.RenderContext;
+import dev.tamboui.toolkit.element.Size;
 import dev.tamboui.toolkit.elements.RichTextElement;
 
 import java.nio.file.Path;
@@ -20,6 +24,8 @@ import java.util.function.Supplier;
  * project name and the main shortcuts. Each key label is read from the active
  * keymap when the pane renders, so a custom keymap shows its own chords, and an
  * action without a chord is left out. The block is centred in both directions.
+ * When the pane is too narrow for the labels and their keys side by side, only
+ * the labels are drawn, so no chord is cut short.
  */
 final class EditorStartScreen {
 
@@ -46,14 +52,11 @@ final class EditorStartScreen {
 
     /**
      * The start screen element, registered as {@code editor-content} like the
-     * other editor bodies so the focus and the routing keep working.
+     * other editor bodies so the focus and the routing keep working. The lines
+     * are chosen when the element renders, from the width it is given.
      */
     Element element() {
-        List<Line> lines = lines(projectName(), shortcuts(keymap.get()));
-        RichTextElement content = Toolkit.richText(Text.from(lines)).centered();
-        content.id("editor-content");
-        content.addClass("editor-content");
-        return Toolkit.column(Toolkit.spacer(), content, Toolkit.spacer());
+        return new Content(projectName(), shortcuts(keymap.get()));
     }
 
     /**
@@ -71,25 +74,49 @@ final class EditorStartScreen {
     }
 
     /**
+     * The width of the labels and keys side by side, with the gap between them.
+     * The keys column is drawn only from this width on.
+     */
+    static int fullBlockWidth(List<Shortcut> shortcuts) {
+        return labelWidth(shortcuts) + COLUMN_GAP.length() + keysWidth(shortcuts);
+    }
+
+    /**
      * The screen lines: the project name, a blank line, then one row per
-     * shortcut with its label and its keys in two aligned columns. Every line
+     * shortcut with its label and its keys in two aligned columns. When the
+     * width cannot hold both columns, each row is its label alone. Every line
      * is padded to the width of the block, so centring the lines centres the
      * block as a whole.
      */
-    List<Line> lines(String projectName, List<Shortcut> shortcuts) {
-        int labelWidth = shortcuts.stream().mapToInt(shortcut -> shortcut.label().length()).max().orElse(0);
-        int keysWidth = shortcuts.stream().mapToInt(shortcut -> shortcut.keys().length()).max().orElse(0);
-        int blockWidth = Math.max(projectName.length(), labelWidth + COLUMN_GAP.length() + keysWidth);
+    List<Line> lines(String projectName, List<Shortcut> shortcuts, int width) {
+        boolean withKeys = fullBlockWidth(shortcuts) <= width;
+        int labelWidth = labelWidth(shortcuts);
+        int keysWidth = keysWidth(shortcuts);
+        int blockWidth = withKeys
+                ? Math.max(projectName.length(), fullBlockWidth(shortcuts))
+                : Math.max(projectName.length(), labelWidth);
         Style text = styledRole(TEXT_ROLE);
         Style hint = styledRole(HINT_ROLE);
         List<Line> lines = new ArrayList<>();
         lines.add(Line.from(Span.styled(padRight(projectName, blockWidth), text)));
         lines.add(Line.from(Span.styled(padRight("", blockWidth), text)));
         for (Shortcut shortcut : shortcuts) {
-            lines.add(Line.from(Span.styled(padRight(shortcut.label(), labelWidth) + COLUMN_GAP, text),
-                    Span.styled(padRight(shortcut.keys(), keysWidth), hint)));
+            if (withKeys) {
+                lines.add(Line.from(Span.styled(padRight(shortcut.label(), labelWidth) + COLUMN_GAP, text),
+                        Span.styled(padRight(shortcut.keys(), keysWidth), hint)));
+            } else {
+                lines.add(Line.from(Span.styled(padRight(shortcut.label(), blockWidth), text)));
+            }
         }
         return lines;
+    }
+
+    private static int labelWidth(List<Shortcut> shortcuts) {
+        return shortcuts.stream().mapToInt(shortcut -> shortcut.label().length()).max().orElse(0);
+    }
+
+    private static int keysWidth(List<Shortcut> shortcuts) {
+        return shortcuts.stream().mapToInt(shortcut -> shortcut.keys().length()).max().orElse(0);
     }
 
     private String projectName() {
@@ -103,6 +130,38 @@ final class EditorStartScreen {
 
     private Style styledRole(String role) {
         return themes.resolver(role).toStyle();
+    }
+
+    /**
+     * The start screen as an element of its own, so the lines follow the width
+     * of the area the editor pane gives it at render time.
+     */
+    private final class Content implements Element {
+
+        private final String projectName;
+        private final List<Shortcut> shortcuts;
+
+        private Content(String projectName, List<Shortcut> shortcuts) {
+            this.projectName = projectName;
+            this.shortcuts = shortcuts;
+        }
+
+        @Override
+        public void render(Frame frame, Rect area, RenderContext context) {
+            RichTextElement content = Toolkit.richText(Text.from(lines(projectName, shortcuts, area.width())))
+                    .centered();
+            Toolkit.column(Toolkit.spacer(), content, Toolkit.spacer()).render(frame, area, context);
+        }
+
+        @Override
+        public Size preferredSize(int availableWidth, int availableHeight, RenderContext context) {
+            return Size.UNKNOWN;
+        }
+
+        @Override
+        public String id() {
+            return "editor-content";
+        }
     }
 
     /**

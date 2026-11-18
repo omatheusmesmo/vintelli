@@ -48,6 +48,7 @@ import dev.tamboui.tui.event.KeyModifiers;
 import dev.tamboui.tui.event.KeyEvent;
 import dev.tamboui.tui.event.MouseButton;
 import dev.tamboui.tui.event.MouseEvent;
+import dev.tamboui.tui.event.ResizeEvent;
 import dev.tamboui.tui.event.TickEvent;
 import dev.tamboui.tui.pilot.Pilot;
 import dev.tamboui.tui.TuiConfig;
@@ -552,6 +553,146 @@ class VintelliShellTest {
                     "the dragged project width is restored");
             assertEquals(bottomHeight, pilot.findElement("bottom-stripe").height(),
                     "the bottom height is restored");
+        }
+    }
+
+    @Test
+    void theEditorKeepsItsMinimumSizeAtSixtyByEighteenAndTheProjectShrinksToLeaveIt() throws Exception {
+        ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(windowsWithAcp(), new ShellState(), defaultThemes())
+                .withLayoutStore(store));
+        try (MouseShellRunner test = runMouseShell(shell, SIXTY_BY_EIGHTEEN)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+
+            assertEquals(13, pilot.findElement("project-panel").width(), "the project keeps the editor at forty columns");
+            Rect editor = pilot.findElement("editor-panel");
+            assertTrue(editor.height() >= ShellLayout.MIN_EDITOR_HEIGHT, "editor rows: " + editor);
+            assertTrue(editor.width() >= ShellLayout.MIN_EDITOR_WIDTH, "editor columns: " + editor);
+        }
+    }
+
+    @Test
+    void theEditorKeepsItsMinimumSizeAtFiftyByFifteen() throws Exception {
+        ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(defaultWindows(), new ShellState(), defaultThemes())
+                .withLayoutStore(store));
+        try (MouseShellRunner test = runMouseShell(shell, FIFTY_BY_FIFTEEN)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+
+            Rect editor = pilot.findElement("editor-panel");
+            assertTrue(editor.height() >= ShellLayout.MIN_EDITOR_HEIGHT, "editor rows: " + editor);
+            assertTrue(editor.width() >= ShellLayout.MIN_EDITOR_WIDTH, "editor columns: " + editor);
+        }
+    }
+
+    @Test
+    void aTerminalBelowTheMinimumShowsTheNoticeInsteadOfTheLayout() {
+        String below = bufferText(offlineFrame(defaultShell(), BELOW_MINIMUM));
+        String atMinimum = bufferText(offlineFrame(defaultShell(), AT_MINIMUM));
+
+        assertTrue(below.contains("Terminal too small: 38x9"), below);
+        assertTrue(below.contains("(minimum 40x10)"), below);
+        assertFalse(below.contains("Editor"), below);
+        assertFalse(below.contains("Project"), below);
+        assertFalse(atMinimum.contains("Terminal too small"), atMinimum);
+        assertTrue(atMinimum.contains("Editor"), atMinimum);
+    }
+
+    @Test
+    void aKeyPressedUnderTheNoticeStillOpensItsOverlayWhichIsNotDrawn() throws Exception {
+        VintelliShell shell = defaultShell();
+        try (MouseShellRunner test = runMouseShell(shell, BELOW_MINIMUM)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+
+            pilot.press(KeyCode.F1);
+            settle(pilot);
+
+            assertTrue(shell.helpOverlayOpen(), shell.status());
+            assertFalse(pilot.hasElement("keymap-help"), "the overlay must not draw over the notice");
+            assertTrue(test.renderedFrame().contains("Terminal too small"), test.renderedFrame());
+        }
+    }
+
+    @Test
+    void aTerminalShrunkBelowTheLayoutMinimumAndBackRestoresTheDefaultPaneSizes() throws Exception {
+        ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(defaultWindows(), new ShellState(), defaultThemes())
+                .withLayoutStore(store));
+        try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+            int projectBefore = pilot.findElement("project-panel").width();
+            Rect editorBefore = pilot.findElement("editor-panel");
+            int bottomBefore = pilot.findElement("bottom-stripe").height();
+
+            test.resize(pilot, FIFTY_BY_FIFTEEN);
+            settle(pilot);
+            Rect shrunk = pilot.findElement("editor-panel");
+            assertTrue(shrunk.height() >= ShellLayout.MIN_EDITOR_HEIGHT, "editor rows at 50x15: " + shrunk);
+            assertTrue(shrunk.width() >= ShellLayout.MIN_EDITOR_WIDTH, "editor columns at 50x15: " + shrunk);
+
+            test.resize(pilot, SIZE);
+            settle(pilot);
+            assertEquals(projectBefore, pilot.findElement("project-panel").width(), "the project width comes back");
+            assertEquals(editorBefore, pilot.findElement("editor-panel"), "the editor comes back");
+            assertEquals(bottomBefore, pilot.findElement("bottom-stripe").height(), "the bottom height comes back");
+        }
+    }
+
+    @Test
+    void aTerminalAtTheMinimumHidesTheDefaultBottomPaneAndShowsItAgainWhenItGrows() throws Exception {
+        ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(defaultWindows(), new ShellState(), defaultThemes())
+                .withLayoutStore(store));
+        try (MouseShellRunner test = runMouseShell(shell, AT_MINIMUM)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+
+            Rect editor = pilot.findElement("editor-panel");
+            assertEquals(AT_MINIMUM.height() - 2, editor.height(), "the editor takes the rows of the hidden pane");
+            assertTrue(shell.isToolWindowVisible("run"), "hiding by size does not change the stored windows");
+
+            test.resize(pilot, SIZE);
+            settle(pilot);
+            assertEquals(11, pilot.findElement("bottom-stripe").height(), "the bottom pane comes back at its default");
+        }
+    }
+
+    @Test
+    void aCustomizedProjectKeepsItsWidthAtSixtyByEighteen() throws Exception {
+        ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
+        store.save(customizedLayout(0.6, ShellLayout.DEFAULT_BOTTOM_RATIO, defaultWindows()));
+        VintelliShell shell = new VintelliShell(ShellConfig.of(defaultWindows(), new ShellState(), defaultThemes())
+                .withLayoutStore(store));
+        try (MouseShellRunner test = runMouseShell(shell, SIXTY_BY_EIGHTEEN)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+
+            assertEquals((int) Math.round(0.6 * (SIXTY_BY_EIGHTEEN.width() - VintelliShell.TOOL_STRIP_WIDTH)),
+                    pilot.findElement("project-panel").width(), "a dragged project size is not shrunk by the default rule");
+        }
+    }
+
+    @Test
+    void anExplicitlyShownProjectPaneAppearsAtItsMinimumWidthAtAnAutoHiddenSize() throws Exception {
+        ShellLayoutStore store = new ShellLayoutStore(project.resolve("config"), project);
+        VintelliShell shell = new VintelliShell(ShellConfig.of(windowsWithAcp(), new ShellState(), defaultThemes())
+                .withLayoutStore(store));
+        try (MouseShellRunner test = runMouseShell(shell, SIXTY_BY_EIGHTEEN)) {
+            Pilot pilot = test.pilot();
+            pilot.pause(STARTUP);
+            pilot.click(SIXTY_BY_EIGHTEEN.width() - 1, frameRowOf(test.renderedFrame(), SIXTY_BY_EIGHTEEN.width() - 1, "A"));
+            settle(pilot);
+            assertFalse(pilot.hasElement("project-panel"), "the default project pane yields to the open right window");
+
+            pilot.click(1, frameRowOf(test.renderedFrame(), 1, "P"));
+            settle(pilot);
+
+            assertTrue(pilot.findElement("project-panel").width() >= ShellLayout.MIN_PROJECT_WIDTH,
+                    "a project pane shown explicitly keeps at least the minimum width");
         }
     }
 
@@ -1147,6 +1288,10 @@ class VintelliShellTest {
     private static final String STRUCTURE_GLYPH = "";
     private static final Size SIZE = new Size(VIEWPORT.width(), VIEWPORT.height());
     private static final Size WIDE = new Size(150, 42);
+    private static final Size SIXTY_BY_EIGHTEEN = new Size(60, 18);
+    private static final Size FIFTY_BY_FIFTEEN = new Size(50, 15);
+    private static final Size BELOW_MINIMUM = new Size(38, 9);
+    private static final Size AT_MINIMUM = new Size(40, 10);
     private static final int MENU_ROW = 0;
     private static final int LEFT_TAB_ROW = 1; // Left stripe tab bar (empty in default)
     private static final int FIRST_PROJECT_ROW = 2; // Project panel now starts at row 2
@@ -2908,7 +3053,7 @@ class VintelliShellTest {
 
             pilot.press(KeyCode.UP);
             settle(pilot);
-            test.resize(60, SIZE.height());
+            test.resize(100, SIZE.height());
             settle(pilot);
             list = pilot.findElement("project-panel");
             String resized = test.renderedFrame();
@@ -6129,6 +6274,22 @@ class VintelliShellTest {
         private void drag(MouseEvent event) {
             runner.tuiRunner().dispatch(event);
             awaitSettled();
+        }
+
+        /** Resizes the terminal and waits for the frame that draws the new size. */
+        private void resize(Pilot pilot, Size size) {
+            backend.resize(size.width(), size.height());
+            runner.tuiRunner().dispatch(ResizeEvent.of(size.width(), size.height()));
+            long deadline = System.nanoTime() + SETTLE_TIMEOUT.toNanos();
+            while (!drawnAt(size) && System.nanoTime() < deadline) {
+                pause(pilot, SETTLE_STEP);
+            }
+            assertHealthy();
+        }
+
+        private boolean drawnAt(Size size) {
+            String frame = rendered.get();
+            return frame.indexOf('\n') == size.width() && frame.chars().filter(c -> c == '\n').count() == size.height();
         }
 
         private boolean running() {
