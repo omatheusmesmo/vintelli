@@ -4854,35 +4854,36 @@ class VintelliShellTest {
             try (MouseShellRunner test = runMouseShell(shell, size)) {
                 Pilot pilot = test.pilot();
                 settle(pilot);
-                int projectBefore = pilot.findElement("project-panel").width();
-                Rect vertical = pilot.findElement("pane-separator-vertical");
-                int onEditor = pilot.findElement("editor-panel").y() + 2;
+                int projectBefore = test.awaitElementArea("project-panel", size).width();
+                Rect vertical = test.awaitElementArea("pane-separator-vertical", size);
+                int onEditor = test.awaitElementArea("editor-panel", size).y() + 2;
                 pilot.mousePress(MouseButton.LEFT, vertical.x(), onEditor);
                 test.drag(MouseEvent.drag(MouseButton.LEFT, vertical.x() + 4, onEditor));
                 pilot.mouseRelease(MouseButton.LEFT, vertical.x() + 4, onEditor);
                 settle(pilot);
-                assertEquals(projectBefore + 4, pilot.findElement("project-panel").width(),
+                assertEquals(projectBefore + 4, test.awaitElementArea("project-panel", size).width(),
                         size + ": the vertical gap cell drags the project splitter");
 
-                test.resize(size.width() - 10, size.height() - 4);
+                Size resized = new Size(size.width() - 10, size.height() - 4);
+                test.resize(resized.width(), resized.height());
                 settle(pilot);
-                Rect resizedVertical = pilot.findElement("pane-separator-vertical");
-                int resizedWidth = pilot.findElement("project-panel").width();
+                Rect resizedVertical = test.awaitElementArea("pane-separator-vertical", resized);
+                int resizedWidth = test.awaitElementArea("project-panel", resized).width();
                 pilot.mousePress(MouseButton.LEFT, resizedVertical.x(), resizedVertical.y() + 1);
                 test.drag(MouseEvent.drag(MouseButton.LEFT, resizedVertical.x() - 3, resizedVertical.y() + 1));
                 pilot.mouseRelease(MouseButton.LEFT, resizedVertical.x() - 3, resizedVertical.y() + 1);
                 settle(pilot);
-                assertEquals(resizedWidth - 3, pilot.findElement("project-panel").width(),
+                assertEquals(resizedWidth - 3, test.awaitElementArea("project-panel", resized).width(),
                         size + ": the vertical gap cell still drags after a resize");
 
-                Rect horizontal = pilot.findElement("pane-separator-horizontal");
-                int editorHeight = pilot.findElement("editor-panel").height();
-                int column = pilot.findElement("editor-panel").x() + 2;
+                Rect horizontal = test.awaitElementArea("pane-separator-horizontal", resized);
+                int editorHeight = test.awaitElementArea("editor-panel", resized).height();
+                int column = test.awaitElementArea("editor-panel", resized).x() + 2;
                 pilot.mousePress(MouseButton.LEFT, column, horizontal.y());
                 test.drag(MouseEvent.drag(MouseButton.LEFT, column, horizontal.y() - 2));
                 pilot.mouseRelease(MouseButton.LEFT, column, horizontal.y() - 2);
                 settle(pilot);
-                assertTrue(pilot.findElement("editor-panel").height() < editorHeight,
+                assertTrue(test.awaitElementArea("editor-panel", resized).height() < editorHeight,
                         size + ": the horizontal gap cell drags the bottom splitter after a resize");
             }
         }
@@ -6290,6 +6291,37 @@ class VintelliShellTest {
         private boolean drawnAt(Size size) {
             String frame = rendered.get();
             return frame.indexOf('\n') == size.width() && frame.chars().filter(c -> c == '\n').count() == size.height();
+        }
+
+        /**
+         * Waits until a frame of {@code size} is drawn and returns the area of {@code id} in it. The element
+         * registry is cleared and refilled by every frame, and a frame can follow the one a test just waited
+         * for (the resize poll redraws the same size later), so the read runs on the render thread between frames.
+         */
+        private Rect awaitElementArea(String id, Size size) {
+            long deadline = System.nanoTime() + SETTLE_TIMEOUT.toNanos();
+            Rect area = elementAreaOnRenderThread(id, size);
+            while (area == null && System.nanoTime() < deadline) {
+                sleep(SETTLE_STEP);
+                area = elementAreaOnRenderThread(id, size);
+            }
+            assertHealthy();
+            if (area == null) {
+                throw new AssertionError(id + " was not drawn in a " + size + " frame within "
+                        + SETTLE_TIMEOUT.toMillis() + " ms; last frame:\n" + rendered.get());
+            }
+            return area;
+        }
+
+        private Rect elementAreaOnRenderThread(String id, Size size) {
+            AtomicReference<Rect> area = new AtomicReference<>();
+            runner.runOnRenderThread(() -> {
+                if (drawnAt(size)) {
+                    area.set(runner.elementRegistry().getArea(id));
+                }
+            });
+            awaitHandled(runner);
+            return area.get();
         }
 
         private boolean running() {
