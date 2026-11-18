@@ -484,6 +484,7 @@ public final class JavaDebugCapability implements DebugCapability {
         private final AtomicBoolean executionRequestPending = new AtomicBoolean();
         private long stopGeneration;
         private PendingExecution pendingExecution;
+        private CompletableFuture<Void> stopPublication = CompletableFuture.completedFuture(null);
 
         private DapSession(String label, boolean ownsRun, Consumer<String> outputLines) {
             this.label = label;
@@ -610,6 +611,7 @@ public final class JavaDebugCapability implements DebugCapability {
                 throw new TimeoutException("Timed out completing Java debug configuration");
             }
             attach.get(remaining, TimeUnit.NANOSECONDS);
+            awaitStopPublication();
             if (isTerminal()) {
                 return false;
             }
@@ -657,22 +659,52 @@ public final class JavaDebugCapability implements DebugCapability {
         private void eventStopped(StoppedEventArguments event) {
             String reason = event == null || event.getReason() == null ? "stopped" : event.getReason();
             int threadId = event == null || event.getThreadId() == null ? 0 : event.getThreadId();
+            CompletableFuture<Void> published = new CompletableFuture<>();
             long generation;
             synchronized (this) {
                 if (terminal) {
                     return;
                 }
                 generation = ++stopGeneration;
+                stopPublication = published;
+            }
+            topFrame(threadId).whenComplete((frame, failure) -> {
+                try {
+                    publishStopped(reason, threadId, frame, generation);
+                } finally {
+                    published.complete(null);
+                }
+            });
+        }
+
+        private void publishStopped(String reason, int threadId, DebugFrame frame, long generation) {
+            synchronized (this) {
+                if (terminal || stopGeneration != generation) {
+                    return;
+                }
                 PendingExecution pending = pendingExecution;
                 boolean matching = matchesPending(pending, State.STOPPED, threadId);
                 State stoppedState = pending != null && !matching ? State.EXECUTING : State.STOPPED;
                 String stateReason = stoppedState == State.EXECUTING
                         ? "Waiting for the requested debugger event" : "";
+                DebugFrame publishedFrame = stoppedState == State.STOPPED ? frame : null;
                 update(snapshot -> new DebugSessionSnapshot(id, label, stoppedState, snapshot.threads(), stateReason, reason,
-                        threadId, null, debugCapabilities));
+                        threadId, publishedFrame, debugCapabilities));
                 if (matching) completePendingExecution(State.STOPPED, threadId);
             }
-            if (threadId > 0) loadTopFrame(threadId, generation);
+        }
+
+        private void awaitStopPublication() {
+            CompletableFuture<Void> published;
+            synchronized (this) {
+                published = stopPublication;
+            }
+            try {
+                published.get(requestTimeout.toMillis(), TimeUnit.MILLISECONDS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            } catch (ExecutionException | TimeoutException ignored) {
+            }
         }
 
         private void eventContinued(ContinuedEventArguments event) {
@@ -708,28 +740,28 @@ public final class JavaDebugCapability implements DebugCapability {
             return stateMatches && (pending.threadId() == 0 || threadId == 0 || pending.threadId() == threadId);
         }
 
-        private void loadTopFrame(int threadId, long generation) {
+        private CompletableFuture<DebugFrame> topFrame(int threadId) {
             IDebugProtocolServer protocol = server;
-            if (protocol == null || isTerminal()) return;
+            if (protocol == null || threadId <= 0) {
+                return CompletableFuture.completedFuture(null);
+            }
             StackTraceArguments arguments = new StackTraceArguments();
             arguments.setThreadId(threadId);
-            protocol.stackTrace(arguments).orTimeout(requestTimeout.toMillis(), TimeUnit.MILLISECONDS)
-                    .whenComplete((response, failure) -> {
-                        if (failure != null || response == null || response.getStackFrames() == null
-                                || response.getStackFrames().length == 0 || isTerminal()) return;
-                        StackFrame top = response.getStackFrames()[0];
-                        Source source = top.getSource();
-                        if (source == null || source.getPath() == null || top.getLine() < 1) return;
-                        DebugFrame frame = new DebugFrame(top.getName(), source.getPath(), top.getLine(),
-                                top.getColumn() < 1 ? 1 : top.getColumn());
-                        synchronized (this) {
-                            if (!terminal && stopGeneration == generation && current.get().state() == State.STOPPED
-                                    && current.get().stoppedThreadId() == threadId) {
-                                update(snapshot -> new DebugSessionSnapshot(id, label, snapshot.state(), snapshot.threads(),
-                                        snapshot.reason(), snapshot.stoppedReason(), threadId, frame, debugCapabilities));
-                            }
-                        }
-                    });
+            return protocol.stackTrace(arguments).orTimeout(requestTimeout.toMillis(), TimeUnit.MILLISECONDS)
+                    .handle((response, failure) -> failure == null ? topDebugFrame(response) : null);
+        }
+
+        private DebugFrame topDebugFrame(StackTraceResponse response) {
+            if (response == null || response.getStackFrames() == null || response.getStackFrames().length == 0) {
+                return null;
+            }
+            StackFrame top = response.getStackFrames()[0];
+            Source source = top.getSource();
+            if (source == null || source.getPath() == null || top.getLine() < 1) {
+                return null;
+            }
+            return new DebugFrame(top.getName(), source.getPath(), top.getLine(),
+                    top.getColumn() < 1 ? 1 : top.getColumn());
         }
 
         private CapabilityResult<Boolean> requestExecution(SteppingAction action) {

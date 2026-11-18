@@ -46,6 +46,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -173,6 +174,33 @@ class JavaDebugCapabilityTest {
             Thread.sleep(50);
             assertEquals(20, session.snapshot().currentFrame().line(), "a late first-stop response must be ignored");
             session.disconnect();
+        }
+    }
+
+    @Test
+    void stoppedStateIsNotPublishedBeforeItsTopFrameArrives() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.STALE_STACK_TRACE)) {
+            JavaDebugCapability capability = new JavaDebugCapability(true, new FakeAdapter(twin.port()),
+                    () -> new FakeRegistry(new FakeRun()), TEST_TIMEOUT, TEST_TIMEOUT, Duration.ofSeconds(5));
+            ExecutorService worker = Executors.newSingleThreadExecutor();
+            try {
+                Future<CapabilityResult<DebugCapability.DebugSession>> attach = worker.submit(() -> capability.attach(
+                        new DebugCapability.AttachRequest(5005, "held top frame"), ignored -> { }));
+                DapTwin.Connection connection = twin.connection();
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+                while (!connection.staleStackTracePending() && System.nanoTime() < deadline) Thread.sleep(10);
+                assertTrue(connection.staleStackTracePending());
+                assertNotEquals(DebugCapability.State.STOPPED, capability.snapshot().getFirst().state(),
+                        "the stopped state must not be visible while its top frame is still pending");
+                connection.releaseStaleStackTrace();
+                DebugCapability.DebugSession session = ok(get(attach));
+                assertEquals(DebugCapability.State.STOPPED, session.snapshot().state());
+                assertEquals("/project/Main.java", session.snapshot().currentFrame().sourcePath());
+                assertEquals(12, session.snapshot().currentFrame().line());
+                session.disconnect();
+            } finally {
+                worker.shutdownNow();
+            }
         }
     }
 
