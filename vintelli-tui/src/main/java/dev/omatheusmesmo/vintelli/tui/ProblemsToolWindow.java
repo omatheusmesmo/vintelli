@@ -146,11 +146,11 @@ public final class ProblemsToolWindow implements ToolWindow {
 
     @Override
     public String actionForKey(KeyEvent event) {
-        if (event.isKey(KeyCode.UP)) return KeyActions.PROBLEMS_SELECT_PREVIOUS;
-        if (event.isKey(KeyCode.DOWN)) return KeyActions.PROBLEMS_SELECT_NEXT;
-        if (event.isKey(KeyCode.RIGHT)) return KeyActions.PROBLEMS_EXPAND;
-        if (event.isKey(KeyCode.LEFT)) return KeyActions.PROBLEMS_COLLAPSE;
-        if (event.isKey(KeyCode.ENTER)) {
+        if (Keys.is(event, KeyCode.UP)) return KeyActions.PROBLEMS_SELECT_PREVIOUS;
+        if (Keys.is(event, KeyCode.DOWN)) return KeyActions.PROBLEMS_SELECT_NEXT;
+        if (Keys.is(event, KeyCode.RIGHT)) return KeyActions.PROBLEMS_EXPAND;
+        if (Keys.is(event, KeyCode.LEFT)) return KeyActions.PROBLEMS_COLLAPSE;
+        if (Keys.is(event, KeyCode.ENTER)) {
             return headerSelected() ? KeyActions.PROBLEMS_TOGGLE : KeyActions.PROBLEMS_NAVIGATE;
         }
         if (event.code() != KeyCode.CHAR || event.hasCtrl() || event.hasAlt()) return null;

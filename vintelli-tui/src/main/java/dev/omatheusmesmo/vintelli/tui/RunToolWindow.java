@@ -270,7 +270,7 @@ public final class RunToolWindow implements ToolWindow {
             if (event.isCharIgnoreCase('i')) return KeyActions.DEBUG_STEP_INTO;
             if (event.isCharIgnoreCase('u')) return KeyActions.DEBUG_STEP_OUT;
         }
-        if (event.isKey(KeyCode.ENTER)) {
+        if (Keys.is(event, KeyCode.ENTER)) {
             return KeyActions.RUN_EXECUTE;
         }
         if (event.isCharIgnoreCase('r')) {
@@ -280,10 +280,10 @@ public final class RunToolWindow implements ToolWindow {
         if (event.isCharIgnoreCase('s')) {
             return motion.active() && handle != null && handle.supportsCancellation() ? KeyActions.RUN_STOP : null;
         }
-        if (event.isKey(KeyCode.DOWN) || event.isCharIgnoreCase('j')) {
+        if (Keys.is(event, KeyCode.DOWN) || event.isCharIgnoreCase('j')) {
             return KeyActions.RUN_SELECT_NEXT;
         }
-        if (event.isKey(KeyCode.UP) || event.isCharIgnoreCase('k')) {
+        if (Keys.is(event, KeyCode.UP) || event.isCharIgnoreCase('k')) {
             return KeyActions.RUN_SELECT_PREVIOUS;
         }
         return null;

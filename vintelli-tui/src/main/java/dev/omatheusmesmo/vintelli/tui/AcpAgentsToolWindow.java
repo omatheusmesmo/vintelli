@@ -119,14 +119,14 @@ public final class AcpAgentsToolWindow implements ToolWindow {
     @Override
     public String actionForKey(KeyEvent event) {
         if (agentPickerOpen) {
-            if (event.isKey(KeyCode.ENTER)) return ACP_NEW;
-            if (event.isKey(KeyCode.ESCAPE)) return ACP_CLOSE;
+            if (Keys.is(event, KeyCode.ENTER)) return ACP_NEW;
+            if (Keys.is(event, KeyCode.ESCAPE)) return ACP_CLOSE;
         }
         if (event.hasCtrl() && event.isCharIgnoreCase('n')) return ACP_NEW;
         if (event.hasCtrl() && event.isCharIgnoreCase('w')) return ACP_CLOSE;
         ChatSession active = activeSession();
         if (active != null && active.permission != null) {
-            if (event.isKey(KeyCode.ENTER)) {
+            if (Keys.is(event, KeyCode.ENTER)) {
                 actionIndex = permissionChoiceIndex;
                 return ACP_PERMISSION;
             }
@@ -139,7 +139,7 @@ public final class AcpAgentsToolWindow implements ToolWindow {
             }
             return null;
         }
-        if (event.isKey(KeyCode.ENTER)) {
+        if (Keys.is(event, KeyCode.ENTER)) {
             if (event.hasShift() && active != null && !active.prompting) return null;
             return active == null ? ACP_NEW : active.prompting ? ACP_CANCEL : ACP_SEND;
         }
@@ -150,47 +150,47 @@ public final class AcpAgentsToolWindow implements ToolWindow {
     @Override
     public boolean handleKey(KeyEvent event) {
         if (agentPickerOpen) {
-            if (event.isKey(KeyCode.UP)) {
+            if (Keys.is(event, KeyCode.UP)) {
                 selectedAgent = Math.max(0, selectedAgent - 1);
                 notice = "";
                 return true;
             }
-            if (event.isKey(KeyCode.DOWN)) {
+            if (Keys.is(event, KeyCode.DOWN)) {
                 selectedAgent = Math.min(agentChoices.size() - 1, selectedAgent + 1);
                 notice = "";
                 return true;
             }
             return false;
         }
-        if (event.isKey(KeyCode.PAGE_UP)) {
+        if (Keys.is(event, KeyCode.PAGE_UP)) {
             scrollOffset = Math.max(0, scrollOffset + 8);
             return true;
         }
-        if (event.isKey(KeyCode.PAGE_DOWN)) {
+        if (Keys.is(event, KeyCode.PAGE_DOWN)) {
             scrollOffset = Math.max(0, scrollOffset - 8);
             return true;
         }
         ChatSession active = activeSession();
         if (active != null && active.permission != null) {
-            if (event.isKey(KeyCode.UP)) {
+            if (Keys.is(event, KeyCode.UP)) {
                 permissionChoiceIndex = Math.max(0, permissionChoiceIndex - 1);
                 return true;
             }
-            if (event.isKey(KeyCode.DOWN)) {
+            if (Keys.is(event, KeyCode.DOWN)) {
                 permissionChoiceIndex = Math.min(active.permission.request.options().size(), permissionChoiceIndex + 1);
                 return true;
             }
             return false;
         }
         if (active != null && !active.prompting) {
-            if (event.isKey(KeyCode.BACKSPACE)) {
+            if (Keys.is(event, KeyCode.BACKSPACE)) {
                 if (!input.isEmpty()) {
                     int end = input.offsetByCodePoints(input.length(), -1);
                     input = input.substring(0, end);
                 }
                 return true;
             }
-            if (event.isKey(KeyCode.ENTER) && event.hasShift()) {
+            if (Keys.is(event, KeyCode.ENTER) && event.hasShift()) {
                 input = appendPrompt(input, "\n");
                 return true;
             }

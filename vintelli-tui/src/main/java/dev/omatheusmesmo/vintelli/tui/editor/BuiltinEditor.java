@@ -12,6 +12,7 @@ import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Diagnosti
 import dev.omatheusmesmo.vintelli.api.capability.EditorBridge;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
+import dev.omatheusmesmo.vintelli.tui.Keys;
 import dev.omatheusmesmo.vintelli.tui.ShellThemes;
 import dev.omatheusmesmo.vintelli.tui.ToolWindow;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
@@ -171,10 +172,10 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
 
     public synchronized boolean answersCloseConfirmation(KeyEvent key) {
         return closeConfirmationPending()
-                && (key.isCharIgnoreCase('y') || key.isCharIgnoreCase('n') || key.isKey(KeyCode.ESCAPE));
+                && (key.isCharIgnoreCase('y') || key.isCharIgnoreCase('n') || Keys.is(key, KeyCode.ESCAPE));
     }
 
-    @Override public boolean shouldHandleKeyBeforeShell(KeyEvent key) { return key.isKey(KeyCode.ESCAPE) && findOpen(); }
+    @Override public boolean shouldHandleKeyBeforeShell(KeyEvent key) { return Keys.is(key, KeyCode.ESCAPE) && findOpen(); }
     @Override public synchronized void render(Frame frame, Rect area) {
         element.render(frame, area, DefaultRenderContext.createEmpty());
     }

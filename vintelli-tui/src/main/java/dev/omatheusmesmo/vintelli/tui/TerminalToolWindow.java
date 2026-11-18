@@ -119,7 +119,7 @@ public final class TerminalToolWindow implements ToolWindow {
 
     @Override
     public String actionForKey(KeyEvent key) {
-        if (key.isKey(KeyCode.ENTER) || confirmationLine != null && key.isCharIgnoreCase('y')) {
+        if (Keys.is(key, KeyCode.ENTER) || confirmationLine != null && key.isCharIgnoreCase('y')) {
             return KeyActions.TERMINAL_EXECUTE;
         }
         return null;
@@ -136,7 +136,7 @@ public final class TerminalToolWindow implements ToolWindow {
     @Override
     public boolean handleKey(KeyEvent key) {
         if (session == null || !session.isAlive()) {
-            if (key.isKey(KeyCode.ENTER)) {
+            if (Keys.is(key, KeyCode.ENTER)) {
                 if (session != null) {
                     session.close();
                     session = null;
@@ -150,27 +150,27 @@ public final class TerminalToolWindow implements ToolWindow {
             handleConfirmation(key);
             return true;
         }
-        if (key.isKey(KeyCode.ENTER)) {
+        if (Keys.is(key, KeyCode.ENTER)) {
             submitLine();
-        } else if (key.isKey(KeyCode.BACKSPACE)) {
+        } else if (Keys.is(key, KeyCode.BACKSPACE)) {
             if (cursor > 0) {
                 input.deleteCharAt(--cursor);
             }
-        } else if (key.isKey(KeyCode.DELETE)) {
+        } else if (Keys.is(key, KeyCode.DELETE)) {
             if (cursor < input.length()) {
                 input.deleteCharAt(cursor);
             }
-        } else if (key.isKey(KeyCode.LEFT)) {
+        } else if (Keys.is(key, KeyCode.LEFT)) {
             cursor = Math.max(0, cursor - 1);
-        } else if (key.isKey(KeyCode.RIGHT)) {
+        } else if (Keys.is(key, KeyCode.RIGHT)) {
             cursor = Math.min(input.length(), cursor + 1);
-        } else if (key.isKey(KeyCode.HOME)) {
+        } else if (Keys.is(key, KeyCode.HOME)) {
             cursor = 0;
-        } else if (key.isKey(KeyCode.END)) {
+        } else if (Keys.is(key, KeyCode.END)) {
             cursor = input.length();
-        } else if (key.isKey(KeyCode.UP)) {
+        } else if (Keys.is(key, KeyCode.UP)) {
             recallHistory(-1);
-        } else if (key.isKey(KeyCode.DOWN)) {
+        } else if (Keys.is(key, KeyCode.DOWN)) {
             recallHistory(1);
         } else if (key.hasCtrl() && key.isCharIgnoreCase('c')) {
             input.setLength(0);
@@ -285,7 +285,7 @@ public final class TerminalToolWindow implements ToolWindow {
     }
 
     private void handleConfirmation(KeyEvent key) {
-        if (key.isKey(KeyCode.ENTER)) {
+        if (Keys.is(key, KeyCode.ENTER)) {
             if ("y".equalsIgnoreCase(input.toString().strip())) {
                 sendLine(confirmationLine);
             } else {
@@ -294,7 +294,7 @@ public final class TerminalToolWindow implements ToolWindow {
             confirmationLine = null;
             input.setLength(0);
             cursor = 0;
-        } else if (key.isKey(KeyCode.BACKSPACE)) {
+        } else if (Keys.is(key, KeyCode.BACKSPACE)) {
             if (cursor > 0) {
                 input.deleteCharAt(--cursor);
             }

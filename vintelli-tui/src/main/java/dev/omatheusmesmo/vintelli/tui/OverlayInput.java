@@ -17,37 +17,37 @@ public final class OverlayInput {
     }
 
     public static OverlayKey key(KeyEvent key) {
-        if (key.isKey(KeyCode.ESCAPE)) {
+        if (Keys.is(key, KeyCode.ESCAPE)) {
             return OverlayKey.ESCAPE;
         }
-        if (key.isKey(KeyCode.ENTER)) {
+        if (Keys.is(key, KeyCode.ENTER)) {
             return OverlayKey.ENTER;
         }
-        if (key.isKey(KeyCode.UP)) {
+        if (Keys.is(key, KeyCode.UP)) {
             return OverlayKey.UP;
         }
-        if (key.isKey(KeyCode.DOWN)) {
+        if (Keys.is(key, KeyCode.DOWN)) {
             return OverlayKey.DOWN;
         }
-        if (key.isKey(KeyCode.LEFT)) {
+        if (Keys.is(key, KeyCode.LEFT)) {
             return OverlayKey.LEFT;
         }
-        if (key.isKey(KeyCode.RIGHT)) {
+        if (Keys.is(key, KeyCode.RIGHT)) {
             return OverlayKey.RIGHT;
         }
-        if (key.isKey(KeyCode.PAGE_UP)) {
+        if (Keys.is(key, KeyCode.PAGE_UP)) {
             return OverlayKey.PAGE_UP;
         }
-        if (key.isKey(KeyCode.PAGE_DOWN)) {
+        if (Keys.is(key, KeyCode.PAGE_DOWN)) {
             return OverlayKey.PAGE_DOWN;
         }
-        if (key.isKey(KeyCode.F10)) {
+        if (Keys.is(key, KeyCode.F10)) {
             return OverlayKey.F10;
         }
         if (key.code() == KeyCode.CHAR && key.codePoint() >= 32 && !key.hasCtrl() && !key.hasAlt()) {
             return OverlayKey.TEXT;
         }
-        if (key.isKey(KeyCode.BACKSPACE)) {
+        if (Keys.is(key, KeyCode.BACKSPACE)) {
             return OverlayKey.BACKSPACE;
         }
         return OverlayKey.OTHER;

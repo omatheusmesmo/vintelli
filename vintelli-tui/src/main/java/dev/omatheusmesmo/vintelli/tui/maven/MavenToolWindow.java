@@ -10,6 +10,7 @@ import java.util.function.LongSupplier;
 
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
+import dev.omatheusmesmo.vintelli.tui.Keys;
 import dev.omatheusmesmo.vintelli.tui.Marquee;
 import dev.omatheusmesmo.vintelli.tui.ShellThemes;
 import dev.omatheusmesmo.vintelli.tui.ToolWindow;
@@ -154,19 +155,19 @@ public final class MavenToolWindow implements ToolWindow {
 
     @Override
     public String actionForKey(KeyEvent event) {
-        if (event.isKey(KeyCode.ENTER)) {
+        if (Keys.is(event, KeyCode.ENTER)) {
             return KeyActions.MAVEN_ACTIVATE;
         }
-        if (event.isKey(KeyCode.DOWN)) {
+        if (Keys.is(event, KeyCode.DOWN)) {
             return KeyActions.MAVEN_SELECT_NEXT;
         }
-        if (event.isKey(KeyCode.UP)) {
+        if (Keys.is(event, KeyCode.UP)) {
             return KeyActions.MAVEN_SELECT_PREVIOUS;
         }
-        if (event.isKey(KeyCode.RIGHT)) {
+        if (Keys.is(event, KeyCode.RIGHT)) {
             return KeyActions.MAVEN_EXPAND;
         }
-        if (event.isKey(KeyCode.LEFT)) {
+        if (Keys.is(event, KeyCode.LEFT)) {
             return KeyActions.MAVEN_COLLAPSE;
         }
         return null;

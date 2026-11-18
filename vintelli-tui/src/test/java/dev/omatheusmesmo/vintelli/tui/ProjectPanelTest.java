@@ -1,5 +1,7 @@
 package dev.omatheusmesmo.vintelli.tui;
 
+import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
+import dev.omatheusmesmo.vintelli.api.capability.ProjectFileOperations;
 import dev.omatheusmesmo.vintelli.api.search.ProjectSearch;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
 import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
@@ -7,12 +9,15 @@ import dev.omatheusmesmo.vintelli.tui.icons.JavaTypeKind;
 import dev.omatheusmesmo.vintelli.tui.icons.JavaTypeKinds;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
+import dev.omatheusmesmo.vintelli.tui.keymap.KeymapProfile;
 import dev.tamboui.buffer.Buffer;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.style.Color;
 import dev.tamboui.terminal.Frame;
 import dev.tamboui.toolkit.element.DefaultRenderContext;
 import dev.tamboui.toolkit.event.EventResult;
+import dev.tamboui.tui.event.KeyCode;
+import dev.tamboui.tui.event.KeyEvent;
 import dev.tamboui.tui.event.MouseButton;
 import dev.tamboui.tui.event.MouseEvent;
 import org.junit.jupiter.api.Test;
@@ -42,6 +47,7 @@ class ProjectPanelTest {
     private static final String DEEP_SIBLING = DEEP_DIRECTORY + "/other.txt";
     private static final String DEEP_NAME = "deep-clipping-test-file-name-here.txt";
     private static final String USER_MAPPING_PROPERTY = "vintelli.icons.file";
+    private static final Keymap KEYMAP = Keymap.ofProfile(KeymapProfile.DEFAULT, List.of());
 
     @TempDir
     Path root;
@@ -327,6 +333,73 @@ class ProjectPanelTest {
         assertEquals(1, closes.get());
     }
 
+    @Test
+    void aKeypadEnterSubmitsTheNamePromptLikeEnter() throws IOException {
+        Files.writeString(root.resolve("Anchor.java"), "class Anchor {}");
+        RecordingFileOperations operations = new RecordingFileOperations();
+        ProjectTreeController controller = controllerWith(operations, new ArrayList<>());
+        ProjectPanel panel = panel(controller);
+        assertTrue(controller.beginInput(ProjectTreeController.InputMode.CREATE_FILE));
+        for (char character : "Created.txt".toCharArray()) {
+            assertTrue(panel.handleKey(KeyEvent.ofChar(character)));
+        }
+
+        assertTrue(panel.handleKey(KeyEvent.ofKey(KeyCode.KP_ENTER)));
+
+        assertEquals(List.of("Created.txt"), operations.created, "keypad Enter creates the file like Enter");
+    }
+
+    @Test
+    void aKeypadDeleteAsksForTheConfirmationOfTheSelectedEntryLikeDelete() throws IOException {
+        Files.writeString(root.resolve("Doomed.txt"), "gone");
+        RecordingFileOperations operations = new RecordingFileOperations();
+        ProjectTreeController controller = controllerWith(operations, new ArrayList<>());
+        controller.selectPath("Doomed.txt");
+        ProjectPanel panel = panel(controller);
+
+        assertTrue(panel.handleKey(KeyEvent.ofKey(KeyCode.KP_DELETE)));
+        assertTrue(controller.deletePending(), "keypad Delete asks for the confirmation like Delete");
+
+        assertTrue(panel.handleKey(KeyEvent.ofChar('y')));
+        assertEquals(List.of("Doomed.txt"), operations.deleted);
+    }
+
+    private ProjectTreeController controllerWith(ProjectFileOperations operations, List<Runnable> scans) {
+        ProjectTreeController controller = new ProjectTreeController(root, new ShellState(), search(root), operations,
+                message -> { }, () -> { }, () -> { }, new JavaTypeKinds(Files::readString, scans::add));
+        controller.start();
+        controller.refresh(false);
+        return controller;
+    }
+
+    private static final class RecordingFileOperations implements ProjectFileOperations {
+
+        private final List<String> created = new ArrayList<>();
+        private final List<String> deleted = new ArrayList<>();
+
+        @Override
+        public CapabilityResult<Path> createFile(Path directory, String name) {
+            created.add(name);
+            return CapabilityResult.ok(directory.resolve(name));
+        }
+
+        @Override
+        public CapabilityResult<Path> createDirectory(Path directory, String name) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public CapabilityResult<Path> rename(Path entry, String name) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public CapabilityResult<Path> delete(Path entry) {
+            deleted.add(entry.toString());
+            return CapabilityResult.ok(entry);
+        }
+    }
+
     private ProjectTreeController controller(List<Runnable> scans) {
         ProjectTreeController controller = new ProjectTreeController(root, new ShellState(), search(root), null,
                 message -> { }, () -> { }, () -> { }, new JavaTypeKinds(Files::readString, scans::add));
@@ -391,7 +464,7 @@ class ProjectPanelTest {
         return new ProjectPanel.Host() {
             @Override
             public Keymap keymap() {
-                return null;
+                return KEYMAP;
             }
 
             @Override

@@ -344,11 +344,11 @@ final class ProjectPanel implements Element {
             return true;
         }
         if (controller.inputActive()) {
-            if (key.isKey(KeyCode.ESCAPE)) {
+            if (Keys.is(key, KeyCode.ESCAPE)) {
                 controller.cancelInput();
-            } else if (key.isKey(KeyCode.ENTER)) {
+            } else if (Keys.is(key, KeyCode.ENTER)) {
                 controller.submitInput();
-            } else if (key.isKey(KeyCode.BACKSPACE) && !controller.inputText().isEmpty()) {
+            } else if (Keys.is(key, KeyCode.BACKSPACE) && !controller.inputText().isEmpty()) {
                 controller.deleteInputCharacter();
             } else if (key.code() == KeyCode.CHAR && key.codePoint() >= 32 && !key.hasCtrl() && !key.hasAlt()) {
                 controller.appendInput(key.codePoint());
@@ -358,16 +358,16 @@ final class ProjectPanel implements Element {
         if (controller.deletePending()) {
             if (key.isCharIgnoreCase('y')) {
                 controller.confirmDelete();
-            } else if (key.isCharIgnoreCase('n') || key.isKey(KeyCode.ESCAPE)) {
+            } else if (key.isCharIgnoreCase('n') || Keys.is(key, KeyCode.ESCAPE)) {
                 controller.cancelDelete();
             }
             return true;
         }
-        if (key.isKey(KeyCode.RIGHT) && controller.selectedDirectory()) {
+        if (Keys.is(key, KeyCode.RIGHT) && controller.selectedDirectory()) {
             controller.expandSelected();
             return true;
         }
-        if (key.isKey(KeyCode.LEFT) && controller.selectedDirectory()) {
+        if (Keys.is(key, KeyCode.LEFT) && controller.selectedDirectory()) {
             controller.collapseSelected();
             return true;
         }

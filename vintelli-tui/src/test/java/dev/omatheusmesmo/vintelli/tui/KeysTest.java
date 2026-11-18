@@ -1,0 +1,71 @@
+package dev.omatheusmesmo.vintelli.tui;
+
+import dev.tamboui.tui.event.KeyCode;
+import dev.tamboui.tui.event.KeyEvent;
+import dev.tamboui.tui.event.KeyEventKind;
+import dev.tamboui.tui.event.KeyModifiers;
+import org.junit.jupiter.api.Test;
+
+import java.util.EnumMap;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class KeysTest {
+
+    private static final Map<KeyCode, KeyCode> TWINS = new EnumMap<>(Map.ofEntries(
+            Map.entry(KeyCode.KP_ENTER, KeyCode.ENTER),
+            Map.entry(KeyCode.KP_UP, KeyCode.UP),
+            Map.entry(KeyCode.KP_DOWN, KeyCode.DOWN),
+            Map.entry(KeyCode.KP_LEFT, KeyCode.LEFT),
+            Map.entry(KeyCode.KP_RIGHT, KeyCode.RIGHT),
+            Map.entry(KeyCode.KP_HOME, KeyCode.HOME),
+            Map.entry(KeyCode.KP_END, KeyCode.END),
+            Map.entry(KeyCode.KP_PAGE_UP, KeyCode.PAGE_UP),
+            Map.entry(KeyCode.KP_PAGE_DOWN, KeyCode.PAGE_DOWN),
+            Map.entry(KeyCode.KP_INSERT, KeyCode.INSERT),
+            Map.entry(KeyCode.KP_DELETE, KeyCode.DELETE)));
+
+    @Test
+    void eachKeypadNavigationKeyAnswersToItsMainKey() {
+        TWINS.forEach((twin, main) -> {
+            assertTrue(Keys.is(KeyEvent.ofKey(twin), main), twin + " answers to " + main);
+            assertTrue(Keys.is(KeyEvent.ofKey(main), main), main + " still answers to itself");
+        });
+    }
+
+    @Test
+    void askingForAKeypadCodeMatchesOnlyThatCode() {
+        TWINS.forEach((twin, main) -> {
+            assertTrue(Keys.is(KeyEvent.ofKey(twin), twin), "the keypad code matches itself");
+            assertFalse(Keys.is(KeyEvent.ofKey(main), twin), "the main key does not match " + twin);
+        });
+    }
+
+    @Test
+    void mainKeyKeepsTheModifiersAndTheKindOfTheKeypadKey() {
+        KeyEvent repeatedCtrlHome = KeyEvent.ofKey(KeyCode.KP_HOME, KeyModifiers.CTRL, KeyEventKind.REPEAT);
+
+        KeyEvent mainKey = Keys.mainKey(repeatedCtrlHome);
+
+        assertEquals(KeyCode.HOME, mainKey.code());
+        assertEquals(KeyModifiers.CTRL, mainKey.modifiers());
+        assertEquals(KeyEventKind.REPEAT, mainKey.kind());
+    }
+
+    @Test
+    void mainKeyLeavesEveryOtherEventAsItWas() {
+        KeyEvent plainEnter = KeyEvent.ofKey(KeyCode.ENTER);
+        KeyEvent keypadDigit = KeyEvent.ofKey(KeyCode.KP_1);
+        KeyEvent keypadAdd = KeyEvent.ofKey(KeyCode.KP_ADD);
+        KeyEvent character = KeyEvent.ofChar('q');
+
+        assertSame(plainEnter, Keys.mainKey(plainEnter));
+        assertSame(keypadDigit, Keys.mainKey(keypadDigit), "keypad digits are text keys and keep their code");
+        assertSame(keypadAdd, Keys.mainKey(keypadAdd), "keypad operators are text keys and keep their code");
+        assertSame(character, Keys.mainKey(character));
+    }
+}

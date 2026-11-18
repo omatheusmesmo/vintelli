@@ -1,5 +1,6 @@
 package dev.omatheusmesmo.vintelli.tui.editor;
 
+import dev.omatheusmesmo.vintelli.tui.Keys;
 import dev.omatheusmesmo.vintelli.tui.OverlayInput;
 import dev.tamboui.buffer.Buffer;
 import dev.tamboui.layout.Rect;
@@ -52,7 +53,7 @@ final class EditorFindRow extends StyledElement<EditorFindRow> {
 
     @Override
     public EventResult handleKeyEvent(KeyEvent event, boolean focused) {
-        if (event.isKey(KeyCode.F3)) {
+        if (Keys.is(event, KeyCode.F3)) {
             moveMatch(event.hasShift());
             return EventResult.HANDLED;
         }

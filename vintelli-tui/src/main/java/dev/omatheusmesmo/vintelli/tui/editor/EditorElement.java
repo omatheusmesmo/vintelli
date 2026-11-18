@@ -4,6 +4,7 @@ import dev.omatheusmesmo.vintelli.api.ShellEditorPalette;
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Diagnostic;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Severity;
+import dev.omatheusmesmo.vintelli.tui.Keys;
 import dev.omatheusmesmo.vintelli.tui.VcsMarkers;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcon;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
@@ -457,7 +458,7 @@ final class EditorElement implements Element {
             EditorDocument document = editor.document();
             if (document == null) { return EventResult.UNHANDLED; }
             if (find.isOpenOn(document)) {
-                if (event.isKey(KeyCode.ESCAPE)) { editor.closeFind(); } else { findRow.handleKeyEvent(event, focused); }
+                if (Keys.is(event, KeyCode.ESCAPE)) { editor.closeFind(); } else { findRow.handleKeyEvent(event, focused); }
                 return EventResult.HANDLED;
             }
             // Bind the current document on the input path too; events can arrive
@@ -501,8 +502,8 @@ final class EditorElement implements Element {
     }
 
     private void extendSelection(EditorDocument document, KeyEvent event, boolean focused) {
-        if (event.isKey(KeyCode.PAGE_UP) || event.isKey(KeyCode.PAGE_DOWN)) {
-            document.extendSelectionByPage(event.isKey(KeyCode.PAGE_DOWN), Math.max(1, textBody.height()));
+        if (Keys.is(event, KeyCode.PAGE_UP) || Keys.is(event, KeyCode.PAGE_DOWN)) {
+            document.extendSelectionByPage(Keys.is(event, KeyCode.PAGE_DOWN), Math.max(1, textBody.height()));
         } else {
             document.extendSelection(() -> textArea.handleKeyEvent(event, focused));
         }
@@ -511,7 +512,7 @@ final class EditorElement implements Element {
     private static boolean reserved(KeyEvent event) {
         if (event.hasAlt()) { return true; }
         if (event.hasCtrl() && "szg yf bwopd".replace(" ", "").indexOf(Character.toLowerCase(event.character())) >= 0) { return true; }
-        return event.isKey(KeyCode.F1) || event.isKey(KeyCode.F2) || event.isKey(KeyCode.F4) || event.isKey(KeyCode.F8)
-                || event.isKey(KeyCode.F10) || event.isKey(KeyCode.F12);
+        return Keys.is(event, KeyCode.F1) || Keys.is(event, KeyCode.F2) || Keys.is(event, KeyCode.F4) || Keys.is(event, KeyCode.F8)
+                || Keys.is(event, KeyCode.F10) || Keys.is(event, KeyCode.F12);
     }
 }

@@ -1315,7 +1315,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 deleteSelectedConfirmed();
                 return EventResult.HANDLED;
             }
-            if (key.isCharIgnoreCase('n') || key.isKey(KeyCode.ESCAPE)) {
+            if (key.isCharIgnoreCase('n') || Keys.is(key, KeyCode.ESCAPE)) {
                 cancelDelete();
                 return EventResult.HANDLED;
             }
@@ -1325,7 +1325,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             answerEditorClose(key);
             return EventResult.HANDLED;
         }
-        if (inputCaptured && key.isKey(KeyCode.ESCAPE)
+        if (inputCaptured && Keys.is(key, KeyCode.ESCAPE)
                 && (capturedWindow == null || !capturedWindow.shouldHandleKeyBeforeShell(key))) {
             releaseCapture();
             return EventResult.HANDLED;
@@ -1913,10 +1913,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     private static VcsActions.PromptKey promptKey(KeyEvent key) {
         boolean character = key.code() == KeyCode.CHAR;
-        return new VcsActions.PromptKey(key.isKey(KeyCode.ESCAPE), key.isKey(KeyCode.ENTER),
-                key.isKey(KeyCode.BACKSPACE), character ? key.codePoint() : -1,
+        return new VcsActions.PromptKey(Keys.is(key, KeyCode.ESCAPE), Keys.is(key, KeyCode.ENTER),
+                Keys.is(key, KeyCode.BACKSPACE), character ? key.codePoint() : -1,
                 character && !key.hasCtrl() && !key.hasAlt() && !Character.isISOControl(key.codePoint()),
-                key.isKey(KeyCode.ENTER) && key.hasShift(), key.isKey(KeyCode.TAB));
+                Keys.is(key, KeyCode.ENTER) && key.hasShift(), Keys.is(key, KeyCode.TAB));
     }
 
     public void showVcsDiff() {

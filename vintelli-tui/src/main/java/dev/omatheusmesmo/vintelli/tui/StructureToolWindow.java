@@ -134,7 +134,7 @@ public final class StructureToolWindow implements ToolWindow {
 
     @Override
     public boolean handleKey(KeyEvent event) {
-        if (event.isKey(KeyCode.BACKSPACE) && !filter.isEmpty()) {
+        if (Keys.is(event, KeyCode.BACKSPACE) && !filter.isEmpty()) {
             filter = filter.substring(0, filter.offsetByCodePoints(filter.length(), -1));
             selectedIndex = 0;
             scrollOffset = 0;
@@ -151,17 +151,17 @@ public final class StructureToolWindow implements ToolWindow {
         if (flattened.isEmpty()) {
             return false;
         }
-        if (event.isKey(KeyCode.UP)) {
+        if (Keys.is(event, KeyCode.UP)) {
             selectedIndex = Math.max(0, selectedIndex - 1);
             keepSelectionVisible(flattened.size());
             return true;
         }
-        if (event.isKey(KeyCode.DOWN)) {
+        if (Keys.is(event, KeyCode.DOWN)) {
             selectedIndex = Math.min(flattened.size() - 1, selectedIndex + 1);
             keepSelectionVisible(flattened.size());
             return true;
         }
-        if (event.isKey(KeyCode.ENTER)) {
+        if (Keys.is(event, KeyCode.ENTER)) {
             if (navigateHandler != null && selectedIndex >= 0 && selectedIndex < flattened.size()) {
                 navigateHandler.accept(flattened.get(selectedIndex).symbol());
             }
