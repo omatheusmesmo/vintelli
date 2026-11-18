@@ -121,6 +121,30 @@ class EditorStartScreenTest {
         assertFalse(frame.contains("lands with"), frame);
     }
 
+    @Test
+    void aNarrowScreenKeepsTheLabelsAndDropsTheKeysInsteadOfCuttingThem() {
+        String screen = text(render(keymap(), new Rect(0, 0, 30, 24), themes()));
+
+        assertTrue(screen.contains("Go to File"), screen);
+        assertTrue(screen.contains("Search Everywhere"), screen);
+        assertFalse(screen.contains("Ctrl"), screen);
+        assertFalse(screen.contains("Alt+f"), screen);
+        assertFalse(screen.contains("F10"), screen);
+    }
+
+    @Test
+    void theKeysColumnAppearsExactlyAtTheWidthThatHoldsBothColumns() {
+        List<EditorStartScreen.Shortcut> shortcuts = EditorStartScreen.shortcuts(keymap());
+        int fullWidth = EditorStartScreen.fullBlockWidth(shortcuts);
+
+        String fits = text(render(keymap(), new Rect(0, 0, fullWidth, 24), themes()));
+        String cut = text(render(keymap(), new Rect(0, 0, fullWidth - 1, 24), themes()));
+
+        assertTrue(fits.contains("Ctrl+o, Ctrl+Shift+N"), fits);
+        assertTrue(cut.contains("Go to File"), cut);
+        assertFalse(cut.contains("Ctrl+o"), cut);
+    }
+
     private static void assertFitsAndCentred(Rect area) {
         Buffer buffer = render(keymap(), area, themes());
         int top = -1;

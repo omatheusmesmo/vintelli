@@ -480,13 +480,15 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             uiWorkQueue.drain();
         }
         ticker.sync();
-        boolean customized = paneLayout.isSizeCustomized();
-        Constraint projectWidth = Constraint.length(paneLayout.leftRegionWidth(customized
-                ? paneLayout.sizedProjectWidth() : PROJECT_PANEL_WIDTH));
+        if (TerminalSizeNotice.tooSmall(shellArea)) {
+            return TerminalSizeNotice.element(shellArea);
+        }
+        int bottomRows = toolWindowHost.bottomPaneRows(paneLayout.isSizeCustomized(), paneLayout.availableHeight());
+        Constraint projectWidth = Constraint.length(paneLayout.leftRegionWidth(paneLayout.projectWidth()));
         DockElement editorDock = Toolkit.dock()
-                .center(centerPanel())
+                .center(centerPanel(bottomRows > 0))
                 .bottom(toolWindowPanel.bottomStripe())
-                .bottomHeight(bottomPaneConstraint(customized));
+                .bottomHeight(Constraint.length(bottomRows));
         editorDock.id("editor-dock");
         bottomDock = editorDock;
         DockElement dock = Toolkit.dock()
@@ -502,15 +504,6 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         dock.id("shell");
         layoutDock = dock;
         return new PaneGapElement(dock, themes, projectPanel::unicodeTree);
-    }
-
-    /**
-     * The height of the bottom tool windows inside the editor dock. The stored
-     * bottom height counts the status row, which now runs under the whole
-     * shell, so the pane takes one row less than the stored value.
-     */
-    private Constraint bottomPaneConstraint(boolean customized) {
-        return Constraint.length(toolWindowHost.bottomPaneRows(customized, paneLayout.availableHeight()));
     }
 
     /**
@@ -631,12 +624,17 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
             @Override
             public boolean bottomWindowsHidden() {
-                return toolWindowHost.bottomWindowsHidden();
+                return toolWindowHost.bottomPaneRows(paneLayout.isSizeCustomized(), paneLayout.availableHeight()) == 0;
             }
 
             @Override
             public int defaultBottomHeight() {
                 return toolWindowHost.defaultBottomHeight();
+            }
+
+            @Override
+            public boolean bottomRevealed() {
+                return toolWindowHost.isBottomRevealed();
             }
 
             @Override
@@ -709,7 +707,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         return new ToolStripes.Host() {
             @Override
             public boolean projectVisible() {
-                return shellLayout.isProjectVisible();
+                return paneLayout.projectShown();
             }
 
             @Override
@@ -762,7 +760,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             return projectPane();
         }
         Column column = Toolkit.column().id("left-panel");
-        if (shellLayout.isProjectVisible()) {
+        if (paneLayout.projectShown()) {
             column.add(projectPane());
         }
         column.add(toolWindowPanel.stripe(ToolWindow.Anchor.LEFT));
@@ -797,8 +795,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     private void requestProjectFocus() {
-        if (!shellLayout.isProjectVisible()) {
-            shellLayout.setProjectVisible(true);
+        if (!paneLayout.projectShown()) {
+            paneLayout.setProjectShown(true);
             persistLayout();
         }
         pendingProjectFocus = true;
@@ -810,8 +808,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
      * tool window set in {@link ShellLayout}.
      */
     private void toggleProjectPanel() {
-        boolean visible = !shellLayout.isProjectVisible();
-        shellLayout.setProjectVisible(visible);
+        boolean visible = !paneLayout.projectShown();
+        paneLayout.setProjectShown(visible);
         persistLayout();
         FocusManager manager = focusManager;
         if (!visible && manager != null && "project-panel".equals(manager.focusedId())) {
@@ -865,7 +863,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
             @Override
             public boolean layoutVisible() {
-                return shellLayout.isProjectVisible();
+                return paneLayout.projectShown();
             }
 
             @Override
@@ -1024,7 +1022,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         return new LockedElement(delegate, frameLock, null, false);
     }
 
-    private Element centerPanel() {
+    private Element centerPanel(boolean bottomShown) {
         Column editorPane = Toolkit.column().id("editor-panel");
         editorPane.addClass("tool-panel");
         editorPane.focusable();
@@ -1033,7 +1031,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         editorPane.add(Toolkit.lazy(editorPanel::content));
         editorPane.fill();
         paneSeparatorHorizontal = separator(PaneGapElement.HORIZONTAL_SEPARATOR);
-        paneSeparatorHorizontal.length(toolWindowHost.bottomWindowsHidden() ? 0 : 1);
+        paneSeparatorHorizontal.length(bottomShown ? 1 : 0);
         centerPanel = Toolkit.column().id("editor-area");
         centerPanel.add(editorPane);
         centerPanel.add(paneSeparatorHorizontal);
@@ -1069,7 +1067,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private Element overlayElements() {
         KeymapParts parts = overlays();
         List<Kind> open = parts.stack().openOverlays();
-        if (open.isEmpty()) {
+        if (open.isEmpty() || TerminalSizeNotice.tooSmall(shellArea)) {
             return null;
         }
         StackElement layers = Toolkit.stack();
@@ -1496,7 +1494,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     private boolean treeClipVisible() {
-        return shellLayout.isProjectVisible() && projects.marqueeMoving();
+        return paneLayout.projectShown() && projects.marqueeMoving();
     }
 
     private boolean mavenClipVisible(MavenToolWindow window) {
@@ -2072,7 +2070,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         inputCaptured = false;
         capturedWindow = null;
         toolWindowHost.clearFocus();
-        pendingProjectFocus = shellLayout.isProjectVisible();
+        pendingProjectFocus = paneLayout.projectShown();
         status = "Focus: shell navigation";
     }
 

@@ -21,7 +21,11 @@ final class ToolWindowHost {
 
     static final int TOOL_WINDOW_HEIGHT = 9;
     static final int BOTTOM_HEIGHT = TOOL_WINDOW_HEIGHT + ToolTabBarElement.ROWS + 1;
+    static final int STATUS_ROWS = 1;
+    static final int EDITOR_ROWS_BESIDE_A_SHOWN_WINDOW = 2;
 
+    private static final int TOOLBAR_AND_STATUS_ROWS = 2;
+    private static final int PANE_SEPARATOR_ROWS = 1;
     private static final int EMPTY_BOTTOM_HEIGHT = TOOL_WINDOW_HEIGHT + 2;
     private static final String EDITOR_FOCUS = "editor-panel";
     private static final String TOOL_FOCUS_PREFIX = "tool-";
@@ -44,6 +48,7 @@ final class ToolWindowHost {
     private final Host host;
     private final Map<ToolWindow.Anchor, Integer> activeIndexByAnchor = new ConcurrentHashMap<>();
     private volatile String focusedId;
+    private boolean bottomRevealed;
 
     ToolWindowHost(List<ToolWindow> toolWindows, ShellLayout layout, Host host) {
         this.toolWindows = toolWindows;
@@ -114,10 +119,15 @@ final class ToolWindowHost {
     /**
      * Makes the window the active one of its anchor and focuses it. A hidden
      * window is shown first, as the tab row and the strip icons expect.
+     * Switching to a bottom window is an explicit choice, so it reveals a
+     * bottom pane the terminal size had hidden or shrunk.
      */
     void switchTo(ToolWindow window) {
         if (!layout.isVisible(window.id())) {
             show(window.id());
+        }
+        if (window.anchor() == ToolWindow.Anchor.BOTTOM) {
+            bottomRevealed = true;
         }
         int anchorIndex = visibleWindows(window.anchor()).indexOf(window);
         if (anchorIndex >= 0) {
@@ -128,12 +138,14 @@ final class ToolWindowHost {
 
     void show(String id) {
         layout.setVisible(id, true);
+        syncBottomReveal(id);
         host.persistLayout();
         host.status("Tool window shown: " + id);
     }
 
     void hide(String id) {
         layout.setVisible(id, false);
+        syncBottomReveal(id);
         host.persistLayout();
         host.status("Tool window hidden: " + id);
     }
@@ -147,6 +159,7 @@ final class ToolWindowHost {
     Optional<ToolWindow> toggle(String id) {
         boolean wasVisible = layout.isVisible(id);
         layout.toggle(id);
+        syncBottomReveal(id);
         host.persistLayout();
         if (wasVisible && !layout.isVisible(id)) {
             ToolWindow target = toolWindows.stream().filter(window -> window.id().equals(id)).findFirst().orElse(null);
@@ -188,14 +201,59 @@ final class ToolWindowHost {
 
     /**
      * The rows the bottom pane takes. The stored height counts the status row,
-     * which runs under the whole shell, so the pane takes one row less.
+     * which runs under the whole shell, so the pane takes one row less. A
+     * default-sized pane shrinks, or hides, to fit the terminal; a customized
+     * one keeps its stored height.
      */
     int bottomPaneRows(boolean customized, int availableHeight) {
         if (bottomWindowsHidden()) {
             return 0;
         }
-        int stored = customized ? layout.bottomHeight(availableHeight) : defaultBottomHeight();
-        return paneRows(stored);
+        if (customized) {
+            return paneRows(layout.bottomHeight(availableHeight));
+        }
+        return defaultBottomRows(paneRows(defaultBottomHeight()), availableHeight + STATUS_ROWS, bottomRevealed);
+    }
+
+    /**
+     * The rows a default-sized bottom pane takes in a terminal of the given
+     * height. It keeps its default rows while the editor keeps
+     * {@link ShellLayout#MIN_EDITOR_HEIGHT} rows, and shrinks to leave the editor
+     * that many. A pane that would fall under {@link ShellLayout#MIN_BOTTOM_HEIGHT}
+     * rows is hidden. A window the user showed explicitly comes first: the
+     * editor then yields down to {@link #EDITOR_ROWS_BESIDE_A_SHOWN_WINDOW} rows,
+     * and the pane never drops under the minimum. An unknown height keeps the
+     * default rows.
+     */
+    static int defaultBottomRows(int defaultRows, int viewportHeight, boolean revealed) {
+        if (viewportHeight <= 0) {
+            return defaultRows;
+        }
+        int editorRows = revealed ? EDITOR_ROWS_BESIDE_A_SHOWN_WINDOW : ShellLayout.MIN_EDITOR_HEIGHT;
+        int fitting = viewportHeight - TOOLBAR_AND_STATUS_ROWS - PANE_SEPARATOR_ROWS - editorRows;
+        int rows = Math.min(defaultRows, fitting);
+        if (rows >= ShellLayout.MIN_BOTTOM_HEIGHT) {
+            return rows;
+        }
+        return revealed ? Math.min(defaultRows, ShellLayout.MIN_BOTTOM_HEIGHT) : 0;
+    }
+
+    /** Whether a bottom window was shown by an explicit choice while the bottom pane is up. */
+    boolean isBottomRevealed() {
+        return bottomRevealed;
+    }
+
+    private void syncBottomReveal(String id) {
+        if (visibleWindows(ToolWindow.Anchor.BOTTOM).isEmpty()) {
+            bottomRevealed = false;
+        } else if (layout.isVisible(id) && isBottomWindow(id)) {
+            bottomRevealed = true;
+        }
+    }
+
+    private boolean isBottomWindow(String id) {
+        return toolWindows.stream()
+                .anyMatch(window -> window.id().equals(id) && window.anchor() == ToolWindow.Anchor.BOTTOM);
     }
 
     int bottomRows(int availableHeight) {
