@@ -150,14 +150,8 @@ main,
 }
 
 .brand-mark {
-  background: var(--accent);
-  border-radius: 7px;
-  color: #ffffff;
-  display: inline-grid;
-  font-family: var(--mono);
-  font-size: 0.8rem;
+  display: block;
   height: 28px;
-  place-items: center;
   width: 28px;
 }
 
