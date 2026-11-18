@@ -31,11 +31,14 @@ jobs:
             GPL-2.0-only WITH Classpath-exception-2.0,
             GPL-2.0-or-later WITH Classpath-exception-2.0,
             CDDL-1.0, CDDL-1.1, UPL-1.0, CC0-1.0
-          # The published 1.0.0 POM declares EPL-2.0; GitHub reports NOASSERTION.
+          # The published lsp4j.debug 1.0.0 POM declares EPL-2.0; GitHub reports NOASSERTION.
+          # The published commonmark 0.28.0 POM declares BSD-2-Clause; GitHub adds
+          # BSD-3-Clause-No-Nuclear-Warranty. It already ships through tamboui-markdown.
           allow-dependencies-licenses: >-
             pkg:maven/io.quarkus.platform/quarkus-bom,
             pkg:maven/io.quarkus.platform/quarkus-maven-plugin,
             pkg:maven/io.netty/netty-bom,
             pkg:maven/org.jline/jline,
-            pkg:maven/org.eclipse.lsp4j/org.eclipse.lsp4j.debug@1.0.0
+            pkg:maven/org.eclipse.lsp4j/org.eclipse.lsp4j.debug@1.0.0,
+            pkg:maven/org.commonmark/commonmark@0.28.0
           comment-summary-in-pr: on-failure

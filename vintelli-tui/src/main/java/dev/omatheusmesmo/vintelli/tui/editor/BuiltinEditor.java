@@ -14,6 +14,7 @@ import dev.omatheusmesmo.vintelli.api.capability.EditorBridge;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
 import dev.omatheusmesmo.vintelli.tui.Keys;
+import dev.omatheusmesmo.vintelli.tui.OverlayInput;
 import dev.omatheusmesmo.vintelli.tui.ShellThemes;
 import dev.omatheusmesmo.vintelli.tui.ToolWindow;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
@@ -103,6 +104,7 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     private final EditorClipboard clipboard;
     private Supplier<Keymap> keymap;
     private CompletionController completion;
+    private QuickDocumentationController quickDocumentation;
 
     @Inject
     public BuiltinEditor(@ConfigProperty(name = "vintelli.local.project-root") Optional<String> configuredRoot,
@@ -926,6 +928,25 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
 
     synchronized boolean completionTakesKey(KeyEvent key) {
         return completion != null && (completion.takesKey(key) || keymap().matches(key, KeyActions.COMPLETION));
+    }
+
+    /**
+     * Connects the quick documentation popup of the shell. While the popup is open the editor leaves the keys the
+     * popup takes to the shell, and a key the editor handles closes the popup, so the popup never describes text the
+     * key has just changed.
+     */
+    public synchronized void attachQuickDocumentation(QuickDocumentationController controller) {
+        quickDocumentation = controller;
+    }
+
+    synchronized boolean quickDocumentationTakesKey(KeyEvent key) {
+        return quickDocumentation != null && quickDocumentation.takes(OverlayInput.key(key));
+    }
+
+    synchronized void quickDocumentationKeyHandled() {
+        if (quickDocumentation != null) {
+            quickDocumentation.close();
+        }
     }
 
     synchronized void completionKeyHandled(KeyEvent key) {

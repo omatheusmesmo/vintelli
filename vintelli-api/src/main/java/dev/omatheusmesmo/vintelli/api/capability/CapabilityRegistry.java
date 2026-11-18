@@ -54,6 +54,13 @@ public interface CapabilityRegistry {
     }
 
     /**
+     * @return the current documentation provider, or an explicit unavailable state
+     */
+    default CapabilitySelection<HoverCapability> hover() {
+        return CapabilitySelection.unavailable(CapabilityType.HOVER, "No hover provider is installed");
+    }
+
+    /**
      * @return the current debug provider, or an explicit unavailable state
      */
     default CapabilitySelection<DebugCapability> debug() {

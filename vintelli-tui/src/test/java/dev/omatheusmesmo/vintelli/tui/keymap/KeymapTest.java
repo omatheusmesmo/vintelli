@@ -176,6 +176,7 @@ class KeymapTest {
                 "editor_cut", "editor_copy", "editor_paste", "editor_duplicateLine", "editor_selectAll",
                 "editor_close", "editor_nextTab", "editor_previousTab", "editor_definition",
                 "editor_usages", "editor_nextProblem", "editor_previousProblem", "editor_quickFix", "editor_completion",
+                "editor_quickDocumentation",
                 "editor_toggleImportFold",
                 "editor_toggleBreakpoint", "editor_editBreakpointCondition",
                 "navigation_goToFile", "navigation_findInFiles", "navigation_goToLine",
@@ -317,11 +318,11 @@ class KeymapTest {
     @Test
     void chordOnQuitIsStillAccepted(@TempDir Path tempDir) throws Exception {
         Path userFile = tempDir.resolve("keymap.properties");
-        Files.writeString(userFile, "quit = Ctrl+q\n");
+        Files.writeString(userFile, "quit = Ctrl+e\n");
 
         Keymap keymap = Keymap.load(KeymapProfile.DEFAULT, WINDOWS, userFile);
 
-        assertTrue(keymap.matches(keypress('q', KeyModifiers.CTRL), QUIT),
+        assertTrue(keymap.matches(keypress('e', KeyModifiers.CTRL), QUIT),
                 "a chord on quit stays a legal rebinding, only bare printable characters are rejected");
         assertFalse(keymap.matches(keypress('q', KeyModifiers.NONE), QUIT),
                 "the rejected bare q must not have survived as a quit trigger");

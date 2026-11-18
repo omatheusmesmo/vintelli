@@ -38,6 +38,7 @@ public final class CapabilityOrders {
         add(parsed, CapabilityType.CALL_HIERARCHY, config.callHierarchy());
         add(parsed, CapabilityType.CODE_ACTION, config.codeAction());
         add(parsed, CapabilityType.COMPLETION, config.completion());
+        add(parsed, CapabilityType.HOVER, config.hover());
         add(parsed, CapabilityType.DEBUG, config.debug());
         add(parsed, CapabilityType.EDITOR_BRIDGE, config.editorBridge());
         add(parsed, CapabilityType.VERSION_CONTROL, config.vcs());

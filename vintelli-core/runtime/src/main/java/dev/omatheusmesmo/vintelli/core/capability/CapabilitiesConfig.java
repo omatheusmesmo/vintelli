@@ -50,6 +50,11 @@ public interface CapabilitiesConfig {
     Order completion();
 
     /**
+     * Ranking of the documentation (hover) capability providers.
+     */
+    Order hover();
+
+    /**
      * Ranking of Java debug session providers.
      */
     Order debug();

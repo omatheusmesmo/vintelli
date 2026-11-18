@@ -41,6 +41,7 @@ final class CapabilityStateLine {
             case CALL_HIERARCHY -> "Call Hierarchy";
             case CODE_ACTION -> "Code Actions";
             case COMPLETION -> "Completion";
+            case HOVER -> "Hover";
             case DEBUG -> "Debug";
             case EDITOR_BRIDGE -> "Editor";
             case VERSION_CONTROL -> "VCS";

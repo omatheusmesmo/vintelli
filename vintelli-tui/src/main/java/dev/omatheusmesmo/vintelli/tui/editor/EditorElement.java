@@ -454,6 +454,7 @@ final class EditorElement implements Element {
                 return EventResult.UNHANDLED;
             }
             if (editor.completionTakesKey(event)) { return EventResult.UNHANDLED; }
+            if (editor.quickDocumentationTakesKey(event)) { return EventResult.UNHANDLED; }
             if (editor.menuNavigationActive() || editor.overlayInputActive()) { return EventResult.UNHANDLED; }
             if (reserved(event)) { return EventResult.UNHANDLED; }
             EditorDocument document = editor.document();
@@ -501,6 +502,7 @@ final class EditorElement implements Element {
             if (handled) {
                 editor.changed();
                 editor.completionKeyHandled(event);
+                editor.quickDocumentationKeyHandled();
             }
             return handled ? EventResult.HANDLED : EventResult.UNHANDLED;
         }

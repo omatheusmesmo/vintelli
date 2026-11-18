@@ -307,6 +307,11 @@ server command is listed with a note, because Vintelli does not run commands yet
 changed for it. The language server reads the file as it was when the server opened it, not the
 unsaved text in the editor, so an edit can be out of line with changes not yet saved.
 
+Ctrl+Q shows the documentation of the symbol at the caret in a popup beside it: the signature
+first, then the Javadoc or markdown the language server sends, shown as plain text with code
+marked by colour. Up, Down, PageUp and PageDown scroll it and Escape closes it; see
+[Quick documentation](keymap.md#quick-documentation) for the rest.
+
 In the editor, a left click places the caret on the character under the pointer
 and focuses the editor. Drag with the left button to select text; releasing ends
 the drag. Shift with the arrows, Home, End, PageUp or PageDown selects from the

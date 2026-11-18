@@ -15,6 +15,9 @@ import dev.omatheusmesmo.vintelli.tui.keymap.KeymapRegistry;
 import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
 import dev.omatheusmesmo.vintelli.tui.editor.CompletionController;
 import dev.omatheusmesmo.vintelli.tui.editor.CompletionOverlay;
+import dev.omatheusmesmo.vintelli.tui.editor.CompletionSite;
+import dev.omatheusmesmo.vintelli.tui.editor.QuickDocumentationController;
+import dev.omatheusmesmo.vintelli.tui.editor.QuickDocumentationOverlay;
 import dev.omatheusmesmo.vintelli.tui.editor.GoToLine;
 import dev.omatheusmesmo.vintelli.tui.editor.BreakpointConditionOverlay;
 import dev.omatheusmesmo.vintelli.tui.editor.GoToLineOverlay;
@@ -189,6 +192,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private final QuickFixOverlay quickFixOverlay;
     private final CompletionController completion;
     private final CompletionOverlay completionOverlay;
+    private final QuickDocumentationController quickDocumentation;
+    private final QuickDocumentationOverlay quickDocumentationOverlay;
     private Column centerPanel;
     private Column paneSeparatorVertical;
     private Column paneSeparatorHorizontal;
@@ -295,8 +300,12 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         this.completion = new CompletionController(capabilityRegistry, editor, this::deliverToRenderThread,
                 message -> status = message);
         this.completionOverlay = new CompletionOverlay(completion);
+        this.quickDocumentation = new QuickDocumentationController(capabilityRegistry, editor,
+                this::deliverToRenderThread);
+        this.quickDocumentationOverlay = new QuickDocumentationOverlay(quickDocumentation);
         if (editor != null) {
             editor.attachCompletion(completion);
+            editor.attachQuickDocumentation(quickDocumentation);
         }
         Path projectRoot = editor == null ? Path.of("").toAbsolutePath().normalize() : editor.project();
         Path configRoot = persistLayout ? ConfigDirectory.configRoot(ConfigDirectory.sharedConfigDir(),
@@ -408,6 +417,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         stack.registerOverlay(Kind.BREAKPOINT_CONDITION, breakpointCondition::isOpen,
                 () -> closeBreakpointCondition(breakpointCondition));
         stack.registerOverlay(Kind.QUICK_FIX, quickFix::isOpen, this::releaseQuickFix);
+        stack.registerOverlay(Kind.QUICK_DOCUMENTATION, quickDocumentation::isOpen, this::releaseQuickDocumentation);
         if (searchModel != null) {
             stack.registerOverlay(Kind.PROJECT_SEARCH, searchModel::isOpen, searchModel::close);
         }
@@ -1108,6 +1118,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             case BREAKPOINT_CONDITION -> new OverlayElement("breakpoint-condition", parts.breakpointCondition()::render);
             case QUICK_FIX -> new OverlayElement("quick-fix", (frame, area) -> quickFixOverlay.render(frame, area,
                     editor == null ? Optional.empty() : editor.caretCell()));
+            case QUICK_DOCUMENTATION -> new OverlayElement("quick-documentation",
+                    (frame, area) -> quickDocumentationOverlay.render(frame, area,
+                            editor == null ? Optional.empty() : editor.caretCell()));
             default -> throw new IllegalStateException("Not a drawn overlay: " + kind);
         };
     }
@@ -1155,6 +1168,14 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         }
         if (top == Kind.GO_TO_LINE || top == Kind.BREAKPOINT_CONDITION) {
             return EventResult.HANDLED;
+        }
+        if (top == Kind.QUICK_DOCUMENTATION) {
+            int direction = OverlayInput.scrollDirection(mouse);
+            if (direction != 0) {
+                quickDocumentation.wheel(direction);
+                return EventResult.HANDLED;
+            }
+            releaseQuickDocumentation();
         }
         if (top == Kind.QUICK_FIX) {
             handleQuickFixPointer(mouse);
@@ -1310,6 +1331,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             case GO_TO_LINE -> handleGoToLineKey(parts, key);
             case BREAKPOINT_CONDITION -> handleBreakpointConditionKey(parts, key);
             case QUICK_FIX -> handleQuickFixKey(key);
+            case QUICK_DOCUMENTATION -> handleQuickDocumentationKey(key);
             default -> throw new IllegalStateException("Not a drawn overlay: " + overlay);
         }
     }
@@ -1394,6 +1416,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             return EventResult.HANDLED;
         }
         Kind overlay = parts.stack().topOverlay().orElse(null);
+        if (overlay == Kind.QUICK_DOCUMENTATION && !quickDocumentation.takes(OverlayInput.key(key))) {
+            releaseQuickDocumentation();
+            overlay = parts.stack().topOverlay().orElse(null);
+        }
         if (overlay != null) {
             handleOverlayKey(parts, overlay, key);
             return EventResult.HANDLED;
@@ -1644,6 +1670,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 inputCaptured = false;
                 status = editor == null ? "Open a file to complete code in" : completion.openAtCaret();
             }
+            case KeyActions.QUICK_DOCUMENTATION -> {
+                parts.stack().closeOverlays();
+                openQuickDocumentation(parts);
+            }
             case KeyActions.PROJECT_WIDER -> {
                 parts.stack().closeOverlays();
                 paneLayout.resizeProject(2);
@@ -1816,6 +1846,26 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     private void handleQuickFixKey(KeyEvent key) {
         afterQuickFixInput(quickFix.press(OverlayInput.key(key)));
+    }
+
+    private void openQuickDocumentation(KeymapParts parts) {
+        Optional<CompletionSite> site = editor == null ? Optional.empty() : editor.completionSite();
+        if (site.isEmpty()) {
+            status = "Open a file to show its documentation";
+            return;
+        }
+        inputCaptured = false;
+        parts.stack().open(Kind.QUICK_DOCUMENTATION, () -> quickDocumentation.open(site.get()));
+        editor.requestFocus();
+        status = "Looking for documentation...";
+    }
+
+    private void handleQuickDocumentationKey(KeyEvent key) {
+        quickDocumentation.press(OverlayInput.key(key));
+    }
+
+    private void releaseQuickDocumentation() {
+        quickDocumentation.close();
     }
 
     private boolean handleCompletionPointer(MouseEvent mouse) {

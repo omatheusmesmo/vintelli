@@ -10,6 +10,7 @@ import dev.omatheusmesmo.vintelli.api.capability.CapabilityRegistry;
 import dev.omatheusmesmo.vintelli.api.capability.CodeActionCapability;
 import dev.omatheusmesmo.vintelli.api.capability.CompletionCapability;
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability;
+import dev.omatheusmesmo.vintelli.api.capability.HoverCapability;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilitySelection;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityStatus;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
@@ -45,6 +46,7 @@ public final class DefaultCapabilityRegistry implements CapabilityRegistry {
     private final ProviderGroup<CallHierarchyCapability> callHierarchyGroup;
     private final ProviderGroup<CodeActionCapability> codeActionGroup;
     private final ProviderGroup<CompletionCapability> completionGroup;
+    private final ProviderGroup<HoverCapability> hoverGroup;
     private final ProviderGroup<DebugCapability> debugGroup;
     private final ProviderGroup<EditorBridge> editorBridgeGroup;
     private final ProviderGroup<VersionControlCapability> versionControlGroup;
@@ -55,11 +57,12 @@ public final class DefaultCapabilityRegistry implements CapabilityRegistry {
             Instance<CallHierarchyCapability> callHierarchyProviders, Instance<EditorBridge> editorBridgeProviders,
             Instance<VersionControlCapability> versionControlProviders,
             Instance<CodeActionCapability> codeActionProviders, Instance<DebugCapability> debugProviders,
-            Instance<CompletionCapability> completionProviders, CapabilityOrders orders) {
+            Instance<CompletionCapability> completionProviders, Instance<HoverCapability> hoverProviders,
+            CapabilityOrders orders) {
         this(collect(runProviders), collect(terminalProviders), collect(readFileProviders),
                 collect(diagnosticsProviders), collect(callHierarchyProviders), collect(editorBridgeProviders),
                 collect(versionControlProviders), collect(codeActionProviders), collect(debugProviders),
-                collect(completionProviders), orders);
+                collect(completionProviders), collect(hoverProviders), orders);
     }
 
     DefaultCapabilityRegistry(List<RunCapability> runProviders, List<TerminalCapability> terminalProviders,
@@ -94,6 +97,17 @@ public final class DefaultCapabilityRegistry implements CapabilityRegistry {
             List<VersionControlCapability> versionControlProviders, List<CodeActionCapability> codeActionProviders,
             List<DebugCapability> debugProviders, List<CompletionCapability> completionProviders,
             CapabilityOrders orders) {
+        this(runProviders, terminalProviders, readFileProviders, diagnosticsProviders, callHierarchyProviders,
+                editorBridgeProviders, versionControlProviders, codeActionProviders, debugProviders,
+                completionProviders, List.of(), orders);
+    }
+
+    DefaultCapabilityRegistry(List<RunCapability> runProviders, List<TerminalCapability> terminalProviders,
+            List<ReadFileCapability> readFileProviders, List<DiagnosticsCapability> diagnosticsProviders,
+            List<CallHierarchyCapability> callHierarchyProviders, List<EditorBridge> editorBridgeProviders,
+            List<VersionControlCapability> versionControlProviders, List<CodeActionCapability> codeActionProviders,
+            List<DebugCapability> debugProviders, List<CompletionCapability> completionProviders,
+            List<HoverCapability> hoverProviders, CapabilityOrders orders) {
         this.orders = orders;
         this.runGroup = ProviderGroup.of(CapabilityType.RUN, runProviders);
         this.terminalGroup = ProviderGroup.of(CapabilityType.TERMINAL, terminalProviders);
@@ -105,6 +119,7 @@ public final class DefaultCapabilityRegistry implements CapabilityRegistry {
         this.codeActionGroup = ProviderGroup.of(CapabilityType.CODE_ACTION, codeActionProviders);
         this.debugGroup = ProviderGroup.of(CapabilityType.DEBUG, debugProviders);
         this.completionGroup = ProviderGroup.of(CapabilityType.COMPLETION, completionProviders);
+        this.hoverGroup = ProviderGroup.of(CapabilityType.HOVER, hoverProviders);
     }
 
     @Override
@@ -143,6 +158,11 @@ public final class DefaultCapabilityRegistry implements CapabilityRegistry {
     }
 
     @Override
+    public CapabilitySelection<HoverCapability> hover() {
+        return select(hoverGroup);
+    }
+
+    @Override
     public CapabilitySelection<DebugCapability> debug() {
         return select(debugGroup);
     }
@@ -170,6 +190,7 @@ public final class DefaultCapabilityRegistry implements CapabilityRegistry {
         rows.add(status(codeActionGroup));
         rows.add(status(debugGroup));
         rows.add(status(completionGroup));
+        rows.add(status(hoverGroup));
         return List.copyOf(rows);
     }
 
@@ -178,7 +199,8 @@ public final class DefaultCapabilityRegistry implements CapabilityRegistry {
         return List.of(statusBarStatus(runGroup), statusBarStatus(terminalGroup), statusBarStatus(readGroup),
                 statusBarStatus(diagnosticsGroup), statusBarStatus(callHierarchyGroup),
                 statusBarStatus(editorBridgeGroup), statusBarStatus(versionControlGroup),
-                statusBarStatus(codeActionGroup), statusBarStatus(debugGroup), statusBarStatus(completionGroup));
+                statusBarStatus(codeActionGroup), statusBarStatus(debugGroup), statusBarStatus(completionGroup),
+                statusBarStatus(hoverGroup));
     }
 
     private <T extends ProviderDescriptor> CapabilityStatus status(ProviderGroup<T> group) {
