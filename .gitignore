@@ -48,6 +48,7 @@ nb-configuration.xml
 site/target/
 site/.quarkus/
 site/templates/captures/
+site/public/fonts/
 site/content/decisions.md
 site/content/keymap.md
 __pycache__/

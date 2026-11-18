@@ -1,0 +1,2 @@
+fonttools==4.60.1 \
+    --hash=sha256:906306ac7afe2156fcf0042173d6ebbb05416af70f6b370967b47f8f00103bbb
