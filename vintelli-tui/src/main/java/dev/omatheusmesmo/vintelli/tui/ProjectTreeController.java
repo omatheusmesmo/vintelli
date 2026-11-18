@@ -69,6 +69,7 @@ final class ProjectTreeController {
     private volatile InputMode inputMode = InputMode.NONE;
     private volatile Map<String, VersionControlCapability.State> vcsStates = Map.of();
     private volatile int selected;
+    private volatile boolean userChoseSelection;
     private volatile int syncedIndex = -1;
     private volatile int top;
     private volatile int leftColumn;
@@ -311,6 +312,7 @@ final class ProjectTreeController {
             marquee.restart();
         }
         selected = index;
+        userChoseSelection = true;
     }
 
     void syncSelection() {
@@ -343,6 +345,7 @@ final class ProjectTreeController {
         int target = Math.clamp(selected + delta, 0, files.size() - 1);
         if (target != selected) {
             selected = target;
+            userChoseSelection = true;
             marquee.restart();
             syncSelection();
         }
@@ -415,7 +418,7 @@ final class ProjectTreeController {
         List<Path> filtered = showHidden ? entries
                 : entries.stream().filter(ProjectTreeController::isVisibleEntry).toList();
         buildTree(filtered, directoryPaths);
-        String previous = files.isEmpty() ? ""
+        String previous = !userChoseSelection || files.isEmpty() ? ""
                 : (selected >= 0 && selected < files.size() ? files.get(selected) : "");
         recomputeVisible(previous);
         revalidateJavaKinds();
@@ -464,6 +467,7 @@ final class ProjectTreeController {
     void expandSelected() {
         ProjectNode node = selectedNode();
         if (node != null && node.directory && !node.expanded) {
+            userChoseSelection = true;
             setChainExpanded(node, true);
             recomputeVisible(selectedRelative().orElse(""));
             statusSink.accept("Expanded " + slashed(node.relative));
@@ -473,6 +477,7 @@ final class ProjectTreeController {
     void collapseSelected() {
         ProjectNode node = selectedNode();
         if (node != null && node.directory && node.expanded) {
+            userChoseSelection = true;
             setChainExpanded(node, false);
             recomputeVisible(selectedRelative().orElse(""));
             statusSink.accept("Collapsed " + slashed(node.relative));
@@ -487,6 +492,7 @@ final class ProjectTreeController {
     void toggleSelected() {
         ProjectNode node = selectedNode();
         if (node != null && node.directory) {
+            userChoseSelection = true;
             setChainExpanded(node, !node.expanded);
             recomputeVisible(selectedRelative().orElse(""));
             statusSink.accept((node.expanded ? "Expanded " : "Collapsed ") + slashed(node.relative));
@@ -507,6 +513,7 @@ final class ProjectTreeController {
     }
 
     void expandAll() {
+        userChoseSelection = true;
         setExpanded(rootNodes, true);
         recomputeVisible(selectedRelative().orElse(""));
         statusSink.accept("Expanded all");
@@ -522,6 +529,7 @@ final class ProjectTreeController {
             top = top.parent;
         }
         String keep = top == null ? "" : top.relative.toString().replace('\\', '/');
+        userChoseSelection = true;
         setExpanded(rootNodes, false);
         recomputeVisible(keep);
         statusSink.accept("Collapsed all");
@@ -547,6 +555,7 @@ final class ProjectTreeController {
             statusSink.accept(filesLoading ? LOADING_LABEL : EMPTY_LABEL);
             return Optional.empty();
         }
+        userChoseSelection = true;
         ProjectNode node = selectedNode();
         if (node != null && node.externalLibraries) {
             toggleSelected();
@@ -611,6 +620,7 @@ final class ProjectTreeController {
         if (index >= 0) {
             String row = files.get(index);
             selected = index;
+            userChoseSelection = true;
             syncedIndex = index;
             state.selectFile(row);
             statusSink.accept("Selected: " + row);

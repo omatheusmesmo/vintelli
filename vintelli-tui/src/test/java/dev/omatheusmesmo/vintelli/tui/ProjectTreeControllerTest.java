@@ -3,7 +3,10 @@ package dev.omatheusmesmo.vintelli.tui;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.ProjectFileOperations;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
+import dev.omatheusmesmo.vintelli.api.dependencies.ProjectDependencyGraph;
+import dev.omatheusmesmo.vintelli.api.dependencies.ProjectDependencyGraphProvider;
 import dev.omatheusmesmo.vintelli.api.search.ProjectSearch;
+import dev.omatheusmesmo.vintelli.tui.icons.JavaTypeKinds;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -25,6 +28,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ProjectTreeControllerTest {
 
+    private static final String EXTERNAL_LIBRARIES = ".vintelli-external-libraries";
+
     @TempDir
     Path root;
 
@@ -35,6 +40,14 @@ class ProjectTreeControllerTest {
     }
 
     private ProjectTreeController controllerWithFiles(String... relatives) throws IOException {
+        ProjectTreeController controller = controllerBeforeStart(null, relatives);
+        controller.start();
+        controller.refresh(true);
+        return controller;
+    }
+
+    private ProjectTreeController controllerBeforeStart(ProjectDependencyGraphProvider dependencyGraphProvider,
+            String... relatives) throws IOException {
         for (String relative : relatives) {
             Path file = root.resolve(relative);
             Files.createDirectories(file.getParent());
@@ -42,11 +55,31 @@ class ProjectTreeControllerTest {
         }
         ProjectTreeController[] created = new ProjectTreeController[1];
         created[0] = new ProjectTreeController(root, new ShellState(), search(root), fileOperations(root),
-                statuses::add, () -> created[0].refresh(true), () -> { });
-        ProjectTreeController controller = created[0];
-        controller.start();
-        controller.refresh(true);
-        return controller;
+                statuses::add, () -> created[0].refresh(true), () -> { }, JavaTypeKinds.ofFiles(),
+                dependencyGraphProvider);
+        return created[0];
+    }
+
+    private static ProjectDependencyGraphProvider dependencyGraphs(ProjectDependencyGraph graph) {
+        return new ProjectDependencyGraphProvider() {
+            @Override
+            public boolean supports(Path projectRoot) {
+                return true;
+            }
+
+            @Override
+            public ProjectDependencyGraph read(Path projectRoot) {
+                return graph;
+            }
+        };
+    }
+
+    private static ProjectDependencyGraph resolvedGraph() {
+        ProjectDependencyGraph.LibraryDependency library = new ProjectDependencyGraph.LibraryDependency(
+                "org.example", "library", "1.0", "compile", ProjectDependencyGraph.Disposition.RESOLVED, null,
+                List.of());
+        return new ProjectDependencyGraph(
+                List.of(new ProjectDependencyGraph.Module("vintelli", List.of(library))), true, "");
     }
 
     private static ProjectSearch search(Path root) {
@@ -263,5 +296,51 @@ class ProjectTreeControllerTest {
         assertFalse(Files.exists(root.resolve("README.md")));
         assertFalse(controller.deletePending());
         assertFalse(controller.files().contains("README.md"));
+    }
+
+    @Test
+    void theFirstProjectRowIsSelectedWhenTheFilesLoadBesideExternalLibraries() throws IOException {
+        ProjectTreeController controller = controllerBeforeStart(dependencyGraphs(resolvedGraph()),
+                "src/main/A.java", "README.md");
+        controller.start();
+        controller.refresh(true);
+        assertEquals(EXTERNAL_LIBRARIES, controller.files().getLast(), "External Libraries is listed after the files");
+        assertEquals(Optional.of("src/main"), controller.selectedRelative(),
+                "the placeholder External Libraries row must not stay selected once the files load");
+        assertEquals(0, controller.selected());
+    }
+
+    @Test
+    void aSelectionTheUserMadeBeforeTheFilesLoadIsKept() throws IOException {
+        ProjectTreeController controller = controllerBeforeStart(dependencyGraphs(resolvedGraph()),
+                "src/main/A.java", "README.md");
+        controller.start();
+        controller.setSelection(0);
+        controller.refresh(true);
+        assertEquals(Optional.of(EXTERNAL_LIBRARIES), controller.selectedRelative(),
+                "a row the user clicked before the files loaded stays selected");
+    }
+
+    @Test
+    void aSelectionTheUserMovesOntoAfterTheFilesLoadIsKept() throws IOException {
+        ProjectTreeController controller = controllerBeforeStart(dependencyGraphs(resolvedGraph()),
+                "src/main/A.java", "README.md");
+        controller.start();
+        controller.refresh(true);
+        controller.moveSelection(controller.fileCount() - 1);
+        controller.refresh(true);
+        assertEquals(Optional.of(EXTERNAL_LIBRARIES), controller.selectedRelative(),
+                "a row the user moved onto stays selected when the tree is refreshed");
+    }
+
+    @Test
+    void finishingTheDependencyLoadAfterTheFilesLoadKeepsTheSelection() throws IOException {
+        ProjectTreeController controller = controllerBeforeStart(dependencyGraphs(resolvedGraph()),
+                "src/main/A.java", "README.md");
+        controller.start();
+        controller.refresh(true);
+        controller.finishDependencyLoad(resolvedGraph());
+        assertEquals(Optional.of("src/main"), controller.selectedRelative());
+        assertEquals(0, controller.selected());
     }
 }
