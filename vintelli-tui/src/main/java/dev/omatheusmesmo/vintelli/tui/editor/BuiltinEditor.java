@@ -3,6 +3,7 @@ package dev.omatheusmesmo.vintelli.tui.editor;
 import dev.omatheusmesmo.vintelli.api.ShellEditorPalette;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityFailure;
 import dev.omatheusmesmo.vintelli.api.capability.CodeActionCapability.SourceRange;
+import dev.omatheusmesmo.vintelli.api.capability.CompletionCapability.Replacement;
 import dev.omatheusmesmo.vintelli.api.capability.CodeActionCapability.WorkspaceEdit;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityRegistry;
@@ -56,6 +57,7 @@ import java.util.HashMap;
 import java.util.TreeMap;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /** Built-in adapter. All document, element and external inspection access shares this monitor. */
 @Singleton
@@ -851,13 +853,17 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     }
 
     /**
-     * Replaces a range of the document a completion was asked for with the inserted text, as one undoable step
-     * that marks the document dirty, and puts the caret into the inserted text.
+     * Applies a completion as one undoable step that marks the document dirty: the insert and the additional edits
+     * the suggestion carries, such as an import. The caret goes into the insert, after the lines the additional
+     * edits added above it.
      *
+     * @param edit the insert, its range in the document the completion was asked for
+     * @param additional the edits that go with the insert, none of them overlapping the insert or each other
+     * @param caretOffset characters into the insert where the caret goes
      * @return the reason the insert was refused, empty when it was applied
      */
-    public synchronized Optional<String> applyCompletion(Path file, int startRow, int startColumn, int endRow,
-            int endColumn, String text, int caretOffset) {
+    public synchronized Optional<String> applyCompletion(Path file, Replacement edit, List<Replacement> additional,
+            int caretOffset) {
         EditorDocument document = document();
         if (document == null) {
             return Optional.of("no file is open");
@@ -865,18 +871,49 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
         if (!document.file().equals(file)) {
             return Optional.of("the active file changed since the completion was asked for");
         }
-        if (!inside(document, startRow, startColumn) || !inside(document, endRow, endColumn)
-                || startRow > endRow || (startRow == endRow && startColumn > endColumn)) {
+        List<Replacement> all = Stream.concat(Stream.of(edit), additional.stream()).toList();
+        if (!all.stream().allMatch(change -> inside(document, change))) {
             return Optional.of("the completion range is outside the document");
         }
-        document.replaceRange(startRow, startColumn, endRow, endColumn, text, caretOffset);
+        if (overlapping(all)) {
+            return Optional.of("the completion edits overlap");
+        }
+        document.replaceRanges(edit, additional, caretOffset);
         changed();
         return Optional.empty();
+    }
+
+    private static boolean inside(EditorDocument document, Replacement change) {
+        return !precedes(change.endLine(), change.endColumn(), change.startLine(), change.startColumn())
+                && inside(document, change.startLine(), change.startColumn())
+                && inside(document, change.endLine(), change.endColumn());
     }
 
     private static boolean inside(EditorDocument document, int row, int column) {
         return row >= 0 && row < document.lineCount() && column >= 0
                 && column <= document.text().split("\n", -1)[row].length();
+    }
+
+    /**
+     * @return whether two of the changes start at the same position or one starts before another one ends
+     */
+    private static boolean overlapping(List<Replacement> changes) {
+        List<Replacement> ordered = changes.stream()
+                .sorted(Comparator.comparingInt(Replacement::startLine).thenComparingInt(Replacement::startColumn))
+                .toList();
+        for (int index = 1; index < ordered.size(); index++) {
+            Replacement previous = ordered.get(index - 1);
+            Replacement next = ordered.get(index);
+            if (next.startLine() == previous.startLine() && next.startColumn() == previous.startColumn()
+                    || precedes(next.startLine(), next.startColumn(), previous.endLine(), previous.endColumn())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean precedes(int line, int column, int otherLine, int otherColumn) {
+        return line < otherLine || line == otherLine && column < otherColumn;
     }
 
     /**

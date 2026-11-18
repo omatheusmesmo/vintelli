@@ -2,6 +2,7 @@ package dev.omatheusmesmo.vintelli.lsp;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -9,6 +10,7 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +34,7 @@ class LspCompletionTest {
     private static final String MARKER = "completion-marker";
     private static final int RICH_LINE = FakeLspServer.RICH_COMPLETION_LINE;
     private static final int BUFFER_LINE = FakeLspServer.BUFFER_COMPLETION_LINE;
+    private static final int IMPORT_LINE = FakeLspServer.IMPORT_COMPLETION_LINE;
 
     @TempDir
     Path workspace;
@@ -118,6 +121,97 @@ class LspCompletionTest {
         }
     }
 
+    @Test
+    void anItemWithAnImportInItsAdditionalEditsMapsTheImport() throws Exception {
+        Path traceFile = trace("additional");
+        Files.writeString(document(), "class Fake {}");
+        try (LspClient client = new LspClient(config(fakeCommand(traceFile)))) {
+            List<Suggestion> suggestions = ok(new LspCompletionProvider(client).complete(document(), "class Fake {}",
+                    IMPORT_LINE, 0));
+
+            Suggestion arrayList = named(suggestions, "ArrayList");
+            assertEquals(List.of(new Replacement(0, 0, 0, 0, "import java.util.ArrayList;\n")),
+                    arrayList.additionalEdits());
+            assertNull(arrayList.resolveToken(), "an item that already carries its import is not resolved");
+        }
+        assertFalse(Files.readString(traceFile).contains("completionItem/resolve"));
+    }
+
+    @Test
+    void anItemWhoseImportComesOnlyFromResolveGetsItWhenTheServerAdvertisesResolve() throws Exception {
+        Path traceFile = trace("resolve");
+        Files.writeString(document(), "class Fake {}");
+        try (LspClient client = new LspClient(config(fakeCommand(traceFile, "--resolve-provider")))) {
+            LspCompletionProvider provider = new LspCompletionProvider(client);
+            List<Suggestion> suggestions = ok(provider.complete(document(), "class Fake {}", IMPORT_LINE, 0));
+
+            Suggestion linkedList = named(suggestions, "LinkedList");
+            assertTrue(linkedList.additionalEdits().isEmpty(), "the import is not in the answer");
+            assertNotNull(linkedList.resolveToken(), "the item can be resolved");
+            assertFalse(Files.readString(traceFile).contains("completionItem/resolve"),
+                    "nothing is resolved before the suggestion is inserted");
+
+            assertEquals(List.of(new Replacement(0, 0, 0, 0, "import java.util.LinkedList;\n")),
+                    ok(provider.resolve(linkedList.resolveToken(), Duration.ofSeconds(5))));
+        }
+        assertTraceContains(traceFile, "completionItem/resolve");
+    }
+
+    @Test
+    void aResolveThatNeverAnswersTimesOut() throws Exception {
+        Path traceFile = trace("hang");
+        Files.writeString(document(), "class Fake {}");
+        try (LspClient client = new LspClient(config(fakeCommand(traceFile, "--resolve-provider")))) {
+            LspCompletionProvider provider = new LspCompletionProvider(client);
+            String token = named(ok(provider.complete(document(), "class Fake {}", IMPORT_LINE, 0)), "HangingList")
+                    .resolveToken();
+
+            CapabilityResult<List<Replacement>> result = provider.resolve(token, Duration.ofMillis(300));
+
+            assertTrue(result.isFailure(), result.toString());
+            assertEquals("timeout", result.failureOf().orElseThrow().reason());
+            assertTrue(result.failureOf().orElseThrow().detail().contains("completionItem/resolve"),
+                    result.failureOf().orElseThrow().detail());
+        }
+    }
+
+    @Test
+    void resolveIsNotSentWhenTheServerDoesNotAdvertiseIt() throws Exception {
+        Path traceFile = trace("unadvertised");
+        Files.writeString(document(), "class Fake {}");
+        try (LspClient client = new LspClient(config(fakeCommand(traceFile)))) {
+            List<Suggestion> suggestions = ok(new LspCompletionProvider(client).complete(document(),
+                    "class Fake {}", IMPORT_LINE, 0));
+
+            assertNull(named(suggestions, "LinkedList").resolveToken());
+            assertNull(named(suggestions, "HangingList").resolveToken());
+        }
+        assertFalse(Files.readString(traceFile).contains("completionItem/resolve"));
+    }
+
+    @Test
+    void aTokenOfAnEarlierAnswerFailsAsStale() throws Exception {
+        Path traceFile = trace("stale");
+        Files.writeString(document(), "class Fake {}");
+        try (LspClient client = new LspClient(config(fakeCommand(traceFile, "--resolve-provider")))) {
+            LspCompletionProvider provider = new LspCompletionProvider(client);
+            String earlier = named(ok(provider.complete(document(), "class Fake {}", IMPORT_LINE, 0)), "LinkedList")
+                    .resolveToken();
+            ok(provider.complete(document(), "class Fake {}", IMPORT_LINE, 0));
+
+            CapabilityResult<List<Replacement>> result = provider.resolve(earlier, Duration.ofSeconds(5));
+
+            assertEquals("stale", result.failureOf().orElseThrow().reason());
+            assertFalse(Files.readString(traceFile).contains("completionItem/resolve"),
+                    "a stale token never reaches the server");
+        }
+    }
+
+    private static Suggestion named(List<Suggestion> suggestions, String label) {
+        return suggestions.stream().filter(suggestion -> suggestion.label().equals(label)).findFirst()
+                .orElseThrow(() -> new AssertionError("no suggestion " + label + " in " + suggestions));
+    }
+
     private List<String> labels(CapabilityResult<List<CompletionEntry>> result) {
         return ok(result).stream().map(CompletionEntry::label).toList();
     }
@@ -139,7 +233,7 @@ class LspCompletionTest {
         }
     }
 
-    private List<String> fakeCommand(Path traceFile) throws IOException {
+    private List<String> fakeCommand(Path traceFile, String... flags) throws IOException {
         try {
             List<String> command = new ArrayList<>();
             command.add(ProcessHandle.current().info().command().orElse("java"));
@@ -150,6 +244,7 @@ class LspCompletionTest {
             command.add(traceFile.toAbsolutePath().toString());
             command.add("--marker");
             command.add(MARKER);
+            command.addAll(List.of(flags));
             return command;
         } catch (URISyntaxException failure) {
             throw new IOException("cannot locate the fake server classpath", failure);

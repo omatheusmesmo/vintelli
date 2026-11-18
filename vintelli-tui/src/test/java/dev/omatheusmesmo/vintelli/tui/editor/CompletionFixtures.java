@@ -1,6 +1,7 @@
 package dev.omatheusmesmo.vintelli.tui.editor;
 
 import dev.omatheusmesmo.vintelli.api.capability.CallHierarchyCapability;
+import dev.omatheusmesmo.vintelli.api.capability.CapabilityFailure;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityRegistry;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilitySelection;
@@ -8,6 +9,7 @@ import dev.omatheusmesmo.vintelli.api.capability.CapabilityStatus;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityType;
 import dev.omatheusmesmo.vintelli.api.capability.CodeActionCapability;
 import dev.omatheusmesmo.vintelli.api.capability.CompletionCapability;
+import dev.omatheusmesmo.vintelli.api.capability.CompletionCapability.Replacement;
 import dev.omatheusmesmo.vintelli.api.capability.CompletionCapability.Suggestion;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability;
 import dev.omatheusmesmo.vintelli.api.capability.EditorBridge;
@@ -18,6 +20,7 @@ import dev.omatheusmesmo.vintelli.api.capability.TerminalCapability;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
 
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -40,17 +43,30 @@ public final class CompletionFixtures {
     public static final class Provider implements CompletionCapability {
 
         private final BiFunction<Integer, String, CapabilityResult<List<Suggestion>>> answer;
+        private final BiFunction<String, Duration, CapabilityResult<List<Replacement>>> resolver;
         private final AtomicInteger calls = new AtomicInteger();
         private final List<String> contents = new CopyOnWriteArrayList<>();
 
         public Provider(BiFunction<Integer, String, CapabilityResult<List<Suggestion>>> answer) {
+            this(answer, (token, timeout) -> CapabilityResult.failed(
+                    new CapabilityFailure("unavailable", "this fixture cannot resolve")));
+        }
+
+        public Provider(BiFunction<Integer, String, CapabilityResult<List<Suggestion>>> answer,
+                BiFunction<String, Duration, CapabilityResult<List<Replacement>>> resolver) {
             this.answer = answer;
+            this.resolver = resolver;
         }
 
         @Override
         public CapabilityResult<List<Suggestion>> complete(Path file, String content, int line, int column) {
             contents.add(content);
             return answer.apply(calls.getAndIncrement(), content);
+        }
+
+        @Override
+        public CapabilityResult<List<Replacement>> resolve(String token, Duration timeout) {
+            return resolver.apply(token, timeout);
         }
 
         public List<String> contents() {

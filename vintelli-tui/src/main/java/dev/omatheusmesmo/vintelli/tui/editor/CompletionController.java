@@ -15,9 +15,11 @@ import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
 
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * Runs the completion popup. Ctrl+Space and a dot typed behind an identifier in a Java file ask the completion
@@ -25,23 +27,33 @@ import java.util.function.Consumer;
  * the keyboard while the popup is open: typing narrows the list by the identifier before the caret, and the popup
  * closes when the caret leaves the text it was asked for or nothing matches. An answer that arrives after the
  * document or the caret changed is dropped, and the completion is asked again for the current text.
+ *
+ * <p>A suggestion without additional edits that the provider can resolve (such as an import the server sends
+ * only on resolve) is resolved on a virtual thread with a short timeout when it is inserted. The insert waits for
+ * that answer; when the answer fails, the name is inserted without the import and the status line says why.
  */
 public final class CompletionController {
+
+    private static final Duration RESOLVE_TIMEOUT = Duration.ofSeconds(1);
 
     private final CapabilityRegistry registry;
     private final BuiltinEditor editor;
     private final Consumer<Runnable> deliver;
+    private final Consumer<String> status;
     private final CompletionMenu menu = new CompletionMenu();
     private CompletionSite asked;
     private int anchor;
 
     /**
      * @param deliver hands an update to the render thread, which applies it on its next pass
+     * @param status shows a line in the status bar; called on the render thread only
      */
-    public CompletionController(CapabilityRegistry registry, BuiltinEditor editor, Consumer<Runnable> deliver) {
+    public CompletionController(CapabilityRegistry registry, BuiltinEditor editor, Consumer<Runnable> deliver,
+            Consumer<String> status) {
         this.registry = registry;
         this.editor = editor;
         this.deliver = deliver;
+        this.status = status;
     }
 
     /**
@@ -186,6 +198,14 @@ public final class CompletionController {
     }
 
     private CapabilityResult<List<Suggestion>> fetch(CompletionSite site) {
+        return withProvider(provider -> provider.complete(site.file(), site.text(), site.row(), site.column()));
+    }
+
+    private CapabilityResult<List<Replacement>> resolveWith(String token) {
+        return withProvider(provider -> provider.resolve(token, RESOLVE_TIMEOUT));
+    }
+
+    private <T> CapabilityResult<T> withProvider(Function<CompletionCapability, CapabilityResult<T>> call) {
         try {
             if (registry == null) {
                 return CapabilityResult.failed(new CapabilityFailure("unavailable",
@@ -195,8 +215,7 @@ public final class CompletionController {
             return switch (chosen) {
                 case CapabilitySelection.Unavailable<CompletionCapability> unavailable ->
                         CapabilityResult.failed(new CapabilityFailure("unavailable", unavailable.reason()));
-                case CapabilitySelection.Selected<CompletionCapability> selected ->
-                        selected.provider().complete(site.file(), site.text(), site.row(), site.column());
+                case CapabilitySelection.Selected<CompletionCapability> selected -> call.apply(selected.provider());
             };
         } catch (RuntimeException failure) {
             String reason = failure.getMessage() == null ? failure.getClass().getSimpleName() : failure.getMessage();
@@ -243,11 +262,54 @@ public final class CompletionController {
             menu.close();
             return "Completion not applied: the suggested range does not match the caret line";
         }
-        Optional<String> refused = editor.applyCompletion(site.file(), insertion.startRow(), insertion.startColumn(),
-                insertion.endRow(), insertion.endColumn(), insertion.expansion().text(), insertion.expansion().caret());
         menu.close();
-        return refused.map(reason -> "Completion not applied: " + reason)
-                .orElse("Completion inserted: " + suggestion.label());
+        if (suggestion.resolveToken() != null) {
+            return resolveThenInsert(site, insertion, suggestion);
+        }
+        return insert(site, insertion, suggestion.additionalEdits(), "Completion inserted: " + suggestion.label());
+    }
+
+    /**
+     * Asks the provider for the edits of the suggestion on a virtual thread; the insert follows on the render
+     * thread once the answer or the timeout arrives.
+     *
+     * @return the status line while the answer is awaited
+     */
+    private String resolveThenInsert(CompletionSite site, Insertion insertion, Suggestion suggestion) {
+        String label = suggestion.label();
+        String token = suggestion.resolveToken();
+        Thread.ofVirtual().name("vintelli-completion-resolve").start(() -> {
+            CapabilityResult<List<Replacement>> resolved = resolveWith(token);
+            deliver.accept(() -> status.accept(finishResolve(site, insertion, label, resolved)));
+        });
+        return "Resolving the import of " + label + "...";
+    }
+
+    /**
+     * Inserts the suggestion once its edits arrived. The text and the caret must still be the ones the insert was
+     * computed for; otherwise the insert is dropped, because its range would name other text.
+     */
+    private String finishResolve(CompletionSite requested, Insertion insertion, String label,
+            CapabilityResult<List<Replacement>> resolved) {
+        Optional<CompletionSite> now = editor.completionSite();
+        if (now.isEmpty() || !now.get().equals(requested)) {
+            return "Completion dropped: the text changed while its import was resolved";
+        }
+        CompletionSite site = now.get();
+        if (resolved instanceof CapabilityResult.Ok<List<Replacement>> ok) {
+            List<Replacement> imports = ok.value();
+            return insert(site, insertion, imports, imports.isEmpty() ? "Completion inserted: " + label
+                    : "Completion inserted with its import: " + label);
+        }
+        CapabilityFailure failure = resolved.failureOf().orElseThrow();
+        String reason = failure.detail().isBlank() ? failure.reason() : failure.detail();
+        return insert(site, insertion, List.of(), "Inserted without the import: " + reason);
+    }
+
+    private String insert(CompletionSite site, Insertion insertion, List<Replacement> additional, String inserted) {
+        Optional<String> refused = editor.applyCompletion(site.file(), insertion.edit(), additional,
+                insertion.caret());
+        return refused.map(reason -> "Completion not applied: " + reason).orElse(inserted);
     }
 
     /**
@@ -261,7 +323,6 @@ public final class CompletionController {
         Replacement edit = suggestion.textEdit();
         int row = site.row();
         int caret = site.column();
-        int startRow = row;
         int startColumn = anchor;
         int endColumn = caret;
         if (edit != null) {
@@ -278,7 +339,7 @@ public final class CompletionController {
                 ? suggestion.label() : suggestion.insertText();
         SnippetText.Expansion expansion = suggestion.snippet() ? SnippetText.expand(text)
                 : new SnippetText.Expansion(text, text.length());
-        return new Insertion(startRow, startColumn, row, endColumn, expansion);
+        return new Insertion(new Replacement(row, startColumn, row, endColumn, expansion.text()), expansion.caret());
     }
 
     /**
@@ -347,6 +408,10 @@ public final class CompletionController {
         return name != null && name.toString().endsWith(".java");
     }
 
-    private record Insertion(int startRow, int startColumn, int endRow, int endColumn, SnippetText.Expansion expansion) {
+    /**
+     * @param edit the range the insert replaces and the text it inserts
+     * @param caret characters into the inserted text where the caret goes
+     */
+    private record Insertion(Replacement edit, int caret) {
     }
 }

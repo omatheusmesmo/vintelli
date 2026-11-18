@@ -66,6 +66,10 @@ selected item, `Escape` closes the popup, and the arrow and page keys move the
 selection. A click on a row inserts it. The popup closes when nothing matches
 or when the caret leaves the completed text. A server that cannot answer says
 why in the popup, and the editor keeps working. One undo step reverts an insert.
+An item whose type is not imported yet also gets its import, as one step with the
+name. When the server sends that import only after it is asked, the insert waits
+up to a second for it; without an answer the name is inserted alone and the status
+line says why.
 
 ### Copy, cut and paste
 
