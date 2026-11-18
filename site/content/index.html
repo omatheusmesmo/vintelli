@@ -2,35 +2,75 @@
 title: Vintelli
 description: A terminal IDE for Java with an IntelliJ IDEA-like layout. It runs with open tooling only, and IntelliJ IDEA is an optional extra.
 layout: base
+kind: home
 ---
-<p class="lead">A terminal IDE for Java with an IntelliJ IDEA-like layout. It runs with open tooling only. IntelliJ IDEA is an optional extra.</p>
+<section class="hero">
+  <span class="eyebrow">Pre-release · open source · JDK 25</span>
+  <h1>IntelliJ IDEA, <span class="accent">in your terminal.</span></h1>
+  <p class="lead">A terminal IDE for Java with the layout, keys and colors you already know. It runs with open tooling only. IntelliJ IDEA is an optional extra.</p>
+  <div class="actions">
+    <a class="button primary" href="#try-it">Install</a>
+    <a class="button" href="{=site.url('/tour/')}">Take the tour</a>
+  </div>
+  <div class="hero-shot window">
+    <div class="window-bar">vintelli · ShellLayout.java · dark theme</div>
+    {#include captures/editor-dark /}
+  </div>
+</section>
 
 <h2>Standalone first</h2>
-<p>Vintelli works without IntelliJ IDEA. Every capability has a standalone provider, and IDEA only adds its providers for Run, Terminal, Problems and call hierarchy when you connect it.</p>
+<p class="section-intro">Vintelli works without IntelliJ IDEA. Every capability has a standalone provider, and IDEA only adds its providers for Run, Terminal, Problems and call hierarchy when you connect it.</p>
 
-<h2>What it does</h2>
-<ul>
-  <li><strong>Work where you already are.</strong> A full IDE layout in your terminal, with no window to open.</li>
-  <li><strong>Native when you want it.</strong> With a GraalVM or Mandrel toolchain, the installer builds one binary that needs no JVM to run.</li>
-  <li><strong>Open tools by default.</strong> Maven, Gradle, terminal commands and Git (JGit) need no IDE.</li>
-  <li><strong>Commit from the shell.</strong> Stage or unstage the selected project file, write multiline commit messages, and amend the current commit after reviewing the staged-change summary.</li>
-  <li><strong>Start the application.</strong> Detect Quarkus, Spring Boot and configured Java application commands, and keep the choice per project.</li>
-  <li><strong>AI agents in a side panel.</strong> Choose OpenCode, Claude Code or pi over ACP, with executable availability shown before a session starts.</li>
-  <li><strong>Other agents can drive it.</strong> The MCP server reads the shell state and pushes highlights and diffs into the TUI.</li>
-  <li><strong>Language support over LSP.</strong> Configurable profiles, with jdtls as the first one.</li>
-  <li><strong>Familiar keys and colors.</strong> The <code>intellij</code> keymap is the default, and the themes come from IntelliJ IDEA's color files.</li>
-</ul>
+<div class="features">
+  <article class="feature">
+    <span class="feature-icon">Ctrl+Space</span>
+    <h3>Language support over LSP</h3>
+    <p>Completion with auto-import, Quick Documentation, diagnostics and navigation. Configurable profiles, with jdtls as the first one.</p>
+  </article>
+  <article class="feature">
+    <span class="feature-icon">Alt+1 · Alt+9</span>
+    <h3>The IDE layout you know</h3>
+    <p>Project pane, editor tabs and tool window stripes around them, with resizable splitters. No window to open.</p>
+  </article>
+  <article class="feature">
+    <span class="feature-icon">JGit</span>
+    <h3>Commit from the shell</h3>
+    <p>Stage or unstage files, write multiline messages and amend after reviewing the staged-change summary. Git through JGit.</p>
+  </article>
+  <article class="feature">
+    <span class="feature-icon">Alt+4</span>
+    <h3>Run the application</h3>
+    <p>Detects Quarkus, Spring Boot and configured Java commands, keeps the choice per project, and runs Maven or Gradle goals.</p>
+  </article>
+  <article class="feature">
+    <span class="feature-icon">ACP · MCP</span>
+    <h3>AI agents, both ways</h3>
+    <p>Run OpenCode, Claude Code or pi in a side panel over ACP. Other agents drive the shell through the MCP server.</p>
+  </article>
+  <article class="feature">
+    <span class="feature-icon">Ctrl+T</span>
+    <h3>Familiar keys and colors</h3>
+    <p>The <code>intellij</code> keymap is the default, and the themes come from IntelliJ IDEA's own color files.</p>
+  </article>
+</div>
 
-<h2>Try it</h2>
-<p>Vintelli is pre-release and has no published binary yet. The installer clones the repository, builds it and installs the <code>vintelli</code> command. You need git and JDK 25.</p>
-<pre><code>curl -fsSL https://raw.githubusercontent.com/omatheusmesmo/vintelli/main/scripts/install.sh | bash
-cd your-java-project
-vintelli</code></pre>
+<section class="band" id="try-it">
+  <div>
+    <h2>Try it</h2>
+    <p>No published binary yet. The installer clones the repository, builds it and installs the <code>vintelli</code> command. You need git and JDK 25. With GraalVM or Mandrel it builds a native binary that needs no JVM.</p>
+  </div>
+  <div class="install">
+    <div class="install-bar"><span>bash</span><button class="copy" type="button" data-copy="install-command">Copy</button></div>
+<pre id="install-command"><code><span class="prompt">$ </span>curl -fsSL https://raw.githubusercontent.com/omatheusmesmo/vintelli/main/scripts/install.sh | bash
+<span class="prompt">$ </span>cd your-java-project
+<span class="prompt">$ </span>vintelli</code></pre>
+  </div>
+</section>
 
 <h2>Read more</h2>
-<ul>
-  <li><a href="{=site.url('/tour/')}">The tour</a>: the screens in both shipped themes.</li>
-  <li><a href="{=site.url('/keymap/')}">The keymap</a>: every named action and its chords.</li>
-  <li><a href="{=site.url('/decisions/')}">Decisions and measurements</a>: the spikes behind the design.</li>
-  <li><a href="https://github.com/omatheusmesmo/vintelli">The source on GitHub</a>, with the README and the docs.</li>
+<ul class="links">
+  <li><a href="{=site.url('/tour/')}"><strong>The tour</strong><span>Every screen in both shipped themes.</span></a></li>
+  <li><a href="{=site.url('/keymap/')}"><strong>The keymap</strong><span>Every named action and its chords.</span></a></li>
+  <li><a href="{=site.url('/decisions/')}"><strong>Decisions</strong><span>The spikes and measurements behind the design.</span></a></li>
+  <li><a href="https://github.com/omatheusmesmo/vintelli/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22"><strong>Contribute</strong><span>Good first issues, ready to pick up.</span></a></li>
 </ul>
