@@ -45,6 +45,7 @@ class IntellijKeymapTableTest {
     private static final Map<String, Set<String>> ACTIONS_BY_CHORD = actionsByChord();
     private static final Map<String, Set<String>> SHARED_CHORDS_BY_DESIGN = Map.of(
             "enter", Set.of("select", "confirm", "editor_open"),
+            "kp_enter", Set.of("select", "confirm"),
             "ctrl+c", Set.of("quit", "editor_copy"),
             "delete", Set.of("deleteForward", "project_delete"),
             "mouse.scroll_up", Set.of("scroll", "scrollUp"),
@@ -104,7 +105,7 @@ class IntellijKeymapTableTest {
         for (KeymapTable.Row row : TABLE.rows()) {
             if (row.status() == KeymapTable.Status.SAME) {
                 assertFalse(row.intellijChords().isEmpty(), "row '" + row.actionId() + "' is same but has no IntelliJ chord");
-                assertEquals(normalized(row.intellijChords()), withoutBareDigits(row.activeChords()), "row '"
+                assertEquals(normalized(row.intellijChords()), withoutAliases(row.activeChords()), "row '"
                         + row.actionId() + "' says same but the active chord " + row.activeChords()
                         + " differs from IntelliJ's " + row.intellijChords());
             } else if (row.status() == KeymapTable.Status.DIFFERENT) {
@@ -174,11 +175,14 @@ class IntellijKeymapTableTest {
 
     /**
      * The bare digit of a tool window is the Vintelli shortcut for while no
-     * input has focus, not an IntelliJ chord, so a same row compares the other
-     * active chords with IntelliJ's.
+     * input has focus, and a keypad twin (a keypad key without modifiers, such
+     * as KP_UP) is the same key as its main key, not an IntelliJ chord, so a
+     * same row compares the other active chords with IntelliJ's.
      */
-    private static Set<String> withoutBareDigits(Collection<String> chords) {
-        return normalized(chords.stream().filter(chord -> !chord.matches("[0-9]")).toList());
+    private static Set<String> withoutAliases(Collection<String> chords) {
+        return normalized(chords.stream()
+                .filter(chord -> !chord.matches("[0-9]") && !chord.startsWith("KP_"))
+                .toList());
     }
 
     private static Map<String, Set<String>> boundChordsByAction() {

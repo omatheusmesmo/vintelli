@@ -9,6 +9,7 @@ import dev.omatheusmesmo.vintelli.tui.VintelliShell;
 import dev.omatheusmesmo.vintelli.tui.ActionSurface;
 import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
 import dev.tamboui.terminal.Frame;
+import dev.tamboui.terminal.KeyboardProtocol;
 import dev.tamboui.tui.TuiConfig;
 import dev.tamboui.tui.TuiRunner;
 import dev.tamboui.tui.bindings.BindingSets;
@@ -115,7 +116,7 @@ final class WebTerminalSession {
                     .noTick()
                     .rawMode(false)
                     .shutdownHook(false)
-                    .keyboardProtocol(Keymap.KEYBOARD_PROTOCOL)
+                    .keyboardProtocol(KeyboardProtocol.LEGACY)
                     .bindings(Keymap.legacyKeyboardBindings(BindingSets.standard()))
                     .build());
         } catch (Exception e) {

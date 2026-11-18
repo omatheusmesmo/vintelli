@@ -140,8 +140,7 @@ public final class StructureToolWindow implements ToolWindow {
             scrollOffset = 0;
             return true;
         }
-        if (event.code() == KeyCode.CHAR && !event.hasCtrl() && !event.hasAlt()
-                && !Character.isISOControl(event.codePoint())) {
+        if (event.isTyping()) {
             filter += event.string();
             selectedIndex = 0;
             scrollOffset = 0;

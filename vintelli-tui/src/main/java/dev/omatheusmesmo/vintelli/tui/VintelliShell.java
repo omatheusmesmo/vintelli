@@ -1912,10 +1912,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     }
 
     private static VcsActions.PromptKey promptKey(KeyEvent key) {
-        boolean character = key.code() == KeyCode.CHAR;
+        boolean typing = key.isTyping();
         return new VcsActions.PromptKey(Keys.is(key, KeyCode.ESCAPE), Keys.is(key, KeyCode.ENTER),
-                Keys.is(key, KeyCode.BACKSPACE), character ? key.codePoint() : -1,
-                character && !key.hasCtrl() && !key.hasAlt() && !Character.isISOControl(key.codePoint()),
+                Keys.is(key, KeyCode.BACKSPACE), typing ? key.codePoint() : -1,
+                typing,
                 Keys.is(key, KeyCode.ENTER) && key.hasShift(), Keys.is(key, KeyCode.TAB));
     }
 

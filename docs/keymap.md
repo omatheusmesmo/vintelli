@@ -18,9 +18,11 @@ names fail fast naming the file and the line, a trigger bound to two
 different actions fails fast, and actions that must stay reachable while an
 input has focus (the palette, the help overlay, the tool window
 activations) must keep at least one Ctrl/Alt/F-key chord; bare printable
-characters belong to the capturing input. The shell runs the legacy keyboard
-protocol, so a trigger it never receives (a Super, Hyper or Meta modifier, a
-keypad key, F13 to F35) fails fast as well.
+characters belong to the capturing input. The keyboard protocol is picked
+with the `vintelli.keyboard.protocol` system property (see
+[Keyboard protocol](#keyboard-protocol)). Under the default `auto` mode a user
+file may bind Super, Hyper and Meta chords, keypad keys and F13 to F35; under
+`legacy` a trigger the legacy protocol never receives fails fast.
 
 The keymap is built only for the `--tui` session: headless and MCP-only
 processes never read the file, and a malformed file fails the TUI startup
@@ -35,7 +37,7 @@ Key actions in the `intellij` profile:
 | `KeymapHelp` | `F1` | - |
 | `run.choose-configuration` | Palette: Choose Run Configuration; toolbar configuration name | - |
 | `editor_toggleBreakpoint` | `Ctrl+F8` (`Ctrl+B` in the `vim` profile) | `Ctrl+F8` |
-| `moveUp` / `moveDown` | arrow keys (`j/k` in the `vim` profile) | - |
+| `moveUp` / `moveDown` | arrow keys and the keypad arrows (`j/k` in the `vim` profile) | - |
 | `quit` | `Ctrl+C` | - |
 | `editor_copy`, `editor_cut`, `editor_paste` | `Ctrl+C` (copy, only with a selection), `Ctrl+X`, `Ctrl+V` | `Ctrl+C`, `Ctrl+X`, `Ctrl+V` |
 | `editor_selectAll` (Select All), Shift+arrows | `Ctrl+A` (`Ctrl+E` in the `vim` profile); `Shift` with the arrows, Home, End, PageUp and PageDown extend the selection | `Ctrl+A`, `Shift+arrows` |
@@ -102,9 +104,12 @@ pressed, or the press of a mouse drag.
 - Terminals: `Shift` with the arrow keys is sent by essentially every terminal
   emulator. `Shift+Home`, `Shift+End`, `Shift+PageUp`, `Shift+PageDown` and
   `Ctrl+A` have not been checked in a live terminal yet. Ctrl+Shift chords (for
-  example `Ctrl+Shift+Left`) cannot be delivered: the terminal sends the same
-  bytes as the chord without Shift, so no Ctrl+Shift chord is bound for
-  selection. A terminal window that captures the keyboard (terminal, chat)
+  example `Ctrl+Shift+Left`) reach the shell only in a Kitty-capable terminal
+  (see [Keyboard protocol](#keyboard-protocol)), and no Ctrl+Shift chord is
+  bound for selection yet. `Ctrl+Left` moves by word in the editor, and it also
+  answers while Shift is held, because a plain Ctrl+Left trigger does not
+  refuse Shift: `Ctrl+Shift+Left` moves by word and does not select. Refusing
+  Shift there is a follow-up. A terminal window that captures the keyboard (terminal, chat)
   keeps `Ctrl+A` for itself, and a multiplexer that uses `Ctrl+A` as its prefix
   takes it before the editor sees it.
 
@@ -173,12 +178,14 @@ Decisions behind the table:
   comparison table, and its reason records the difference.
 - **`Ctrl+Y`, `Ctrl+O` and `Ctrl+T` stay.** IntelliJ binds `Ctrl+Y` to Delete
   Line and `Ctrl+O` to Override Methods, and `Ctrl+T` to Update Project. Ours
-  are Redo, Go to File and the shell theme switch. Redo keeps `Ctrl+Y` because
-  its IntelliJ chord `Ctrl+Shift+Z` cannot be delivered, and Go to File keeps
-  `Ctrl+O` for the same reason with `Ctrl+Shift+N`. The theme switch has no
-  IntelliJ action.
-- **`Alt+F` stays** for Find in Files, because IntelliJ's `Ctrl+Shift+F`
-  cannot be delivered.
+  are Redo, Go to File and the shell theme switch. Redo and Go to File keep
+  `Ctrl+Y` and `Ctrl+O` as their fallback chords: in the default `auto` mode
+  they answer to their IntelliJ chords `Ctrl+Shift+Z` and `Ctrl+Shift+N` in a
+  Kitty-capable terminal, and the fallbacks keep both reachable everywhere
+  else. The theme switch has no IntelliJ action.
+- **`Alt+F` stays** for Find in Files as the fallback: IntelliJ's
+  `Ctrl+Shift+F` is bound too, and reaches the shell in a Kitty-capable
+  terminal only.
 - **`Ctrl+D`** (Duplicate Line) copies the caret line below itself and moves
   the caret to the copy, in the same column, as one undo step. It works on
   the last line with or without a trailing newline (the document ends as it
@@ -204,26 +211,25 @@ and `docs/spikes/spike-49-per-terminal-capture.md`:
 
 Chords a terminal cannot deliver, and their alternatives:
 
-- **Double Shift** (Search Everywhere in IntelliJ): needs key release events
-  and the Kitty keyboard protocol. The shell runs the legacy keyboard protocol
-  (TamboUI 0.7 offers Kitty too, not enabled yet). Use `Ctrl+P` to open the
-  command palette.
-- **`Ctrl+Shift+A`** (Find Action): `Ctrl+Shift+letter` sends the same bytes
-  as `Ctrl+letter` in legacy mode. Use the command palette.
-- **`Ctrl+Shift+Z`** (Redo in IntelliJ): sends the same bytes as `Ctrl+Z`.
-  Redo is `Ctrl+Y` here.
-- **`Ctrl+Shift+N`** (Go to File in IntelliJ): sends the same bytes as
-  `Ctrl+N`. Go to File is `Ctrl+O` here.
-- **`Ctrl+Shift+F`** (Find in Files in IntelliJ): sends the same bytes as
-  `Ctrl+F`. Find in Files is `Alt+F` here.
+- **Double Shift** (Search Everywhere in IntelliJ): needs key release events,
+  which only the full Kitty keyboard mode sends. Vintelli runs the `auto`
+  mode, which does not send them. Use `Ctrl+P` to open the command palette.
+- **Lone modifiers** (for example a Shift tap on its own): also need the
+  release events of the full Kitty mode. No action is bound to them.
+- **`Ctrl+Shift+A`** (Find Action): no action is bound to it, so a Kitty-capable
+  terminal sends it without any effect. Use the command palette.
 - **Alt+digit in tmux and ghostty**: `Alt+digit` is intercepted by default in
   tmux (`M-1`..`M-9`) and ghostty (tab switching). The profile binds
   `Alt+F12` to Terminal, the IntelliJ chord, and keeps `Alt+2` as a second
   binding for it. Users of the intercepting terminals reach a window through
   its bare digit when no input has focus, or through the palette from anywhere.
-- **Cmd/Super**: never reaches the application.
-- **`Ctrl+I`, `Ctrl+M`, `Ctrl+J`, `Ctrl+H`, `Ctrl+[`**: the same bytes as Tab,
-  Enter, Backspace and Escape; never given their own action.
+- **Cmd (macOS)**: the terminal application takes it, so it never reaches the
+  shell. Super, Hyper and Meta reach the shell only where the terminal reports
+  them under the Kitty protocol, and no shell action is bound to them.
+- **`Ctrl+I`, `Ctrl+M`, `Ctrl+J`, `Ctrl+H`, `Ctrl+[`**: under `legacy` the
+  same bytes as Tab, Enter, Backspace and Escape. Under `auto` the Kitty
+  protocol tells `Ctrl+I` and `Ctrl+M` apart from Tab and Enter, and no action
+  is bound to them, so they are never given their own action.
 
 While a tool window with text input claims the keyboard
 (`ToolWindow.capturesInput()`), the shell keeps escape and the reserved
@@ -232,6 +238,70 @@ keymap chords for itself: `Ctrl+C` goes to the captured input, but
 relies on bare digit keys once an input has focus. Opening an overlay
 releases the capture; after closing it the shell keeps the focus until the
 tab is reselected.
+
+## Keyboard protocol
+
+The shell picks its keyboard mode with the `vintelli.keyboard.protocol` system
+property, `auto` or `legacy`, case-insensitive. Any other value fails the TUI
+startup with a one-line message naming the valid values, the same way an
+unknown `vintelli.keymap` profile does. Pass it as a JVM system property
+(`-Dvintelli.keyboard.protocol=legacy`) on the command that starts the TUI.
+The keymap and the terminal runner are built for the same mode, so the bindings
+and the bytes the terminal sends always agree.
+
+- **`auto`** (default): pushes the Kitty keyboard protocol flags TamboUI 0.7
+  uses by default. A terminal without the protocol ignores the push, so `auto`
+  behaves as `legacy` there. A Kitty-capable terminal delivers the chords below
+  as their own keys:
+  - `Ctrl+Shift+N` (Go to File), `Ctrl+Shift+F` (Find in Files) and
+    `Ctrl+Shift+Z` (Redo). The plain `Ctrl+F` and `Ctrl+Z` no longer run Find
+    and Undo while Shift is held.
+  - `Ctrl+Shift+NumPad +` (Expand All) and `Ctrl+Shift+NumPad -` (Collapse All)
+    in the project pane and from the palette.
+  - The keypad keys as their own keys: the keypad arrows, Home, End, Page Up,
+    Page Down, Insert, Delete and Enter act as their main keys. The keypad
+    digits, the decimal point, the operators and the keypad separator type text.
+  - `Ctrl+Left` and `Ctrl+Right` move by word, and `Ctrl+Backspace` and
+    `Ctrl+Delete` delete a word, in the editor.
+  - The user keymap file accepts keypad keys, F13 to F35 and Super, Hyper and
+    Meta chords.
+- **`legacy`**: pushes nothing and keeps the bytes of a plain terminal. The
+  Ctrl+Shift chords, the keypad keys as their own keys, the word-wise chords and
+  the keypad aliases are then not available, and the user keymap file rejects
+  the triggers the legacy protocol never sends. Every action keeps its
+  fallback chord below, so nothing is lost in this mode.
+
+Terminals that implement the Kitty keyboard protocol and deliver these chords
+include kitty, Ghostty, WezTerm, foot, Alacritty and recent iTerm2. A
+terminal multiplexer between the terminal and the shell (tmux, for example) may
+swallow the Kitty sequences, so run the shell outside it to get the chords.
+
+Fallbacks for the chords that `auto` adds, which a terminal without the protocol
+never sends:
+
+| IntelliJ chord (`auto`) | Fallback chord, kept in both modes | Action |
+|---|---|---|
+| `Ctrl+Shift+N` | `Ctrl+O` | Go to File |
+| `Ctrl+Shift+F` | `Alt+F` | Find in Files |
+| `Ctrl+Shift+Z` | `Ctrl+Y` | Redo |
+| `Ctrl+Shift+NumPad +` | `F4` | Expand All |
+| `Ctrl+Shift+NumPad -` | `Alt+C` | Collapse All |
+
+The keypad keys have no fallback of their own: in a terminal without the
+protocol the keypad sends the bytes of its main key, so Enter, the arrows and
+Delete already act the same. The word-wise chords have no fallback; in a
+terminal without the protocol the editor keeps the plain keys and nothing else
+is bound in their place.
+
+The user keymap file cannot yet bind `Ctrl+Shift+<letter>` distinctly. The
+TamboUI parser drops Shift for a single character, so `Ctrl+Shift+N` in the file
+means `Ctrl+N`, and `Ctrl+N` is not bound. Named keys keep their Shift, so
+`Ctrl+Shift+Left` in the file is the Ctrl+Shift chord it reads as. Vintelli
+does not hand-roll a parser for this; it is a TamboUI limitation.
+
+Not verified in a live terminal yet: the Ctrl+Shift chords, the keypad keys and
+the word-wise chords are covered by tests of the TamboUI event model, and each
+one still needs a check in kitty or Ghostty.
 
 ## Find row in the editor
 
@@ -291,12 +361,13 @@ Statuses:
 
 - `same`: the active chords equal IntelliJ's chords for the action. The bare
   digit of a tool window is the shortcut for while no input has focus, not an
-  IntelliJ chord, so it is left out of the comparison.
+  IntelliJ chord, and a keypad twin (`KP_UP` for the arrow) is the same key as
+  its main key; both are left out of the comparison.
 - `different`: IntelliJ binds the action to other chords. The reason says why
   the chord stays (or is planned to move, #365 and #364).
-- `not-deliverable`: IntelliJ's chord cannot be sent by a terminal (Double
-  Shift, `Ctrl+Shift+letter`). The active chord stays and the reason names the
-  alternative.
+- `not-deliverable`: IntelliJ's chord cannot be sent by a terminal, even in
+  the `auto` mode (Double Shift, which needs key release events). The active
+  chord stays and the reason names the alternative.
 - `vintelli-only`: the action has no IntelliJ chord that this table can
   confirm, or Vintelli has no IntelliJ counterpart. Unconfirmed IntelliJ chords
   are never invented: they stay empty here.
@@ -307,9 +378,9 @@ no row, when a row names an action the profile does not bind, when a row's
 active chords differ from the bound ones, when a `same` row differs from
 IntelliJ or a `different` row does not, when a chord is bound to two actions
 outside the shared chords it documents (`Enter` for `select`, `confirm` and
-`editor_open`, `Delete` for `deleteForward` and `project_delete`, and the mouse
-wheel for `scroll` and its directions, all set by the TamboUI presets and the
-focus), and when a non-`same` row has no reason. Adding a shared chord means
+`editor_open`, `KP_ENTER` for `select` and `confirm`, `Delete` for
+`deleteForward` and `project_delete`, and the mouse wheel for `scroll` and its
+directions, all set by the TamboUI presets and the focus), and when a non-`same` row has no reason. Adding a shared chord means
 adding it to that test on purpose.
 
 | Action ID | Keys (active) | IntelliJ | Status | Reason |
@@ -322,23 +393,23 @@ adding it to that test on purpose.
 | scrollDown | Mouse.SCROLL_DOWN | - | vintelli-only | Mouse wheel of the TamboUI preset; IntelliJ has no keyboard chord for it |
 | scrollLeft | Mouse.SCROLL_LEFT | - | vintelli-only | Mouse wheel of the TamboUI preset; IntelliJ has no keyboard chord for it |
 | scrollRight | Mouse.SCROLL_RIGHT | - | vintelli-only | Mouse wheel of the TamboUI preset; IntelliJ has no keyboard chord for it |
-| confirm | Enter | - | vintelli-only | Confirms a choice in TamboUI widgets; shares Enter with select and editor_open, the focus decides |
-| select | Enter \| Space | - | vintelli-only | Selects in TamboUI widgets; shares Enter with confirm and editor_open, the focus decides; Space names no IntelliJ action here |
+| confirm | Enter \| KP_ENTER | - | vintelli-only | Confirms a choice in TamboUI widgets; shares Enter with select and editor_open, the focus decides |
+| select | Enter \| Space \| KP_ENTER | - | vintelli-only | Selects in TamboUI widgets; shares Enter with confirm and editor_open, the focus decides; Space names no IntelliJ action here |
 | deleteBackward | Backspace | - | vintelli-only | Text editing in capturing inputs; the reference names no chord for it |
-| deleteForward | Delete | - | vintelli-only | Text editing in capturing inputs; shares Delete with project_delete, the focus decides |
+| deleteForward | Delete \| KP_DELETE | - | vintelli-only | Text editing in capturing inputs; shares Delete with project_delete, the focus decides |
 | focusNext | Tab | - | vintelli-only | Moves focus between panes here; IntelliJ binds Tab to Indent Selection in the editor |
 | focusPrevious | Shift+Tab | - | vintelli-only | Moves focus back here; IntelliJ binds Shift+Tab to Unindent in the editor |
 | home | Home \| Ctrl+Home | Home \| Ctrl+Home | same | Move Caret to Line Start (Home) and to Text Start (Ctrl+Home) |
 | end | End \| Ctrl+End | End \| Ctrl+End | same | Move Caret to Line End (End) and to Text End (Ctrl+End) |
-| pageUp | PageUp | PageUp | same | Page Up |
-| pageDown | PageDown | PageDown | same | Page Down |
-| moveUp | Up | Up | same | Move Caret Up on the arrow keys; the reference page does not list arrows, the chord is the editor one |
-| moveDown | Down | Down | same | Move Caret Down on the arrow keys; the reference page does not list arrows, the chord is the editor one |
-| moveLeft | Left | Left | same | Move Caret Left on the arrow keys; the reference page does not list arrows, the chord is the editor one |
-| moveRight | Right | Right | same | Move Caret Right on the arrow keys; the reference page does not list arrows, the chord is the editor one |
+| pageUp | PageUp \| KP_PAGE_UP | PageUp | same | Page Up |
+| pageDown | PageDown \| KP_PAGE_DOWN | PageDown | same | Page Down |
+| moveUp | Up \| KP_UP | Up | same | Move Caret Up on the arrow keys; the reference page does not list arrows, the chord is the editor one |
+| moveDown | Down \| KP_DOWN | Down | same | Move Caret Down on the arrow keys; the reference page does not list arrows, the chord is the editor one |
+| moveLeft | Left \| KP_LEFT | Left | same | Move Caret Left on the arrow keys; the reference page does not list arrows, the chord is the editor one |
+| moveRight | Right \| KP_RIGHT | Right | same | Move Caret Right on the arrow keys; the reference page does not list arrows, the chord is the editor one |
 | quit | Ctrl+C | - | vintelli-only | Terminal interrupt and the only quit chord; IntelliJ has no quit chord and Ctrl+C is Copy there (#365) |
 | toggleDebugOverlay | Ctrl+Shift+F12 | - | vintelli-only | TamboUI debug overlay; IntelliJ binds Ctrl+Shift+F12 to Hide All Tool Windows, which a terminal cannot deliver (#363) |
-| SearchEverywhere | Ctrl+P | Double Shift | not-deliverable | Double Shift needs key release events, which a terminal does not send; Ctrl+P is the command palette stand-in |
+| SearchEverywhere | Ctrl+P | Double Shift | not-deliverable | Double Shift needs key release events, which only the full Kitty keyboard mode sends and Vintelli does not enable; Ctrl+P is the command palette stand-in |
 | KeymapHelp | F1 | - | vintelli-only | F1 is not on the IntelliJ default keymap page (it lists Ctrl+F1 for Error Description and Ctrl+Q for Quick Documentation); here it opens the keymap help |
 | shell_menu | F10 | - | vintelli-only | Opens the shell menu; no IntelliJ chord confirmed against the reference page |
 | navigation_focusBreadcrumbs | Alt+Home | - | vintelli-only | Focus the navigation bar; no IntelliJ chord confirmed against the reference page |
@@ -348,8 +419,8 @@ adding it to that test on purpose.
 | project_delete | Delete | - | vintelli-only | Deletes the project entry; no IntelliJ chord confirmed; shares Delete with deleteForward, the pane scope decides |
 | project_refresh | F5 | - | vintelli-only | Refreshes the project tree; IntelliJ's F5 is Synchronize in the project view, not confirmed against the reference page |
 | project_select_opened_file | Alt+F1 | Alt+F1 | same | Reveals the open file in the project pane (crosshair); the nearest IntelliJ chord, since IntelliJ's Alt+F1 opens the Select In list instead |
-| project_expand_all | F4 | Ctrl+Shift+NumPad + | not-deliverable | Ctrl+Shift+NumPad + cannot be told apart from a plain key in a terminal; F4 expands the project tree here |
-| project_collapse_all | Alt+C | Ctrl+Shift+NumPad - | not-deliverable | Ctrl+Shift+NumPad - cannot be told apart from a plain key in a terminal; Alt+C collapses the project tree here |
+| project_expand_all | F4 \| Ctrl+Shift+KP_ADD | Ctrl+Shift+NumPad + | different | Expand All is Ctrl+Shift+NumPad + in IntelliJ, which a Kitty-capable terminal sends as its own chord; F4 stays as the fallback for terminals without the Kitty keyboard protocol |
+| project_collapse_all | Alt+C \| Ctrl+Shift+KP_SUBTRACT | Ctrl+Shift+NumPad - | different | Collapse All is Ctrl+Shift+NumPad - in IntelliJ, which a Kitty-capable terminal sends as its own chord; Alt+C stays as the fallback for terminals without the Kitty keyboard protocol |
 | project_view_menu | Alt+V | - | vintelli-only | Pane header view menu; no IntelliJ chord confirmed |
 | project_new_menu | Alt+N | - | vintelli-only | Pane header New menu; no IntelliJ chord confirmed |
 | project_options_menu | Alt+O | - | vintelli-only | Pane header options menu; no IntelliJ chord confirmed |
@@ -357,7 +428,7 @@ adding it to that test on purpose.
 | editor_open | Enter | - | vintelli-only | Opens the selected file in the project pane; no IntelliJ chord confirmed; shares Enter with confirm and select, the focus decides |
 | editor_save | Ctrl+S | Ctrl+S | same | IntelliJ Save All is Ctrl+S; our action saves the open file |
 | editor_undo | Ctrl+Z | Ctrl+Z | same | Undo |
-| editor_redo | Ctrl+Y | Ctrl+Shift+Z | not-deliverable | Ctrl+Shift+Z sends the same bytes as Ctrl+Z in a terminal; Ctrl+Y is Delete Line in IntelliJ and stays here (docs/keymap.md) |
+| editor_redo | Ctrl+Y \| Ctrl+Shift+Z | Ctrl+Shift+Z | different | Redo is Ctrl+Shift+Z in IntelliJ, which a Kitty-capable terminal sends as its own chord; Ctrl+Y stays as the fallback for terminals without the Kitty keyboard protocol (docs/keymap.md) |
 | editor_find | Ctrl+F | Ctrl+F | same | Find |
 | editor_cut | Ctrl+X | Ctrl+X | same | Cut the selection to the clipboard; with no selection it reports that nothing is selected |
 | editor_copy | Ctrl+C | Ctrl+C | same | Copy the selection; in the editor Ctrl+C quits only when no text is selected (see docs/keymap.md) |
@@ -375,8 +446,12 @@ adding it to that test on purpose.
 | editor_nextProblem | F2 | F2 | same | Next Highlighted Error; the bare F2 trigger refuses Shift, and F8 is left unbound (docs/keymap.md) |
 | editor_previousProblem | Shift+F2 | Shift+F2 | same | Previous Highlighted Error on its own Shift+F2 trigger (docs/keymap.md) |
 | editor_quickFix | Alt+Enter | Alt+Enter | same | Quick fixes from the language server for the selection or caret, offered in a popup (docs/keymap.md) |
-| navigation_goToFile | Ctrl+O | Ctrl+Shift+N | not-deliverable | Ctrl+Shift+N sends the same bytes as Ctrl+N in a terminal; Ctrl+O is Override Methods in IntelliJ and stays here (docs/keymap.md) |
-| navigation_findInFiles | Alt+F | Ctrl+Shift+F | not-deliverable | Ctrl+Shift+F sends the same bytes as Ctrl+F in a terminal; Alt+F is kept here |
+| moveWordLeft | Ctrl+Left | Ctrl+Left | same | Move Caret to Previous Word; the editor text area takes it under the Kitty keyboard protocol |
+| moveWordRight | Ctrl+Right | Ctrl+Right | same | Move Caret to Next Word; the editor text area takes it under the Kitty keyboard protocol |
+| deleteWordBackward | Ctrl+Backspace | - | vintelli-only | Deletes the word before the caret in the editor under the Kitty keyboard protocol; no IntelliJ chord is confirmed on the reference page for this action |
+| deleteWordForward | Ctrl+Delete | - | vintelli-only | Deletes the word after the caret in the editor under the Kitty keyboard protocol; no IntelliJ chord is confirmed on the reference page for this action |
+| navigation_goToFile | Ctrl+O \| Ctrl+Shift+N | Ctrl+Shift+N | different | Go to File is Ctrl+Shift+N in IntelliJ, which a Kitty-capable terminal sends as its own chord; Ctrl+O stays as the fallback for terminals without the Kitty keyboard protocol (docs/keymap.md) |
+| navigation_findInFiles | Alt+F \| Ctrl+Shift+F | Ctrl+Shift+F | different | Find in Files is Ctrl+Shift+F in IntelliJ, which a Kitty-capable terminal sends as its own chord; Alt+F stays as the fallback for terminals without the Kitty keyboard protocol |
 | navigation_goToLine | Ctrl+G | Ctrl+G | same | Go to Line with the IntelliJ chord; the vim profile binds Alt+G instead (docs/keymap.md) |
 | layout_project_wider | Alt+= | - | vintelli-only | Widens the project panel; no IntelliJ chord confirmed |
 | layout_project_narrower | Alt+- | - | vintelli-only | Narrows the project panel; no IntelliJ chord confirmed |

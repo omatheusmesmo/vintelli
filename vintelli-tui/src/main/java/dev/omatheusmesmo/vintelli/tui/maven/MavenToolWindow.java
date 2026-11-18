@@ -176,7 +176,7 @@ public final class MavenToolWindow implements ToolWindow {
     /** Space toggles the focused profile row; on any other row it is not handled. */
     @Override
     public boolean handleKey(KeyEvent event) {
-        boolean space = event.code() == KeyCode.CHAR && event.codePoint() == ' ' && !event.hasCtrl() && !event.hasAlt();
+        boolean space = event.isTyping() && event.codePoint() == ' ';
         return space && controller.toggleSelectedProfile();
     }
 

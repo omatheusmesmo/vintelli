@@ -1,5 +1,6 @@
 package dev.omatheusmesmo.vintelli.tui;
 
+import dev.omatheusmesmo.vintelli.tui.keymap.KeyboardMode;
 import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeymapProfile;
 import dev.tamboui.buffer.Buffer;
@@ -30,6 +31,19 @@ class EditorStartScreenTest {
     void shortcutsAreReadFromTheActiveKeymapAndUnboundActionsHaveNoRow() {
         List<EditorStartScreen.Shortcut> shortcuts = EditorStartScreen.shortcuts(
                 Keymap.ofProfile(KeymapProfile.DEFAULT, List.of()));
+
+        assertEquals(List.of(
+                new EditorStartScreen.Shortcut("Go to File", "Ctrl+o, Ctrl+Shift+N"),
+                new EditorStartScreen.Shortcut("Find in Files", "Alt+f, Ctrl+Shift+F"),
+                new EditorStartScreen.Shortcut("Search Everywhere", "Ctrl+p"),
+                new EditorStartScreen.Shortcut("Open Menu", "F10"),
+                new EditorStartScreen.Shortcut("Keymap Help", "F1")), shortcuts);
+    }
+
+    @Test
+    void theLegacyKeymapShowsOnlyTheFallbackChords() {
+        List<EditorStartScreen.Shortcut> shortcuts = EditorStartScreen.shortcuts(
+                Keymap.ofProfile(KeymapProfile.DEFAULT, KeyboardMode.LEGACY, List.of()));
 
         assertEquals(List.of(
                 new EditorStartScreen.Shortcut("Go to File", "Ctrl+o"),

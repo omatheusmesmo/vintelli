@@ -350,7 +350,7 @@ final class ProjectPanel implements Element {
                 controller.submitInput();
             } else if (Keys.is(key, KeyCode.BACKSPACE) && !controller.inputText().isEmpty()) {
                 controller.deleteInputCharacter();
-            } else if (key.code() == KeyCode.CHAR && key.codePoint() >= 32 && !key.hasCtrl() && !key.hasAlt()) {
+            } else if (key.isTyping()) {
                 controller.appendInput(key.codePoint());
             }
             return true;

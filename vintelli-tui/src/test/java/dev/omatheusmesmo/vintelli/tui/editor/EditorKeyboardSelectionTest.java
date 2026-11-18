@@ -127,6 +127,27 @@ class EditorKeyboardSelectionTest {
                 "keypad Delete removes the selection like Delete");
     }
 
+    @Test
+    void theKeypadEnterBreaksTheLineLikeEnter() throws IOException {
+        BuiltinEditor editor = open("KeypadEnter.txt", "alpha beta\n");
+        key(editor, KeyCode.RIGHT, 5);
+
+        assertTrue(editor.handleKey(KeyEvent.ofKey(KeyCode.KP_ENTER)), "keypad Enter is handled");
+
+        assertEquals("alpha\n beta\n", editor.activeDocument().orElseThrow().text(),
+                "keypad Enter inserts a line break like Enter");
+    }
+
+    @Test
+    void aKeypadDigitTypesIntoTheEditor() throws IOException {
+        BuiltinEditor editor = open("KeypadDigit.txt", "alpha\n");
+
+        assertTrue(editor.handleKey(new KeyEvent(KeyCode.KP_5, KeyModifiers.NONE, '5')), "keypad 5 is handled");
+
+        assertEquals("5alpha\n", editor.activeDocument().orElseThrow().text(),
+                "the keypad digit is typed like the digit key");
+    }
+
     private BuiltinEditor open(String name, String text) throws IOException {
         Path file = project.resolve(name);
         Files.writeString(file, text);

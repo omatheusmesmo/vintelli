@@ -23,7 +23,7 @@ public final class Keys {
         if (main == event.code()) {
             return event;
         }
-        return KeyEvent.ofKey(main, event.modifiers(), event.kind());
+        return KeyEvent.ofKey(main, event.modifiers(), event.kind(), event.bindings());
     }
 
     private static KeyCode mainCode(KeyCode code) {

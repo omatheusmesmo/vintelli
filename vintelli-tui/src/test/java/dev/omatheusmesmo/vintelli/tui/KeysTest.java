@@ -1,5 +1,7 @@
 package dev.omatheusmesmo.vintelli.tui;
 
+import dev.tamboui.tui.bindings.BindingSets;
+import dev.tamboui.tui.bindings.Bindings;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
 import dev.tamboui.tui.event.KeyEventKind;
@@ -11,6 +13,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -57,6 +60,15 @@ class KeysTest {
     }
 
     @Test
+    void mainKeyKeepsTheBindingsTheKeypadKeyWasParsedWith() {
+        Bindings vim = BindingSets.vim();
+        KeyEvent keypadDown = KeyEvent.ofKey(KeyCode.KP_DOWN, KeyModifiers.NONE, KeyEventKind.PRESS, vim);
+
+        assertSame(vim, Keys.mainKey(keypadDown).bindings(),
+                "the text area reads its actions from the event bindings, so the keymap must survive the mapping");
+    }
+
+    @Test
     void mainKeyLeavesEveryOtherEventAsItWas() {
         KeyEvent plainEnter = KeyEvent.ofKey(KeyCode.ENTER);
         KeyEvent keypadDigit = KeyEvent.ofKey(KeyCode.KP_1);
@@ -67,5 +79,18 @@ class KeysTest {
         assertSame(keypadDigit, Keys.mainKey(keypadDigit), "keypad digits are text keys and keep their code");
         assertSame(keypadAdd, Keys.mainKey(keypadAdd), "keypad operators are text keys and keep their code");
         assertSame(character, Keys.mainKey(character));
+    }
+
+    @Test
+    void overlayInputTypesTheKeypadTextKeysAndNeverAShortcut() {
+        assertEquals(OverlayKey.TEXT, OverlayInput.key(KeyEvent.ofChar('a')));
+        assertEquals(OverlayKey.TEXT, OverlayInput.key(new KeyEvent(KeyCode.KP_5, KeyModifiers.NONE, '5')),
+                "a keypad digit types its character in an overlay prompt");
+        assertEquals(OverlayKey.TEXT, OverlayInput.key(new KeyEvent(KeyCode.KP_ADD, KeyModifiers.NONE, '+')),
+                "a keypad operator types its character in an overlay prompt");
+        assertNotEquals(OverlayKey.TEXT, OverlayInput.key(KeyEvent.ofChar('s', KeyModifiers.CTRL)),
+                "Ctrl+S is a shortcut, not text");
+        assertNotEquals(OverlayKey.TEXT, OverlayInput.key(KeyEvent.ofKey(KeyCode.KP_ENTER)),
+                "keypad Enter is not text");
     }
 }

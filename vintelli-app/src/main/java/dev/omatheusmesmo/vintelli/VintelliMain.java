@@ -10,6 +10,7 @@ import dev.omatheusmesmo.vintelli.cli.VintelliCliRepl;
 import dev.omatheusmesmo.vintelli.launch.RunMode;
 import dev.omatheusmesmo.vintelli.tui.ShellThemes;
 import dev.omatheusmesmo.vintelli.tui.VintelliShell;
+import dev.omatheusmesmo.vintelli.tui.keymap.KeyboardMode;
 import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeymapRegistry;
 import dev.omatheusmesmo.vintelli.tui.terminal.TerminalBackground;
@@ -70,11 +71,11 @@ public final class VintelliMain implements QuarkusApplication {
                 TerminalBackground.consoleAttached() || TerminalBackground.recordedSession());
     }
 
-    static TuiConfig shellConfig() {
+    static TuiConfig shellConfig(KeyboardMode keyboardMode) {
         return TuiConfig.defaults().toBuilder()
                 .tickRate(IDLE_TICK)
                 .resizeGracePeriod(RESIZE_CHECK)
-                .keyboardProtocol(Keymap.KEYBOARD_PROTOCOL)
+                .keyboardProtocol(keyboardMode.protocol())
                 .build();
     }
 
@@ -104,7 +105,7 @@ public final class VintelliMain implements QuarkusApplication {
                                 processMotionEffects.process(frame, elements, styledAreas, focus, elapsed);
                             }
                         })
-                        .config(shellConfig())
+                        .config(shellConfig(keymap.keyboardMode()))
                         .bindings(keymap.bindings())
                         .styleEngine(shellThemes.engine())
                         .mouseCapture(true)
