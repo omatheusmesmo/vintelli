@@ -12,7 +12,7 @@ SESSION=vintelli
 COLUMNS=160
 ROWS=45
 THEMES=(darcula dark)
-SCREENS=(project goto-file search-everywhere problems maven structure)
+SCREENS=(editor project goto-file search-everywhere problems maven structure)
 
 die() {
   echo "capture: $*" >&2
@@ -25,6 +25,7 @@ tmux_site() {
 
 screen_keys() {
   case "$1" in
+    editor) echo "C-o" ;;
     project) echo "M-1" ;;
     goto-file) echo "C-o" ;;
     search-everywhere) echo "C-p" ;;
@@ -32,6 +33,41 @@ screen_keys() {
     maven) echo "M-9" ;;
     structure) echo "M-7" ;;
     *) die "no keys defined for screen $1" ;;
+  esac
+}
+
+# Text typed once the first keys have settled, such as a Go to File query.
+screen_text() {
+  case "$1" in
+    editor) echo "ShellLayout.java" ;;
+    *) echo "" ;;
+  esac
+}
+
+# Text the pane must show before the screen is captured, such as the opened file's first line.
+screen_ready_text() {
+  case "$1" in
+    editor) echo "1 package dev.omatheusmesmo" ;;
+    *) echo "" ;;
+  esac
+}
+
+wait_for_text() {
+  local text="$1" attempt
+  for attempt in $(seq 1 30); do
+    if plain_pane | grep -qF "$text"; then
+      return 0
+    fi
+    sleep 1
+  done
+  die "the pane never showed '$text'"
+}
+
+# Keys pressed once the typed text has settled, such as Enter on a filtered list.
+screen_confirm_keys() {
+  case "$1" in
+    editor) echo "Enter" ;;
+    *) echo "" ;;
   esac
 }
 
@@ -103,6 +139,25 @@ capture_screen() {
   fi
   sleep 1
   wait_until_settled
+  local text confirm
+  text="$(screen_text "$screen")"
+  if [ -n "$text" ]; then
+    press -l "$text"
+    sleep 2
+    wait_until_settled
+  fi
+  confirm="$(screen_confirm_keys "$screen")"
+  if [ -n "$confirm" ]; then
+    press $confirm
+    sleep 2
+    wait_until_settled
+  fi
+  local ready
+  ready="$(screen_ready_text "$screen")"
+  if [ -n "$ready" ]; then
+    wait_for_text "$ready"
+    wait_until_settled
+  fi
   local dead status
   read -r dead status < <(pane_state)
   if [ "$dead" = 1 ]; then

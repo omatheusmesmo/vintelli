@@ -5,24 +5,52 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{=page.title} | Vintelli</title>
   <meta name="description" content="{=page.description}">
+  <meta name="color-scheme" content="dark light">
+  <meta property="og:title" content="{=page.title} | Vintelli">
+  <meta property="og:description" content="{=page.description}">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%233574F0'/%3E%3Cpath d='M8 11l5 5-5 5' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M16 21h8' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="{=site.url('/css/site.css')}">
 </head>
-<body>
+<body class="{=page.data.getString('kind') ?: 'page'}">
   <header class="site-header">
-    <a class="brand" href="{=site.url('/')}">Vintelli</a>
-    <nav>
-      <a href="{=site.url('/tour/')}">Tour</a>
-      <a href="{=site.url('/keymap/')}">Keymap</a>
-      <a href="{=site.url('/decisions/')}">Decisions</a>
-      <a href="https://github.com/omatheusmesmo/vintelli">Source</a>
-    </nav>
+    <div class="site-header-inner">
+      <a class="brand" href="{=site.url('/')}">
+        <span class="brand-mark" aria-hidden="true">&gt;_</span>
+        <span>Vintelli</span>
+      </a>
+      <nav aria-label="Site">
+        <a href="{=site.url('/tour/')}">Tour</a>
+        <a href="{=site.url('/keymap/')}">Keymap</a>
+        <a href="{=site.url('/decisions/')}">Decisions</a>
+        <a class="nav-button" href="https://github.com/omatheusmesmo/vintelli">GitHub</a>
+      </nav>
+    </div>
   </header>
   <main>
-    <h1>{=page.title}</h1>
+    {#if page.data.getString('kind') != 'home'}
+    <div class="page-head">
+      <h1>{=page.title}</h1>
+    </div>
+    {/if}
     {#insert /}
   </main>
   <footer class="site-footer">
-    <p>Vintelli is pre-release. The site is built from the repository by the site workflow.</p>
+    <p>Vintelli is pre-release and open source. This site is built from the repository by the site workflow.</p>
+    <p><a href="https://github.com/omatheusmesmo/vintelli">Source</a> · <a href="https://github.com/omatheusmesmo/vintelli/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22">Good first issues</a></p>
   </footer>
+  <script>
+    document.querySelectorAll('[data-copy]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        var target = document.getElementById(button.getAttribute('data-copy'));
+        if (!target || !navigator.clipboard) {
+          return;
+        }
+        navigator.clipboard.writeText(target.innerText.replace(/^\$ /gm, '').trim()).then(function () {
+          button.textContent = 'Copied';
+          setTimeout(function () { button.textContent = 'Copy'; }, 1600);
+        });
+      });
+    });
+  </script>
 </body>
 </html>
