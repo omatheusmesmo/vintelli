@@ -602,6 +602,24 @@ class KeymapTest {
         return answering;
     }
 
+    @Test
+    void aKeypadNavigationKeyAnswersToTheActionOfItsMainKey() {
+        Keymap keymap = Keymap.ofProfile(KeymapProfile.DEFAULT, WINDOWS);
+
+        assertTrue(keymap.matches(KeyEvent.ofKey(KeyCode.KP_ENTER), KeyActions.OPEN_FILE),
+                "keypad Enter opens the selected file like Enter");
+        assertTrue(keymap.matches(KeyEvent.ofKey(KeyCode.KP_DELETE), KeyActions.PROJECT_DELETE),
+                "keypad Delete deletes the project entry like Delete");
+        assertTrue(keymap.matches(KeyEvent.ofKey(KeyCode.KP_ENTER, KeyModifiers.ALT), KeyActions.QUICK_FIX),
+                "Alt+keypad Enter asks for the quick fix like Alt+Enter");
+        assertTrue(keymap.matchesReserved(KeyEvent.ofKey(KeyCode.KP_HOME, KeyModifiers.ALT), KeyActions.FOCUS_NAVIGATION_BAR),
+                "Alt+keypad Home survives a capturing window like Alt+Home");
+        assertFalse(keymap.matches(KeyEvent.ofKey(KeyCode.KP_ENTER), KeyActions.PROJECT_DELETE),
+                "keypad Enter does not take the Delete action");
+        assertFalse(keymap.matches(KeyEvent.ofKey(KeyCode.KP_DELETE), KeyActions.OPEN_FILE),
+                "keypad Delete does not take the Enter action");
+    }
+
     private static KeyEvent actionChord(char shortcut) {
         return KeyEvent.ofChar(shortcut, KeyModifiers.ALT);
     }

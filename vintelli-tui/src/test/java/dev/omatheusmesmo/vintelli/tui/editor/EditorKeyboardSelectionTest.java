@@ -106,6 +106,27 @@ class EditorKeyboardSelectionTest {
         assertEquals(0, editor.pointerState().orElseThrow().anchorLine(), "the anchor is the start of the text");
     }
 
+    @Test
+    void shiftWithTheKeypadArrowsExtendsTheSelectionLikeTheMainArrows() throws IOException {
+        BuiltinEditor editor = open("KeypadShift.txt", "alpha beta\n");
+
+        shift(editor, KeyCode.KP_RIGHT, 5);
+
+        assertEquals("alpha", selectedText(editor), "Shift with the keypad Right extends the selection");
+    }
+
+    @Test
+    void theKeypadDeleteRemovesTheSelectionLikeDelete() throws IOException {
+        BuiltinEditor editor = open("KeypadDelete.txt", "alpha beta\n");
+        shift(editor, KeyCode.RIGHT, 5);
+        assertEquals("alpha", selectedText(editor));
+
+        assertTrue(editor.handleKey(KeyEvent.ofKey(KeyCode.KP_DELETE)), "keypad Delete is handled");
+
+        assertEquals(" beta\n", editor.activeDocument().orElseThrow().text(),
+                "keypad Delete removes the selection like Delete");
+    }
+
     private BuiltinEditor open(String name, String text) throws IOException {
         Path file = project.resolve(name);
         Files.writeString(file, text);

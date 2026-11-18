@@ -88,9 +88,9 @@ public final class DebugToolWindow implements ToolWindow {
         if (evaluation.active()) { handleEvaluationKey(event); return true; }
         if (event.isCharIgnoreCase('e')) { startEvaluation(); return true; }
         List<String> rows = renderModel(Rect.ZERO).rows();
-        if (event.isKey(KeyCode.UP) || event.isCharIgnoreCase('k')) { selection = Math.max(0, selection - 1); return true; }
-        if (event.isKey(KeyCode.DOWN) || event.isCharIgnoreCase('j')) { selection = Math.min(Math.max(0, rows.size()-1), selection + 1); return true; }
-        if (event.isKey(KeyCode.ENTER) || event.isCharIgnoreCase(' ')) { activateSelected(rows); return true; }
+        if (Keys.is(event, KeyCode.UP) || event.isCharIgnoreCase('k')) { selection = Math.max(0, selection - 1); return true; }
+        if (Keys.is(event, KeyCode.DOWN) || event.isCharIgnoreCase('j')) { selection = Math.min(Math.max(0, rows.size()-1), selection + 1); return true; }
+        if (Keys.is(event, KeyCode.ENTER) || event.isCharIgnoreCase(' ')) { activateSelected(rows); return true; }
         if (event.isCharIgnoreCase('r')) { refresh(); return true; }
         return false;
     }

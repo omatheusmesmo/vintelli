@@ -83,7 +83,7 @@ final class StatusBarElement implements Element {
 
     /** Closes the popup on Escape. Returns true when the key was taken. */
     boolean escape(KeyEvent key) {
-        if (popupOpen && key.isKey(KeyCode.ESCAPE)) {
+        if (popupOpen && Keys.is(key, KeyCode.ESCAPE)) {
             popupOpen = false;
             return true;
         }

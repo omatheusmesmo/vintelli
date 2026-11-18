@@ -103,19 +103,19 @@ final class EditorPanel {
         if (!controller.navigationBarFocused()) {
             return false;
         }
-        if (key.isKey(KeyCode.ESCAPE)) {
+        if (Keys.is(key, KeyCode.ESCAPE)) {
             controller.returnToEditor();
             return true;
         }
-        if (key.isKey(KeyCode.LEFT) || key.isKey(KeyCode.UP)) {
+        if (Keys.is(key, KeyCode.LEFT) || Keys.is(key, KeyCode.UP)) {
             controller.previousNavigationSegment();
             return true;
         }
-        if (key.isKey(KeyCode.RIGHT) || key.isKey(KeyCode.DOWN)) {
+        if (Keys.is(key, KeyCode.RIGHT) || Keys.is(key, KeyCode.DOWN)) {
             controller.nextNavigationSegment();
             return true;
         }
-        return key.isKey(KeyCode.ENTER) && controller.openSelectedSegment();
+        return Keys.is(key, KeyCode.ENTER) && controller.openSelectedSegment();
     }
 
     private void renderDiff(List<Line> lines, ShellUnifiedDiff pushedDiff) {

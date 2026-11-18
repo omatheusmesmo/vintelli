@@ -1,5 +1,6 @@
 package dev.omatheusmesmo.vintelli.tui.editor;
 
+import dev.omatheusmesmo.vintelli.tui.Keys;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
 import dev.tamboui.tui.event.KeyCode;
@@ -46,7 +47,7 @@ final class EditorSelectionKeys {
     }
 
     static boolean extendsSelection(KeyEvent event) {
-        return event.hasShift() && !event.hasCtrl() && !event.hasAlt() && SELECTING_KEYS.contains(event.code());
+        return event.hasShift() && !event.hasCtrl() && !event.hasAlt() && SELECTING_KEYS.contains(Keys.mainKey(event).code());
     }
 
     static boolean selectsAll(KeyEvent event, Keymap keymap) {
@@ -54,10 +55,10 @@ final class EditorSelectionKeys {
     }
 
     static boolean removesOnly(KeyEvent event) {
-        return event.isKey(KeyCode.BACKSPACE) || event.isKey(KeyCode.DELETE);
+        return Keys.is(event, KeyCode.BACKSPACE) || Keys.is(event, KeyCode.DELETE);
     }
 
     static boolean replacesSelection(KeyEvent event) {
-        return event.isKey(KeyCode.ENTER) || event.code() == KeyCode.CHAR && !event.hasCtrl() && !event.hasAlt();
+        return Keys.is(event, KeyCode.ENTER) || event.code() == KeyCode.CHAR && !event.hasCtrl() && !event.hasAlt();
     }
 }

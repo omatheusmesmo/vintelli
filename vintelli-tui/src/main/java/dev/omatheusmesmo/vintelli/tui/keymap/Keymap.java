@@ -1,5 +1,6 @@
 package dev.omatheusmesmo.vintelli.tui.keymap;
 
+import dev.omatheusmesmo.vintelli.tui.Keys;
 import dev.omatheusmesmo.vintelli.tui.ToolWindow;
 import dev.tamboui.terminal.KeyboardProtocol;
 import dev.tamboui.tui.bindings.BindingSets;
@@ -609,7 +610,7 @@ public final class Keymap {
      * by action id only and never reads concrete keys.
      */
     public boolean matches(KeyEvent event, String actionId) {
-        return bindings.matches(event, bindingName(actionId));
+        return matchesMainKeyAware(bindings, event, bindingName(actionId));
     }
 
     /**
@@ -618,7 +619,15 @@ public final class Keymap {
      * Ctrl/Alt/F-key chords, never bare printable characters.
      */
     public boolean matchesReserved(KeyEvent event, String actionId) {
-        return reserved.matches(event, bindingName(actionId));
+        return matchesMainKeyAware(reserved, event, bindingName(actionId));
+    }
+
+    private static boolean matchesMainKeyAware(Bindings source, KeyEvent event, String binding) {
+        if (source.matches(event, binding)) {
+            return true;
+        }
+        KeyEvent mainKey = Keys.mainKey(event);
+        return mainKey != event && source.matches(mainKey, binding);
     }
 
     /**
