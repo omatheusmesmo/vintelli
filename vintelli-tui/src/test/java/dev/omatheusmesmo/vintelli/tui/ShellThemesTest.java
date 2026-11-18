@@ -310,7 +310,7 @@ class ShellThemesTest {
         assertEquals(Color.indexed(250), themes.color("chrome-fg"));
         assertEquals(Color.indexed(250), themes.resolver("menu-entry").toStyle().fg().orElse(null));
         assertEquals(themes.color("panel"), themes.resolver("pane-gap").toStyle().bg().orElse(null));
-        assertEquals("indexed(146)", themes.editorPalette().text());
+        assertEquals("indexed(249)", themes.editorPalette().text());
     }
 
     @Test
@@ -322,11 +322,11 @@ class ShellThemesTest {
                 writeUserFile("midnight.tcss", "@theme midnight extends dark\n$chrome-fg: #123456;\n"),
                 ColorLevel.INDEXED_256);
 
-        assertEquals("indexed(23)", patched.variablesOf("dark").get("chrome-fg"),
+        assertEquals("indexed(236)", patched.variablesOf("dark").get("chrome-fg"),
                 "a patch variable is downgraded");
-        assertEquals(Color.indexed(23), patched.resolver("menu-entry").toStyle().fg().orElse(null),
+        assertEquals(Color.indexed(236), patched.resolver("menu-entry").toStyle().fg().orElse(null),
                 "a hex written straight into a rule is downgraded as well");
-        assertEquals("indexed(23)", derived.variablesOf("midnight").get("chrome-fg"),
+        assertEquals("indexed(236)", derived.variablesOf("midnight").get("chrome-fg"),
                 "a user theme of its own is downgraded");
         assertEquals(derived.color("panel"), derived.resolver("pane-gap").toStyle().bg().orElse(null),
                 "the rules a derived theme inherits from its base carry indices too");

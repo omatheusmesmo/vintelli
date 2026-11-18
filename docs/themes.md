@@ -96,23 +96,23 @@ neighbouring official element instead of a role-named one:
 | `$panel` | `#3C3F41` | 237 | `#2B2D30` | 236 | ui `*` `background` |
 | `$chrome-fg` | `#BBBBBB` | 250 | `#DFE1E5` | 254 | ui `*` `foreground` |
 | `$chrome-fg-strong` | `#DEDEDE` | 253 | `#FFFFFF` | 231 | chosen from `selectionForeground` / `SearchEverywhere.Tab.selectedForeground` |
-| `$selection-bg` | `#2F65CA` | 26 | `#2E436E` | 239 | ui `*` `selectionBackground` |
-| `$tab-selected-bg` | `#365880` | 60 | `#3574F0` | 69 | chosen from `Button.default.startBackground`, New UI `ToolWindow.Button.selectedBackground` |
+| `$selection-bg` | `#2F65CA` | 26 | `#2E436E` | 238 | ui `*` `selectionBackground` |
+| `$tab-selected-bg` | `#365880` | 24 | `#3574F0` | 33 | chosen from `Button.default.startBackground`, New UI `ToolWindow.Button.selectedBackground` |
 | `$border` | `#515151` | 239 | `#1E1F22` | 234 | ui `MenuBar.borderColor`, New UI `Borders.ContrastBorderColor` |
 | `$editor-border` | `#515151` | 239 | `#43454A` | 238 | ui `MenuBar.borderColor`, New UI `ToolWindow.Stripe.separatorColor` |
-| `$editor-bg` | `#2B2B2B` | 235 | `#1E1F22` | 234 | editor scheme `TEXT` background |
-| `$editor-fg` | `#A9B7C6` | 146 | `#BCBEC4` | 250 | editor scheme `TEXT` foreground |
-| `$editor-keyword` | `#CC7832` | 173 | `#CF8E6D` | 173 | editor scheme `DEFAULT_KEYWORD` |
-| `$editor-string` | `#6A8759` | 65 | `#6AAB73` | 71 | editor scheme `DEFAULT_STRING` |
+| `$editor-bg` | `#2B2B2B` | 236 | `#1E1F22` | 234 | editor scheme `TEXT` background |
+| `$editor-fg` | `#A9B7C6` | 249 | `#BCBEC4` | 250 | editor scheme `TEXT` foreground |
+| `$editor-keyword` | `#CC7832` | 172 | `#CF8E6D` | 173 | editor scheme `DEFAULT_KEYWORD` |
+| `$editor-string` | `#6A8759` | 65 | `#6AAB73` | 72 | editor scheme `DEFAULT_STRING` |
 | `$editor-comment` | `#808080` | 244 | `#7A7E85` | 244 | editor scheme `DEFAULT_LINE_COMMENT` |
-| `$editor-constant` | `#9876AA` | 103 | `#6B9BFA` | 69 | Darcula editor scheme `DEFAULT_CONSTANT`; dark uses New UI `colors.Blue9` |
+| `$editor-constant` | `#9876AA` | 103 | `#6B9BFA` | 75 | Darcula editor scheme `DEFAULT_CONSTANT`; dark uses New UI `colors.Blue9` |
 | `$editor-caret-row` | `#323232` | 236 | `#26282E` | 235 | editor scheme `CARET_ROW_COLOR` |
 
 The dark theme intentionally diverges from the upstream editor scheme for
 `$editor-constant`: its source pointer in `dark-palette.json` resolves the
 New UI `colors.Blue9` value, while the untouched platform excerpt still
 records the upstream `DEFAULT_CONSTANT` value. The blue accent is used for
-constants, quick fixes, and warning markers; the 256-color mapping is index 69.
+constants, quick fixes, and warning markers; the 256-color mapping is index 75.
 
 The depth the shell renders with is chosen by the `vintelli.tui.color-level`
 property:
@@ -130,9 +130,11 @@ detection of `auto` reads `COLORTERM` through MicroProfile Config, so it sees
 the environment variable of the process; an unknown property value fails fast,
 naming the property and the allowed values. In the `256` depth every hex value
 of the active stylesheet is replaced by the nearest fixed palette index before
-the stylesheet is parsed, shipped and user sheets alike. Indices 0 to 15 are
+the stylesheet is parsed, shipped and user sheets alike. Nearest is measured
+in Oklab, a perceptual space, so blue accents stay blue: the plain sRGB
+distance mapped `#3574F0` to 69 (`#5F87FF`), which reads as lavender. Indices 0 to 15 are
 never candidates: they are the terminal's own palette and render differently
 per terminal, so the three table rows documented below 16 move to 231 (white),
-69 (`#3574F0`) and 244 (`#7A7E85`). The hex values stay the source of truth,
+33 (`#3574F0`) and 244 (`#7A7E85`). The hex values stay the source of truth,
 and a section of the inspection payload reports the palette the active depth
 serves (see `GET /tui/render` below).

@@ -59,9 +59,9 @@ class ConfiguredIndexedPaletteTest {
                         "mainAreaTop", not(containsString("╭")),
                         "colors.panel", is("indexed(237)"),
                         "colors.chrome-fg", is("indexed(250)"),
-                        "colors.tab-selected-bg", is("indexed(60)"),
-                        "colors.editor-bg", is("indexed(235)"),
-                        "colors.editor-keyword", is("indexed(173)"),
+                        "colors.tab-selected-bg", is("indexed(24)"),
+                        "colors.editor-bg", is("indexed(236)"),
+                        "colors.editor-keyword", is("indexed(172)"),
                         "colors.editor-comment", is("indexed(244)"));
     }
 

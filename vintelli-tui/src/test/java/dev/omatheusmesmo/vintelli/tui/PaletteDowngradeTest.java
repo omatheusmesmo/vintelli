@@ -28,20 +28,20 @@ class PaletteDowngradeTest {
             entry("soft", 244),
             entry("selection-bg", 26),
             entry("selection-fg", 253),
-            entry("tab-selected-bg", 60),
+            entry("tab-selected-bg", 24),
             entry("tab-selected-fg", 253),
             entry("border", 239),
             entry("focus-border", 60),
             entry("editor-border", 239),
-            entry("editor-bg", 235),
-            entry("editor-fg", 146),
-            entry("editor-keyword", 173),
+            entry("editor-bg", 236),
+            entry("editor-fg", 249),
+            entry("editor-keyword", 172),
             entry("editor-string", 65),
             entry("editor-comment", 244),
             entry("editor-number", 67),
             entry("editor-constant", 103),
             entry("editor-selection", 24),
-            entry("editor-sel-fg", 146),
+            entry("editor-sel-fg", 249),
             entry("editor-caret-row", 236));
 
     private static final Map<String, Integer> DARK_INDICES = Map.ofEntries(
@@ -50,20 +50,20 @@ class PaletteDowngradeTest {
             entry("chrome-fg-strong", 231),
             entry("muted", 243),
             entry("soft", 245),
-            entry("selection-bg", 239),
+            entry("selection-bg", 238),
             entry("selection-fg", 254),
-            entry("tab-selected-bg", 69),
+            entry("tab-selected-bg", 33),
             entry("tab-selected-fg", 231),
             entry("border", 234),
-            entry("focus-border", 69),
+            entry("focus-border", 33),
             entry("editor-border", 238),
             entry("editor-bg", 234),
             entry("editor-fg", 250),
             entry("editor-keyword", 173),
-            entry("editor-string", 71),
+            entry("editor-string", 72),
             entry("editor-comment", 244),
             entry("editor-number", 37),
-            entry("editor-constant", 69),
+            entry("editor-constant", 75),
             entry("editor-selection", 24),
             entry("editor-sel-fg", 250),
             entry("editor-caret-row", 235));
@@ -83,16 +83,22 @@ class PaletteDowngradeTest {
     void documentedIndicesBelowTheTerminalPaletteAreRecomputed() {
         assertEquals(231, indexOf("#FFFFFF"),
                 "white leaves the terminal palette entry 15 for the cube corner 231");
-        assertEquals(69, indexOf("#3574F0"),
-                "the New UI tab blue leaves the terminal palette entry 12 for 69");
+        assertEquals(33, indexOf("#3574F0"),
+                "the New UI tab blue leaves the terminal palette entry 12 for the cube blue 33");
         assertEquals(244, indexOf("#7A7E85"),
                 "the New UI line comment leaves the terminal palette entry 8 for the grayscale ramp");
     }
 
     @Test
-    void documentedKeywordIndexSurvivesTheDistance() {
-        assertEquals(173, indexOf("#CC7832"),
-                "docs/themes.md documents 173 for the Darcula keyword and the squared distance reproduces it");
+    void blueAccentsStayBlueInsteadOfTurningLavender() {
+        assertEquals(33, indexOf("#3574F0"),
+                "the dark accent maps to #0087FF; the squared sRGB distance chose 69, #5F87FF, which reads as lavender");
+        assertEquals(75, indexOf("#6B9BFA"),
+                "the dark constant maps to #5FAFFF instead of the lavender 69");
+        assertEquals(249, indexOf("#A9B7C6"),
+                "the Darcula text maps to a gray instead of the lavender 146, #AFAFD7");
+        assertEquals(24, indexOf("#365880"),
+                "the Darcula selected tab maps to #005F87 instead of the purple gray 60, #5F5F87");
     }
 
     @Test
@@ -109,7 +115,7 @@ class PaletteDowngradeTest {
     void nearestReturnsAnIndexedColorOfTheCappedPalette() {
         assertEquals(Color.indexed(237), PaletteDowngrade.nearest(Color.hex("#3C3F41")),
                 "the Darcula panel maps to the indexed color the stylesheet carries");
-        assertEquals(Color.indexed(173), PaletteDowngrade.nearest(Color.hex("#CC7832")));
+        assertEquals(Color.indexed(172), PaletteDowngrade.nearest(Color.hex("#CC7832")));
     }
 
     private static void assertPinned(ShellThemes themes, String theme, Map<String, Integer> pinned) {
