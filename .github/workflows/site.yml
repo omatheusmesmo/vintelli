@@ -59,6 +59,12 @@ jobs:
       - name: Capture the TUI screens
         run: bash site/capture/capture.sh vintelli-app/target/quarkus-app/quarkus-run.jar
 
+      - name: Build the capture font
+        run: |
+          python3 -m venv "$RUNNER_TEMP/site-fonts"
+          "$RUNNER_TEMP/site-fonts/bin/pip" install --quiet --no-deps --require-hashes -r site/fonts/requirements.txt
+          PYTHON="$RUNNER_TEMP/site-fonts/bin/python" bash site/fonts/build_fonts.sh
+
       - name: Check captures, placeholders and spike links
         run: bash site/check.sh
 

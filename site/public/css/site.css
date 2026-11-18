@@ -1,3 +1,24 @@
+/*
+ * The capture font: JetBrains Mono NL Nerd Font Mono (SIL OFL 1.1, see
+ * fonts/OFL.txt), subset at build time to the characters the captures use.
+ * Its cell is 0.6em wide and 1.32em tall, so block and box glyphs meet.
+ */
+@font-face {
+  font-display: swap;
+  font-family: "Vintelli Mono";
+  font-style: normal;
+  font-weight: 400;
+  src: url("../fonts/vintelli-mono-regular.woff") format("woff");
+}
+
+@font-face {
+  font-display: swap;
+  font-family: "Vintelli Mono";
+  font-style: normal;
+  font-weight: 700;
+  src: url("../fonts/vintelli-mono-bold.woff") format("woff");
+}
+
 :root {
   --bg: #16171a;
   --bg-raised: #1e1f22;
@@ -307,17 +328,26 @@ th {
 /*
  * A capture is 160 cells wide. The font size follows the frame width so the
  * whole screen always fits, like a screenshot, instead of scrolling sideways.
- * 0.6 is the advance of one cell in em for the monospace stacks above.
+ * 0.6 is the advance of one cell of the capture font, in em.
  */
 .vintelli-capture {
-  font-family: var(--mono);
+  font-family: "Vintelli Mono", var(--mono);
   font-size: min(13px, calc(100cqw / 160 / 0.6));
   font-variant-ligatures: none;
-  line-height: 1.18;
+  line-height: 1.32;
   margin: 0;
   overflow: hidden;
   padding: 0;
   white-space: pre;
+}
+
+/*
+ * An inline background covers the glyph box, not the line box, and a font
+ * size in fractions of a pixel leaves a sub-pixel seam between some rows.
+ * One pixel of padding lets each row's background cover the seam above it.
+ */
+.vintelli-capture span {
+  padding: 1px 0;
 }
 
 /* Home */

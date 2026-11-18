@@ -80,7 +80,7 @@ press() {
 start_tui() {
   tmux_site kill-server 2>/dev/null || true
   tmux_site -f /dev/null new-session -d -s "$SESSION" -x "$COLUMNS" -y "$ROWS" -c "$WORK/repo" \
-    "env TERM=xterm-256color COLORTERM=truecolor VINTELLI_TUI_MARQUEE=false java -Dvintelli.tui.theme=$1 -jar '$JAR' --tui"
+    "env TERM=xterm-256color COLORTERM=truecolor VINTELLI_TUI_MARQUEE=false java -Dvintelli.tui.theme=$1 -Dvintelli.icons=nerd -jar '$JAR' --tui"
   tmux_site set-option -g remain-on-exit on
 }
 
