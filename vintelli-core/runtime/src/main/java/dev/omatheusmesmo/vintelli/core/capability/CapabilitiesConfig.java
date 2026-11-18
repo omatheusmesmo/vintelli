@@ -45,6 +45,11 @@ public interface CapabilitiesConfig {
     Order codeAction();
 
     /**
+     * Ranking of the code completion capability providers.
+     */
+    Order completion();
+
+    /**
      * Ranking of Java debug session providers.
      */
     Order debug();

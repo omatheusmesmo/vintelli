@@ -19,6 +19,7 @@ import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
 import dev.omatheusmesmo.vintelli.tui.icons.JavaTypeKind;
 import dev.omatheusmesmo.vintelli.tui.icons.JavaTypeKinds;
 import dev.omatheusmesmo.vintelli.tui.keymap.ConfigDirectory;
+import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeymapProfile;
 import dev.tamboui.buffer.Buffer;
@@ -99,6 +100,7 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     private JavaTypeKinds javaKinds;
     private final EditorClipboard clipboard;
     private Supplier<Keymap> keymap;
+    private CompletionController completion;
 
     @Inject
     public BuiltinEditor(@ConfigProperty(name = "vintelli.local.project-root") Optional<String> configuredRoot,
@@ -836,6 +838,65 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
         return result;
     }
 
+    /**
+     * The text and caret of the active document, the state a completion request is made for. Empty when no
+     * file is open.
+     */
+    public synchronized Optional<CompletionSite> completionSite() {
+        EditorDocument document = document();
+        if (document == null) {
+            return Optional.empty();
+        }
+        return Optional.of(new CompletionSite(document.file(), document.text(), document.row(), document.column()));
+    }
+
+    /**
+     * Replaces a range of the document a completion was asked for with the inserted text, as one undoable step
+     * that marks the document dirty, and puts the caret into the inserted text.
+     *
+     * @return the reason the insert was refused, empty when it was applied
+     */
+    public synchronized Optional<String> applyCompletion(Path file, int startRow, int startColumn, int endRow,
+            int endColumn, String text, int caretOffset) {
+        EditorDocument document = document();
+        if (document == null) {
+            return Optional.of("no file is open");
+        }
+        if (!document.file().equals(file)) {
+            return Optional.of("the active file changed since the completion was asked for");
+        }
+        if (!inside(document, startRow, startColumn) || !inside(document, endRow, endColumn)
+                || startRow > endRow || (startRow == endRow && startColumn > endColumn)) {
+            return Optional.of("the completion range is outside the document");
+        }
+        document.replaceRange(startRow, startColumn, endRow, endColumn, text, caretOffset);
+        changed();
+        return Optional.empty();
+    }
+
+    private static boolean inside(EditorDocument document, int row, int column) {
+        return row >= 0 && row < document.lineCount() && column >= 0
+                && column <= document.text().split("\n", -1)[row].length();
+    }
+
+    /**
+     * Connects the completion popup of the shell. While the popup is open the editor leaves its navigation keys to
+     * the shell, and every change of the text reaches the popup so it can narrow or close.
+     */
+    public synchronized void attachCompletion(CompletionController controller) {
+        completion = controller;
+    }
+
+    synchronized boolean completionTakesKey(KeyEvent key) {
+        return completion != null && (completion.takesKey(key) || keymap().matches(key, KeyActions.COMPLETION));
+    }
+
+    synchronized void completionKeyHandled(KeyEvent key) {
+        if (completion != null) {
+            completion.afterEditorKey(key);
+        }
+    }
+
     public synchronized Optional<Rect> caretCell() {
         return element.caretCell();
     }
@@ -884,6 +945,9 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     }
 
     synchronized void changed() {
+        if (completion != null) {
+            completion.refresh();
+        }
         EditorDocument document = document();
         if (document != null) {
             Map<Integer, DebugCapability.SourceBreakpoint> source = breakpoints.get(document.file());

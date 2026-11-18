@@ -42,6 +42,7 @@ Key actions in the `intellij` profile:
 | `editor_copy`, `editor_cut`, `editor_paste` | `Ctrl+C` (copy, only with a selection), `Ctrl+X`, `Ctrl+V` | `Ctrl+C`, `Ctrl+X`, `Ctrl+V` |
 | `editor_selectAll` (Select All), Shift+arrows | `Ctrl+A` (`Ctrl+E` in the `vim` profile); `Shift` with the arrows, Home, End, PageUp and PageDown extend the selection | `Ctrl+A`, `Shift+arrows` |
 | `editor_quickFix` | `Alt+Enter` | `Alt+Enter` |
+| `editor_completion` | `Ctrl+Space` (`Ctrl+@` too) | `Ctrl+Space` |
 
 The command palette lists every action with its active chord and, when the
 IntelliJ chord differs and a terminal can send it, that chord too; it filters by
@@ -51,6 +52,20 @@ own column. Both stay reachable while an input has focus. Bare
 `q` and `Q` no longer quit in any profile (text input stays safe); `j/k`
 are reserved for the `vim` profile and the registry never assigns them as
 tool window shortcuts.
+
+### Code completion
+
+`Ctrl+Space` (and `Ctrl+@`, the same key in terminals that send it as `@`)
+asks the language server for the completions at the caret and opens a popup.
+A dot typed behind an identifier in a `.java` file opens it on its own. The
+server receives the buffer first, unsaved edits included. While the popup is
+open, typing narrows the list by the identifier before the caret: names that
+start with the typed text come first, then camel-hump matches such as `gNa`
+for `getName`. Backspace widens the list again, `Enter` or `Tab` inserts the
+selected item, `Escape` closes the popup, and the arrow and page keys move the
+selection. A click on a row inserts it. The popup closes when nothing matches
+or when the caret leaves the completed text. A server that cannot answer says
+why in the popup, and the editor keeps working. One undo step reverts an insert.
 
 ### Copy, cut and paste
 
@@ -446,6 +461,7 @@ adding it to that test on purpose.
 | editor_nextProblem | F2 | F2 | same | Next Highlighted Error; the bare F2 trigger refuses Shift, and F8 is left unbound (docs/keymap.md) |
 | editor_previousProblem | Shift+F2 | Shift+F2 | same | Previous Highlighted Error on its own Shift+F2 trigger (docs/keymap.md) |
 | editor_quickFix | Alt+Enter | Alt+Enter | same | Quick fixes from the language server for the selection or caret, offered in a popup (docs/keymap.md) |
+| editor_completion | Ctrl+Space \| Ctrl+@ | Ctrl+Space | same | Code completion from the language server at the caret, offered in a popup; Ctrl+@ is the NUL spelling of the same key that some terminals send (docs/keymap.md) |
 | moveWordLeft | Ctrl+Left | Ctrl+Left | same | Move Caret to Previous Word; the editor text area takes it under the Kitty keyboard protocol |
 | moveWordRight | Ctrl+Right | Ctrl+Right | same | Move Caret to Next Word; the editor text area takes it under the Kitty keyboard protocol |
 | deleteWordBackward | Ctrl+Backspace | - | vintelli-only | Deletes the word before the caret in the editor under the Kitty keyboard protocol; no IntelliJ chord is confirmed on the reference page for this action |

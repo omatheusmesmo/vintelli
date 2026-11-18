@@ -453,6 +453,7 @@ final class EditorElement implements Element {
             if (editor.answersCloseConfirmation(event)) {
                 return EventResult.UNHANDLED;
             }
+            if (editor.completionTakesKey(event)) { return EventResult.UNHANDLED; }
             if (editor.menuNavigationActive() || editor.overlayInputActive()) { return EventResult.UNHANDLED; }
             if (reserved(event)) { return EventResult.UNHANDLED; }
             EditorDocument document = editor.document();
@@ -497,7 +498,10 @@ final class EditorElement implements Element {
             if (rowBefore != document.row() || columnBefore != document.column()) {
                 document.dropPointerSelection();
             }
-            if (handled) { editor.changed(); }
+            if (handled) {
+                editor.changed();
+                editor.completionKeyHandled(event);
+            }
             return handled ? EventResult.HANDLED : EventResult.UNHANDLED;
         }
     }

@@ -22,7 +22,7 @@ import io.restassured.RestAssured;
  * served by the beans of {@code vintelli-local}, the LSP capabilities
  * (diagnostics and call hierarchy) stay explicitly unavailable until a language
  * server profile is configured, and the built-in editor bridge remains
- * available. Code action and Java debug are also listed as unavailable without
+ * available. Code action, Java debug and completion are also listed as unavailable without
  * their configured providers. Under {@code -Dnative} the same assertions run
  * against the native runner, so these providers also survive AOT.
  */
@@ -53,17 +53,17 @@ class CapabilitiesResourceIT {
                 .when().get(capabilities)
                 .then()
                 .statusCode(200)
-                .body("", hasSize(9))
+                .body("", hasSize(10))
                 .body("providerIdentifier", contains("local", "local", "local", null, null, "builtin", "local", null,
-                        null))
+                        null, null))
                 .body("provenance", contains(
                         "local process runner via mvn", "local shell process",
                         "local filesystem, confined to the project root", null, null,
                         "built-in TamboUI TextArea editor", "JGit, repository discovered from the project root",
-                        null, null))
+                        null, null, null))
                 .body("health.state", contains(
                         "AVAILABLE", "AVAILABLE", "AVAILABLE", "UNAVAILABLE", "UNAVAILABLE", "AVAILABLE",
-                        "AVAILABLE", "UNAVAILABLE", "UNAVAILABLE"))
+                        "AVAILABLE", "UNAVAILABLE", "UNAVAILABLE", "UNAVAILABLE"))
                 .body("health.reason", contains(
                         nullValue(), nullValue(), nullValue(),
                         containsString("no healthy provider for 'diagnostics': idea"),
@@ -71,9 +71,11 @@ class CapabilitiesResourceIT {
                         nullValue(),
                         nullValue(),
                         containsString("no healthy provider for 'code-action': lsp"),
-                        containsString("no healthy provider for 'debug': java-dap")))
+                        containsString("no healthy provider for 'debug': java-dap"),
+                        containsString("no healthy provider for 'completion': lsp")))
                 .body("capability", hasItem("VERSION_CONTROL"))
                 .body("capability", hasItem("CODE_ACTION"))
-                .body("capability", hasItem("DEBUG"));
+                .body("capability", hasItem("DEBUG"))
+                .body("capability", hasItem("COMPLETION"));
     }
 }
