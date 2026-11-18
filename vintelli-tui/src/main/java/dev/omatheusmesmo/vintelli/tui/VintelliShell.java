@@ -292,7 +292,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         this.quickFix = new QuickFixController(capabilityRegistry, editor, this::deliverToRenderThread,
                 message -> status = message);
         this.quickFixOverlay = new QuickFixOverlay(quickFix);
-        this.completion = new CompletionController(capabilityRegistry, editor, this::deliverToRenderThread);
+        this.completion = new CompletionController(capabilityRegistry, editor, this::deliverToRenderThread,
+                message -> status = message);
         this.completionOverlay = new CompletionOverlay(completion);
         if (editor != null) {
             editor.attachCompletion(completion);

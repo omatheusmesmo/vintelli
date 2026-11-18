@@ -23,6 +23,8 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
@@ -43,6 +45,10 @@ class BuiltinEditorCompletionTest {
     private static final Suggestion LENGTH = new Suggestion("length", Kind.METHOD, "int",
             new Replacement(2, 13, 2, 13, "length()"), null, false, null, "0001");
     private static final String BLANK_LINE_TEXT = "class Demo {\n    void m() {\n        \n    }\n}\n";
+    private static final String IMPORT_TEXT = importText("Ar");
+    private static final Replacement ARRAY_LIST_IMPORT = new Replacement(1, 0, 1, 0, "import java.util.ArrayList;\n");
+    private static final Replacement LINKED_LIST_IMPORT = new Replacement(1, 0, 1, 0,
+            "import java.util.LinkedList;\n");
 
     @TempDir
     Path project;
@@ -210,6 +216,132 @@ class BuiltinEditorCompletionTest {
         assertFalse(session.controller.isOpen());
     }
 
+    private static String importText(String typed) {
+        return "package demo;\n\nclass Demo {\n    void m() {\n        " + typed + "\n    }\n}\n";
+    }
+
+    @Test
+    void anImportInTheAdditionalEditsGoesInWithTheNameAsOneUndoStep() throws Exception {
+        Path file = write("Import.java", IMPORT_TEXT);
+        Suggestion arrayList = new Suggestion("ArrayList", Kind.CLASS, "java.util", null, null, false, null, null,
+                List.of(ARRAY_LIST_IMPORT), null);
+        Session session = new Session(file, 4, (call, content) -> CapabilityResult.ok(List.of(arrayList)));
+        session.editor.document().position(4, 10);
+        session.controller.openAtCaret();
+        session.answer();
+
+        assertEquals(Optional.of("Completion inserted: ArrayList"),
+                session.controller.press(KeyEvent.ofKey(KeyCode.ENTER)));
+        assertEquals("import java.util.ArrayList;", session.line(1));
+        assertEquals("        ArrayList", session.line(5));
+        assertEquals(5, session.editor.document().row(), "the caret stays on the name below the new import line");
+        assertEquals(8 + "ArrayList".length(), session.editor.document().column(), "the caret ends after the name");
+        assertTrue(session.editor.activeDocument().orElseThrow().dirty());
+
+        assertTrue(session.editor.undo());
+        assertEquals(IMPORT_TEXT, session.editor.document().text());
+        assertFalse(session.editor.undo(), "the name and its import are one undo step");
+    }
+
+    @Test
+    void severalAdditionalEditsAboveTheNameAllApplyAndTheCaretFollowsTheName() throws Exception {
+        Path file = write("Several.java", IMPORT_TEXT);
+        Suggestion arrayList = new Suggestion("ArrayList", Kind.CLASS, "java.util", null, null, false, null, null,
+                List.of(ARRAY_LIST_IMPORT, new Replacement(2, 0, 2, 0, "import java.util.LinkedList;\n")), null);
+        Session session = new Session(file, 4, (call, content) -> CapabilityResult.ok(List.of(arrayList)));
+        session.editor.document().position(4, 10);
+        session.controller.openAtCaret();
+        session.answer();
+
+        session.controller.press(KeyEvent.ofKey(KeyCode.ENTER));
+
+        assertEquals("import java.util.ArrayList;", session.line(1));
+        assertEquals("import java.util.LinkedList;", session.line(3));
+        assertEquals("        ArrayList", session.line(6));
+        assertEquals(6, session.editor.document().row(), "the caret follows the name past both new lines");
+        assertEquals(8 + "ArrayList".length(), session.editor.document().column());
+        assertTrue(session.editor.undo());
+        assertEquals(IMPORT_TEXT, session.editor.document().text());
+        assertFalse(session.editor.undo());
+    }
+
+    @Test
+    void anImportOnlyResolvedOnInsertGoesInWhenTheResolveAnswers() throws Exception {
+        Path file = write("Resolved.java", importText("Li"));
+        Suggestion linkedList = new Suggestion("LinkedList", Kind.CLASS, "java.util", null, null, false, null, null,
+                List.of(), "linked");
+        List<String> resolved = new ArrayList<>();
+        Session session = new Session(file, 4, (call, content) -> CapabilityResult.ok(List.of(linkedList)),
+                (token, timeout) -> {
+                    resolved.add(token);
+                    return CapabilityResult.ok(List.of(LINKED_LIST_IMPORT));
+                });
+        session.editor.document().position(4, 10);
+        session.controller.openAtCaret();
+        session.answer();
+
+        assertEquals(Optional.of("Resolving the import of LinkedList..."),
+                session.controller.press(KeyEvent.ofKey(KeyCode.ENTER)));
+        assertEquals("        Li", session.line(4), "the name waits for the import");
+        session.answer();
+
+        assertEquals(List.of("Completion inserted with its import: LinkedList"), session.statuses);
+        assertEquals(List.of("linked"), resolved);
+        assertEquals("import java.util.LinkedList;", session.line(1));
+        assertEquals("        LinkedList", session.line(5));
+        assertTrue(session.editor.undo());
+        assertEquals(importText("Li"), session.editor.document().text());
+        assertFalse(session.editor.undo());
+    }
+
+    @Test
+    void aResolveThatTimesOutInsertsTheNameWithoutTheImportAndSaysSo() throws Exception {
+        Path file = write("Timeout.java", importText("Ha"));
+        Suggestion hanging = new Suggestion("HangingList", Kind.CLASS, "java.util", null, null, false, null, null,
+                List.of(), "hang");
+        Session session = new Session(file, 4, (call, content) -> CapabilityResult.ok(List.of(hanging)),
+                (token, timeout) -> CapabilityResult.failed(new CapabilityFailure("timeout",
+                        "the language server did not answer completionItem/resolve within 1000 ms")));
+        session.editor.document().position(4, 10);
+        session.controller.openAtCaret();
+        session.answer();
+
+        assertEquals(Optional.of("Resolving the import of HangingList..."),
+                session.controller.press(KeyEvent.ofKey(KeyCode.ENTER)));
+        session.answer();
+
+        assertEquals(List.of("Inserted without the import: the language server did not answer"
+                + " completionItem/resolve within 1000 ms"), session.statuses);
+        assertEquals("        HangingList", session.line(4));
+        assertFalse(session.editor.document().text().contains("import"), "no import is added");
+    }
+
+    @Test
+    void anAnswerThatArrivesAfterTheTextChangedDropsTheInsert() throws Exception {
+        Path file = write("Late.java", importText("Li"));
+        CountDownLatch release = new CountDownLatch(1);
+        Suggestion linkedList = new Suggestion("LinkedList", Kind.CLASS, "java.util", null, null, false, null, null,
+                List.of(), "linked");
+        Session session = new Session(file, 4, (call, content) -> CapabilityResult.ok(List.of(linkedList)),
+                (token, timeout) -> {
+                    await(release);
+                    return CapabilityResult.ok(List.of(LINKED_LIST_IMPORT));
+                });
+        session.editor.document().position(4, 10);
+        session.controller.openAtCaret();
+        session.answer();
+        session.controller.press(KeyEvent.ofKey(KeyCode.ENTER));
+
+        session.type('x');
+        release.countDown();
+        session.answer();
+
+        assertEquals(List.of("Completion dropped: the text changed while its import was resolved"),
+                session.statuses);
+        assertEquals("        Lix", session.line(4));
+        assertFalse(session.editor.document().text().contains("import"));
+    }
+
     private Path write(String name, String contents) throws IOException {
         Path file = project.resolve(name);
         Files.writeString(file, contents);
@@ -243,17 +375,24 @@ class BuiltinEditorCompletionTest {
         private final CompletionFixtures.Provider provider;
         private final CompletionController controller;
         private final BlockingQueue<Runnable> deliveries = new LinkedBlockingQueue<>();
+        private final List<String> statuses = new ArrayList<>();
 
         Session(Path file, int row, BiFunction<Integer, String, CapabilityResult<List<Suggestion>>> answer) {
+            this(file, row, answer, (token, timeout) -> CapabilityResult.failed(
+                    new CapabilityFailure("unavailable", "this session cannot resolve suggestions")));
+        }
+
+        Session(Path file, int row, BiFunction<Integer, String, CapabilityResult<List<Suggestion>>> answer,
+                BiFunction<String, Duration, CapabilityResult<List<Replacement>>> resolver) {
             ShellThemes themes = new ShellThemes("dark", (Path) null);
             editor = new BuiltinEditor(project, null, themes::editorPalette);
             editor.open(new OpenRequest(file, row));
-            provider = new CompletionFixtures.Provider(answer);
+            provider = new CompletionFixtures.Provider(answer, resolver);
             CapabilityRegistry registry = answer == null
                     ? CompletionFixtures.registryWith(CapabilitySelection.unavailable(CapabilityType.COMPLETION,
                             "No completion provider is installed"))
                     : CompletionFixtures.registryWith(CapabilitySelection.selected(CapabilityType.COMPLETION, provider));
-            controller = new CompletionController(registry, editor, deliveries::add);
+            controller = new CompletionController(registry, editor, deliveries::add, statuses::add);
         }
 
         void answer() throws InterruptedException {

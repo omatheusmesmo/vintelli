@@ -281,8 +281,7 @@ public final class LspClient implements AutoCloseable, JavaDebugAdapterPort {
      *         reads the file nor opens or replaces the document
      */
     public CapabilityResult<List<CompletionEntry>> completion(Path file, int line, int column) {
-        return serve(requestSelection(),
-                current -> current.completion(LspServerSession.uriFor(file), new Position(line, column)),
+        return serve(requestSelection(), current -> completionAnswer(current, file, line, column),
                 LspClient::completionEntries);
     }
 
@@ -296,8 +295,41 @@ public final class LspClient implements AutoCloseable, JavaDebugAdapterPort {
     public CapabilityResult<List<CompletionEntry>> completion(Path file, String content, int line, int column) {
         return serve(requestSelection(), current -> {
             current.synchronizeDocument(file, content);
-            return current.completion(LspServerSession.uriFor(file), new Position(line, column));
+            return completionAnswer(current, file, line, column);
         }, LspClient::completionEntries);
+    }
+
+    /**
+     * Sends {@code completionItem/resolve} for an item the latest completion answer of this session offered. The
+     * resolve runs on the session that answered; without a live session the item cannot be resolved, and the
+     * call does not start a new server, because the item belongs to the server that sent it.
+     *
+     * @param item the item as the server sent it
+     * @param timeout how long the server may take before the request counts as failed
+     * @return the additional edits of the item, empty when the server sends none
+     */
+    public CapabilityResult<List<CompletionCapability.Replacement>> resolveCompletion(CompletionItem item,
+            Duration timeout) {
+        LspServerSession current = session;
+        if (current == null || !current.isLive()) {
+            return CapabilityResult.failed(new CapabilityFailure("dropped",
+                    "the language server ended before the suggestion could be resolved"));
+        }
+        try {
+            CompletionItem resolved = current.resolveCompletion(item, timeout);
+            return CapabilityResult.ok(additionalEditsOf(resolved.getAdditionalTextEdits()));
+        } catch (TimeoutException late) {
+            return CapabilityResult.failed(new CapabilityFailure("timeout", "the language server of profile '"
+                    + current.profileName() + "' did not answer completionItem/resolve within "
+                    + timeout.toMillis() + " ms"));
+        } catch (ExecutionException | InterruptedException | RuntimeException failure) {
+            if (failure instanceof InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+            return CapabilityResult.failed(new CapabilityFailure("unavailable", "the language server of profile '"
+                    + current.profileName() + "' refused completionItem/resolve: "
+                    + LspServerSession.failureDetail(failure)));
+        }
     }
 
     /**
@@ -623,14 +655,23 @@ public final class LspClient implements AutoCloseable, JavaDebugAdapterPort {
                 range == null ? 0 : range.getEnd().getCharacter());
     }
 
-    private static List<CompletionEntry> completionEntries(
-            Either<List<CompletionItem>, CompletionList> completion) {
+    private record CompletionAnswer(Either<List<CompletionItem>, CompletionList> items, boolean resolvable) {
+    }
+
+    private static CompletionAnswer completionAnswer(LspServerSession current, Path file, int line, int column)
+            throws ExecutionException, InterruptedException, TimeoutException {
+        return new CompletionAnswer(current.completion(LspServerSession.uriFor(file), new Position(line, column)),
+                current.completionResolveAdvertised());
+    }
+
+    private static List<CompletionEntry> completionEntries(CompletionAnswer answer) {
+        Either<List<CompletionItem>, CompletionList> completion = answer.items();
         List<CompletionItem> items = completion.isLeft() ? completion.getLeft() : completion.getRight().getItems();
         if (items == null) {
             return List.of();
         }
         return items.stream()
-                .map(LspClient::completionEntryOf)
+                .map(item -> completionEntryOf(item, answer.resolvable()))
                 .sorted(Comparator.comparing(LspClient::completionSortKey))
                 .toList();
     }
@@ -639,11 +680,22 @@ public final class LspClient implements AutoCloseable, JavaDebugAdapterPort {
         return entry.sortText() == null ? entry.label() : entry.sortText();
     }
 
-    private static CompletionEntry completionEntryOf(CompletionItem item) {
+    private static CompletionEntry completionEntryOf(CompletionItem item, boolean resolvable) {
+        List<CompletionCapability.Replacement> additionalEdits = additionalEditsOf(item.getAdditionalTextEdits());
         return new CompletionEntry(item.getLabel(), completionKindOf(item.getKind()), item.getDetail(),
                 completionReplacementOf(item.getTextEdit()), item.getInsertText(),
                 InsertTextFormat.Snippet.equals(item.getInsertTextFormat()), item.getFilterText(),
-                item.getSortText());
+                item.getSortText(), additionalEdits, resolvable && additionalEdits.isEmpty() ? item : null);
+    }
+
+    private static List<CompletionCapability.Replacement> additionalEditsOf(List<TextEdit> edits) {
+        if (edits == null) {
+            return List.of();
+        }
+        return edits.stream()
+                .map(edit -> replacementOf(edit.getRange(), edit.getNewText()))
+                .filter(Objects::nonNull)
+                .toList();
     }
 
     private static CompletionCapability.Kind completionKindOf(CompletionItemKind kind) {

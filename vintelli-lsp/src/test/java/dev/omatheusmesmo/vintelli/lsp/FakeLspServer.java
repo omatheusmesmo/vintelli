@@ -108,7 +108,8 @@ public final class FakeLspServer {
      * {@code --publish-real-path} publishes the diagnostics under the real path
      * of the document, as jdt.ls does when the workspace goes through a link.
      * {@code --deprecated-tag} tags the diagnostic published on open with the
-     * {@code Deprecated} tag.
+     * {@code Deprecated} tag. {@code --resolve-provider} advertises
+     * {@code completionItem/resolve} for the completions.
      */
     public static void main(String[] args) throws Exception {
         if (List.of(args).contains("--hold")) {
@@ -203,7 +204,9 @@ public final class FakeLspServer {
             capabilities.setHoverProvider(true);
             capabilities.setDefinitionProvider(true);
             capabilities.setReferencesProvider(true);
-            capabilities.setCompletionProvider(new CompletionOptions());
+            CompletionOptions completion = new CompletionOptions();
+            completion.setResolveProvider(arguments.contains("--resolve-provider"));
+            capabilities.setCompletionProvider(completion);
             capabilities.setCallHierarchyProvider(true);
             capabilities.setDocumentSymbolProvider(true);
             capabilities.setCodeActionProvider(true);
@@ -305,6 +308,9 @@ public final class FakeLspServer {
 
     public static final int RICH_COMPLETION_LINE = 1;
     public static final int BUFFER_COMPLETION_LINE = 2;
+    public static final int IMPORT_COMPLETION_LINE = 3;
+    static final String RESOLVED_IMPORT = "import java.util.LinkedList;\n";
+    static final String HANGING_DATA = "hang.";
     public static final String UNSAVED_MARKER = "unsaved-marker";
 
     static final class FakeTextDocumentService implements TextDocumentService {
@@ -385,9 +391,48 @@ public final class FakeLspServer {
                 return CompletableFuture.completedFuture(Either.forLeft(List.of(
                         new CompletionItem("buffer_" + source))));
             }
+            if (line == IMPORT_COMPLETION_LINE) {
+                return CompletableFuture.completedFuture(Either.forLeft(importCompletions()));
+            }
             return CompletableFuture.completedFuture(Either.forLeft(List.of(
                     new CompletionItem("fake_completion_" + server.marker()),
                     new CompletionItem("fake_second"))));
+        }
+
+        /**
+         * {@code ArrayList} carries its import in the item, {@code LinkedList} gets it only from
+         * {@code completionItem/resolve} (its data names the type), and {@code HangingList} is resolved by a
+         * server that never answers.
+         */
+        private static List<CompletionItem> importCompletions() {
+            CompletionItem arrayList = new CompletionItem("ArrayList");
+            arrayList.setKind(CompletionItemKind.Class);
+            arrayList.setDetail("java.util");
+            arrayList.setAdditionalTextEdits(List.of(importEdit("import java.util.ArrayList;\n")));
+            CompletionItem linkedList = new CompletionItem("LinkedList");
+            linkedList.setKind(CompletionItemKind.Class);
+            linkedList.setData("java.util.LinkedList");
+            CompletionItem hanging = new CompletionItem("HangingList");
+            hanging.setKind(CompletionItemKind.Class);
+            hanging.setData(HANGING_DATA + "HangingList");
+            return List.of(arrayList, linkedList, hanging);
+        }
+
+        private static TextEdit importEdit(String text) {
+            return new TextEdit(new Range(new Position(0, 0), new Position(0, 0)), text);
+        }
+
+        @Override
+        public CompletableFuture<CompletionItem> resolveCompletionItem(CompletionItem unresolved) {
+            server.trace("completionItem/resolve");
+            String data = String.valueOf(unresolved.getData());
+            if (data.contains(HANGING_DATA)) {
+                return new CompletableFuture<>();
+            }
+            if (data.contains("java.util.LinkedList")) {
+                unresolved.setAdditionalTextEdits(List.of(importEdit(RESOLVED_IMPORT)));
+            }
+            return CompletableFuture.completedFuture(unresolved);
         }
 
         private static List<CompletionItem> richCompletions() {

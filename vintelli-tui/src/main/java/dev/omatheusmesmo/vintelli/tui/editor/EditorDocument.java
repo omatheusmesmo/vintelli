@@ -1,5 +1,6 @@
 package dev.omatheusmesmo.vintelli.tui.editor;
 
+import dev.omatheusmesmo.vintelli.api.capability.CompletionCapability.Replacement;
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Diagnostic;
 import dev.tamboui.widgets.input.TextAreaState;
@@ -15,6 +16,7 @@ import java.util.Set;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
@@ -271,16 +273,24 @@ public final class EditorDocument {
     }
 
     /**
-     * Replaces the text between two document positions as one undoable step and puts the caret
-     * {@code caretOffset} characters into the replacement. The positions are document rows and columns.
+     * Replaces the ranges of {@code edit} and of the {@code additional} edits as one undoable step. The edits are
+     * applied from the bottom of the text up, so each range still names the text it named before. The caret goes
+     * {@code caretOffset} characters into the replacement of {@code edit}, shifted by the lines the additional
+     * edits added above it. The ranges must not overlap; the caller checks that.
      */
-    void replaceRange(int startRow, int startColumn, int endRow, int endColumn, String replacement, int caretOffset) {
+    void replaceRanges(Replacement edit, List<Replacement> additional, int caretOffset) {
         mutate(() -> {
-            int start = offsetOf(startRow, startColumn);
-            int end = offsetOf(endRow, endColumn);
-            String text = state.text();
-            String updated = text.substring(0, start) + replacement + text.substring(end);
-            int caret = start + caretOffset;
+            Span main = spanOf(edit);
+            List<Span> others = additional.stream().map(this::spanOf).toList();
+            int shift = others.stream().filter(span -> span.end() <= main.start()).mapToInt(Span::delta).sum();
+            int caret = main.start() + shift + caretOffset;
+            List<Span> bottomUp = new ArrayList<>(others);
+            bottomUp.add(main);
+            bottomUp.sort(Comparator.comparingInt(Span::start).reversed());
+            String updated = state.text();
+            for (Span span : bottomUp) {
+                updated = updated.substring(0, span.start()) + span.text() + updated.substring(span.end());
+            }
             int caretRow = (int) updated.substring(0, caret).chars().filter(c -> c == '\n').count();
             int caretColumn = caret - (updated.lastIndexOf('\n', caret - 1) + 1);
             boolean folded = fold != null;
@@ -289,6 +299,19 @@ public final class EditorDocument {
             position(caretRow, caretColumn);
             if (folded) { foldImports(); }
         });
+    }
+
+    private Span spanOf(Replacement change) {
+        return new Span(offsetOf(change.startLine(), change.startColumn()),
+                offsetOf(change.endLine(), change.endColumn()), change.newText());
+    }
+
+    /** A range of the text as offsets into the text it was measured in, with the text that replaces it. */
+    private record Span(int start, int end, String text) {
+
+        int delta() {
+            return text.length() - (end - start);
+        }
     }
 
     /**

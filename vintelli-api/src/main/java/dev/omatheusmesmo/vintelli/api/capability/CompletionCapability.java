@@ -1,6 +1,7 @@
 package dev.omatheusmesmo.vintelli.api.capability;
 
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 
@@ -25,6 +26,21 @@ public interface CompletionCapability extends ProviderDescriptor {
     CapabilityResult<List<Suggestion>> complete(Path file, String content, int line, int column);
 
     /**
+     * Asks for the edits a suggestion needs besides its own insert, such as the import of a type. Only a
+     * suggestion that carries a {@code resolveToken} can be resolved, and the provider answers for the token
+     * it issued in its latest answer; an older or unknown token fails.
+     *
+     * @param token the {@code resolveToken} of a suggestion of the latest answer
+     * @param timeout how long the language services may take before the request counts as failed
+     * @return the edits to apply with the insert, empty when the suggestion needs none, or a failed result when
+     *         the answer is late, unknown or does not arrive in time
+     */
+    default CapabilityResult<List<Replacement>> resolve(String token, Duration timeout) {
+        return CapabilityResult.failed(new CapabilityFailure("unavailable",
+                "this completion provider cannot resolve suggestions"));
+    }
+
+    /**
      * What a suggestion stands for, as the language server classifies it.
      */
     enum Kind {
@@ -46,14 +62,25 @@ public interface CompletionCapability extends ProviderDescriptor {
      * @param snippet whether the inserted text uses snippet syntax such as {@code $1} or {@code ${1:name}}
      * @param filterText text the typed prefix is matched against, or null
      * @param sortText ordering key the server sent, or null
+     * @param additionalEdits edits the server sends with the suggestion, such as the import of its type; they
+     *        are applied with the insert as one step, and empty when there are none
+     * @param resolveToken handle to ask {@link #resolve(String, Duration)} for the edits, or null when the
+     *        suggestion has no additional edits and the provider cannot resolve it
      */
     record Suggestion(String label, Kind kind, String detail, Replacement textEdit, String insertText,
-            boolean snippet, String filterText, String sortText) {
+            boolean snippet, String filterText, String sortText, List<Replacement> additionalEdits,
+            String resolveToken) {
 
         public Suggestion {
             Objects.requireNonNull(label, "label");
             kind = kind == null ? Kind.UNKNOWN : kind;
             detail = detail == null ? "" : detail;
+            additionalEdits = additionalEdits == null ? List.of() : List.copyOf(additionalEdits);
+        }
+
+        public Suggestion(String label, Kind kind, String detail, Replacement textEdit, String insertText,
+                boolean snippet, String filterText, String sortText) {
+            this(label, kind, detail, textEdit, insertText, snippet, filterText, sortText, List.of(), null);
         }
     }
 

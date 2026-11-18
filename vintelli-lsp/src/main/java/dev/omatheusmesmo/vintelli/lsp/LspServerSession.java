@@ -48,6 +48,7 @@ import org.eclipse.lsp4j.Command;
 import org.eclipse.lsp4j.CompletionCapabilities;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionList;
+import org.eclipse.lsp4j.CompletionOptions;
 import org.eclipse.lsp4j.CompletionParams;
 import org.eclipse.lsp4j.DefinitionCapabilities;
 import org.eclipse.lsp4j.DefinitionParams;
@@ -302,6 +303,18 @@ final class LspServerSession implements AutoCloseable {
         return server.getTextDocumentService()
                 .completion(new CompletionParams(new TextDocumentIdentifier(uri), position))
                 .get(REQUEST_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+    }
+
+    boolean completionResolveAdvertised() {
+        CompletionOptions options = initializeResult.getCapabilities().getCompletionProvider();
+        return options != null && Boolean.TRUE.equals(options.getResolveProvider());
+    }
+
+    CompletionItem resolveCompletion(CompletionItem item, Duration timeout)
+            throws ExecutionException, InterruptedException, TimeoutException {
+        return server.getTextDocumentService()
+                .resolveCompletionItem(item)
+                .get(timeout.toNanos(), TimeUnit.NANOSECONDS);
     }
 
     List<CallHierarchyItem> prepareCallHierarchy(String uri, Position position)
