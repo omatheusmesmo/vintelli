@@ -18,18 +18,6 @@ class AcpAgentGateTest {
     private static final AcpSchema.McpServerSse SSE = new AcpSchema.McpServerSse("docs", "https://example.invalid/sse", List.of());
 
     @Test
-    void acceptsTheProtocolVersionThisClientSpeaks() {
-        assertDoesNotThrow(() -> AcpAgentGate.requireSupportedVersion(initialize(1)));
-    }
-
-    @Test
-    void refusesAHigherOrLowerVersionAndAMissingOne() {
-        assertRefused(() -> AcpAgentGate.requireSupportedVersion(initialize(2)), "version 2");
-        assertRefused(() -> AcpAgentGate.requireSupportedVersion(initialize(0)), "version 0");
-        assertRefused(() -> AcpAgentGate.requireSupportedVersion(initialize(null)), "version null");
-    }
-
-    @Test
     void stdioServersAreAlwaysSent() {
         assertDoesNotThrow(() -> AcpAgentGate.requireMcpServerAdvertised(STDIO, capabilities(false, false)));
     }
@@ -44,10 +32,6 @@ class AcpAgentGateTest {
     void sseServersAreSentOnlyToAgentsAdvertisingSse() {
         assertDoesNotThrow(() -> AcpAgentGate.requireMcpServerAdvertised(SSE, capabilities(false, true)));
         assertRefused(() -> AcpAgentGate.requireMcpServerAdvertised(SSE, capabilities(true, false)), "sse");
-    }
-
-    private static AcpSchema.InitializeResponse initialize(Integer version) {
-        return new AcpSchema.InitializeResponse(version, AcpSchema.AgentCapabilities.builder().build(), List.of());
     }
 
     private static NegotiatedCapabilities capabilities(boolean http, boolean sse) {

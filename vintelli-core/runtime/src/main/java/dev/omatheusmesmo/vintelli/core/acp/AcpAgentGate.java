@@ -4,24 +4,15 @@ import com.agentclientprotocol.sdk.capabilities.NegotiatedCapabilities;
 import com.agentclientprotocol.sdk.spec.AcpSchema;
 
 /**
- * Checks the SDK does not perform on its own (acp-core 0.80.0 accepts any
- * protocol version and sends MCP servers without looking at the agent's
- * capabilities): the agent must answer the protocol version this client speaks,
- * and HTTP or SSE MCP servers are only sent to agents that advertise them.
+ * Checks the SDK does not perform on its own: acp-core sends MCP servers without
+ * looking at the agent's capabilities, so HTTP or SSE MCP servers are only sent
+ * to agents that advertise them. The protocol version is checked by the SDK
+ * itself since acp-core 0.81.0, which refuses any answer other than version 1
+ * with {@code AcpVersionException} and closes the connection.
  */
 public final class AcpAgentGate {
 
-    public static final int SUPPORTED_PROTOCOL_VERSION = 1;
-
     private AcpAgentGate() {
-    }
-
-    public static void requireSupportedVersion(AcpSchema.InitializeResponse response) {
-        Integer agentVersion = response.protocolVersion();
-        if (agentVersion == null || agentVersion != SUPPORTED_PROTOCOL_VERSION) {
-            throw new AcpGateException("agent answered protocol version " + agentVersion
-                    + ", this client speaks only version " + SUPPORTED_PROTOCOL_VERSION);
-        }
     }
 
     public static void requireMcpServerAdvertised(AcpSchema.McpServer server, NegotiatedCapabilities agent) {
