@@ -3,6 +3,7 @@ package dev.omatheusmesmo.vintelli.tui.keymap;
 import dev.omatheusmesmo.vintelli.tui.Keys;
 import dev.omatheusmesmo.vintelli.tui.ToolWindow;
 import dev.tamboui.terminal.KeyboardProtocol;
+import dev.tamboui.tui.bindings.Actions;
 import dev.tamboui.tui.bindings.BindingSets;
 import dev.tamboui.tui.bindings.Bindings;
 import dev.tamboui.tui.bindings.DefaultBindings;
@@ -71,32 +72,32 @@ import static dev.omatheusmesmo.vintelli.tui.keymap.KeyActions.reservedActionIds
  * {@link dev.omatheusmesmo.vintelli.tui.ToolWindow} SPI: they keep working
  * while an input has focus.
  *
- * <p>The shell runs the legacy keyboard protocol ({@link #KEYBOARD_PROTOCOL}),
- * so the Kitty keyboard protocol of TamboUI 0.7 stays off. The profiles drop the
- * chords that TamboUI 0.7 adds to its presets and that only the Kitty protocol
- * could tell apart, see {@link #legacyKeyboardBindings(Bindings)}, and a user
- * file cannot bind a trigger the legacy protocol never sends, see
+ * <p>The keyboard protocol is a {@link KeyboardMode}: {@code auto} by default,
+ * which pushes the Kitty keyboard protocol flags, and {@code legacy} picked with
+ * the {@code vintelli.keyboard.protocol} system property. The keymap is built for
+ * the mode it reports through {@link #keyboardMode()}, and the shell runner is
+ * configured with the same mode, so the two never disagree. Under {@code auto}
+ * the profiles keep the TamboUI keypad aliases, bind the word-wise chords and
+ * the Ctrl+Shift chords the protocol delivers, and a user file may bind keypad
+ * keys and Super, Hyper or Meta chords. Under {@code legacy} the profiles drop
+ * the chords only the Kitty protocol could tell apart, see
+ * {@link #legacyKeyboardBindings(Bindings)}, and a user file cannot bind a
+ * trigger the legacy protocol never sends, see
  * {@link #deliverableInLegacyProtocol(String)}.
  */
 public final class Keymap {
 
-    /**
-     * Keyboard protocol of every TUI runner of the shell. The legacy protocol
-     * keeps the terminal in its default mode, so the key bytes and the chords
-     * stay those of TamboUI 0.6; the Kitty keyboard protocol is a follow-up.
-     */
-    public static final KeyboardProtocol KEYBOARD_PROTOCOL = KeyboardProtocol.LEGACY;
-
     static final String PROFILE_PROPERTY = "vintelli.keymap";
     private static final String USER_KEYMAP_FILE = "vintelli/keymap.properties";
-    private static final Set<String> WORD_WISE_ACTIONS = Set.of("moveWordLeft", "moveWordRight",
-            "deleteWordBackward", "deleteWordForward");
+    private static final Set<String> WORD_WISE_ACTIONS = Set.of(Actions.MOVE_WORD_LEFT, Actions.MOVE_WORD_RIGHT,
+            Actions.DELETE_WORD_BACKWARD, Actions.DELETE_WORD_FORWARD);
     private static final Set<String> UNSENT_MODIFIERS = Set.of("super", "hyper", "meta");
     private static final Pattern UNSENT_FUNCTION_KEY = Pattern.compile("f(1[3-9]|2[0-9]|3[0-5])");
     private static final String KEYPAD_KEY_PREFIX = "keypad_";
     private static final String KEYPAD_CODE_MARK = "KP_";
 
     private final KeymapProfile profile;
+    private final KeyboardMode keyboardMode;
     private final String source;
     private final Bindings bindings;
     private final Bindings reserved;
@@ -111,51 +112,82 @@ public final class Keymap {
     public static Keymap defaultKeymap(List<ToolWindow> toolWindows) {
         return defaultKeymap(toolWindows,
                 System.getProperty(PROFILE_PROPERTY, KeymapProfile.DEFAULT.displayName()),
+                System.getProperty(KeyboardMode.PROPERTY, KeyboardMode.DEFAULT.displayName()),
                 ConfigDirectory.userKeymapFile());
     }
 
     /**
-     * Default keymap with the profile name and the config directory passed in;
+     * Default keymap with the profile name, the keyboard mode name and the config directory passed in;
      * the test seam for the resolution that the running shell does itself.
      */
-    static Keymap defaultKeymap(List<ToolWindow> toolWindows, String profileName, Path configRoot) {
+    static Keymap defaultKeymap(List<ToolWindow> toolWindows, String profileName, String keyboardName,
+            Path configRoot) {
         Path userKeymapFile = configRoot == null
                 ? null
                 : configRoot.resolve("vintelli").resolve("keymap.properties");
-        return load(KeymapProfile.fromName(profileName), toolWindows, userKeymapFile);
+        return load(KeymapProfile.fromName(profileName), KeyboardMode.fromName(keyboardName), toolWindows,
+                userKeymapFile);
     }
 
     /**
-     * Keymap of one profile without user overrides; the test and inspection
+     * Keymap of one profile in the default keyboard mode without user overrides; the test and inspection
      * entry point.
      */
     public static Keymap ofProfile(KeymapProfile profile, List<ToolWindow> toolWindows) {
-        return load(profile, toolWindows, null);
+        return ofProfile(profile, KeyboardMode.DEFAULT, toolWindows);
     }
 
     /**
-     * Keymap of one profile with an optional user keymap file on top.
+     * Keymap of one profile in the given keyboard mode without user overrides.
+     */
+    public static Keymap ofProfile(KeymapProfile profile, KeyboardMode keyboardMode, List<ToolWindow> toolWindows) {
+        return load(profile, keyboardMode, toolWindows, null);
+    }
+
+    /**
+     * Keymap of one profile in the default keyboard mode with an optional user keymap file on top.
      */
     public static Keymap load(KeymapProfile profile, List<ToolWindow> toolWindows, Path userKeymapFile) {
-        Bindings bindings = buildBindings(profile, toolWindows);
+        return load(profile, KeyboardMode.DEFAULT, toolWindows, userKeymapFile);
+    }
+
+    /**
+     * Keymap of one profile in the given keyboard mode with an optional user keymap file on top.
+     */
+    public static Keymap load(KeymapProfile profile, KeyboardMode keyboardMode, List<ToolWindow> toolWindows,
+            Path userKeymapFile) {
+        Bindings bindings = buildBindings(profile, keyboardMode, toolWindows);
         List<KeyAction> catalog = buildCatalog(toolWindows);
         Set<String> reservedIds = reservedActionIds(toolWindows);
         String source = profile.displayName();
         if (userKeymapFile != null && Files.isRegularFile(userKeymapFile)) {
             bindings = overlayUserKeymapFile(userKeymapFile, bindings, knownActionIds(catalog, bindings),
-                    reservedIds);
+                    reservedIds, keyboardMode);
             source = profile.displayName() + " + user file";
         }
-        return new Keymap(profile, source, bindings, buildReservedBindings(bindings, reservedIds), catalog);
+        return new Keymap(profile, keyboardMode, source, bindings, buildReservedBindings(bindings, reservedIds),
+                catalog);
     }
 
-    private Keymap(KeymapProfile profile, String source, Bindings bindings, Bindings reserved,
-            List<KeyAction> actions) {
+    private Keymap(KeymapProfile profile, KeyboardMode keyboardMode, String source, Bindings bindings,
+            Bindings reserved, List<KeyAction> actions) {
         this.profile = profile;
+        this.keyboardMode = keyboardMode;
         this.source = source;
         this.bindings = bindings;
         this.reserved = reserved;
         this.actions = List.copyOf(actions);
+    }
+
+    /**
+     * Binding set of a preset in the given keyboard mode: the legacy strip under {@link KeyboardMode#LEGACY},
+     * the Kitty set under {@link KeyboardMode#AUTO}.
+     */
+    static Bindings keyboardBindings(Bindings tamboui, KeyboardMode keyboardMode) {
+        return switch (keyboardMode) {
+            case LEGACY -> legacyKeyboardBindings(tamboui);
+            case AUTO -> kittyKeyboardBindings(tamboui);
+        };
     }
 
     /**
@@ -173,9 +205,9 @@ public final class Keymap {
         if (tamboui instanceof DefaultBindings defaultBindings) {
             for (String action : defaultBindings.actions()) {
                 List<InputTrigger> triggers = tamboui.triggersFor(action);
-                if (triggers.stream().anyMatch(Keymap::isKeypadAlias)) {
+                if (triggers.stream().anyMatch(Keymap::isKeypadTwin)) {
                     builder.unbind(action);
-                    triggers.stream().filter(trigger -> !isKeypadAlias(trigger))
+                    triggers.stream().filter(trigger -> !isKeypadTwin(trigger))
                             .forEach(trigger -> builder.bind(trigger, action));
                 }
             }
@@ -183,8 +215,31 @@ public final class Keymap {
         return builder.build();
     }
 
-    private static boolean isKeypadAlias(InputTrigger trigger) {
-        return trigger.describe().contains(KEYPAD_CODE_MARK);
+    /**
+     * Word-wise chords of the Kitty keyboard protocol: the preset word actions are replaced, because the
+     * presets also bind Ctrl+w to delete a word, and Ctrl+w is Extend Selection in IntelliJ and Close Tab in
+     * vim. The chords are the ones a Kitty terminal tells apart from their plain keys, and the editor is the
+     * component that consumes them through the TamboUI text area. The keypad aliases stay.
+     */
+    static Bindings kittyKeyboardBindings(Bindings tamboui) {
+        Bindings.Builder builder = tamboui.toBuilder();
+        for (String action : WORD_WISE_ACTIONS) {
+            builder.unbind(action);
+        }
+        builder.bind(KeyTrigger.key(KeyCode.LEFT, true, false, false), Actions.MOVE_WORD_LEFT);
+        builder.bind(KeyTrigger.key(KeyCode.RIGHT, true, false, false), Actions.MOVE_WORD_RIGHT);
+        builder.bind(KeyTrigger.key(KeyCode.BACKSPACE, true, false, false), Actions.DELETE_WORD_BACKWARD);
+        builder.bind(KeyTrigger.key(KeyCode.DELETE, true, false, false), Actions.DELETE_WORD_FORWARD);
+        return builder.build();
+    }
+
+    /**
+     * Whether the trigger is a keypad alias of a TamboUI preset: a keypad key without modifiers, such as
+     * {@code KP_UP} for {@code Keypad_Up}. A chord on a keypad key, such as {@code Ctrl+Shift+KP_ADD}, is a
+     * chord of its own and not an alias.
+     */
+    static boolean isKeypadTwin(InputTrigger trigger) {
+        return trigger.describe().startsWith(KEYPAD_CODE_MARK);
     }
 
     /**
@@ -203,8 +258,9 @@ public final class Keymap {
         return !key.startsWith(KEYPAD_KEY_PREFIX) && !UNSENT_FUNCTION_KEY.matcher(key).matches();
     }
 
-    private static Bindings buildBindings(KeymapProfile profile, List<ToolWindow> toolWindows) {
-        Bindings.Builder builder = profile.navigation().toBuilder();
+    private static Bindings buildBindings(KeymapProfile profile, KeyboardMode keyboardMode,
+            List<ToolWindow> toolWindows) {
+        Bindings.Builder builder = profile.navigation(keyboardMode).toBuilder();
         builder.unbind(QUIT).bind(KeyTrigger.ctrl('c'), QUIT);
         builder.bind(KeyTrigger.ctrl('p'), SEARCH_EVERYWHERE);
         builder.bind(KeyTrigger.key(KeyCode.F1), KEYMAP_HELP);
@@ -222,12 +278,12 @@ public final class Keymap {
         builder.bind(KeyTrigger.alt('p'), KeyActions.PROJECT_HIDE);
         builder.bind(KeyTrigger.key(KeyCode.ENTER), KeyActions.OPEN_FILE);
         builder.bind(KeyTrigger.ctrl('s'), KeyActions.SAVE);
-        builder.bind(KeyTrigger.ctrl('z'), KeyActions.UNDO);
+        bindPlainCtrl(builder, keyboardMode, 'z', KeyActions.UNDO);
         builder.bind(KeyTrigger.ctrl('y'), KeyActions.REDO);
         builder.bind(KeyTrigger.ctrl('x'), KeyActions.CUT);
         builder.bind(KeyTrigger.ctrl('c'), KeyActions.COPY);
         builder.bind(KeyTrigger.ctrl('v'), KeyActions.PASTE);
-        builder.bind(KeyTrigger.ctrl('f'), KeyActions.FIND);
+        bindPlainCtrl(builder, keyboardMode, 'f', KeyActions.FIND);
         builder.bind(KeyTrigger.alt('i'), KeyActions.TOGGLE_IMPORT_FOLD);
         builder.bind(KeyTrigger.ctrl('o'), KeyActions.GO_TO_FILE);
         builder.bind(KeyTrigger.alt('f'), KeyActions.FIND_IN_FILES);
@@ -239,6 +295,9 @@ public final class Keymap {
         builder.bind(KeyTrigger.ctrl('t'), bindingName(KeyActions.SWITCH_THEME));
         builder.bind(KeyTrigger.alt('1'), KeyActions.ACTIVATE_PROJECT);
         bindProfileChords(builder, profile);
+        if (keyboardMode == KeyboardMode.AUTO) {
+            bindCtrlShiftChords(builder, profile);
+        }
         for (ToolWindow toolWindow : toolWindows) {
             String activation = activateToolWindow(toolWindow.id());
             builder.bind(KeyTrigger.alt(toolWindow.shortcut()), activation);
@@ -246,6 +305,37 @@ public final class Keymap {
             toolWindow.extraChord().ifPresent(chord -> builder.bind(chord, activation));
         }
         return builder.build();
+    }
+
+    /**
+     * Binds a plain Ctrl+letter chord. Under {@link KeyboardMode#AUTO} the chord refuses Shift, because the
+     * protocol sends Ctrl+Shift+letter as a distinct chord and that one has its own action (Ctrl+Shift+Z is
+     * Redo, Ctrl+Shift+F is Find in Files), so Ctrl+Shift+letter never runs the plain action.
+     */
+    private static void bindPlainCtrl(Bindings.Builder builder, KeyboardMode keyboardMode, char letter,
+            String action) {
+        KeyTrigger trigger = KeyTrigger.ctrl(letter);
+        builder.bind(keyboardMode == KeyboardMode.AUTO ? new UnshiftedKeyTrigger(trigger) : trigger, action);
+    }
+
+    /**
+     * Ctrl+Shift chords of the {@code intellij} profile, which the Kitty keyboard protocol delivers as chords
+     * of their own. The IntelliJ chords are added on top of the existing fallbacks (Ctrl+O, Alt+F, Ctrl+Y, F4,
+     * Alt+C), so a terminal without the protocol still reaches every action.
+     */
+    private static void bindCtrlShiftChords(Bindings.Builder builder, KeymapProfile profile) {
+        switch (profile) {
+            case INTELLIJ -> {
+                builder.bind(new ShiftedKeyTrigger(KeyTrigger.ctrl('n')), KeyActions.GO_TO_FILE);
+                builder.bind(new ShiftedKeyTrigger(KeyTrigger.ctrl('f')), KeyActions.FIND_IN_FILES);
+                builder.bind(new ShiftedKeyTrigger(KeyTrigger.ctrl('z')), KeyActions.REDO);
+                builder.bind(KeyTrigger.key(KeyCode.KP_ADD, true, false, true), KeyActions.PROJECT_EXPAND_ALL);
+                builder.bind(KeyTrigger.key(KeyCode.KP_SUBTRACT, true, false, true),
+                        KeyActions.PROJECT_COLLAPSE_ALL);
+            }
+            case VIM -> {
+            }
+        }
     }
 
     /**
@@ -318,7 +408,7 @@ public final class Keymap {
     }
 
     private static Bindings overlayUserKeymapFile(Path userKeymapFile, Bindings base, Set<String> knownIds,
-            Set<String> reservedIds) {
+            Set<String> reservedIds, KeyboardMode keyboardMode) {
         byte[] content;
         try {
             content = Files.readAllBytes(userKeymapFile);
@@ -345,7 +435,9 @@ public final class Keymap {
             }
         }
         try {
-            validateLegacyDeliverable(lineNumbers, properties);
+            if (keyboardMode == KeyboardMode.LEGACY) {
+                validateLegacyDeliverable(lineNumbers, properties);
+            }
             Bindings.Builder builder = base.toBuilder();
             for (String action : properties.stringPropertyNames()) {
                 builder.unbind(bindingName(action));
@@ -582,6 +674,21 @@ public final class Keymap {
     }
 
     /**
+     * Keyboard mode the keymap was built for. The shell runner is configured with the same mode, so the
+     * bindings and the bytes the terminal sends agree.
+     */
+    public KeyboardMode keyboardMode() {
+        return keyboardMode;
+    }
+
+    /**
+     * TamboUI keyboard protocol of {@link #keyboardMode()}, the value the runner is configured with.
+     */
+    public KeyboardProtocol keyboardProtocol() {
+        return keyboardMode.protocol();
+    }
+
+    /**
      * Where the bindings come from, for example {@code intellij} or
      * {@code intellij + user file}.
      */
@@ -641,10 +748,18 @@ public final class Keymap {
     /**
      * Human readable description of the shortcuts bound to the action, for
      * example {@code Ctrl+P}; used by the palette and the help overlay. Empty
-     * when the user file left the action without triggers.
+     * when the user file left the action without triggers. Keypad twins of a
+     * main key ({@code KP_DOWN} next to {@code Down}) are left out, unless the
+     * action has no other trigger.
      */
     public String describeBindings(String actionId) {
-        return bindings.describeBindings(bindingName(actionId));
+        List<InputTrigger> shown = bindings.triggersFor(bindingName(actionId)).stream()
+                .filter(trigger -> !isKeypadTwin(trigger))
+                .toList();
+        if (shown.isEmpty()) {
+            return bindings.describeBindings(bindingName(actionId));
+        }
+        return String.join(", ", shown.stream().map(InputTrigger::describe).toList());
     }
 
     /**

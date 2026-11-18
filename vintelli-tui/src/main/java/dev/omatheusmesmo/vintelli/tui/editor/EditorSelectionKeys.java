@@ -59,6 +59,6 @@ final class EditorSelectionKeys {
     }
 
     static boolean replacesSelection(KeyEvent event) {
-        return Keys.is(event, KeyCode.ENTER) || event.code() == KeyCode.CHAR && !event.hasCtrl() && !event.hasAlt();
+        return Keys.is(event, KeyCode.ENTER) || event.isTyping();
     }
 }

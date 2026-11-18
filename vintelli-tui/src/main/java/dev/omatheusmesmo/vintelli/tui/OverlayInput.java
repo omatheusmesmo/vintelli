@@ -44,7 +44,7 @@ public final class OverlayInput {
         if (Keys.is(key, KeyCode.F10)) {
             return OverlayKey.F10;
         }
-        if (key.code() == KeyCode.CHAR && key.codePoint() >= 32 && !key.hasCtrl() && !key.hasAlt()) {
+        if (key.isTyping()) {
             return OverlayKey.TEXT;
         }
         if (Keys.is(key, KeyCode.BACKSPACE)) {

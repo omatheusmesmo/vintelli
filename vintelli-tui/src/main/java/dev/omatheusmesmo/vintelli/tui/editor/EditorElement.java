@@ -490,7 +490,8 @@ final class EditorElement implements Element {
                 }
                 // The widget edits TextAreaState directly, so wrap the event itself
                 // to keep undo history and diagnostic locations in sync.
-                resultHolder[0] = removesSelection ? EventResult.HANDLED : textArea.handleKeyEvent(event, focused);
+                resultHolder[0] = removesSelection ? EventResult.HANDLED
+                        : textArea.handleKeyEvent(Keys.mainKey(event), focused);
             });
             boolean handled = resultHolder[0].isHandled();
             if (rowBefore != document.row() || columnBefore != document.column()) {
@@ -505,7 +506,7 @@ final class EditorElement implements Element {
         if (Keys.is(event, KeyCode.PAGE_UP) || Keys.is(event, KeyCode.PAGE_DOWN)) {
             document.extendSelectionByPage(Keys.is(event, KeyCode.PAGE_DOWN), Math.max(1, textBody.height()));
         } else {
-            document.extendSelection(() -> textArea.handleKeyEvent(event, focused));
+            document.extendSelection(() -> textArea.handleKeyEvent(Keys.mainKey(event), focused));
         }
     }
 

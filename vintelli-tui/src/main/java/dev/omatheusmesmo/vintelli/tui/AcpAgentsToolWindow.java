@@ -130,7 +130,7 @@ public final class AcpAgentsToolWindow implements ToolWindow {
                 actionIndex = permissionChoiceIndex;
                 return ACP_PERMISSION;
             }
-            if (event.code() == KeyCode.CHAR && event.codePoint() >= '0' && event.codePoint() <= '9') {
+            if (event.isTyping() && event.codePoint() >= '0' && event.codePoint() <= '9') {
                 int options = active.permission.request.options().size();
                 int choice = event.codePoint() == '0' ? options : event.codePoint() - '1';
                 if (choice > options) return null;
@@ -194,8 +194,7 @@ public final class AcpAgentsToolWindow implements ToolWindow {
                 input = appendPrompt(input, "\n");
                 return true;
             }
-            if (event.code() == KeyCode.CHAR && !event.hasCtrl() && !event.hasAlt()
-                    && !Character.isISOControl(event.codePoint())) {
+            if (event.isTyping()) {
                 input = appendPrompt(input, new String(Character.toChars(event.codePoint())));
                 return true;
             }

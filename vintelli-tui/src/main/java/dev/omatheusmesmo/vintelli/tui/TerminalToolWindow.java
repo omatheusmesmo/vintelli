@@ -179,8 +179,7 @@ public final class TerminalToolWindow implements ToolWindow {
             session.write(new byte[] {0x03});
         } else if (key.hasCtrl() && key.isCharIgnoreCase('l')) {
             session.clearOutput();
-        } else if (key.code() == KeyCode.CHAR && !key.hasCtrl() && !key.hasAlt()
-                && key.codePoint() >= 32 && input.length() < MAX_INPUT_LENGTH) {
+        } else if (key.isTyping() && input.length() < MAX_INPUT_LENGTH) {
             String value = new String(Character.toChars(key.codePoint()));
             input.insert(cursor, value);
             cursor += value.length();
@@ -298,7 +297,7 @@ public final class TerminalToolWindow implements ToolWindow {
             if (cursor > 0) {
                 input.deleteCharAt(--cursor);
             }
-        } else if (key.code() == KeyCode.CHAR && !key.hasCtrl() && !key.hasAlt() && input.length() < 8) {
+        } else if (key.isTyping() && input.length() < 8) {
             String value = new String(Character.toChars(key.codePoint()));
             input.insert(cursor, value);
             cursor += value.length();

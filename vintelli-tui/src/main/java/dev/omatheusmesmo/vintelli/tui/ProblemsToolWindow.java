@@ -153,7 +153,7 @@ public final class ProblemsToolWindow implements ToolWindow {
         if (Keys.is(event, KeyCode.ENTER)) {
             return headerSelected() ? KeyActions.PROBLEMS_TOGGLE : KeyActions.PROBLEMS_NAVIGATE;
         }
-        if (event.code() != KeyCode.CHAR || event.hasCtrl() || event.hasAlt()) return null;
+        if (!event.isTyping()) return null;
         return switch (Character.toLowerCase(event.codePoint())) {
             case 'r' -> KeyActions.PROBLEMS_REFRESH;
             case 'a' -> KeyActions.PROBLEMS_FILTER_ALL;

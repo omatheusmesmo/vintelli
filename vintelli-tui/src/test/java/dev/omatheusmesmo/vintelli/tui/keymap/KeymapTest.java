@@ -6,6 +6,9 @@ import dev.omatheusmesmo.vintelli.tui.ProblemsToolWindow;
 import dev.omatheusmesmo.vintelli.tui.RunToolWindow;
 import dev.omatheusmesmo.vintelli.tui.TerminalToolWindow;
 import dev.omatheusmesmo.vintelli.tui.ToolWindow;
+import dev.tamboui.terminal.KeyboardProtocol;
+import dev.tamboui.tui.bindings.Actions;
+import dev.tamboui.tui.bindings.Bindings;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyModifiers;
 import dev.tamboui.tui.event.KeyEvent;
@@ -35,6 +38,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class KeymapTest {
 
     private static final List<ToolWindow> WINDOWS = windowList();
+    private static final KeyModifiers CTRL_SHIFT = KeyModifiers.of(true, false, true);
 
     private static List<ToolWindow> windowList() {
         ShellThemes themes = themes();
@@ -328,7 +332,7 @@ class KeymapTest {
         Files.writeString(userFile, "moveUp = Super+F13\n");
 
         IllegalStateException failure = assertThrows(IllegalStateException.class,
-                () -> Keymap.load(KeymapProfile.DEFAULT, WINDOWS, userFile));
+                () -> Keymap.load(KeymapProfile.DEFAULT, KeyboardMode.LEGACY, WINDOWS, userFile));
 
         assertTrue(failure.getMessage().contains(userFile.toString()), failure.getMessage());
     }
@@ -342,7 +346,7 @@ class KeymapTest {
             Files.writeString(userFile, unsent.get(index) + "\n");
 
             IllegalStateException failure = assertThrows(IllegalStateException.class,
-                    () -> Keymap.load(KeymapProfile.DEFAULT, WINDOWS, userFile));
+                    () -> Keymap.load(KeymapProfile.DEFAULT, KeyboardMode.LEGACY, WINDOWS, userFile));
 
             assertTrue(failure.getMessage().contains(userFile.toString()), failure.getMessage());
         }
@@ -360,7 +364,7 @@ class KeymapTest {
     @Test
     void theProfilesAnswerNoKeypadAliasAndNoWordWiseChordTheLegacyProtocolCannotTell() {
         for (KeymapProfile profile : KeymapProfile.values()) {
-            Keymap keymap = Keymap.ofProfile(profile, WINDOWS);
+            Keymap keymap = Keymap.ofProfile(profile, KeyboardMode.LEGACY, WINDOWS);
 
             assertFalse(keymap.bindings().matches(keypress('w', KeyModifiers.CTRL), "deleteWordBackward"),
                     profile.displayName() + ": Ctrl+w must reach text inputs as before, not delete a word");
@@ -413,13 +417,14 @@ class KeymapTest {
         Files.createDirectories(configRoot.resolve("vintelli"));
         Files.writeString(configRoot.resolve("vintelli/keymap.properties"), "moveUp = Ctrl+k\n");
 
-        Keymap keymap = Keymap.defaultKeymap(WINDOWS, "vim", configRoot);
+        Keymap keymap = Keymap.defaultKeymap(WINDOWS, "vim", "auto", configRoot);
 
         assertEquals("vim + user file", keymap.source());
         assertTrue(keymap.matches(keypress('k', KeyModifiers.CTRL), MOVE_UP));
-        assertEquals("intellij", Keymap.defaultKeymap(WINDOWS, "intellij", configRoot.resolve("absent")).source());
+        assertEquals("intellij",
+                Keymap.defaultKeymap(WINDOWS, "intellij", "auto", configRoot.resolve("absent")).source());
         assertThrows(IllegalArgumentException.class,
-                () -> Keymap.defaultKeymap(WINDOWS, "emacs", configRoot));
+                () -> Keymap.defaultKeymap(WINDOWS, "emacs", "auto", configRoot));
     }
 
     @Test
@@ -618,6 +623,168 @@ class KeymapTest {
                 "keypad Enter does not take the Delete action");
         assertFalse(keymap.matches(KeyEvent.ofKey(KeyCode.KP_DELETE), KeyActions.OPEN_FILE),
                 "keypad Delete does not take the Enter action");
+    }
+
+
+    @Test
+    void keymapReportsTheKeyboardModeItWasBuiltForAndItsProtocol() {
+        Keymap auto = Keymap.ofProfile(KeymapProfile.DEFAULT, WINDOWS);
+        Keymap legacy = Keymap.ofProfile(KeymapProfile.DEFAULT, KeyboardMode.LEGACY, WINDOWS);
+
+        assertEquals(KeyboardMode.AUTO, auto.keyboardMode());
+        assertEquals(KeyboardProtocol.AUTO, auto.keyboardProtocol());
+        assertEquals(KeyboardMode.LEGACY, legacy.keyboardMode());
+        assertEquals(KeyboardProtocol.LEGACY, legacy.keyboardProtocol());
+    }
+
+    @Test
+    void theKeyboardModeOfTheDefaultKeymapFailsFastOnAnUnknownValue(@TempDir Path configRoot) {
+        assertEquals(KeyboardMode.LEGACY,
+                Keymap.defaultKeymap(WINDOWS, "intellij", "Legacy", configRoot).keyboardMode());
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> Keymap.defaultKeymap(WINDOWS, "intellij", "full", configRoot));
+
+        assertTrue(failure.getMessage().contains("auto, legacy"), failure.getMessage());
+    }
+
+    @Test
+    void ctrlShiftLettersAnswerTheirOwnActionsInTheKittyMode() {
+        Keymap keymap = Keymap.ofProfile(KeymapProfile.DEFAULT, KeyboardMode.AUTO, WINDOWS);
+
+        assertEquals(Set.of(KeyActions.GO_TO_FILE), answeringActions(keymap, ctrlShift('n')),
+                "Ctrl+Shift+N is Go to File");
+        assertEquals(Set.of(KeyActions.FIND_IN_FILES), answeringActions(keymap, ctrlShift('f')),
+                "Ctrl+Shift+F is Find in Files, not Find");
+        assertEquals(Set.of(KeyActions.REDO), answeringActions(keymap, ctrlShift('z')),
+                "Ctrl+Shift+Z is Redo, not Undo");
+        assertEquals(Set.of(KeyActions.GO_TO_FILE), answeringActions(keymap, keypress('o', KeyModifiers.CTRL)),
+                "Ctrl+O keeps Go to File as its fallback");
+        assertEquals(Set.of(KeyActions.FIND), answeringActions(keymap, keypress('f', KeyModifiers.CTRL)),
+                "plain Ctrl+F still runs Find");
+        assertEquals(Set.of(KeyActions.UNDO), answeringActions(keymap, keypress('z', KeyModifiers.CTRL)),
+                "plain Ctrl+Z still runs Undo");
+        assertEquals(Set.of(KeyActions.REDO), answeringActions(keymap, keypress('y', KeyModifiers.CTRL)),
+                "Ctrl+Y keeps Redo as its fallback");
+    }
+
+    @Test
+    void ctrlShiftKeypadPlusAndMinusExpandAndCollapseTheProjectTree() {
+        Keymap keymap = Keymap.ofProfile(KeymapProfile.DEFAULT, KeyboardMode.AUTO, WINDOWS);
+
+        assertEquals(Set.of(KeyActions.PROJECT_EXPAND_ALL),
+                answeringActions(keymap, KeyEvent.ofKey(KeyCode.KP_ADD, CTRL_SHIFT)),
+                "Ctrl+Shift+KP_ADD expands all");
+        assertEquals(Set.of(KeyActions.PROJECT_COLLAPSE_ALL),
+                answeringActions(keymap, KeyEvent.ofKey(KeyCode.KP_SUBTRACT, CTRL_SHIFT)),
+                "Ctrl+Shift+KP_SUBTRACT collapses all");
+        assertEquals(Set.of(KeyActions.PROJECT_EXPAND_ALL), answeringActions(keymap, KeyEvent.ofKey(KeyCode.F4)),
+                "F4 keeps Expand All as its fallback");
+    }
+
+    @Test
+    void theLegacyKeymapHasNoCtrlShiftChordAndAnswersThePlainBytesAsBefore() {
+        Keymap legacy = Keymap.ofProfile(KeymapProfile.DEFAULT, KeyboardMode.LEGACY, WINDOWS);
+
+        assertEquals(Set.of(), answeringActions(legacy, keypress('n', KeyModifiers.CTRL)),
+                "Ctrl+N is no chord of Go to File in the legacy protocol");
+        assertEquals(Set.of(), answeringActions(legacy, KeyEvent.ofKey(KeyCode.KP_ADD, CTRL_SHIFT)),
+                "Ctrl+Shift+KP_ADD is no chord in the legacy protocol");
+        assertEquals(Set.of(KeyActions.FIND), answeringActions(legacy, keypress('f', KeyModifiers.CTRL)));
+        assertEquals(Set.of(KeyActions.UNDO), answeringActions(legacy, keypress('z', KeyModifiers.CTRL)));
+    }
+
+    @Test
+    void theKittyModeBindsTheWordWiseChordsAndNeverCtrlW() {
+        for (KeymapProfile profile : KeymapProfile.values()) {
+            Bindings bindings = Keymap.ofProfile(profile, KeyboardMode.AUTO, WINDOWS).bindings();
+
+            assertTrue(bindings.matches(KeyEvent.ofKey(KeyCode.LEFT, KeyModifiers.CTRL), Actions.MOVE_WORD_LEFT),
+                    profile.displayName() + ": Ctrl+Left moves by word");
+            assertTrue(bindings.matches(KeyEvent.ofKey(KeyCode.RIGHT, KeyModifiers.CTRL), Actions.MOVE_WORD_RIGHT),
+                    profile.displayName() + ": Ctrl+Right moves by word");
+            assertTrue(bindings.matches(KeyEvent.ofKey(KeyCode.BACKSPACE, KeyModifiers.CTRL),
+                    Actions.DELETE_WORD_BACKWARD), profile.displayName() + ": Ctrl+Backspace deletes a word");
+            assertTrue(bindings.matches(KeyEvent.ofKey(KeyCode.DELETE, KeyModifiers.CTRL),
+                    Actions.DELETE_WORD_FORWARD), profile.displayName() + ": Ctrl+Delete deletes a word");
+            assertFalse(bindings.matches(keypress('w', KeyModifiers.CTRL), Actions.DELETE_WORD_BACKWARD),
+                    profile.displayName() + ": Ctrl+w is never a word delete in the Kitty mode");
+        }
+    }
+
+    @Test
+    void theLegacyKeymapHasNoWordWiseChord() {
+        Bindings legacy = Keymap.ofProfile(KeymapProfile.DEFAULT, KeyboardMode.LEGACY, WINDOWS).bindings();
+
+        assertFalse(legacy.matches(KeyEvent.ofKey(KeyCode.LEFT, KeyModifiers.CTRL), Actions.MOVE_WORD_LEFT));
+        assertFalse(legacy.matches(KeyEvent.ofKey(KeyCode.BACKSPACE, KeyModifiers.CTRL),
+                Actions.DELETE_WORD_BACKWARD));
+    }
+
+    @Test
+    void theKittyModeKeepsTheKeypadAliasesOfThePresets() {
+        Bindings kitty = Keymap.ofProfile(KeymapProfile.DEFAULT, KeyboardMode.AUTO, WINDOWS).bindings();
+
+        assertTrue(kitty.matches(KeyEvent.ofKey(KeyCode.KP_ENTER), "confirm"),
+                "keypad Enter confirms in the Kitty mode, as it does in the TamboUI presets");
+        assertTrue(kitty.matches(KeyEvent.ofKey(KeyCode.KP_DOWN), MOVE_DOWN),
+                "the keypad arrow moves down through its preset alias");
+    }
+
+    @Test
+    void theShortcutTextHidesTheKeypadTwinsUnlessTheActionHasNothingElse(@TempDir Path tempDir) throws Exception {
+        Keymap kitty = Keymap.ofProfile(KeymapProfile.DEFAULT, KeyboardMode.AUTO, WINDOWS);
+        assertEquals("Down", kitty.describeBindings(MOVE_DOWN),
+                "the help, the palette and the inspect surface name Down, not its keypad twin");
+
+        Path userFile = tempDir.resolve("keymap.properties");
+        Files.writeString(userFile, "navigation_goToLine = Keypad_Home\n");
+        Keymap keypadOnly = Keymap.load(KeymapProfile.DEFAULT, KeyboardMode.AUTO, WINDOWS, userFile);
+        assertEquals("KP_HOME", keypadOnly.describeBindings(KeyActions.GO_TO_LINE),
+                "an action bound to a keypad key only still shows that key");
+    }
+
+    @Test
+    void theKittyModeAcceptsKeypadKeysAndSuperChordsInTheUserFile(@TempDir Path tempDir) throws Exception {
+        Path userFile = tempDir.resolve("keymap.properties");
+        Files.writeString(userFile, "navigation_goToLine = Keypad_Home\nnavigation_findInFiles = Super+k\n");
+
+        Keymap keymap = Keymap.load(KeymapProfile.DEFAULT, KeyboardMode.AUTO, WINDOWS, userFile);
+
+        assertTrue(keymap.matches(KeyEvent.ofKey(KeyCode.KP_HOME), KeyActions.GO_TO_LINE),
+                "the keypad Home binding of the user file answers in the Kitty mode");
+        assertTrue(keymap.matches(KeyEvent.ofChar('k', KeyModifiers.SUPER), KeyActions.FIND_IN_FILES),
+                "the Super chord of the user file answers in the Kitty mode");
+    }
+
+    @Test
+    void theLegacyKeymapRejectsKeypadKeysInTheUserFile(@TempDir Path tempDir) throws Exception {
+        Path userFile = tempDir.resolve("keymap.properties");
+        Files.writeString(userFile, "navigation_goToLine = Keypad_Home\n");
+
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> Keymap.load(KeymapProfile.DEFAULT, KeyboardMode.LEGACY, WINDOWS, userFile));
+
+        assertTrue(failure.getMessage().contains("Keypad_Home"), failure.getMessage());
+        assertTrue(failure.getMessage().contains(userFile.toString()), failure.getMessage());
+    }
+
+    @Test
+    void theArrowsPaletteHintStaysEmptyWhileTheKeypadTwinIsBound() {
+        Keymap keymap = Keymap.ofProfile(KeymapProfile.DEFAULT, KeyboardMode.AUTO, WINDOWS);
+
+        assertEquals("", IntellijReference.paletteHint(keymap, MOVE_UP),
+                "Move Selection Up answers to the IntelliJ Up chord, the keypad twin is no reason for a hint");
+    }
+
+    private static KeyEvent ctrlShift(char lower) {
+        return KeyEvent.builder()
+                .code(KeyCode.CHAR)
+                .modifiers(CTRL_SHIFT)
+                .character(Character.toUpperCase(lower))
+                .keyCodePoint(lower)
+                .shiftedKeyCodePoint(Character.toUpperCase(lower))
+                .baseLayoutKeyCodePoint(lower)
+                .build();
     }
 
     private static KeyEvent actionChord(char shortcut) {

@@ -41,10 +41,10 @@ public enum KeymapProfile {
      * Base binding set of the profile, before the shell-level actions and the
      * tool window activations are bound on top.
      */
-    Bindings navigation() {
+    Bindings navigation(KeyboardMode keyboardMode) {
         return switch (this) {
-            case INTELLIJ -> Keymap.legacyKeyboardBindings(BindingSets.intellij());
-            case VIM -> Keymap.legacyKeyboardBindings(BindingSets.vim());
+            case INTELLIJ -> Keymap.keyboardBindings(BindingSets.intellij(), keyboardMode);
+            case VIM -> Keymap.keyboardBindings(BindingSets.vim(), keyboardMode);
         };
     }
 

@@ -58,13 +58,14 @@ final class IntellijReference {
 
     /**
      * The chords the action has now, without the bare digit of a tool window
-     * (the shortcut for while no input has focus, not an IntelliJ chord).
+     * (the shortcut for while no input has focus, not an IntelliJ chord) and
+     * without the keypad twin of a main key (the same key on the keypad).
      */
     private static Set<String> activeChords(Keymap keymap, String actionId) {
         Set<String> chords = new TreeSet<>();
         for (InputTrigger trigger : keymap.bindings().triggersFor(Keymap.bindingName(actionId))) {
             String chord = trigger.describe();
-            if (!chord.matches("[0-9]")) {
+            if (!chord.matches("[0-9]") && !Keymap.isKeypadTwin(trigger)) {
                 chords.add(chord);
             }
         }

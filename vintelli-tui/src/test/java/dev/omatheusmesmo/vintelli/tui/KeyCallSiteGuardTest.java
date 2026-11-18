@@ -13,7 +13,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class KeyCallSiteGuardTest {
 
     private static final Path MAIN_SOURCES = Path.of("src/main/java");
-    private static final String STRICT_KEY_CHECK = ".isKey(KeyCode.";
+    private static final List<String> STRICT_KEY_CHECKS = List.of(".isKey(KeyCode.", ".code() == KeyCode.CHAR",
+            ".code() != KeyCode.CHAR");
     private static final String HELPER_FILE = "Keys.java";
 
     @Test
@@ -25,15 +26,19 @@ class KeyCallSiteGuardTest {
             offenders = files
                     .filter(file -> file.toString().endsWith(".java"))
                     .filter(file -> !file.getFileName().toString().equals(HELPER_FILE))
-                    .filter(file -> readSource(file).contains(STRICT_KEY_CHECK))
+                    .filter(file -> containsStrictKeyCheck(readSource(file)))
                     .map(file -> MAIN_SOURCES.relativize(file).toString())
                     .sorted()
                     .toList();
         }
 
         assertTrue(offenders.isEmpty(),
-                "use Keys.is(event, KeyCode.X) instead of event.isKey(KeyCode.X): the keypad twin of X would not match. Offenders: "
-                        + offenders);
+                "use Keys.is(event, KeyCode.X) instead of event.isKey(KeyCode.X), and TamboUI's event.isTyping() "
+                        + "instead of a CHAR check: the keypad twin of a key would not match. Offenders: " + offenders);
+    }
+
+    private static boolean containsStrictKeyCheck(String source) {
+        return STRICT_KEY_CHECKS.stream().anyMatch(source::contains);
     }
 
     private static String readSource(Path file) {

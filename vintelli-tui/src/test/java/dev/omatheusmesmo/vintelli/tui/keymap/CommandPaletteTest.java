@@ -10,6 +10,7 @@ import dev.omatheusmesmo.vintelli.tui.TerminalToolWindow;
 import dev.omatheusmesmo.vintelli.tui.ToolWindow;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
+import dev.tamboui.tui.event.KeyModifiers;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -45,6 +46,17 @@ class CommandPaletteTest {
         assertEquals(Optional.of(action("ActivateProblemsToolWindow")), pick("PROBLEM"));
         assertEquals(Optional.of(action("ActivateAcpAgentsToolWindow")), pick("acp agents"));
         assertEquals(Optional.of(action("quit")), pick("quit"));
+    }
+
+    @Test
+    void aKeypadDecimalPointTypesIntoTheFilterLikeTheDot() {
+        palette.openWith("run");
+
+        palette.handleKey(new KeyEvent(KeyCode.KP_DECIMAL, KeyModifiers.NONE, '.'));
+
+        Optional<KeyAction> picked = palette.handleKey(KeyEvent.ofKey(KeyCode.ENTER));
+        assertTrue(picked.isPresent() && picked.get().id().startsWith("run."),
+                "the filter is run. so only the run actions match, got " + picked);
     }
 
     @Test
