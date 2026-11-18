@@ -3,7 +3,6 @@ package dev.omatheusmesmo.vintelli.web;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.TimeUnit;
 
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityRegistry;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
@@ -124,15 +123,6 @@ public final class DebugCapabilityProbeResource {
             } else if (session.snapshot().state() != DebugCapability.State.STOPPED) {
                 CapabilityResult<Boolean> paused = session.pause();
                 if (paused instanceof CapabilityResult.Failed<Boolean> failed) error = failed.failure().reason();
-            }
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
-            while (session.snapshot().currentFrame() == null && System.nanoTime() < deadline) {
-                try { Thread.sleep(10); }
-                catch (InterruptedException interrupted) {
-                    Thread.currentThread().interrupt();
-                    error = "Interrupted while reading the stopped frame";
-                    break;
-                }
             }
             DebugSessionSnapshot stopped = session.snapshot();
             if (stopped.state() == DebugCapability.State.STOPPED && stopped.stoppedThreadId() > 0) {

@@ -111,6 +111,7 @@ class JavaDebugCapabilityProbeTest {
             assertTrue(debuggeeReady(debuggee), "the external JDWP debuggee did not start");
             var response = given().queryParam("kind", "inspection").post(PROBE).then().statusCode(200).extract();
             assertTrue(Boolean.TRUE.equals(response.path("available")));
+            assertEquals("", response.path("error"));
             assertEquals("STOPPED", response.path("snapshot.state"));
             assertEquals(JavaDebugCapabilityProbeResource.projectRoot().resolve("Main.java").toString(),
                     response.path("frames[0].sourcePath"));
