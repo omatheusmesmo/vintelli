@@ -1,6 +1,7 @@
 package dev.omatheusmesmo.vintelli.web;
 
 import com.agentclientprotocol.sdk.client.AcpSyncClient;
+import com.agentclientprotocol.sdk.error.AcpVersionException;
 import com.agentclientprotocol.sdk.spec.AcpError;
 import com.agentclientprotocol.sdk.spec.AcpSchema;
 import dev.omatheusmesmo.vintelli.acp.AcpAgentClientFactory;
@@ -212,7 +213,7 @@ public final class AcpProbeResource {
                 AcpSchema.NewSessionResponse session = openSession(client, run);
                 client.closeSession(new AcpSchema.CloseSessionRequest(session.sessionId()));
                 run.phases().add("session/close:CLOSED");
-            } catch (AcpGateException refusal) {
+            } catch (AcpVersionException refusal) {
                 run.phases().add("initialize:REJECTED:" + refusal.getMessage());
             }
             state = "OK";
@@ -272,7 +273,6 @@ public final class AcpProbeResource {
 
     private AcpSchema.InitializeResponse initialize(AcpSyncClient client, AcpProbeRun run) {
         AcpSchema.InitializeResponse initialize = client.initialize();
-        AcpAgentGate.requireSupportedVersion(initialize);
         run.phases().add("initialize:protocolVersion=" + initialize.protocolVersion());
         return initialize;
     }

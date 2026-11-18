@@ -25,7 +25,6 @@ import com.agentclientprotocol.sdk.client.AcpSyncClient;
 import com.agentclientprotocol.sdk.spec.AcpSchema;
 import dev.omatheusmesmo.vintelli.api.acp.AcpChatPort;
 import dev.omatheusmesmo.vintelli.api.acp.AcpSessionIdsView;
-import dev.omatheusmesmo.vintelli.core.acp.AcpAgentGate;
 import jakarta.annotation.PreDestroy;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -88,7 +87,7 @@ public final class AcpChatService implements AcpChatPort, AcpSessionIdsView {
     public List<SessionSummary> listSessions(String agentId) {
         AcpSyncClient client = startClient(agentId, update -> { }, request -> PermissionChoice.cancel());
         try {
-            AcpAgentGate.requireSupportedVersion(client.initialize());
+            client.initialize();
             requireAdvertised(agentId, client, NegotiatedCapabilities::supportsListSessions, "listing sessions");
             return storedSessions(client);
         } finally {
@@ -207,7 +206,7 @@ public final class AcpChatService implements AcpChatPort, AcpSessionIdsView {
             Function<PermissionRequest, PermissionChoice> permissionHandler, RemoteSessionStart start) {
         AcpSyncClient client = startClient(agentId, updates, permissionHandler);
         try {
-            AcpAgentGate.requireSupportedVersion(client.initialize());
+            client.initialize();
             return registerSession(client, start.open(client), updates);
         } catch (RuntimeException failure) {
             closeClient(client);
