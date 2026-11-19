@@ -47,6 +47,7 @@ import jakarta.annotation.PreDestroy;
 public final class DebugToolWindow implements ToolWindow {
     private static final int MAX_VARIABLE_DEPTH = 16;
     private static final int MAX_VARIABLE_ROWS = 200;
+    private static final String DEBUG_GLYPH = "";
     private final Provider<ShellThemes> themes;
     private final RunToolWindow run;
     private final UiWorkQueue uiWork;
@@ -86,6 +87,7 @@ public final class DebugToolWindow implements ToolWindow {
     @Override public String title() { return "Debug"; }
     @Override public char shortcut() { return '3'; }
     @Override public int ordinal() { return 1; }
+    @Override public String icon() { return DEBUG_GLYPH; }
 
     @Override public boolean capturesInput() { return true; }
     @Override public boolean claimsQuitChord() { return false; }

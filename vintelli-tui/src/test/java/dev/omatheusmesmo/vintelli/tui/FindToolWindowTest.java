@@ -1,6 +1,7 @@
 package dev.omatheusmesmo.vintelli.tui;
 
 import dev.omatheusmesmo.vintelli.tui.navigation.NavigationTarget;
+import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
 import dev.omatheusmesmo.vintelli.tui.navigation.UsageSearch;
 import dev.tamboui.buffer.Buffer;
 import dev.tamboui.layout.Rect;
@@ -141,6 +142,13 @@ class FindToolWindowTest {
         String screen = render();
         assertTrue(screen.startsWith("Usages of run in 1 file (1)"), screen);
         assertFalse(screen.contains("Caller.java"), screen);
+    }
+
+    @Test
+    void theStripeShowsTheMagnifierGlyphForFindAndItsLetterInAsciiMode() {
+        assertEquals("", window.icon());
+        assertEquals("", ToolStripes.glyph(window, IconMode.NERD));
+        assertEquals("F", ToolStripes.glyph(window, IconMode.ASCII));
     }
 
     @Test
