@@ -53,6 +53,23 @@ public final class LspCodeActionProvider implements CodeActionCapability {
     }
 
     @Override
+    public CapabilityResult<List<CodeActionCapability.WorkspaceEdit.TextEdit>> formatDocument(Path file,
+            String content, FormattingOptions options) {
+        return client.formatDocument(file, content, options);
+    }
+
+    @Override
+    public CapabilityResult<List<CodeActionCapability.WorkspaceEdit.TextEdit>> formatRange(Path file, String content,
+            SourceRange range, FormattingOptions options) {
+        return client.formatRange(file, content, range, options);
+    }
+
+    @Override
+    public CapabilityResult<List<CodeActionCapability.CodeAction>> organizeImports(Path file, String content) {
+        return client.organizeImports(file, content);
+    }
+
+    @Override
     public boolean supportsCommands() {
         return true;
     }

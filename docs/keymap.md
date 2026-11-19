@@ -140,6 +140,28 @@ The chord is only bound in the `intellij` profile. A terminal that does not
 deliver `Alt+Insert` still reaches the action through the command palette
 (`Ctrl+P`, then `Generate`), which is the fallback to use there.
 
+### Reformat and optimize imports
+
+`Ctrl+Alt+L` asks the language server to format the file, or only the selected
+lines when there is a selection. The server receives the buffer first, unsaved
+edits included, with the tab size and the spaces-or-tabs setting of the document
+as the status bar reads them. `Ctrl+Alt+O` runs the server's organize imports
+action, which removes unused imports and sorts the rest. Both apply as one undo
+step and mark the document dirty, and the caret stays on its code line when lines
+above it are added or removed. The status line says `Reformatted`, `Imports
+optimized`, `Already formatted` or `Imports already optimized` when the server
+has nothing to change, and the reason when no language server is available or it
+cannot answer. Both actions are also in the command palette, which reaches them
+when a terminal does not deliver the chord.
+
+The chords are not verified in a terminal. The spike 27 chord matrix records
+`Ctrl+Alt+letter` as unreachable on TamboUI 0.6.0 (`ESC` followed by the control
+byte arrived as an unknown key), and the per-terminal capture of spike 49 has no
+Ctrl+Alt chord. The pinned TamboUI 0.7.0 parser maps `ESC` followed by a control
+byte to Ctrl+Alt+letter, which is read from its source and has not been pressed
+in a terminal. The intercepts the spike notes record for Omarchy tmux, Ghostty and
+Hyprland list no Ctrl+Alt+L or Ctrl+Alt+O binding.
+
 ### Copy, cut and paste
 
 - `Ctrl+C` copies while the editor text has focus and text is selected. With
@@ -621,6 +643,8 @@ adding it to that test on purpose.
 | editor_completion | Ctrl+Space \| Ctrl+@ | Ctrl+Space | same | Code completion from the language server at the caret, offered in a popup; Ctrl+@ is the NUL spelling of the same key that some terminals send (docs/keymap.md) |
 | editor_quickDocumentation | Ctrl+Q | Ctrl+Q | same | Quick documentation of the symbol at the caret from the language server, in a popup beside the caret (docs/keymap.md) |
 | editor_generate | Alt+Insert | Alt+Insert | same | Generate from the language server's source actions for the class at the caret, in a popup beside the caret; the vim profile binds no chord (docs/keymap.md) |
+| editor_reformatCode | Ctrl+Alt+L | Ctrl+Alt+L | same | Reformats the file, or only the selected lines, with the language server's formatter (docs/keymap.md) |
+| editor_optimizeImports | Ctrl+Alt+O | Ctrl+Alt+O | same | Runs the language server's organize imports action, which removes unused imports and sorts the rest (docs/keymap.md) |
 | moveWordLeft | Ctrl+Left | Ctrl+Left | same | Move Caret to Previous Word; the editor text area takes it under the Kitty keyboard protocol |
 | moveWordRight | Ctrl+Right | Ctrl+Right | same | Move Caret to Next Word; the editor text area takes it under the Kitty keyboard protocol |
 | deleteWordBackward | Ctrl+Backspace | - | vintelli-only | Deletes the word before the caret in the editor under the Kitty keyboard protocol; no IntelliJ chord is confirmed on the reference page for this action |

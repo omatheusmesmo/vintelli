@@ -1,17 +1,20 @@
 package dev.omatheusmesmo.vintelli.tui.editor;
 
+import dev.omatheusmesmo.vintelli.api.capability.CodeActionCapability.FormattingOptions;
+
 import java.util.Map;
 import java.util.TreeMap;
 
 /**
- * Describes the indent a document uses, for the status bar. Only the first
- * lines are read, so the status bar does not scan a large file on every frame.
- * A single space at the start of a line is ignored, because it is usually a
- * Javadoc or comment continuation.
+ * Describes the indent a document uses, for the status bar and for the formatting
+ * request. Only the first lines are read, so the status bar does not scan a large
+ * file on every frame. A single space at the start of a line is ignored, because
+ * it is usually a Javadoc or comment continuation.
  */
 final class EditorIndent {
 
     private static final int SAMPLE_LINES = 400;
+    private static final int DEFAULT_TAB_SIZE = 4;
 
     private EditorIndent() {
     }
@@ -22,6 +25,33 @@ final class EditorIndent {
      * repeats, or an empty string when no line is indented.
      */
     static String describe(String text) {
+        Indent indent = detect(text);
+        if (indent.tabs()) {
+            return "Tab";
+        }
+        return indent.width() == 0 ? "" : indent.width() + " spaces";
+    }
+
+    /**
+     * The options of a formatting request for the document: the indent the document already uses, so the server
+     * formats it the way it is written. A document without an indent gets four spaces.
+     */
+    static FormattingOptions formattingOptions(String text) {
+        Indent indent = detect(text);
+        if (indent.tabs()) {
+            return new FormattingOptions(DEFAULT_TAB_SIZE, false);
+        }
+        return new FormattingOptions(indent.width() == 0 ? DEFAULT_TAB_SIZE : indent.width(), true);
+    }
+
+    /**
+     * @param tabs whether tab-indented lines outnumber space-indented ones
+     * @param width the smallest space indent of two or more spaces that repeats, zero when there is none
+     */
+    private record Indent(boolean tabs, int width) {
+    }
+
+    private static Indent detect(String text) {
         int tabLines = 0;
         int spaceLines = 0;
         Map<Integer, Integer> widths = new TreeMap<>();
@@ -49,13 +79,13 @@ final class EditorIndent {
             }
         }
         if (tabLines > spaceLines) {
-            return "Tab";
+            return new Indent(true, 0);
         }
         for (Map.Entry<Integer, Integer> width : widths.entrySet()) {
             if (width.getValue() >= 2) {
-                return width.getKey() + " spaces";
+                return new Indent(false, width.getKey());
             }
         }
-        return "";
+        return new Indent(false, 0);
     }
 }

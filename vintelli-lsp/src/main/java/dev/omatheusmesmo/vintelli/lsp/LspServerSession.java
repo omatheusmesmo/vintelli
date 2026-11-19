@@ -53,7 +53,12 @@ import org.eclipse.lsp4j.CompletionParams;
 import org.eclipse.lsp4j.DefinitionCapabilities;
 import org.eclipse.lsp4j.DefinitionParams;
 import org.eclipse.lsp4j.DocumentSymbol;
+import org.eclipse.lsp4j.DocumentFormattingOptions;
+import org.eclipse.lsp4j.DocumentFormattingParams;
+import org.eclipse.lsp4j.DocumentRangeFormattingOptions;
+import org.eclipse.lsp4j.DocumentRangeFormattingParams;
 import org.eclipse.lsp4j.DocumentSymbolParams;
+import org.eclipse.lsp4j.FormattingOptions;
 import org.eclipse.lsp4j.SymbolInformation;
 import org.eclipse.lsp4j.Diagnostic;
 import org.eclipse.lsp4j.DidChangeTextDocumentParams;
@@ -75,10 +80,12 @@ import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.ReferenceContext;
 import org.eclipse.lsp4j.ReferenceParams;
 import org.eclipse.lsp4j.ReferencesCapabilities;
+import org.eclipse.lsp4j.ServerCapabilities;
 import org.eclipse.lsp4j.TextDocumentClientCapabilities;
 import org.eclipse.lsp4j.TextDocumentContentChangeEvent;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
 import org.eclipse.lsp4j.TextDocumentItem;
+import org.eclipse.lsp4j.TextEdit;
 import org.eclipse.lsp4j.VersionedTextDocumentIdentifier;
 import org.eclipse.lsp4j.WorkspaceClientCapabilities;
 import org.eclipse.lsp4j.WorkspaceEdit;
@@ -232,6 +239,16 @@ final class LspServerSession implements AutoCloseable {
         return options != null && options.getCommands() != null && options.getCommands().contains(command);
     }
 
+    boolean supportsFormatting(boolean range) {
+        ServerCapabilities capabilities = initializeResult.getCapabilities();
+        if (range) {
+            Either<Boolean, DocumentRangeFormattingOptions> provider = capabilities.getDocumentRangeFormattingProvider();
+            return provider != null && (provider.isRight() || Boolean.TRUE.equals(provider.getLeft()));
+        }
+        Either<Boolean, DocumentFormattingOptions> provider = capabilities.getDocumentFormattingProvider();
+        return provider != null && (provider.isRight() || Boolean.TRUE.equals(provider.getLeft()));
+    }
+
     Object executeCommand(String command)
             throws ExecutionException, InterruptedException, TimeoutException {
         return server.getWorkspaceService()
@@ -351,6 +368,35 @@ final class LspServerSession implements AutoCloseable {
         CodeActionContext context = kinds.isEmpty() ? new CodeActionContext(diagnostics)
                 : new CodeActionContext(diagnostics, kinds);
         CodeActionParams params = new CodeActionParams(new TextDocumentIdentifier(uri), range, context);
+        return server.getTextDocumentService()
+                .codeAction(params)
+                .get(REQUEST_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+    }
+
+    List<? extends TextEdit> formatting(String uri, int tabSize, boolean insertSpaces)
+            throws ExecutionException, InterruptedException, TimeoutException {
+        return server.getTextDocumentService()
+                .formatting(new DocumentFormattingParams(new TextDocumentIdentifier(uri),
+                        new FormattingOptions(tabSize, insertSpaces)))
+                .get(REQUEST_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+    }
+
+    List<? extends TextEdit> rangeFormatting(String uri, Range range, int tabSize, boolean insertSpaces)
+            throws ExecutionException, InterruptedException, TimeoutException {
+        return server.getTextDocumentService()
+                .rangeFormatting(new DocumentRangeFormattingParams(new TextDocumentIdentifier(uri),
+                        new FormattingOptions(tabSize, insertSpaces), range))
+                .get(REQUEST_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+    }
+
+    /**
+     * Asks the code action request for the source actions of one kind only, the way the protocol filters them
+     * on the server side.
+     */
+    List<Either<Command, CodeAction>> organizeImports(String uri, Range range)
+            throws ExecutionException, InterruptedException, TimeoutException {
+        CodeActionParams params = new CodeActionParams(new TextDocumentIdentifier(uri), range,
+                new CodeActionContext(List.of(), List.of(CodeActionKind.SourceOrganizeImports)));
         return server.getTextDocumentService()
                 .codeAction(params)
                 .get(REQUEST_TIMEOUT.toSeconds(), TimeUnit.SECONDS);

@@ -20,6 +20,7 @@ import dev.omatheusmesmo.vintelli.tui.editor.QuickDocumentationController;
 import dev.omatheusmesmo.vintelli.tui.editor.QuickDocumentationOverlay;
 import dev.omatheusmesmo.vintelli.tui.editor.GoToLine;
 import dev.omatheusmesmo.vintelli.tui.editor.BreakpointConditionOverlay;
+import dev.omatheusmesmo.vintelli.tui.editor.FormatController;
 import dev.omatheusmesmo.vintelli.tui.editor.GoToLineOverlay;
 import dev.omatheusmesmo.vintelli.tui.editor.CodeActionPopup;
 import dev.omatheusmesmo.vintelli.tui.editor.ExtractController;
@@ -206,6 +207,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private final QuickFixOverlay quickFixOverlay;
     private final QuickFixController generate;
     private final QuickFixOverlay generateOverlay;
+    private final FormatController formatting;
     private final CompletionController completion;
     private final CompletionOverlay completionOverlay;
     private final QuickDocumentationController quickDocumentation;
@@ -323,6 +325,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 this::deliverToRenderThread, message -> status = message);
         this.generateOverlay = new QuickFixOverlay(generate);
         this.extract = new ExtractController(capabilityRegistry, editor, this::deliverToRenderThread,
+                message -> status = message);
+        this.formatting = new FormatController(capabilityRegistry, editor, this::deliverToRenderThread,
                 message -> status = message);
         this.completion = new CompletionController(capabilityRegistry, editor, this::deliverToRenderThread,
                 message -> status = message);
@@ -1788,6 +1792,14 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             case KeyActions.QUICK_DOCUMENTATION -> {
                 parts.stack().closeOverlays();
                 openQuickDocumentation(parts);
+            }
+            case KeyActions.REFORMAT_CODE -> {
+                parts.stack().closeOverlays();
+                status = editor == null ? "Open a file to reformat" : formatting.reformat();
+            }
+            case KeyActions.OPTIMIZE_IMPORTS -> {
+                parts.stack().closeOverlays();
+                status = editor == null ? "Open a file to optimize imports in" : formatting.optimizeImports();
             }
             case KeyActions.PROJECT_WIDER -> {
                 parts.stack().closeOverlays();

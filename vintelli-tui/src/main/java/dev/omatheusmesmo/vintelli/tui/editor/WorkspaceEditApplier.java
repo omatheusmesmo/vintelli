@@ -53,10 +53,7 @@ public final class WorkspaceEditApplier {
         if (refusal != null) {
             return new Rejected(refusal);
         }
-        List<TextEdit> edits = new ArrayList<>();
-        for (DocumentEdit documentEdit : edit.documents()) {
-            edits.addAll(documentEdit.edits());
-        }
+        List<TextEdit> edits = textEditsOf(edit);
         if (edits.isEmpty()) {
             return new Applied(0);
         }
@@ -66,6 +63,77 @@ public final class WorkspaceEditApplier {
             return new Rejected(invalid.getMessage());
         }
         return new Applied(edits.size());
+    }
+
+    /**
+     * Applies an edit that formats the document or organizes its imports: the checks and the single undo step of
+     * {@link #apply}, and the caret stays on its code line when the edit adds or removes lines above it. An edit
+     * that leaves the text as it is changes nothing and reports zero edits.
+     *
+     * @param document the open document the edit applies to
+     * @param edit the edit the server returned
+     * @return the number of text edits that changed the document, or the reason it was not applied
+     */
+    public static Result applyKeepingLine(EditorDocument document, WorkspaceEdit edit) {
+        String refusal = refusal(document.file(), edit);
+        if (refusal != null) {
+            return new Rejected(refusal);
+        }
+        List<TextEdit> edits = textEditsOf(edit);
+        if (edits.isEmpty()) {
+            return new Applied(0);
+        }
+        String text = document.text();
+        String replaced;
+        try {
+            replaced = applyTo(text, edits);
+        } catch (IllegalArgumentException invalid) {
+            return new Rejected(invalid.getMessage());
+        }
+        if (replaced.equals(text)) {
+            return new Applied(0);
+        }
+        document.replaceText(replaced, rowAfter(edits, document.row()), document.column());
+        return new Applied(edits.size());
+    }
+
+    private static List<TextEdit> textEditsOf(WorkspaceEdit edit) {
+        List<TextEdit> edits = new ArrayList<>();
+        for (DocumentEdit documentEdit : edit.documents()) {
+            edits.addAll(documentEdit.edits());
+        }
+        return edits;
+    }
+
+    /**
+     * @param edits text edits of one document, none of them overlapping
+     * @param row the zero based row of the caret before the edits
+     * @return the row of the same code line after the edits: rows below an edit move by the lines the edit added
+     *         or removed, and a row inside an edit moves to the first row of that edit
+     */
+    static int rowAfter(List<TextEdit> edits, int row) {
+        List<TextEdit> ordered = edits.stream()
+                .sorted(Comparator.comparingInt(TextEdit::startLine).thenComparingInt(TextEdit::startColumn))
+                .toList();
+        int shift = 0;
+        for (TextEdit edit : ordered) {
+            if (edit.endLine() < row) {
+                shift += newlines(edit.newText()) - (edit.endLine() - edit.startLine());
+            } else if (edit.startLine() <= row) {
+                return Math.max(0, edit.startLine() + shift);
+            }
+        }
+        return Math.max(0, row + shift);
+    }
+
+    private static int newlines(String text) {
+        int count = 0;
+        for (int index = 0; index < text.length(); index++) {
+            if (text.charAt(index) == '\n') {
+                count++;
+            }
+        }
+        return count;
     }
 
     /**

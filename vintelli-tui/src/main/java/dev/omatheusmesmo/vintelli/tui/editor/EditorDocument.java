@@ -143,13 +143,16 @@ public final class EditorDocument {
 
     /** Replaces the whole text as one undoable step; the cursor keeps its place when the text still has it. */
     void replaceText(String replacement) {
+        replaceText(replacement, row(), column());
+    }
+
+    /** Replaces the whole text as one undoable step, and puts the cursor at the given place of the new text. */
+    void replaceText(String replacement, int caretRow, int caretColumn) {
         mutate(() -> {
             boolean folded = fold != null;
-            int row = row();
-            int column = column();
             dropFold();
             state.setText(replacement);
-            position(row, column);
+            position(caretRow, caretColumn);
             if (folded) { foldImports(); }
         });
     }
