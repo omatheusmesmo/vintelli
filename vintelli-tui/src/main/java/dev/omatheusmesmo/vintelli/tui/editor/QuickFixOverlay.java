@@ -21,8 +21,9 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * The quick fix popup: a small panel beside the caret that lists the actions of the request, or says why
- * there are none. The panel draws the state of {@link QuickFixController}; it holds no state of its own.
+ * The quick fix and generate popups: a small panel beside the caret that lists the actions of the request, or
+ * says why there are none. The panel draws the state of {@link QuickFixController} and takes its title and
+ * wording from the {@link CodeActionPopup} it serves; it holds no state of its own.
  */
 public final class QuickFixOverlay {
 
@@ -33,6 +34,8 @@ public final class QuickFixOverlay {
     private static final Style SELECTION_STYLE = Style.create().reversed().bold();
     private static final Style NOTICE_STYLE = Style.create().bold();
     private static final Style HINT_STYLE = Style.create().dim().italic();
+    private static final Style NEEDS_FIELDS_STYLE = Style.create().dim();
+    private static final String NEEDS_FIELDS = " (needs field selection)";
 
     private final QuickFixController controller;
 
@@ -54,7 +57,8 @@ public final class QuickFixOverlay {
         int width = Math.min(Math.max(contentWidth(preview) + 4, MIN_WIDTH), Math.min(MAX_WIDTH, area.width()));
         Rect panel = place(area, width, height, caret);
         frame.renderWidget(Clear.INSTANCE, panel);
-        Block block = Block.builder().title("Quick Fix").borders(Borders.ALL).borderType(BorderType.ROUNDED).build();
+        Block block = Block.builder().title(controller.popup().title()).borders(Borders.ALL)
+                .borderType(BorderType.ROUNDED).build();
         frame.renderWidget(block, panel);
         Rect inner = block.inner(panel);
         controller.layout(OverlayInput.region(panel), OverlayInput.region(inner));
@@ -62,13 +66,14 @@ public final class QuickFixOverlay {
         frame.renderWidget(Paragraph.builder().text(Text.from(lines(view, inner.width()))).build(), inner);
     }
 
-    private static List<Line> lines(QuickFixMenu.View view, int width) {
+    private List<Line> lines(QuickFixMenu.View view, int width) {
+        CodeActionPopup popup = controller.popup();
         List<Line> lines = new ArrayList<>();
         switch (view.state()) {
-            case LOADING -> lines.add(plain("Looking for quick fixes...", LABEL_STYLE, width));
-            case EMPTY -> lines.add(plain("No quick fixes available", LABEL_STYLE, width));
-            case UNAVAILABLE -> lines.add(plain("Quick fixes unavailable: " + view.message(), NOTICE_STYLE, width));
-            case FAILED -> lines.add(plain("Quick fixes failed: " + view.message(), NOTICE_STYLE, width));
+            case LOADING -> lines.add(plain(popup.loadingText(), LABEL_STYLE, width));
+            case EMPTY -> lines.add(plain(popup.emptyText(), LABEL_STYLE, width));
+            case UNAVAILABLE -> lines.add(plain(popup.noun() + " unavailable: " + view.message(), NOTICE_STYLE, width));
+            case FAILED -> lines.add(plain(popup.noun() + " failed: " + view.message(), NOTICE_STYLE, width));
             case ACTIONS -> {
                 List<CodeAction> visible = view.visible();
                 for (int row = 0; row < visible.size(); row++) {
@@ -89,25 +94,30 @@ public final class QuickFixOverlay {
         return Line.from(Span.styled(StatusBarLayout.truncate(text, width), style));
     }
 
-    private static Line actionLine(CodeAction action, boolean selected, int width) {
+    private Line actionLine(CodeAction action, boolean selected, int width) {
         String kind = action.kind().isEmpty() ? "" : "  " + action.kind();
         String row = StatusBarLayout.truncate(" " + title(action) + kind, width);
-        return Line.from(Span.styled(row + " ".repeat(Math.max(0, width - CharWidth.of(row))),
-                selected ? SELECTION_STYLE : LABEL_STYLE));
+        Style style = selected ? SELECTION_STYLE : controller.needsFieldSelection(action) ? NEEDS_FIELDS_STYLE
+                : LABEL_STYLE;
+        return Line.from(Span.styled(row + " ".repeat(Math.max(0, width - CharWidth.of(row))), style));
     }
 
-    private static int contentWidth(QuickFixMenu.View view) {
+    private int contentWidth(QuickFixMenu.View view) {
+        CodeActionPopup popup = controller.popup();
         int width = switch (view.state()) {
             case ACTIONS -> view.actions().stream().mapToInt(action -> CharWidth.of(title(action)) + 3
                     + CharWidth.of(action.kind())).max().orElse(0);
-            case UNAVAILABLE -> CharWidth.of("Quick fixes unavailable: " + view.message());
-            case FAILED -> CharWidth.of("Quick fixes failed: " + view.message());
+            case UNAVAILABLE -> CharWidth.of(popup.noun() + " unavailable: " + view.message());
+            case FAILED -> CharWidth.of(popup.noun() + " failed: " + view.message());
             default -> 0;
         };
         return Math.max(width, Math.max(CharWidth.of(view.notice()), CharWidth.of(HINT)));
     }
 
-    private static String title(CodeAction action) {
+    private String title(CodeAction action) {
+        if (controller.needsFieldSelection(action)) {
+            return action.title() + NEEDS_FIELDS;
+        }
         return action.edit() != null || action.command() == null ? action.title() : action.title() + " (command)";
     }
 

@@ -27,6 +27,7 @@ final class OverlayStack {
         GO_TO_LINE(false),
         BREAKPOINT_CONDITION(false),
         QUICK_FIX(false),
+        GENERATE(false),
         QUICK_DOCUMENTATION(false),
         PROJECT_DELETE(true),
         EDITOR_CLOSE(true),

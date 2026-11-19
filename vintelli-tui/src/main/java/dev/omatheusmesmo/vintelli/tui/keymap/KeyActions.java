@@ -42,6 +42,7 @@ public final class KeyActions {
     public static final String QUICK_FIX = "editor_quickFix";
     public static final String COMPLETION = "editor_completion";
     public static final String QUICK_DOCUMENTATION = "editor_quickDocumentation";
+    public static final String GENERATE = "editor_generate";
     public static final String TOGGLE_IMPORT_FOLD = "editor_toggleImportFold";
     public static final String TOGGLE_BREAKPOINT = "editor_toggleBreakpoint";
     public static final String EDIT_BREAKPOINT_CONDITION = "editor_editBreakpointCondition";
@@ -139,6 +140,7 @@ public final class KeyActions {
                 new KeyAction(QUICK_FIX, "Quick Fix"),
                 new KeyAction(COMPLETION, "Code Completion"),
                 new KeyAction(QUICK_DOCUMENTATION, "Quick Documentation"),
+                new KeyAction(GENERATE, "Generate"),
                 new KeyAction(TOGGLE_IMPORT_FOLD, "Fold or Unfold Imports"),
                 new KeyAction(TOGGLE_BREAKPOINT, "Toggle Line Breakpoint"),
                 new KeyAction(EDIT_BREAKPOINT_CONDITION, "Edit Breakpoint Condition"),

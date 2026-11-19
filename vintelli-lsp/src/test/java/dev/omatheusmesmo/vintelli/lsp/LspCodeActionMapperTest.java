@@ -136,4 +136,31 @@ class LspCodeActionMapperTest {
         assertEquals(List.of(new CodeActionCapability.WorkspaceEdit.UnsupportedChange("non-file", "jar:file:///lib/a.jar!/A.java")),
                 edit.unsupported());
     }
+
+    @Test
+    void aClientSideApplyWorkspaceEditCommandBecomesTheActionsEdit() {
+        Command apply = new Command("Extract to local variable", "java.apply.workspaceEdit", List.of(
+                new WorkspaceEdit(Map.of(GREETER_URI, List.of(
+                        new TextEdit(new Range(new Position(1, 0), new Position(1, 0)), "int count;\n"))))));
+        CodeAction generate = new CodeAction("Generate Getters and Setters");
+        generate.setKind("source.generate.accessors");
+        generate.setCommand(apply);
+
+        CodeActionCapability.CodeAction action = LspCodeActionMapper.codeActionsOf(List.of(Either.forRight(generate)))
+                .getFirst();
+
+        assertEquals(List.of(new CodeActionCapability.WorkspaceEdit.DocumentEdit(GREETER, List.of(
+                new CodeActionCapability.WorkspaceEdit.TextEdit(1, 0, 1, 0, "int count;\n")))),
+                action.edit().documents());
+        assertNull(action.command(), "the client side command is never sent to the server");
+    }
+
+    @Test
+    void aClientSideApplyWorkspaceEditCommandWithoutAnEditIsMalformed() {
+        CodeAction generate = new CodeAction("Generate toString()");
+        generate.setCommand(new Command("Generate toString()", "java.apply.workspaceEdit", List.of()));
+
+        assertThrows(LspCodeActionMapper.MalformedPayload.class,
+                () -> LspCodeActionMapper.codeActionsOf(List.of(Either.forRight(generate))));
+    }
 }

@@ -6,6 +6,10 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+
+import com.google.gson.Gson;
+import com.google.gson.JsonParseException;
 
 import dev.omatheusmesmo.vintelli.api.capability.CodeActionCapability;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability;
@@ -23,6 +27,7 @@ import org.eclipse.lsp4j.SnippetTextEdit;
 import org.eclipse.lsp4j.TextDocumentEdit;
 import org.eclipse.lsp4j.TextEdit;
 import org.eclipse.lsp4j.WorkspaceEdit;
+import org.eclipse.lsp4j.jsonrpc.json.MessageJsonHandler;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 
 /**
@@ -32,6 +37,9 @@ import org.eclipse.lsp4j.jsonrpc.messages.Either;
  * range) raises {@link MalformedPayload} instead of producing a half-filled action.
  */
 final class LspCodeActionMapper {
+
+    private static final String APPLY_WORKSPACE_EDIT = "java.apply.workspaceEdit";
+    private static final Gson GSON = new MessageJsonHandler(Map.of()).getGson();
 
     /**
      * A code action or edit the server sent that breaks the protocol.
@@ -105,17 +113,50 @@ final class LspCodeActionMapper {
             throw new MalformedPayload("an entry of the code action list is empty");
         }
         String title = requiredTitle(command.getTitle(), "a command");
+        Optional<WorkspaceEdit> clientEdit = clientEditOf(command);
+        if (clientEdit.isPresent()) {
+            return new CodeActionCapability.CodeAction(title, "", false, editOf(clientEdit.get()), null);
+        }
         return new CodeActionCapability.CodeAction(title, "", false, null,
                 commandRefOf(command, title));
     }
 
     private static CodeActionCapability.CodeAction actionOf(CodeAction action) {
         String title = requiredTitle(action.getTitle(), "a code action");
-        CodeActionCapability.WorkspaceEdit edit = action.getEdit() == null ? null : editOf(action.getEdit());
-        CodeActionCapability.CommandRef command = action.getCommand() == null ? null
+        Optional<WorkspaceEdit> clientEdit = action.getCommand() == null ? Optional.empty()
+                : clientEditOf(action.getCommand());
+        CodeActionCapability.WorkspaceEdit edit = action.getEdit() != null ? editOf(action.getEdit())
+                : clientEdit.map(LspCodeActionMapper::editOf).orElse(null);
+        CodeActionCapability.CommandRef command = action.getCommand() == null || clientEdit.isPresent() ? null
                 : commandRefOf(action.getCommand(), title);
         return new CodeActionCapability.CodeAction(title, action.getKind(),
                 Boolean.TRUE.equals(action.getIsPreferred()), edit, command);
+    }
+
+    /**
+     * The client side command {@code java.apply.workspaceEdit} names no server command: its argument is the
+     * workspace edit the client applies. The edit is taken from the argument, so the command is never sent.
+     *
+     * @return the edit the command carries, empty when the command is not {@code java.apply.workspaceEdit}
+     * @throws MalformedPayload when the command has no argument that reads as a workspace edit
+     */
+    private static Optional<WorkspaceEdit> clientEditOf(Command command) {
+        if (!APPLY_WORKSPACE_EDIT.equals(command.getCommand())) {
+            return Optional.empty();
+        }
+        String missing = "the command '" + APPLY_WORKSPACE_EDIT + "' carries no workspace edit";
+        if (command.getArguments() == null || command.getArguments().isEmpty()) {
+            throw new MalformedPayload(missing);
+        }
+        try {
+            WorkspaceEdit edit = GSON.fromJson(GSON.toJsonTree(command.getArguments().getFirst()), WorkspaceEdit.class);
+            if (edit == null) {
+                throw new MalformedPayload(missing);
+            }
+            return Optional.of(edit);
+        } catch (JsonParseException unreadable) {
+            throw new MalformedPayload(missing);
+        }
     }
 
     private static String requiredTitle(String title, String subject) {

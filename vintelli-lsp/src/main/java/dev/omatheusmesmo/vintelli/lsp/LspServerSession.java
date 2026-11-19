@@ -334,8 +334,14 @@ final class LspServerSession implements AutoCloseable {
 
     List<Either<Command, CodeAction>> codeAction(String uri, Range range, List<Diagnostic> diagnostics)
             throws ExecutionException, InterruptedException, TimeoutException {
-        CodeActionParams params = new CodeActionParams(new TextDocumentIdentifier(uri), range,
-                new CodeActionContext(diagnostics));
+        return codeAction(uri, range, diagnostics, List.of());
+    }
+
+    List<Either<Command, CodeAction>> codeAction(String uri, Range range, List<Diagnostic> diagnostics,
+            List<String> kinds) throws ExecutionException, InterruptedException, TimeoutException {
+        CodeActionContext context = kinds.isEmpty() ? new CodeActionContext(diagnostics)
+                : new CodeActionContext(diagnostics, kinds);
+        CodeActionParams params = new CodeActionParams(new TextDocumentIdentifier(uri), range, context);
         return server.getTextDocumentService()
                 .codeAction(params)
                 .get(REQUEST_TIMEOUT.toSeconds(), TimeUnit.SECONDS);

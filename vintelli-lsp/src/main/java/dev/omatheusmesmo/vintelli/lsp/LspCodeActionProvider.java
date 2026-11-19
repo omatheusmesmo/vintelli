@@ -47,6 +47,12 @@ public final class LspCodeActionProvider implements CodeActionCapability {
     }
 
     @Override
+    public CapabilityResult<List<CodeActionCapability.CodeAction>> codeActions(Path file, SourceRange range,
+            List<DiagnosticsCapability.Diagnostic> diagnostics, List<String> kinds) {
+        return client.codeActions(file, range, diagnostics, kinds);
+    }
+
+    @Override
     public boolean supportsCommands() {
         return true;
     }
