@@ -891,6 +891,25 @@ class VintelliShellTest {
     }
 
     @Test
+    void nerdModeStripeShowsTheDebugBugAndTheFindMagnifierInPlaceOfTheirLetters() {
+        String previous = useNerdIconFace();
+        try {
+            ShellThemes themes = defaultThemes();
+            RunToolWindow run = new RunToolWindow(() -> themes);
+            List<ToolWindow> windows = List.of(run, new DebugToolWindow(() -> themes, run, new UiWorkQueue()),
+                    new FindToolWindow(() -> themes));
+            Buffer buffer = offlineFrame(new VintelliShell(
+                    ShellConfig.of(new ToolWindowRegistry(windows).toolWindows(), new ShellState(), themes)));
+            assertTrue(findRow(buffer, 1, DEBUG_GLYPH) >= 0, "the left stripe shows the Debug bug");
+            assertTrue(findRow(buffer, 1, FIND_GLYPH) >= 0, "the left stripe shows the Find magnifier");
+            assertEquals(-1, findRow(buffer, 1, "D"), "the Debug stripe no longer shows its letter");
+            assertEquals(-1, findRow(buffer, 1, "F"), "the Find stripe no longer shows its letter");
+        } finally {
+            restoreProperty(IconMode.CONFIG_PROPERTY, previous);
+        }
+    }
+
+    @Test
     void nerdModeDrawsEachStripeWithItsWindowGlyph() {
         String previous = System.getProperty(IconMode.CONFIG_PROPERTY);
         System.setProperty(IconMode.CONFIG_PROPERTY, "nerd");
@@ -1288,6 +1307,8 @@ class VintelliShellTest {
     private static final String ACP_GLYPH = "";
     private static final String THREADS_GLYPH = "";
     private static final String STRUCTURE_GLYPH = "";
+    private static final String DEBUG_GLYPH = "";
+    private static final String FIND_GLYPH = "";
     private static final Size SIZE = new Size(VIEWPORT.width(), VIEWPORT.height());
     private static final Size WIDE = new Size(150, 42);
     private static final Size SIXTY_BY_EIGHTEEN = new Size(60, 18);

@@ -14,6 +14,7 @@ import java.util.Set;
 import java.util.stream.IntStream;
 
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugVariable;
+import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
 
 import dev.tamboui.buffer.Buffer;
 import dev.tamboui.layout.Rect;
@@ -23,6 +24,15 @@ import dev.tamboui.tui.event.KeyEvent;
 import org.junit.jupiter.api.Test;
 
 class DebugToolWindowTest {
+
+    @Test
+    void theStripeShowsTheBugGlyphForDebugAndItsLetterInAsciiMode() {
+        ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
+        DebugToolWindow debug = new DebugToolWindow(() -> themes, new RunToolWindow(() -> themes), new UiWorkQueue());
+        assertEquals("", debug.icon());
+        assertEquals("", ToolStripes.glyph(debug, IconMode.NERD));
+        assertEquals("D", ToolStripes.glyph(debug, IconMode.ASCII));
+    }
 
     @Test
     void unavailableStateRendersWithoutTriggeringInspectionAndKeyboardNavigationIsSafe() {

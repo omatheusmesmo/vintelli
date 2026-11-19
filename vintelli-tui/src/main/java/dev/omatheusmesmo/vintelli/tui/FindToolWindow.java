@@ -58,7 +58,7 @@ public final class FindToolWindow implements ToolWindow {
     }
 
     private static final String ID = "find";
-    private static final String SEARCH_GLYPH = "";
+    private static final String SEARCH_GLYPH = "";
     private static final String EMPTY = "No usages searched yet: press Alt+F7 on a symbol";
     private static final int POSITION_WIDTH = 8;
     private static final int PAGE_ROWS = 8;
