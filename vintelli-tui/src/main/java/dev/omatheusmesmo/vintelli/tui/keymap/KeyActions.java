@@ -48,6 +48,7 @@ public final class KeyActions {
     public static final String EDIT_BREAKPOINT_CONDITION = "editor_editBreakpointCondition";
     public static final String DUPLICATE_LINE = "editor_duplicateLine";
     public static final String SELECT_ALL = "editor_selectAll";
+    public static final String QUICK_DEFINITION = "editor_quickDefinition";
     public static final String GO_TO_FILE = "navigation_goToFile";
     public static final String GO_TO_CLASS = "navigation_goToClass";
     public static final String GO_TO_SYMBOL = "navigation_goToSymbol";
@@ -132,6 +133,7 @@ public final class KeyActions {
                 new KeyAction(PASTE, "Paste"),
                 new KeyAction(DUPLICATE_LINE, "Duplicate Line"),
                 new KeyAction(SELECT_ALL, "Select All"),
+                new KeyAction(QUICK_DEFINITION, "Quick Definition"),
                 new KeyAction(CLOSE_TAB, "Close Editor Tab"),
                 new KeyAction(NEXT_TAB, "Next Editor Tab"),
                 new KeyAction(PREVIOUS_TAB, "Previous Editor Tab"),

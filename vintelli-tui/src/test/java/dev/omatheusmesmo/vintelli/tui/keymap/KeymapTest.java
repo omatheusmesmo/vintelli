@@ -188,7 +188,7 @@ class KeymapTest {
                 "project_view_menu", "project_new_menu", "project_select_opened_file", "project_expand_all",
                 "project_collapse_all", "project_options_menu", "project_show_hidden", "project_hide",
                 "ActivateProjectToolWindow", "ActivateRunToolWindow", "ActivateTerminalToolWindow",
-                "ActivateProblemsToolWindow", "ActivateAcpAgentsToolWindow");
+                "ActivateProblemsToolWindow", "ActivateAcpAgentsToolWindow", "editor_quickDefinition");
         assertEquals(expected, ids);
         assertEquals("(IntelliJ: Double Shift, not sent by terminals)", IntellijReference.helpText(SEARCH_EVERYWHERE));
         assertEquals("", IntellijReference.paletteHint(keymap, SEARCH_EVERYWHERE),

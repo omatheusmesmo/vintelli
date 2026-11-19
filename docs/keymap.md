@@ -45,6 +45,7 @@ Key actions in the `intellij` profile:
 | `editor_completion` | `Ctrl+Space` (`Ctrl+@` too) | `Ctrl+Space` |
 | `editor_quickDocumentation` | `Ctrl+Q` | `Ctrl+Q` |
 | `editor_generate` | `Alt+Insert` (the command palette, `Ctrl+P`, is the fallback) | `Alt+Insert` |
+| `editor_quickDefinition` | `Ctrl+Shift+I` (Kitty keyboard protocol), `Alt+Space` | `Ctrl+Shift+I` |
 | `focusEditor` | `Ctrl+F11` | `Ctrl+Shift+F12` |
 
 The command palette lists every action with its active chord and, when the
@@ -88,6 +89,41 @@ shows `Loading...` while the server answers, `No documentation found` for an
 empty answer, and the reason when the server cannot answer. An answer that
 arrives after the caret or the text moved is dropped, so the popup never shows
 the documentation of a position the caret has left.
+
+### Quick definition
+
+`Ctrl+Shift+I` (or `Alt+Space`) resolves the declaration of the symbol at the
+caret through the navigation provider and opens a popup titled `Quick Definition`
+below the caret line, above it when there is no room. The popup shows the source
+of the declaration, coloured the way the editor colours it, about 15 rows tall,
+under a header with the file and the line, such as `Util.java:42`. The range is the
+innermost declaration of the file outline that contains the target (capped at 200
+lines), or 20 lines from the target line when the outline has none. The text comes
+from the open tab when the file is open, unsaved edits included, and from the read
+file capability otherwise. The editor keeps its caret, scroll and tabs while the
+popup is open.
+
+While it is open, `Up`, `Down`, `PageUp` and `PageDown` scroll it, and so does the
+mouse wheel. `Enter` or the Go to Declaration chord (`Ctrl+B`) opens the shown
+declaration for real, with the file revealed in the project tree, and closes the
+popup. `Escape` closes it and the focus stays in the editor at the same caret; a
+click or any other key closes it too, and that key then goes to the editor as
+usual. When the server answers several declarations the header adds the position
+among them, such as `1/3`, and the Next Editor Tab and Previous Editor Tab chords
+(`Alt+Right` and `Alt+Left` in the `intellij` profile) page between them.
+
+A target the editor cannot read says why in the popup and on the status line: a
+`jdt://` location of a library or the JDK, which the editor has no way to open
+yet, a file outside the project root, a server that is not running, or no
+definition at the caret. An answer that arrives after the caret or the text moved
+is dropped.
+
+`Ctrl+Shift+I` needs the Kitty keyboard protocol: without it the terminal sends
+the chord as `Ctrl+I`, which is `Tab`. `Alt+Space` is the fallback that works in
+every terminal that sends `Alt` as an `ESC` prefix, and it is bound in both
+profiles; the Navigate menu and the command palette reach the action as well.
+It is IntelliJ's macOS chord for Quick Definition, and no other action uses it.
+The `vim` profile binds `Alt+Space` only.
 
 ### Generate
 
@@ -341,6 +377,8 @@ and the bytes the terminal sends always agree.
     and Undo while Shift is held.
   - `Ctrl+Alt+Shift+N` (Go to Symbol). The plain `Ctrl+N` runs Go to Class and
     does not answer while Shift is held, so `Ctrl+Shift+N` still runs Go to File.
+  - `Ctrl+Shift+I` (Quick Definition), which the legacy protocol sends as `Ctrl+I`,
+    the `Tab` byte.
   - `Ctrl+Shift+NumPad +` (Expand All) and `Ctrl+Shift+NumPad -` (Collapse All)
     in the project pane and from the palette.
   - The keypad keys as their own keys: the keypad arrows, Home, End, Page Up,
@@ -370,6 +408,7 @@ never sends:
 | `Ctrl+Alt+Shift+N` | none, the palette (`Ctrl+P`) and the Navigate menu reach it | Go to Symbol |
 | `Ctrl+Shift+F` | `Alt+F` | Find in Files |
 | `Ctrl+Shift+Z` | `Ctrl+Y` | Redo |
+| `Ctrl+Shift+I` | `Alt+Space` | Quick Definition |
 | `Ctrl+Shift+NumPad +` | `F4` | Expand All |
 | `Ctrl+Shift+NumPad -` | `Alt+C` | Collapse All |
 
@@ -584,6 +623,7 @@ adding it to that test on purpose.
 | editor_completion | Ctrl+Space \| Ctrl+@ | Ctrl+Space | same | Code completion from the language server at the caret, offered in a popup; Ctrl+@ is the NUL spelling of the same key that some terminals send (docs/keymap.md) |
 | editor_quickDocumentation | Ctrl+Q | Ctrl+Q | same | Quick documentation of the symbol at the caret from the language server, in a popup beside the caret (docs/keymap.md) |
 | editor_generate | Alt+Insert | Alt+Insert | same | Generate from the language server's source actions for the class at the caret, in a popup beside the caret; the vim profile binds no chord (docs/keymap.md) |
+| editor_quickDefinition | Ctrl+Shift+I \| Alt+Space | Ctrl+Shift+I | different | Quick Definition is Ctrl+Shift+I in IntelliJ, which a Kitty-capable terminal sends as its own chord; a terminal without the protocol sends it as Ctrl+I, which is Tab, so Alt+Space stays as the fallback (IntelliJ's macOS keymap uses it for the same action, no profile binds it elsewhere, and terminals send it as ESC and a space); the palette and the Navigate menu reach it too (docs/keymap.md) |
 | moveWordLeft | Ctrl+Left | Ctrl+Left | same | Move Caret to Previous Word; the editor text area takes it under the Kitty keyboard protocol |
 | moveWordRight | Ctrl+Right | Ctrl+Right | same | Move Caret to Next Word; the editor text area takes it under the Kitty keyboard protocol |
 | deleteWordBackward | Ctrl+Backspace | - | vintelli-only | Deletes the word before the caret in the editor under the Kitty keyboard protocol; no IntelliJ chord is confirmed on the reference page for this action |

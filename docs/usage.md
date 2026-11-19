@@ -314,6 +314,11 @@ first, then the Javadoc or markdown the language server sends, shown as plain te
 marked by colour. Up, Down, PageUp and PageDown scroll it and Escape closes it; see
 [Quick documentation](keymap.md#quick-documentation) for the rest.
 
+Ctrl+Shift+I (or Alt+Space where the terminal lacks the Kitty keyboard protocol) peeks at the declaration of
+the symbol at the caret in a popup below it, with the source coloured like the editor, without moving the caret
+or opening a tab. Up, Down, PageUp and PageDown scroll it, Enter or Ctrl+B opens the declaration for real, and
+Escape closes it; see [Quick definition](keymap.md#quick-definition) for the rest.
+
 In the editor, a left click places the caret on the character under the pointer
 and focuses the editor. Drag with the left button to select text; releasing ends
 the drag. Shift with the arrows, Home, End, PageUp or PageDown selects from the

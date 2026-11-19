@@ -292,6 +292,7 @@ public final class Keymap {
         builder.bind(KeyTrigger.ctrl(' '), KeyActions.COMPLETION);
         builder.bind(KeyTrigger.ctrl('@'), KeyActions.COMPLETION);
         builder.bind(KeyTrigger.ctrl('q'), KeyActions.QUICK_DOCUMENTATION);
+        builder.bind(KeyTrigger.alt(' '), KeyActions.QUICK_DEFINITION);
         builder.bind(KeyTrigger.alt('='), KeyActions.PROJECT_WIDER);
         builder.bind(KeyTrigger.alt('-'), KeyActions.PROJECT_NARROWER);
         builder.bind(KeyTrigger.alt('.'), KeyActions.BOTTOM_TALLER);
@@ -335,6 +336,7 @@ public final class Keymap {
                 builder.bind(new CtrlAltShiftKeyTrigger('n'), KeyActions.GO_TO_SYMBOL);
                 builder.bind(new ShiftedKeyTrigger(KeyTrigger.ctrl('f')), KeyActions.FIND_IN_FILES);
                 builder.bind(new ShiftedKeyTrigger(KeyTrigger.ctrl('z')), KeyActions.REDO);
+                builder.bind(new ShiftedKeyTrigger(KeyTrigger.ctrl('i')), KeyActions.QUICK_DEFINITION);
                 builder.bind(KeyTrigger.key(KeyCode.KP_ADD, true, false, true), KeyActions.PROJECT_EXPAND_ALL);
                 builder.bind(KeyTrigger.key(KeyCode.KP_SUBTRACT, true, false, true),
                         KeyActions.PROJECT_COLLAPSE_ALL);

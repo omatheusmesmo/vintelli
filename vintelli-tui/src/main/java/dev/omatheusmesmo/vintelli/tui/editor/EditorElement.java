@@ -346,7 +346,7 @@ final class EditorElement implements Element {
         return normalized.substring(normalized.lastIndexOf('/') + 1);
     }
 
-    private static String language(String file) {
+    static String language(String file) {
         int dot = file.lastIndexOf('.');
         return dot < 0 ? "text" : file.substring(dot + 1).toLowerCase(Locale.ROOT);
     }
@@ -475,6 +475,7 @@ final class EditorElement implements Element {
             }
             if (editor.completionTakesKey(event)) { return EventResult.UNHANDLED; }
             if (editor.quickDocumentationTakesKey(event)) { return EventResult.UNHANDLED; }
+            if (editor.quickDefinitionTakesKey(event)) { return EventResult.UNHANDLED; }
             if (editor.menuNavigationActive() || editor.overlayInputActive()) { return EventResult.UNHANDLED; }
             if (reserved(event)) { return EventResult.UNHANDLED; }
             EditorDocument document = editor.document();
@@ -523,6 +524,7 @@ final class EditorElement implements Element {
                 editor.changed();
                 editor.completionKeyHandled(event);
                 editor.quickDocumentationKeyHandled();
+                editor.quickDefinitionKeyHandled();
             }
             return handled ? EventResult.HANDLED : EventResult.UNHANDLED;
         }

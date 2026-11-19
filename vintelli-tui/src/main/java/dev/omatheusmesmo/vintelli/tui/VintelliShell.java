@@ -16,6 +16,8 @@ import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
 import dev.omatheusmesmo.vintelli.tui.editor.CompletionController;
 import dev.omatheusmesmo.vintelli.tui.editor.CompletionOverlay;
 import dev.omatheusmesmo.vintelli.tui.editor.CompletionSite;
+import dev.omatheusmesmo.vintelli.tui.editor.QuickDefinitionController;
+import dev.omatheusmesmo.vintelli.tui.editor.QuickDefinitionOverlay;
 import dev.omatheusmesmo.vintelli.tui.editor.QuickDocumentationController;
 import dev.omatheusmesmo.vintelli.tui.editor.QuickDocumentationOverlay;
 import dev.omatheusmesmo.vintelli.tui.editor.GoToLine;
@@ -201,6 +203,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private final CompletionOverlay completionOverlay;
     private final QuickDocumentationController quickDocumentation;
     private final QuickDocumentationOverlay quickDocumentationOverlay;
+    private final QuickDefinitionController quickDefinition;
+    private final QuickDefinitionOverlay quickDefinitionOverlay;
     private Column centerPanel;
     private Column paneSeparatorVertical;
     private Column paneSeparatorHorizontal;
@@ -313,9 +317,13 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         this.quickDocumentation = new QuickDocumentationController(capabilityRegistry, editor,
                 this::deliverToRenderThread);
         this.quickDocumentationOverlay = new QuickDocumentationOverlay(quickDocumentation);
+        this.quickDefinition = new QuickDefinitionController(this::availableNavigationProvider, capabilityRegistry,
+                editor, this::deliverToRenderThread, message -> status = message);
+        this.quickDefinitionOverlay = new QuickDefinitionOverlay(quickDefinition, editor);
         if (editor != null) {
             editor.attachCompletion(completion);
             editor.attachQuickDocumentation(quickDocumentation);
+            editor.attachQuickDefinition(quickDefinition);
         }
         Path projectRoot = editor == null ? Path.of("").toAbsolutePath().normalize() : editor.project();
         Path configRoot = persistLayout ? ConfigDirectory.configRoot(ConfigDirectory.sharedConfigDir(),
@@ -432,6 +440,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         stack.registerOverlay(Kind.QUICK_FIX, quickFix::isOpen, this::releaseQuickFix);
         stack.registerOverlay(Kind.GENERATE, generate::isOpen, this::releaseGenerate);
         stack.registerOverlay(Kind.QUICK_DOCUMENTATION, quickDocumentation::isOpen, this::releaseQuickDocumentation);
+        stack.registerOverlay(Kind.QUICK_DEFINITION, quickDefinition::isOpen, this::releaseQuickDefinition);
         if (searchModel != null) {
             stack.registerOverlay(Kind.PROJECT_SEARCH, searchModel::isOpen, searchModel::close);
         }
@@ -1155,6 +1164,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             case QUICK_DOCUMENTATION -> new OverlayElement("quick-documentation",
                     (frame, area) -> quickDocumentationOverlay.render(frame, area,
                             editor == null ? Optional.empty() : editor.caretCell()));
+            case QUICK_DEFINITION -> new OverlayElement("quick-definition",
+                    (frame, area) -> quickDefinitionOverlay.render(frame, area,
+                            editor == null ? Optional.empty() : editor.caretCell()));
             default -> throw new IllegalStateException("Not a drawn overlay: " + kind);
         };
     }
@@ -1210,6 +1222,14 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 return EventResult.HANDLED;
             }
             releaseQuickDocumentation();
+        }
+        if (top == Kind.QUICK_DEFINITION) {
+            int direction = OverlayInput.scrollDirection(mouse);
+            if (direction != 0) {
+                quickDefinition.wheel(direction);
+                return EventResult.HANDLED;
+            }
+            releaseQuickDefinition();
         }
         if (top == Kind.QUICK_FIX) {
             handleQuickFixPointer(mouse);
@@ -1373,6 +1393,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             case QUICK_FIX -> handleQuickFixKey(key);
             case GENERATE -> handleGenerateKey(key);
             case QUICK_DOCUMENTATION -> handleQuickDocumentationKey(key);
+            case QUICK_DEFINITION -> handleQuickDefinitionKey(key);
             default -> throw new IllegalStateException("Not a drawn overlay: " + overlay);
         }
     }
@@ -1459,6 +1480,13 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         Kind overlay = parts.stack().topOverlay().orElse(null);
         if (overlay == Kind.QUICK_DOCUMENTATION && !quickDocumentation.takes(OverlayInput.key(key))) {
             releaseQuickDocumentation();
+            overlay = parts.stack().topOverlay().orElse(null);
+        }
+        if (overlay == Kind.QUICK_DEFINITION && handleQuickDefinitionChord(parts, key)) {
+            return EventResult.HANDLED;
+        }
+        if (overlay == Kind.QUICK_DEFINITION && !quickDefinition.takes(OverlayInput.key(key))) {
+            releaseQuickDefinition();
             overlay = parts.stack().topOverlay().orElse(null);
         }
         if (overlay != null) {
@@ -1727,6 +1755,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 parts.stack().closeOverlays();
                 openQuickDocumentation(parts);
             }
+            case KeyActions.QUICK_DEFINITION -> {
+                parts.stack().closeOverlays();
+                openQuickDefinition(parts);
+            }
             case KeyActions.PROJECT_WIDER -> {
                 parts.stack().closeOverlays();
                 paneLayout.resizeProject(2);
@@ -1942,6 +1974,46 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     private void releaseQuickDocumentation() {
         quickDocumentation.close();
+    }
+
+    private void openQuickDefinition(KeymapParts parts) {
+        Optional<CompletionSite> site = editor == null ? Optional.empty() : editor.completionSite();
+        if (site.isEmpty()) {
+            status = "Open a file to peek at a definition";
+            return;
+        }
+        inputCaptured = false;
+        parts.stack().open(Kind.QUICK_DEFINITION, () -> quickDefinition.open(site.get()));
+        editor.requestFocus();
+        status = "Looking for the definition...";
+    }
+
+    private void handleQuickDefinitionKey(KeyEvent key) {
+        openQuickDefinitionTarget(quickDefinition.press(OverlayInput.key(key)));
+    }
+
+    private boolean handleQuickDefinitionChord(KeymapParts parts, KeyEvent key) {
+        if (parts.keymap().matches(key, KeyActions.DEFINITION)) {
+            openQuickDefinitionTarget(quickDefinition.accept());
+            return true;
+        }
+        if (parts.keymap().matches(key, KeyActions.NEXT_TAB)) {
+            quickDefinition.next();
+            return true;
+        }
+        if (parts.keymap().matches(key, KeyActions.PREVIOUS_TAB)) {
+            quickDefinition.previous();
+            return true;
+        }
+        return false;
+    }
+
+    private void openQuickDefinitionTarget(Optional<QuickDefinitionController.Target> target) {
+        target.ifPresent(opened -> editorController.openRevealed(opened.file(), opened.line()));
+    }
+
+    private void releaseQuickDefinition() {
+        quickDefinition.close();
     }
 
     private boolean handleCompletionPointer(MouseEvent mouse) {

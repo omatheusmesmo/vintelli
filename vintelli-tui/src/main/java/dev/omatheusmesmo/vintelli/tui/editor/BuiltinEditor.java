@@ -105,6 +105,7 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     private Supplier<Keymap> keymap;
     private CompletionController completion;
     private QuickDocumentationController quickDocumentation;
+    private QuickDefinitionController quickDefinition;
 
     @Inject
     public BuiltinEditor(@ConfigProperty(name = "vintelli.local.project-root") Optional<String> configuredRoot,
@@ -859,6 +860,16 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     }
 
     /**
+     * The text of the open document of the file, unsaved edits included.
+     *
+     * @return the text, empty when the file is not open in a tab
+     */
+    public synchronized Optional<String> openText(Path file) {
+        return documents.stream().filter(document -> document.file().equals(file)).findFirst()
+                .map(EditorDocument::text);
+    }
+
+    /**
      * Applies a completion as one undoable step that marks the document dirty: the insert and the additional edits
      * the suggestion carries, such as an import. The caret goes into the insert, after the lines the additional
      * edits added above it.
@@ -950,6 +961,27 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     synchronized void quickDocumentationKeyHandled() {
         if (quickDocumentation != null) {
             quickDocumentation.close();
+        }
+    }
+
+    /**
+     * Connects the quick definition popup of the shell. While the popup is open the editor leaves the keys the popup
+     * takes to the shell, and a key the editor handles closes the popup, so the popup never describes text the key
+     * has just changed.
+     */
+    public synchronized void attachQuickDefinition(QuickDefinitionController controller) {
+        quickDefinition = controller;
+    }
+
+    synchronized boolean quickDefinitionTakesKey(KeyEvent key) {
+        return quickDefinition != null && quickDefinition.isOpen() && (quickDefinition.takes(OverlayInput.key(key))
+                || keymap().matches(key, KeyActions.DEFINITION) || keymap().matches(key, KeyActions.NEXT_TAB)
+                || keymap().matches(key, KeyActions.PREVIOUS_TAB));
+    }
+
+    synchronized void quickDefinitionKeyHandled() {
+        if (quickDefinition != null) {
+            quickDefinition.close();
         }
     }
 
