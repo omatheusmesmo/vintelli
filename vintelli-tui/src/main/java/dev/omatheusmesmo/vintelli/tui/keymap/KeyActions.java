@@ -135,6 +135,14 @@ public final class KeyActions {
     public static final String DIFF_PREVIOUS_HUNK = "diff_previousHunk";
     public static final String DIFF_TOGGLE_UNIFIED = "diff_toggleUnified";
 
+    /** Stepping actions that act only while a debug session is suspended, see {@link KeyContext}. */
+    public static final Set<String> DEBUG_SESSION_ACTIONS = Set.of(DEBUG_RESUME, DEBUG_STEP_OVER, DEBUG_STEP_INTO,
+            DEBUG_STEP_OUT);
+
+    /** Actions on the debugger chords, which a window that claims the keyboard keeps for itself. */
+    public static final Set<String> DEBUGGER_KEY_ACTIONS = Set.of(DEBUG_RESUME, DEBUG_STEP_OVER, DEBUG_STEP_INTO,
+            DEBUG_STEP_OUT, RUN_DEBUG);
+
     public static List<KeyAction> shellActions() {
         return List.of(new KeyAction(MENU, "Open Menu"),
                 new KeyAction(OPEN_FILE, "Open Selected File"),

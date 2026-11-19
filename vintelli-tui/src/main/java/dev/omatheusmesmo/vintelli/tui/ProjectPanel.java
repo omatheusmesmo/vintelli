@@ -4,6 +4,7 @@ import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcon;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
 import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
+import dev.omatheusmesmo.vintelli.tui.keymap.KeyContext;
 import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import dev.omatheusmesmo.vintelli.tui.menu.MenuEntry;
@@ -64,6 +65,10 @@ final class ProjectPanel implements Element {
     interface Host {
 
         Keymap keymap();
+
+        default KeyContext keyContext() {
+            return KeyContext.NONE;
+        }
 
         boolean shortcutsBlocked();
 
@@ -405,9 +410,10 @@ final class ProjectPanel implements Element {
             return false;
         }
         Keymap keymap = host.keymap();
-        if (keymap.matches(key, KeyActions.PROJECT_NEW_FILE)) {
+        KeyContext context = host.keyContext();
+        if (keymap.matches(key, KeyActions.PROJECT_NEW_FILE, context)) {
             host.beginInput(ProjectTreeController.InputMode.CREATE_FILE);
-        } else if (keymap.matches(key, KeyActions.PROJECT_NEW_DIRECTORY)) {
+        } else if (keymap.matches(key, KeyActions.PROJECT_NEW_DIRECTORY, context)) {
             host.beginInput(ProjectTreeController.InputMode.CREATE_DIRECTORY);
         } else if (keymap.matches(key, KeyActions.PROJECT_RENAME)) {
             host.beginInput(ProjectTreeController.InputMode.RENAME);

@@ -567,7 +567,8 @@ class KeymapTest {
         assertNoActionAnswers(keymap, keypress('w', KeyModifiers.CTRL), "Ctrl+W (Close Tab before the alignment)");
         assertNoActionAnswers(keymap, KeyEvent.ofChar(']', KeyModifiers.ALT), "Alt+] (Next Tab before the alignment)");
         assertNoActionAnswers(keymap, KeyEvent.ofChar('[', KeyModifiers.ALT), "Alt+[ (Previous Tab before the alignment)");
-        assertNoActionAnswers(keymap, KeyEvent.ofKey(KeyCode.F8), "F8 (Next Problem before the alignment)");
+        assertEquals(Set.of(KeyActions.DEBUG_STEP_OVER), answeringActions(keymap, KeyEvent.ofKey(KeyCode.F8)),
+                "F8 is no longer Next Problem; it answers only the stepping action");
         assertNoActionAnswers(keymap, KeyEvent.ofKey(KeyCode.F3), "F3 (Select Opened File before the alignment)");
     }
 
@@ -861,6 +862,51 @@ class KeymapTest {
 
         assertEquals("", IntellijReference.paletteHint(keymap, MOVE_UP),
                 "Move Selection Up answers to the IntelliJ Up chord, the keypad twin is no reason for a hint");
+    }
+
+    @Test
+    void theStepChordsTakeF7AndF9FromTheProjectActionsOnlyWhileASessionIsSuspended() {
+        Keymap keymap = Keymap.ofProfile(KeymapProfile.DEFAULT, WINDOWS);
+        KeyContext suspended = new KeyContext(true);
+        KeyEvent f7 = KeyEvent.ofKey(KeyCode.F7);
+        KeyEvent f9 = KeyEvent.ofKey(KeyCode.F9);
+
+        assertTrue(keymap.matches(f7, KeyActions.PROJECT_NEW_FILE, KeyContext.NONE));
+        assertFalse(keymap.matches(f7, KeyActions.DEBUG_STEP_INTO, KeyContext.NONE),
+                "F7 does not step without a suspended session");
+        assertTrue(keymap.matches(f9, KeyActions.PROJECT_NEW_DIRECTORY, KeyContext.NONE));
+        assertFalse(keymap.matches(f9, KeyActions.DEBUG_RESUME, KeyContext.NONE));
+
+        assertTrue(keymap.matches(f7, KeyActions.DEBUG_STEP_INTO, suspended));
+        assertFalse(keymap.matches(f7, KeyActions.PROJECT_NEW_FILE, suspended),
+                "F7 gives way to Step Into while a session is suspended");
+        assertTrue(keymap.matches(f9, KeyActions.DEBUG_RESUME, suspended));
+        assertFalse(keymap.matches(f9, KeyActions.PROJECT_NEW_DIRECTORY, suspended));
+        assertTrue(keymap.matches(KeyEvent.ofKey(KeyCode.F8), KeyActions.DEBUG_STEP_OVER, suspended));
+        assertTrue(keymap.matches(KeyEvent.ofKey(KeyCode.F8, KeyModifiers.SHIFT), KeyActions.DEBUG_STEP_OUT, suspended));
+        assertFalse(keymap.matches(KeyEvent.ofKey(KeyCode.F8, KeyModifiers.SHIFT), KeyActions.DEBUG_STEP_OVER, suspended),
+                "Shift+F8 is Step Out, never Step Over");
+        assertTrue(keymap.matchesReserved(KeyEvent.ofKey(KeyCode.F8), KeyActions.DEBUG_STEP_OVER, suspended));
+    }
+
+    @Test
+    void shiftF9StartsDebugAndLeavesF9ToResumeAndNewDirectory() {
+        Keymap keymap = Keymap.ofProfile(KeymapProfile.DEFAULT, WINDOWS);
+        KeyEvent shiftF9 = KeyEvent.ofKey(KeyCode.F9, KeyModifiers.SHIFT);
+
+        assertEquals(Set.of(KeyActions.RUN_DEBUG), answeringActions(keymap, shiftF9),
+                "Shift+F9 answers only Debug, not New Directory nor Resume");
+        assertTrue(keymap.matches(shiftF9, KeyActions.RUN_DEBUG, new KeyContext(true)));
+    }
+
+    @Test
+    void theVimProfileKeepsItsF8AndNeverStepsFromTheKeyboard() {
+        Keymap vim = Keymap.ofProfile(KeymapProfile.VIM, WINDOWS);
+        KeyContext suspended = new KeyContext(true);
+
+        assertTrue(vim.matches(KeyEvent.ofKey(KeyCode.F8), KeyActions.NEXT_PROBLEM, suspended));
+        assertFalse(vim.matches(KeyEvent.ofKey(KeyCode.F8), KeyActions.DEBUG_STEP_OVER, suspended));
+        assertTrue(vim.matches(KeyEvent.ofKey(KeyCode.F7), KeyActions.PROJECT_NEW_FILE, suspended));
     }
 
     private static KeyEvent ctrlShift(char lower) {

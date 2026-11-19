@@ -267,6 +267,8 @@ enough to keep them: they are active only while the project panel has the
 focus, and IntelliJ also reuses these keys inside its own project tree, so
 no other action needs them. `F2` is not one of them any more: in the project
 pane it is Next Problem in the `intellij` profile (see the alignment below).
+`F7` and `F9` give way while a debug session is suspended, see
+[Debugger keys](#debugger-keys).
 
 ## IntelliJ alignment
 
@@ -311,9 +313,10 @@ Decisions behind the table:
 - **`vim` previous problem**: `vim` keeps `F8` for Next Problem, and binds
   `Shift+F8` to Previous Problem, which was free in the `vim` preset. The
   same Shift refusal keeps `F8` and `Shift+F8` apart there.
-- **`F12` and `F8` are left unbound** in `intellij`. IntelliJ's `F12` is Jump
-  to Last Tool Window (#366, not bound yet), and `F8` is Step Over, a debugger
-  key that stays free for the debugger work.
+- **`F12` is left unbound** in `intellij`. IntelliJ's `F12` is Jump to Last
+  Tool Window (#366, not bound yet). `F8` is Step Over while a debug session is
+  suspended, see [Debugger keys](#debugger-keys); without a session it keeps
+  no action in `intellij`.
 - **`Ctrl+W`** is Extend Selection in IntelliJ, so it is not bound in
   `intellij`. The ACP Agents window keeps its own `Ctrl+W`, which closes the
   conversation, because that window handles its keys itself.
@@ -551,6 +554,33 @@ status bar stay, so a window can still be opened with the mouse.
 - The mode is kept in the layout file, so a session that ends in focus mode
   starts in it. A layout file without that entry starts as it always did.
 
+## Debugger keys
+
+The IntelliJ debugger chords work in the `intellij` profile while a debug
+session is suspended at a location (the Run window shows the session stopped):
+
+| Chord | Action while a session is suspended | Without a suspended session |
+|---|---|---|
+| `F8` | `debug.step-over` | no action |
+| `F7` | `debug.step-into` | `project_new_file` in the project pane |
+| `Shift+F8` | `debug.step-out` | no action |
+| `F9` | `debug.resume` | `project_new_directory` in the project pane |
+| `Shift+F9` | `run.debug`, starts Debug for the selected run configuration | the same |
+
+The rule is a key context (`KeyContext`), not a second keymap: `F7` and `F9`
+stay bound to both actions, and `Keymap.matches(event, action, context)` lets
+the stepping action win while a session is suspended and silences it
+otherwise. A step goes through the same path as the Run window buttons, so an
+adapter that does not support it reports `unavailable: unsupported by this
+adapter` on the status line, and an accepted step shows its name (for example
+`Step over`). While the session is running, not suspended, the keys keep their
+usual actions.
+
+The chords work wherever the focus is. The exception is a window that claims
+the keyboard for text (the terminal and an open ACP chat): it keeps `F7`,
+`F8`, `F9` and their Shift variants, and so do open popups and overlays. The
+list windows (Debug, Structure, Maven) do not claim them.
+
 ## IntelliJ comparison table
 
 The file `vintelli-tui/src/main/resources/dev/omatheusmesmo/vintelli/tui/keymap/intellij-keymap.csv`
@@ -626,8 +656,8 @@ adding it to that test on purpose.
 | KeymapHelp | F1 | - | vintelli-only | F1 is not on the IntelliJ default keymap page (it lists Ctrl+F1 for Error Description and Ctrl+Q for Quick Documentation); here it opens the keymap help |
 | shell_menu | F10 | - | vintelli-only | Opens the shell menu; no IntelliJ chord confirmed against the reference page |
 | navigation_focusBreadcrumbs | Alt+Home | - | vintelli-only | Focus the navigation bar; no IntelliJ chord confirmed against the reference page |
-| project_new_file | F7 | - | vintelli-only | New project file; IntelliJ binds F7 to Step Into in the debugger, and no New File chord is confirmed here |
-| project_new_directory | F9 | - | vintelli-only | New project directory; IntelliJ binds F9 to Resume Program, and no new-directory chord is confirmed here |
+| project_new_file | F7 | - | vintelli-only | New project file; no New File chord is confirmed here. While a debug session is suspended F7 is Step Into instead, see debug.step-into |
+| project_new_directory | F9 | - | vintelli-only | New project directory; no new-directory chord is confirmed here. While a debug session is suspended F9 is Resume instead, see debug.resume |
 | project_rename | Shift+F6 | Shift+F6 | same | Rename in the project pane; F2 is Next Highlighted Error in IntelliJ, so F2 moved to the editor action |
 | project_delete | Delete | - | vintelli-only | Deletes the project entry; no IntelliJ chord confirmed; shares Delete with deleteForward, the pane scope decides |
 | project_refresh | F5 | - | vintelli-only | Refreshes the project tree; IntelliJ's F5 is Synchronize in the project view, not confirmed against the reference page |
@@ -656,7 +686,7 @@ adding it to that test on purpose.
 | editor_toggleImportFold | Alt+I | - | vintelli-only | Folds or unfolds imports; no IntelliJ chord confirmed |
 | editor_toggleBreakpoint | Ctrl+F8 | Ctrl+F8 | same | Toggle Line Breakpoint; Ctrl+B is Go to Declaration |
 | editor_editBreakpointCondition | Alt+F8 | - | vintelli-only | Edits the condition of the breakpoint on the caret line; IntelliJ offers conditions only from its gutter menu |
-| editor_nextProblem | F2 | F2 | same | Next Highlighted Error; the bare F2 trigger refuses Shift, and F8 is left unbound (docs/keymap.md) |
+| editor_nextProblem | F2 | F2 | same | Next Highlighted Error; the bare F2 trigger refuses Shift, and F8 is Step Over while a debug session is suspended (docs/keymap.md) |
 | editor_previousProblem | Shift+F2 | Shift+F2 | same | Previous Highlighted Error on its own Shift+F2 trigger (docs/keymap.md) |
 | editor_quickFix | Alt+Enter | Alt+Enter | same | Quick fixes from the language server for the selection or caret, offered in a popup (docs/keymap.md) |
 | editor_extractVariable | Ctrl+Alt+V | Ctrl+Alt+V | same | Extract Variable from the selection through the language server; a legacy terminal does not send Ctrl+Alt+letter, so the command palette runs it there (docs/keymap.md) |
@@ -693,18 +723,18 @@ adding it to that test on purpose.
 | shell.settings | - | Ctrl+Alt+S | different | Open Settings is Ctrl+Alt+S in IntelliJ; it opens from the toolbar and the palette, and no chord is bound here yet |
 | idea-mcp.connect | - | - | vintelli-only | Connects to a running IntelliJ IDEA; no IntelliJ chord confirmed on the reference page |
 | run.execute | - | Shift+F10 | different | Run is Shift+F10 in IntelliJ; unbound here, the toolbar and the palette start the selected configuration |
-| run.debug | - | Shift+F9 | different | Debug is Shift+F9 in IntelliJ; unbound here, the toolbar and the palette start the debug session |
+| run.debug | Shift+F9 | Shift+F9 | same | Debug starts the selected run configuration under the debugger; a terminal or chat input that has the keyboard keeps the chord |
 | run.stop | - | Ctrl+F2 | different | Stop is Ctrl+F2 in IntelliJ; unbound here, the palette stops the current run |
 | run.refresh | - | - | vintelli-only | Refreshes the run configurations; no IntelliJ chord confirmed on the reference page |
 | run.choose-configuration | - | - | vintelli-only | Chooses the run configuration; no IntelliJ chord confirmed on the reference page |
-| debug.resume | - | F9 | different | Resume Program is F9 in IntelliJ; F9 is New Directory in the project pane, so the debugger keeps its own keys |
+| debug.resume | F9 | F9 | same | Resume Program; answers only while a debug session is suspended, otherwise F9 is New Directory in the project pane |
 | debug.pause | - | - | vintelli-only | Pause Program is not on the IntelliJ reference page; the debugger keeps its own keys |
-| debug.step-over | - | F8 | different | Step Over is F8 in IntelliJ; F8 stays free for the debugger work (docs/keymap.md) |
-| debug.step-into | - | F7 | different | Step Into is F7 in IntelliJ; F7 is New Project File in the project pane |
-| debug.step-out | - | Shift+F8 | different | Step Out is Shift+F8 in IntelliJ; unbound here, the debugger work decides |
 | debug.set-value | - | F2 | different | Set Value is F2 in IntelliJ; F2 sets the value only while the Debug window holds the keyboard (a window key like e for Evaluate), because the keymap keeps F2 on Next Problem, so the palette runs the action |
 | debug.exception-uncaught | - | - | vintelli-only | Toggles breaking on uncaught exceptions; IntelliJ manages exception breakpoints from its Breakpoints dialog, so no chord is bound here |
 | debug.exception-caught | - | - | vintelli-only | Toggles breaking on caught exceptions; IntelliJ manages exception breakpoints from its Breakpoints dialog, so no chord is bound here |
+| debug.step-over | F8 | F8 | same | Step Over; answers only while a debug session is suspended, otherwise F8 keeps its action |
+| debug.step-into | F7 | F7 | same | Step Into; answers only while a debug session is suspended, otherwise F7 is New File in the project pane |
+| debug.step-out | Shift+F8 | Shift+F8 | same | Step Out; answers only while a debug session is suspended |
 | terminal.execute | - | - | vintelli-only | Runs the typed command in the terminal window; IntelliJ has no chord for it |
 | problems.navigate | - | - | vintelli-only | Opens the selected problem; no IntelliJ chord confirmed on the reference page for the Problems window |
 | problems.refresh | - | - | vintelli-only | Refreshes the problems; no IntelliJ chord confirmed on the reference page for the Problems window |
@@ -735,7 +765,8 @@ terminals`, and it is never a palette hint. The full reason of every row is in
 the table above.
 
 `run.debug` (**Debug Selected Configuration**) starts a supported selected run
-configuration waiting for an external debugger; it is available in the palette.
+configuration waiting for an external debugger; it is available in the palette
+and on `Shift+F9`.
 
 `debug.exception-uncaught` (**Break on Uncaught Exceptions**) and
 `debug.exception-caught` (**Break on Caught Exceptions**) toggle which

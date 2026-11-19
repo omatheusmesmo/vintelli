@@ -670,6 +670,12 @@ public final class RunToolWindow implements ToolWindow {
     }
 
     DebugSession activeDebugSession() { return debugSession; }
+
+    boolean debugSessionSuspended() {
+        DebugSession active = debugSession;
+        return active != null && active.snapshot().state() == DebugCapability.State.STOPPED;
+    }
+
     EditorBridge debugEditorBridge() { return debugEditorBridge; }
 
     private void refreshDebugSupport() {
@@ -1109,6 +1115,7 @@ public final class RunToolWindow implements ToolWindow {
             return;
         }
         if (pauseProbe) status = "Pause support is not yet confirmed; probing the adapter";
+        else status = actionLabel(action);
         if (!debugActionPending.compareAndSet(false, true)) return;
         Thread.ofVirtual().name("vintelli-debug-action").start(() -> {
             CapabilityResult<Boolean> result = invokeDebugAction(session, action);
