@@ -313,7 +313,7 @@ final class EditorSyntaxHighlighter implements SyntaxHighlighter {
         return Line.from(styled);
     }
 
-    private static List<Span> styleRange(List<Span> spans, int rangeStart, int rangeEnd, UnaryOperator<Style> change) {
+    static List<Span> styleRange(List<Span> spans, int rangeStart, int rangeEnd, UnaryOperator<Style> change) {
         List<Span> out = new ArrayList<>();
         int cursor = 0;
         for (Span span : spans) {

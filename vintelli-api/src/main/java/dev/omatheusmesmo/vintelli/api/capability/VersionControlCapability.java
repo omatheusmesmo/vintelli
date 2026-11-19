@@ -56,6 +56,19 @@ public interface VersionControlCapability extends ProviderDescriptor {
     }
 
     /**
+     * @param path the file to read, absolute or relative to the project root
+     * @return the content of the file as committed in {@code HEAD}, empty when
+     *         the file is not in {@code HEAD} (an added or untracked file, or a
+     *         repository without commits), or a failed result when the path
+     *         resolves outside the project root. Providers without access to
+     *         committed content report a failure
+     */
+    default CapabilityResult<Optional<String>> headContent(Path path) {
+        return CapabilityResult.failed(new CapabilityFailure(
+                "HEAD content unavailable", "The provider does not read committed file content"));
+    }
+
+    /**
      * @return the author configured by Git for this repository, or an empty
      *         value when the caller should ask the user for an identity
      */

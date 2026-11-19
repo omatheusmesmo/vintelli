@@ -995,6 +995,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             public void revealActiveFile() {
                 VintelliShell.this.revealActiveFile();
             }
+
+            @Override
+            public void showDiff(Path file) {
+                vcsActions.showVcsDiff(file);
+            }
         };
     }
 
@@ -1302,6 +1307,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             return splitterResult;
         }
         if (mouse.isClick() && projectPanel.clicked(mouse)) {
+            return EventResult.HANDLED;
+        }
+        if (mouse.isRightClick() && projectPanel.rightClicked(mouse)) {
             return EventResult.HANDLED;
         }
         if (mouse.isClick() && editorPanel.clicked(mouse)) {

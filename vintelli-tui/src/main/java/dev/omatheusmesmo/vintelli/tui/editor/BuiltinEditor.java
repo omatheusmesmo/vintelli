@@ -18,6 +18,7 @@ import dev.omatheusmesmo.vintelli.tui.OverlayInput;
 import dev.omatheusmesmo.vintelli.tui.ShellThemes;
 import dev.omatheusmesmo.vintelli.tui.ToolWindow;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
+import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
 import dev.omatheusmesmo.vintelli.tui.icons.JavaTypeKind;
 import dev.omatheusmesmo.vintelli.tui.icons.JavaTypeKinds;
 import dev.omatheusmesmo.vintelli.tui.keymap.ConfigDirectory;
@@ -34,6 +35,7 @@ import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
 import dev.tamboui.tui.event.MouseButton;
 import dev.tamboui.tui.event.MouseEvent;
+import dev.tamboui.tui.event.MouseEventKind;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
@@ -51,6 +53,7 @@ import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -77,9 +80,12 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
             boolean readOnly) {}
     public static final int TAB_BAR_ROWS = EditorTabBarElement.ROWS;
     public static final String TEXT_AREA_ID = "editor-text-area";
+    public static final String DIFF_ID = "editor-diff";
+    private static final int WHEEL_ROWS = 3;
     private static final long MAX_FILE_BYTES = 4L * 1024 * 1024;
     private static final Keymap DEFAULT_KEYMAP = Keymap.ofProfile(KeymapProfile.DEFAULT, List.of());
     private final List<EditorDocument> documents = new ArrayList<>();
+    private final List<DiffTab> diffs = new ArrayList<>();
     private final Supplier<ShellEditorPalette> palette;
     private final Instance<CapabilityRegistry> capabilities;
     private final EditorElement element;
@@ -91,6 +97,7 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     private final Map<Path, Object> breakpointSyncLocks = new HashMap<>();
     private long breakpointGeneration;
     private int active = -1;
+    private int activeDiff = -1;
     private Path pendingClose;
     private String status = "Open a file from Project or Go to File";
     private boolean sessionLoaded;
@@ -210,6 +217,14 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
         return element.tabAt(x, y);
     }
     public synchronized boolean handlePointer(MouseEvent event) {
+        DiffTab diff = activeDiffTab();
+        if (diff != null) {
+            if (!event.isScroll() || !element.renderedArea().contains(event.x(), event.y())) {
+                return false;
+            }
+            diff.scrollBy(event.kind() == MouseEventKind.SCROLL_UP ? -WHEEL_ROWS : WHEEL_ROWS);
+            return true;
+        }
         return element.handleMouse(event);
     }
     public synchronized void cancelPointer() {
@@ -258,8 +273,8 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
         focusRequest = null;
         return requested;
     }
-    public synchronized void requestFocus() { focusRequest = TEXT_AREA_ID; }
-    synchronized EditorDocument document() { return active < 0 ? null : documents.get(active); }
+    public synchronized void requestFocus() { focusRequest = activeDiff >= 0 ? DIFF_ID : TEXT_AREA_ID; }
+    synchronized EditorDocument document() { return activeDiff >= 0 || active < 0 ? null : documents.get(active); }
 
     synchronized Map<Integer, DebugCapability.SourceBreakpoint> breakpoints(EditorDocument document) {
         return Map.copyOf(breakpoints.getOrDefault(document.file(), Map.of()));
@@ -471,6 +486,7 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
                 existing = documents.size() - 1;
             }
             active = existing;
+            activeDiff = -1;
             cancelPointer();
             focusRequest = TEXT_AREA_ID;
             EditorDocument document = document();
@@ -577,7 +593,8 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
         List<TabView> result = new ArrayList<>();
         for (int i = 0; i < documents.size(); i++) {
             EditorDocument document = documents.get(i);
-            result.add(new TabView(project.relativize(document.file()).toString(), document.dirty(), i == active));
+            result.add(new TabView(project.relativize(document.file()).toString(), document.dirty(),
+                    i == active && activeDiff < 0));
         }
         return List.copyOf(result);
     }
@@ -740,16 +757,133 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
                 : document.importsFolded() ? "Imports folded" : "Imports expanded";
         return toggled;
     }
-    public synchronized void nextTab() { selectTab(active + 1); }
-    public synchronized void previousTab() { selectTab(active - 1); }
+    public synchronized void nextTab() { selectTab(selectedTab() + 1); }
+    public synchronized void previousTab() { selectTab(selectedTab() - 1); }
+
+    /**
+     * Selects a tab of the tab bar: the documents come first, then the diff tabs.
+     */
     public synchronized void selectTab(int index) {
-        if (documents.isEmpty()) { return; }
-        active = Math.floorMod(index, documents.size());
+        int total = documents.size() + diffs.size();
+        if (total == 0) { return; }
+        int target = Math.floorMod(index, total);
+        if (target < documents.size()) {
+            active = target;
+            activeDiff = -1;
+        } else {
+            activeDiff = target - documents.size();
+        }
         cancelPointer();
         persist();
     }
 
+    /** The index of the selected tab in the tab bar, where the diff tabs follow the documents. */
+    synchronized int selectedTab() {
+        return activeDiff >= 0 ? documents.size() + activeDiff : active;
+    }
+
+    /** True while a document or a diff tab is selected. */
+    public synchronized boolean hasOpenTab() {
+        ensureSession();
+        return document() != null || activeDiff >= 0;
+    }
+
+    /** The path of the selected document, or the title of the selected diff tab. */
+    public synchronized String activeTabLabel() {
+        ensureSession();
+        DiffTab diff = activeDiffTab();
+        if (diff != null) {
+            return diff.title(icons().mode() == IconMode.ASCII);
+        }
+        return document() == null ? "" : document().file().toString();
+    }
+
+    /**
+     * Opens, or refreshes when it is already open, the read-only diff tab of {@code file} between its
+     * {@code HEAD} content and its working content, and moves the cursor to the first change. An empty
+     * side is an added or a deleted file.
+     */
+    public synchronized void openDiff(Path file, Optional<String> head, Optional<String> working) {
+        ensureSession();
+        Path absolute = resolvedFile(file);
+        DiffTab tab = new DiffTab(absolute, DiffModel.of(head, working, absolute.getFileName().toString()));
+        int existing = -1;
+        for (int i = 0; i < diffs.size(); i++) {
+            if (diffs.get(i).file().equals(absolute)) { existing = i; break; }
+        }
+        if (existing < 0) {
+            diffs.add(tab);
+            existing = diffs.size() - 1;
+        } else {
+            diffs.set(existing, tab);
+        }
+        activeDiff = existing;
+        cancelPointer();
+        focusRequest = DIFF_ID;
+        int changes = tab.model().hunks().size();
+        status = changes == 0 ? "No differences in " + project.relativize(absolute)
+                : project.relativize(absolute) + ": " + changes + (changes == 1 ? " difference" : " differences");
+    }
+
+    synchronized DiffTab activeDiffTab() { return activeDiff < 0 ? null : diffs.get(activeDiff); }
+
+    synchronized List<DiffTab> diffTabs() { return List.copyOf(diffs); }
+
+    /** Moves the cursor of the selected diff to the next or the previous change, as F7 and Shift+F7 do. */
+    public synchronized boolean diffHunk(boolean next) {
+        DiffTab tab = activeDiffTab();
+        if (tab == null) {
+            status = "Open a diff first";
+            return false;
+        }
+        boolean moved = next ? tab.nextHunk() : tab.previousHunk();
+        int total = tab.model().hunks().size();
+        if (total == 0) {
+            status = "No differences";
+        } else if (moved) {
+            status = "Difference " + tab.currentHunk() + " of " + total;
+        } else {
+            status = next ? "No next difference" : "No previous difference";
+        }
+        return moved;
+    }
+
+    /** Switches the selected diff between the side by side and the unified layout. */
+    public synchronized boolean toggleDiffLayout() {
+        DiffTab tab = activeDiffTab();
+        if (tab == null) {
+            status = "Open a diff first";
+            return false;
+        }
+        tab.toggleUnified();
+        status = tab.unified() ? "Unified diff" : "Side by side diff";
+        return true;
+    }
+
+    /** Opens the working file of the selected diff at the line under its cursor, as Enter does. */
+    public synchronized boolean openDiffLine() {
+        DiffTab tab = activeDiffTab();
+        if (tab == null) {
+            return false;
+        }
+        OptionalInt line = tab.workingLine();
+        if (line.isEmpty()) {
+            status = "The working file of " + project.relativize(tab.file()) + " was deleted";
+            return false;
+        }
+        CapabilityResult<Opened> opened = openFile(new OpenRequest(tab.file(), line.getAsInt() - 1), true);
+        return opened instanceof CapabilityResult.Ok<Opened>;
+    }
+
     public synchronized CloseResult closeActive() {
+        if (activeDiff >= 0) {
+            diffs.remove(activeDiff);
+            activeDiff = diffs.isEmpty() || !documents.isEmpty() ? -1 : Math.min(activeDiff, diffs.size() - 1);
+            cancelPointer();
+            focusRequest = document() != null ? TEXT_AREA_ID : activeDiff >= 0 ? DIFF_ID : null;
+            status = "Tab closed";
+            return CloseResult.CLOSED;
+        }
         if (document() == null) { return CloseResult.EMPTY; }
         if (document().dirty()) {
             pendingClose = document().file();
@@ -772,7 +906,13 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
         }
         boolean found = false;
         for (int i = 0; i < documents.size(); i++) {
-            if (documents.get(i).file().equals(closing)) { active = i; removeActive(); found = true; break; }
+            if (documents.get(i).file().equals(closing)) {
+                active = i;
+                activeDiff = -1;
+                removeActive();
+                found = true;
+                break;
+            }
         }
         if (!found) {
             status = "Tab already closed";
@@ -783,8 +923,11 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     private void removeActive() {
         documents.remove(active);
         active = Math.min(active, documents.size() - 1);
+        if (documents.isEmpty() && !diffs.isEmpty()) {
+            activeDiff = diffs.size() - 1;
+        }
         cancelPointer();
-        focusRequest = document() == null ? null : TEXT_AREA_ID;
+        focusRequest = document() != null ? TEXT_AREA_ID : activeDiff >= 0 ? DIFF_ID : null;
         status = "Tab closed";
         persist();
     }

@@ -202,6 +202,21 @@ only moves the caret. The terminal must report mouse presses with their
 modifiers; a terminal that keeps `Ctrl+click` for itself (to open links, for
 example) needs `Ctrl+B` or the command palette instead.
 
+### Diff viewer
+
+Show Diff (command palette, VCS menu, or right click on a changed file in the
+project tree) opens a read-only tab titled `Foo.java (HEAD ↔ Working)`. These
+chords work while that tab has the focus:
+
+- `F7` and `Shift+F7` go to the next and the previous change, as in IntelliJ.
+  `F7` stays New Project File while the project pane has the focus.
+- `Alt+D` switches between side by side and unified, in both profiles. Below
+  100 columns the tab starts unified; once switched, the chosen layout holds at
+  any width. (`Alt+U` stays unbound in the `intellij` profile, which dropped it
+  as Find Usages.)
+- `Up`, `Down`, `PageUp`, `PageDown`, `Home` and `End` move the cursor, and
+  `Enter` opens the working file at the line under it.
+
 ### Selecting text
 
 The mouse and the keyboard make the same selection: the same highlight, the
@@ -692,6 +707,10 @@ adding it to that test on purpose.
 | problems.collapse | - | - | vintelli-only | Collapses the selected problem group; no IntelliJ chord confirmed on the reference page for the Problems window |
 | problems.toggle-group | - | - | vintelli-only | Toggles the selected problem group; no IntelliJ chord confirmed on the reference page for the Problems window |
 | project_show_hidden | - | - | vintelli-only | Shows hidden files from the project options menu; no IntelliJ chord confirmed on the reference page |
+| vcs_showDiff | - | Ctrl+D | different | Show Diff is Ctrl+D in the IntelliJ changes view; Ctrl+D duplicates the line here, so the palette and the project tree context menu open the diff |
+| diff_nextHunk | F7 | F7 | same | Next Difference in the diff viewer; F7 is New Project File only while the project pane has the focus |
+| diff_previousHunk | Shift+F7 | Shift+F7 | same | Previous Difference in the diff viewer |
+| diff_toggleUnified | Alt+D | - | vintelli-only | Switches the diff tab between side by side and unified; IntelliJ picks the viewer from a toolbar list |
 
 ### Palette and help layout
 

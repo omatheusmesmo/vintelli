@@ -33,7 +33,8 @@ final class EditorHeader implements Element {
     @Override
     public void render(Frame frame, Rect area, RenderContext context) {
         if (showsTabs()) {
-            boolean focused = context.isFocused(paneId) || context.isFocused(BuiltinEditor.TEXT_AREA_ID);
+            boolean focused = context.isFocused(paneId) || context.isFocused(BuiltinEditor.TEXT_AREA_ID)
+                    || context.isFocused(BuiltinEditor.DIFF_ID);
             editor.renderTabBar(frame, area, context, focused, focusMark.get());
         } else {
             paneHeader.render(frame, area, context);
@@ -47,6 +48,6 @@ final class EditorHeader implements Element {
     }
 
     private boolean showsTabs() {
-        return editor != null && editor.hasDocument();
+        return editor != null && editor.hasOpenTab();
     }
 }

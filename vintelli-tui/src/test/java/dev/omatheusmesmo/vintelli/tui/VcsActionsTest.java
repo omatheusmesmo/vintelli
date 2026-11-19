@@ -5,9 +5,13 @@ import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
 import dev.omatheusmesmo.vintelli.tui.VcsActions.PromptKey;
+import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
@@ -202,6 +206,48 @@ class VcsActionsTest {
         assertEquals("fresh", actions.toolbarVcs().branch());
     }
 
+    @Test
+    void showDiffOpensATabBetweenTheHeadContentAndTheWorkingFile(@TempDir Path project) throws IOException {
+        Path file = Files.writeString(project.resolve("Notes.txt"), "keep\nnew\n");
+        vcs.head = CapabilityResult.ok(Optional.of("keep\nold\n"));
+        BuiltinEditor editor = editor(project);
+
+        diffActions(editor).showVcsDiff(file);
+
+        assertTrue(editor.hasOpenTab());
+        assertEquals("Notes.txt (HEAD \u2194 Working)", editor.activeTabLabel().replace("<->", "\u2194"));
+        assertEquals("Notes.txt: 1 difference", status.get());
+    }
+
+    @Test
+    void showDiffOfAFileOutsideGitSaysItIsNotUnderVersionControl(@TempDir Path project) throws IOException {
+        Path file = Files.writeString(project.resolve("Notes.txt"), "text\n");
+        BuiltinEditor editor = editor(project);
+        vcs.head = CapabilityResult.failed(new CapabilityFailure("Not a Git repository", project.toString()));
+
+        diffActions(editor).showVcsDiff(file);
+
+        assertEquals("Not under version control: Not a Git repository", status.get());
+        assertFalse(editor.hasOpenTab(), "no diff tab opens without a committed side to compare");
+
+        vcs.healthy = false;
+        diffActions(editor).showVcsDiff(file);
+        assertEquals("Not under version control", status.get());
+        assertFalse(editor.hasOpenTab());
+    }
+
+    private BuiltinEditor editor(Path project) {
+        ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
+        return new BuiltinEditor(project, null, themes::editorPalette);
+    }
+
+    private VcsActions diffActions(BuiltinEditor editor) {
+        return new VcsActions(List.of(vcs), new ReentrantLock(), status::set, diff -> { },
+                new ProjectTreeController(Path.of(""), new ShellState(), null, null, message -> { }, () -> { },
+                        () -> { }),
+                editor);
+    }
+
     private void typeText(String text) {
         text.codePoints().forEach(codePoint -> actions.handleVcsPromptKey(character(codePoint)));
     }
@@ -244,6 +290,8 @@ class VcsActionsTest {
         final List<String> switches = new CopyOnWriteArrayList<>();
         volatile CapabilityResult<Boolean> writeResult = CapabilityResult.ok(true);
         volatile String branch = "main";
+        volatile CapabilityResult<Optional<String>> head = CapabilityResult.ok(Optional.empty());
+        volatile boolean healthy = true;
         volatile boolean holdFirstStatus;
         final AtomicInteger statusCalls = new AtomicInteger();
         final CountDownLatch firstStatusEntered = new CountDownLatch(1);
@@ -264,6 +312,11 @@ class VcsActionsTest {
         @Override
         public CapabilityResult<String> diff(Path path) {
             return CapabilityResult.ok("");
+        }
+
+        @Override
+        public CapabilityResult<Optional<String>> headContent(Path path) {
+            return head;
         }
 
         @Override
@@ -319,7 +372,7 @@ class VcsActionsTest {
 
         @Override
         public ProviderHealth health() {
-            return ProviderHealth.available();
+            return healthy ? ProviderHealth.available() : ProviderHealth.unavailable("Not a Git repository");
         }
 
         @Override

@@ -164,7 +164,7 @@ final class EditorController {
         if (tab >= 0) {
             editor.selectTab(tab);
             editor.requestFocus();
-            host.status("Editor tab: " + editor.activeDocument().orElseThrow().file());
+            host.status("Editor tab: " + editor.activeTabLabel());
             return true;
         }
         return false;
@@ -475,7 +475,7 @@ final class EditorController {
     }
 
     void selectEditorTab(boolean next) {
-        if (editor == null || editor.tabs().isEmpty()) {
+        if (editor == null || !editor.hasOpenTab() && editor.tabs().isEmpty()) {
             host.status("No editor tab is open");
             return;
         }
@@ -484,7 +484,8 @@ final class EditorController {
         } else {
             editor.previousTab();
         }
-        host.status("Editor tab: " + editor.activeDocument().orElseThrow().file());
+        editor.requestFocus();
+        host.status("Editor tab: " + editor.activeTabLabel());
     }
 
     void saveActiveFile() {
@@ -548,6 +549,16 @@ final class EditorController {
             editor.selectAll();
             host.status(editor.status());
         }
+    }
+
+    private void runDiffAction(Runnable action) {
+        if (editor == null) {
+            host.status("Built-in editor unavailable");
+            return;
+        }
+        action.run();
+        editor.requestFocus();
+        host.status(editor.status());
     }
 
     private void toggleBreakpoint() {
@@ -627,6 +638,16 @@ final class EditorController {
             case KeyActions.USAGES -> {
                 closeOverlays.run();
                 navigateToSymbol(true);
+                yield true;
+            }
+            case KeyActions.DIFF_NEXT_HUNK, KeyActions.DIFF_PREVIOUS_HUNK -> {
+                closeOverlays.run();
+                runDiffAction(() -> editor.diffHunk(KeyActions.DIFF_NEXT_HUNK.equals(actionId)));
+                yield true;
+            }
+            case KeyActions.DIFF_TOGGLE_UNIFIED -> {
+                closeOverlays.run();
+                runDiffAction(editor == null ? null : editor::toggleDiffLayout);
                 yield true;
             }
             case KeyActions.TOGGLE_IMPORT_FOLD -> {

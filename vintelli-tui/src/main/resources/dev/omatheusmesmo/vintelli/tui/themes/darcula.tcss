@@ -267,6 +267,73 @@ EditorTabBarElement-overflow {
   color: $editor-fg;
 }
 
+/*
+ * Diff viewer tab. The change backgrounds are the BACKGROUND of DIFF_INSERTED,
+ * DIFF_DELETED and DIFF_MODIFIED in the Darcula scheme; the changed words and the
+ * connector column take the stronger ERROR_STRIPE_COLOR of the same attribute,
+ * and deletions take the red ERROR_STRIPE_COLOR of DIFF_CONFLICT so they read as
+ * removals rather than as a grey row.
+ */
+.editor-diff-text {
+  color: $editor-fg;
+  background: $editor-bg;
+}
+
+.editor-diff-inserted {
+  background: #294436;
+}
+
+.editor-diff-inserted-word {
+  background: #447152;
+}
+
+.editor-diff-deleted {
+  background: #484A4A;
+}
+
+.editor-diff-deleted-word {
+  background: #8F5247;
+}
+
+.editor-diff-modified {
+  background: #385570;
+}
+
+.editor-diff-modified-word {
+  background: #43698D;
+}
+
+.editor-diff-connector-inserted {
+  background: #447152;
+}
+
+.editor-diff-connector-deleted {
+  background: #8F5247;
+}
+
+.editor-diff-connector-modified {
+  background: #43698D;
+}
+
+.editor-diff-filler {
+  background: $panel;
+}
+
+.editor-diff-hunk-header {
+  color: $editor-constant;
+  background: $panel;
+}
+
+.editor-diff-cursor {
+  background: $editor-caret-row;
+}
+
+.editor-diff-pane-title {
+  color: $chrome-fg;
+  background: $panel;
+  text-style: bold;
+}
+
 .tool-window {
   color: $chrome-fg;
 }

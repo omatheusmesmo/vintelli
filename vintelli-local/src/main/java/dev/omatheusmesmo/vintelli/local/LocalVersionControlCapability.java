@@ -232,6 +232,27 @@ public final class LocalVersionControlCapability implements VersionControlCapabi
     }
 
     @Override
+    public CapabilityResult<Optional<String>> headContent(Path path) {
+        return withRepository((repository, projectPrefix) -> {
+            Optional<String> relative = repositoryRelative(repository, path);
+            if (relative.isEmpty()) {
+                return CapabilityResult.failed(new CapabilityFailure(PATH_OUTSIDE_PROJECT, String.valueOf(path)));
+            }
+            ObjectId headTree = repository.resolve(Constants.HEAD + "^{tree}");
+            if (headTree == null) {
+                return CapabilityResult.ok(Optional.empty());
+            }
+            try (TreeWalk walk = TreeWalk.forPath(repository, relative.get(), headTree)) {
+                if (walk == null || walk.isSubtree()) {
+                    return CapabilityResult.ok(Optional.empty());
+                }
+                byte[] bytes = repository.open(walk.getObjectId(0)).getBytes();
+                return CapabilityResult.ok(Optional.of(new String(bytes, StandardCharsets.UTF_8)));
+            }
+        });
+    }
+
+    @Override
     public CapabilityResult<String> diffWorkingTree() {
         return withRepository((repository, projectPrefix) -> diffAgainstHead(repository, projectPrefix));
     }

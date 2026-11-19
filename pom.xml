@@ -29,6 +29,7 @@
         <acp.sdk.version>0.81.0</acp.sdk.version>
         <quarkus.core.version>3.40.1.2</quarkus.core.version>
         <jgit.version>7.8.1.202611041320-r</jgit.version>
+        <java-diff-utils.version>4.18</java-diff-utils.version>
         <maven-libraries.version>3.10.1</maven-libraries.version>
         <maven-resolver.version>1.9.27</maven-resolver.version>
         <quarkus.mcp.version>2.0.4</quarkus.mcp.version>
@@ -95,6 +96,11 @@
                 <groupId>org.eclipse.jgit</groupId>
                 <artifactId>org.eclipse.jgit</artifactId>
                 <version>${jgit.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.java-diff-utils</groupId>
+                <artifactId>java-diff-utils</artifactId>
+                <version>${java-diff-utils.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.mvnpm.at.xterm</groupId>

@@ -120,3 +120,7 @@ problems.expand,,,vintelli-only,Expands the selected problem group; no IntelliJ 
 problems.collapse,,,vintelli-only,Collapses the selected problem group; no IntelliJ chord confirmed on the reference page for the Problems window
 problems.toggle-group,,,vintelli-only,Toggles the selected problem group; no IntelliJ chord confirmed on the reference page for the Problems window
 project_show_hidden,,,vintelli-only,Shows hidden files from the project options menu; no IntelliJ chord confirmed on the reference page
+vcs_showDiff,,Ctrl+D,different,"Show Diff is Ctrl+D in the IntelliJ changes view; Ctrl+D duplicates the line here, so the palette and the project tree context menu open the diff"
+diff_nextHunk,F7,F7,same,"Next Difference in the diff viewer; F7 is New Project File only while the project pane has the focus"
+diff_previousHunk,Shift+F7,Shift+F7,same,"Previous Difference in the diff viewer"
+diff_toggleUnified,Alt+D,,vintelli-only,"Switches the diff tab between side by side and unified; IntelliJ picks the viewer from a toolbar list"

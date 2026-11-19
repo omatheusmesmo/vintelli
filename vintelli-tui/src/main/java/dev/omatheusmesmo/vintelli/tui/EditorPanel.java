@@ -69,7 +69,7 @@ final class EditorPanel {
             content.addClass("editor-content");
             return content;
         }
-        if (editor != null && editor.activeDocument().isPresent()) {
+        if (editor != null && editor.hasOpenTab()) {
             controller.refreshNavigation();
             return editor.element();
         }

@@ -33,6 +33,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -551,6 +552,21 @@ class BuiltinEditorTest {
         assertFalse(editor.closeConfirmationPending());
         assertEquals(List.of("Two.java"), editor.tabs().stream().map(BuiltinEditor.TabView::file).toList());
         assertEquals(second.toRealPath().toString(), editor.activeDocument().orElseThrow().file());
+    }
+
+    @Test
+    void closingTheLastDocumentKeepsTheOpenDiffSelectedAndFocused() throws IOException {
+        Path file = write("Diffed.java", "class Diffed {}\n");
+        BuiltinEditor editor = editor(null);
+        editor.open(new OpenRequest(file, 0));
+        editor.openDiff(file, Optional.of("class Diffed {}\n"), Optional.of("class Diffed { int x; }\n"));
+        editor.selectTab(0);
+
+        assertEquals(BuiltinEditor.CloseResult.CLOSED, editor.closeActive());
+
+        assertTrue(editor.hasOpenTab());
+        assertTrue(editor.activeTabLabel().startsWith("Diffed.java"), editor.activeTabLabel());
+        assertEquals(BuiltinEditor.DIFF_ID, editor.consumeFocusRequest());
     }
 
     @Test
