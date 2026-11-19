@@ -1560,6 +1560,10 @@ class VintelliShellTest {
             @Override public CapabilityResult<List<DocumentSymbol>> documentSymbols(Path file) {
                 return CapabilityResult.ok(List.of());
             }
+            @Override public CapabilityResult<List<NavigationCapability.WorkspaceSymbol>> workspaceSymbols(
+                    String query) {
+                return CapabilityResult.ok(List.of());
+            }
             @Override public String identifier() { return "ctrl-click-test"; }
             @Override public ProviderHealth health() { return ProviderHealth.available(); }
             @Override public String provenance() { return "temporary navigation test provider"; }
