@@ -77,6 +77,7 @@ final class EditorElement implements Element {
     private final EditorTabBarElement tabBar = new EditorTabBarElement();
     private final EditorFind find = new EditorFind();
     private final EditorFindRow findRow = new EditorFindRow(find);
+    private final DiffViewElement diffView;
     private Rect renderedArea = Rect.ZERO;
     private Rect bodyArea = Rect.ZERO;
     private Rect textBody = Rect.ZERO;
@@ -89,6 +90,7 @@ final class EditorElement implements Element {
         this.editor = editor;
         textArea.id(null).focusable(false);
         menuAwareTextArea = new MenuAwareTextArea();
+        diffView = new DiffViewElement(editor);
     }
 
     void renderTabBar(Frame frame, Rect area, RenderContext context, boolean focused, String focusMark) {
@@ -111,6 +113,14 @@ final class EditorElement implements Element {
             if (tab.active()) {
                 selected = index;
             }
+        }
+        for (DiffTab diff : editor.diffTabs()) {
+            String name = diff.file().getFileName().toString();
+            FileIcon icon = icons.iconFor(name);
+            labels.add(new EditorTabBarElement.Label(icon.span(icons.mode()), diff.title(ascii)));
+        }
+        if (editor.activeDiffTab() != null) {
+            selected = editor.selectedTab();
         }
         tabBar.update(labels, selected, focused, new EditorTabBarElement.Glyphs(focusMark,
                 ascii ? UNDERLINE_ASCII : UNDERLINE,
@@ -368,7 +378,10 @@ final class EditorElement implements Element {
             bodyArea = Rect.ZERO;
             barArea = Rect.ZERO;
             Column column = Toolkit.column().id("editor-document");
-            if (document == null) {
+            if (document == null && editor.activeDiffTab() != null) {
+                column.add(diffView);
+                column.add(Toolkit.text(editor.status()).length(1).id("editor-status"));
+            } else if (document == null) {
                 column.add(Toolkit.text("Open a file from Project or Go to File").fill());
             } else {
                 Row body = Toolkit.row().fill();
@@ -616,6 +629,7 @@ final class EditorElement implements Element {
             if (editor.completionTakesKey(event)) { return EventResult.UNHANDLED; }
             if (editor.quickDocumentationTakesKey(event)) { return EventResult.UNHANDLED; }
             if (editor.menuNavigationActive() || editor.overlayInputActive()) { return EventResult.UNHANDLED; }
+            if (editor.activeDiffTab() != null) { return diffView.handleKeyEvent(event, focused); }
             if (reserved(event)) { return EventResult.UNHANDLED; }
             EditorDocument document = editor.document();
             if (document == null) { return EventResult.UNHANDLED; }

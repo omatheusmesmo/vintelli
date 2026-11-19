@@ -26,6 +26,7 @@ import dev.tamboui.tui.event.KeyEvent;
 import dev.tamboui.tui.event.MouseEvent;
 import dev.tamboui.widgets.common.ScrollBarPolicy;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -89,6 +90,9 @@ final class ProjectPanel implements Element {
         void togglePanel();
 
         void revealActiveFile();
+
+        /** Opens the diff tab of a changed file, as the Show Diff entry of the tree context menu does. */
+        void showDiff(Path file);
     }
 
     private static final List<String> HEADER_ACTIONS = List.of(
@@ -335,6 +339,32 @@ final class ProjectPanel implements Element {
     }
 
     /**
+     * Selects the tree row under a right click and opens its context menu there: Show Diff for a file
+     * with a version control change, then Rename and Delete. A press anywhere else is not consumed.
+     *
+     * @return true when the press landed on a tree row
+     */
+    boolean rightClicked(MouseEvent mouse) {
+        if (!host.layoutVisible() || controller.inputActive() || controller.deletePending()) {
+            return false;
+        }
+        Rect area = list.renderedArea();
+        if (!contains(area, mouse)) {
+            return false;
+        }
+        int index = controller.top() + mouse.y() - area.y();
+        if (index < 0 || index >= controller.fileCount()) {
+            return false;
+        }
+        host.focusPanel();
+        controller.setSelection(index);
+        controller.syncSelection();
+        controller.resetDoubleClick();
+        menus.openAt(ProjectMenus.CONTEXT, mouse.x(), mouse.y());
+        return true;
+    }
+
+    /**
      * Handles the project keys: the name prompt, the delete confirmation and the
      * project shortcuts. Returns false when the key belongs to the shell or the list.
      */
@@ -481,6 +511,9 @@ final class ProjectPanel implements Element {
                 host.refreshTree();
             }
             case KeyActions.PROJECT_HIDE -> host.togglePanel();
+            case KeyActions.PROJECT_RENAME -> host.beginInput(ProjectTreeController.InputMode.RENAME);
+            case KeyActions.PROJECT_DELETE -> controller.requestDelete();
+            case KeyActions.VCS_SHOW_DIFF -> changedSelection().ifPresent(host::showDiff);
             default -> {
             }
         }
@@ -509,7 +542,18 @@ final class ProjectPanel implements Element {
                 new MenuEntry(ProjectMenus.NEW, KeyActions.PROJECT_NEW_FILE, "New File"),
                 new MenuEntry(ProjectMenus.NEW, KeyActions.PROJECT_NEW_DIRECTORY, "New Directory"),
                 new MenuEntry(ProjectMenus.OPTIONS, KeyActions.PROJECT_SHOW_HIDDEN,
-                        check(controller.showHidden()) + " Show Hidden Files"));
+                        check(controller.showHidden()) + " Show Hidden Files"),
+                new MenuEntry(ProjectMenus.CONTEXT, KeyActions.VCS_SHOW_DIFF, "Show Diff",
+                        changedSelection().isPresent() ? "" : "Not a changed file"),
+                new MenuEntry(ProjectMenus.CONTEXT, KeyActions.PROJECT_RENAME, "Rename"),
+                new MenuEntry(ProjectMenus.CONTEXT, KeyActions.PROJECT_DELETE, "Delete"));
+    }
+
+    private Optional<Path> changedSelection() {
+        return controller.selectedRelative()
+                .filter(relative -> controller.vcsState(relative) != null)
+                .flatMap(relative -> controller.selectedPath())
+                .filter(Files::isRegularFile);
     }
 
     private String check(boolean checked) {

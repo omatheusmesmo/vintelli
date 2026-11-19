@@ -522,6 +522,10 @@ class ProjectPanelTest {
             @Override
             public void revealActiveFile() {
             }
+
+            @Override
+            public void showDiff(Path file) {
+            }
         };
     }
 

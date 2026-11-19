@@ -267,6 +267,9 @@ public final class Keymap {
         builder.bind(KeyTrigger.key(KeyCode.F10), KeyActions.MENU);
         builder.bind(KeyTrigger.key(KeyCode.HOME, false, true, false), KeyActions.FOCUS_NAVIGATION_BAR);
         builder.bind(KeyTrigger.key(KeyCode.F7), KeyActions.PROJECT_NEW_FILE);
+        builder.bind(new UnshiftedKeyTrigger(KeyTrigger.key(KeyCode.F7)), KeyActions.DIFF_NEXT_HUNK);
+        builder.bind(KeyTrigger.key(KeyCode.F7, false, false, true), KeyActions.DIFF_PREVIOUS_HUNK);
+        builder.bind(KeyTrigger.alt('d'), KeyActions.DIFF_TOGGLE_UNIFIED);
         builder.bind(KeyTrigger.key(KeyCode.F9), KeyActions.PROJECT_NEW_DIRECTORY);
         builder.bind(KeyTrigger.key(KeyCode.DELETE), KeyActions.PROJECT_DELETE);
         builder.bind(KeyTrigger.key(KeyCode.F5), KeyActions.PROJECT_REFRESH);
@@ -402,6 +405,7 @@ public final class Keymap {
         catalog.add(new KeyAction(KEYMAP_HELP, "Keymap Help"));
         catalog.addAll(KeyActions.shellActions());
         catalog.addAll(KeyActions.projectActions());
+        catalog.addAll(KeyActions.diffActions());
         for (ToolWindow toolWindow : toolWindows) {
             catalog.add(new KeyAction(activateToolWindow(toolWindow.id()),
                     "Activate " + toolWindow.title() + " Tool Window"));

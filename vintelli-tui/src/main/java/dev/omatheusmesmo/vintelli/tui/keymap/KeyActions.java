@@ -127,6 +127,9 @@ public final class KeyActions {
     public static final String PROBLEMS_EXPAND = "problems.expand";
     public static final String PROBLEMS_COLLAPSE = "problems.collapse";
     public static final String PROBLEMS_TOGGLE = "problems.toggle-group";
+    public static final String DIFF_NEXT_HUNK = "diff_nextHunk";
+    public static final String DIFF_PREVIOUS_HUNK = "diff_previousHunk";
+    public static final String DIFF_TOGGLE_UNIFIED = "diff_toggleUnified";
 
     public static List<KeyAction> shellActions() {
         return List.of(new KeyAction(MENU, "Open Menu"),
@@ -208,6 +211,17 @@ public final class KeyActions {
                 new KeyAction(PROJECT_OPTIONS_MENU, "Project Options Menu"),
                 new KeyAction(PROJECT_SHOW_HIDDEN, "Show Hidden Files"),
                 new KeyAction(PROJECT_HIDE, "Hide Project Panel"));
+    }
+
+    /**
+     * Actions of the diff viewer. They are in the palette but not among the shell actions, so the shell
+     * never routes F7 globally: the diff tab handles its chords while it has the focus.
+     */
+    public static List<KeyAction> diffActions() {
+        return List.of(new KeyAction(VCS_SHOW_DIFF, "Show Diff"),
+                new KeyAction(DIFF_NEXT_HUNK, "Next Difference"),
+                new KeyAction(DIFF_PREVIOUS_HUNK, "Previous Difference"),
+                new KeyAction(DIFF_TOGGLE_UNIFIED, "Toggle Unified Diff"));
     }
 
     private KeyActions() {

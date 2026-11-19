@@ -314,6 +314,77 @@ class LocalVersionControlCapabilityTest {
     }
 
     @Test
+    void headContentReadsTheCommittedVersionNotTheWorkingOrStagedOne() throws IOException, GitAPIException {
+        Path repo = temp.resolve("repo");
+        Files.createDirectories(repo.resolve("src"));
+        try (Git git = initRepository(repo)) {
+            Files.writeString(repo.resolve("src/A.java"), "class A {\n}\n");
+            commitAll(git, "initial");
+            Files.writeString(repo.resolve("src/A.java"), "class A {\n    int x;\n}\n");
+            git.add().addFilepattern("src/A.java").call();
+            Files.writeString(repo.resolve("src/A.java"), "class B {\n}\n");
+
+            var capability = capabilityAt(repo);
+
+            assertEquals(Optional.of("class A {\n}\n"), value(capability.headContent(Path.of("src/A.java"))));
+            assertEquals(Optional.of("class A {\n}\n"),
+                    value(capability.headContent(repo.resolve("src/A.java"))));
+        }
+    }
+
+    @Test
+    void headContentOfADeletedFileStillReadsTheCommittedVersion() throws IOException, GitAPIException {
+        Path repo = temp.resolve("repo");
+        Files.createDirectories(repo);
+        try (Git git = initRepository(repo)) {
+            Files.writeString(repo.resolve("gone.txt"), "last line\n");
+            commitAll(git, "initial");
+            Files.delete(repo.resolve("gone.txt"));
+
+            assertEquals(Optional.of("last line\n"), value(capabilityAt(repo).headContent(Path.of("gone.txt"))));
+        }
+    }
+
+    @Test
+    void headContentIsEmptyForUntrackedAndUnbornFilesAndDirectories() throws IOException, GitAPIException {
+        Path repo = temp.resolve("repo");
+        Files.createDirectories(repo.resolve("dir"));
+        try (Git git = initRepository(repo)) {
+            Files.writeString(repo.resolve("first.txt"), "hello\n");
+            git.add().addFilepattern("first.txt").call();
+
+            assertEquals(Optional.empty(), value(capabilityAt(repo).headContent(Path.of("first.txt"))),
+                    "a repository without commits has no HEAD side");
+
+            Files.writeString(repo.resolve("dir/inner.txt"), "inner\n");
+            commitAll(git, "initial");
+            Files.writeString(repo.resolve("fresh.txt"), "new\n");
+            var capability = capabilityAt(repo);
+
+            assertEquals(Optional.empty(), value(capability.headContent(Path.of("fresh.txt"))));
+            assertEquals(Optional.empty(), value(capability.headContent(Path.of("dir"))));
+        }
+    }
+
+    @Test
+    void headContentOutsideTheProjectOrRepositoryFails() throws IOException, GitAPIException {
+        Path repo = temp.resolve("repo");
+        Path outside = temp.resolve("outside.txt");
+        Files.createDirectories(repo);
+        Files.writeString(outside, "secret\n");
+        try (Git git = initRepository(repo)) {
+            Files.writeString(repo.resolve("a.txt"), "one\n");
+            commitAll(git, "initial");
+            var capability = capabilityAt(repo);
+
+            assertPathOutside(capability.headContent(outside));
+            assertPathOutside(capability.headContent(Path.of("../outside.txt")));
+        }
+        assertEquals("Not a Git repository",
+                failure(capabilityAt(temp.resolve("plain")).headContent(Path.of("a.txt"))).reason());
+    }
+
+    @Test
     void pathsOutsideTheRepositoryFailWithAnExplicitReason() throws IOException, GitAPIException {
         Path repo = temp.resolve("repo");
         Path outside = temp.resolve("outside.txt");
@@ -1264,7 +1335,7 @@ class LocalVersionControlCapabilityTest {
         return count;
     }
 
-    private static void assertPathOutside(CapabilityResult<String> result) {
+    private static void assertPathOutside(CapabilityResult<?> result) {
         assertEquals("The path is outside the project root",
                 assertInstanceOf(CapabilityResult.Failed.class, result).failure().reason());
     }

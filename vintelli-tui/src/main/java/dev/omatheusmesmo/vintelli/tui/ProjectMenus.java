@@ -15,7 +15,8 @@ import java.util.function.Supplier;
 
 /**
  * The drop-down menus of the project pane header: the view menu, the New menu
- * and the options menu. Each one is a single {@link MenuPopup}, so the arrows,
+ * and the options menu, plus the context menu a right click opens on a tree row.
+ * Each one is a single {@link MenuPopup}, so the arrows,
  * Enter, Escape and the pointer behave like the shell menus, and the entries
  * carry the action ids that the header dispatches.
  */
@@ -24,13 +25,15 @@ final class ProjectMenus {
     static final String VIEW = "View";
     static final String NEW = "New";
     static final String OPTIONS = "Options";
+    static final String CONTEXT = "Context";
 
     private final Map<String, MenuPopup> popups = new LinkedHashMap<>();
     private MenuPopup open;
     private int anchorX;
+    private int anchorY = -1;
 
     ProjectMenus(Supplier<List<MenuEntry>> entries, Function<String, String> shortcuts) {
-        for (String menu : List.of(VIEW, NEW, OPTIONS)) {
+        for (String menu : List.of(VIEW, NEW, OPTIONS, CONTEXT)) {
             popups.put(menu, new MenuPopup(List.of(menu), entries, shortcuts));
         }
     }
@@ -41,6 +44,13 @@ final class ProjectMenus {
         open = popups.get(menu);
         open.open(0);
         anchorX = column;
+        anchorY = -1;
+    }
+
+    /** Opens the menu below the screen row {@code row}, starting at the screen column {@code column}. */
+    void openAt(String menu, int column, int row) {
+        open(menu, column);
+        anchorY = row;
     }
 
     boolean isOpen() {
@@ -73,7 +83,9 @@ final class ProjectMenus {
     /** Draws the open menu on the project pane, below the header row of {@code area}. */
     void render(Frame frame, Rect area) {
         if (isOpen()) {
-            open.render(frame, area, anchorX - area.x());
+            Rect anchored = anchorY < area.y() ? area
+                    : new Rect(area.x(), anchorY, area.width(), Math.max(0, area.bottom() - anchorY));
+            open.render(frame, anchored, anchorX - area.x());
         }
     }
 

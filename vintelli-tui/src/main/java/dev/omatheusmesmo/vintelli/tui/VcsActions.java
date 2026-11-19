@@ -8,6 +8,9 @@ import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability.Commit
 import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -28,6 +31,8 @@ import java.util.function.Consumer;
  * its commands.
  */
 final class VcsActions {
+
+    static final String NOT_UNDER_VERSION_CONTROL = "Not under version control";
 
     enum VcsWriteAction { STAGE, UNSTAGE, COMMIT, SWITCH_BRANCH }
 
@@ -244,24 +249,58 @@ final class VcsActions {
     }
 
     void showVcsDiff() {
-        VersionControlCapability provider = availableVcsProvider();
-        if (provider == null) {
-            statusSink.accept("Version control unavailable");
-            return;
-        }
         if (editor == null || editor.activeDocument().isEmpty()) {
             statusSink.accept("Open a project file first");
             return;
         }
-        Path file = Path.of(editor.activeDocument().get().file());
-        CapabilityResult<String> result = provider.diff(file);
-        if (result instanceof CapabilityResult.Failed<String> failed) {
-            statusSink.accept("VCS diff failed: " + failed.failure().reason());
+        showVcsDiff(Path.of(editor.activeDocument().get().file()));
+    }
+
+    /**
+     * Opens the diff tab of {@code file} between its {@code HEAD} content and its working content: the
+     * open editor text when the file is the active document, else the file on disk. A file that is in
+     * neither is reported as deleted, one missing from {@code HEAD} as added.
+     */
+    void showVcsDiff(Path file) {
+        VersionControlCapability provider = availableVcsProvider();
+        if (provider == null) {
+            statusSink.accept(NOT_UNDER_VERSION_CONTROL);
             return;
         }
-        String text = ((CapabilityResult.Ok<String>) result).value();
-        diffSink.accept(new ShellUnifiedDiff(file.toString(), text == null ? "" : text));
-        statusSink.accept("VCS diff: " + file);
+        if (editor == null) {
+            statusSink.accept("Built-in editor unavailable");
+            return;
+        }
+        CapabilityResult<Optional<String>> head = provider.headContent(file);
+        if (head instanceof CapabilityResult.Failed<Optional<String>> failed) {
+            statusSink.accept(NOT_UNDER_VERSION_CONTROL + ": " + failed.failure().reason());
+            return;
+        }
+        Optional<String> working;
+        try {
+            working = workingContent(file);
+        } catch (IOException | UncheckedIOException failure) {
+            statusSink.accept("Cannot read " + file.getFileName() + ": " + failure.getMessage());
+            return;
+        }
+        Optional<String> committed = ((CapabilityResult.Ok<Optional<String>>) head).value();
+        if (committed.isEmpty() && working.isEmpty()) {
+            statusSink.accept(NOT_UNDER_VERSION_CONTROL + ": " + file.getFileName());
+            return;
+        }
+        editor.openDiff(file, committed, working);
+        statusSink.accept(editor.status());
+    }
+
+    private Optional<String> workingContent(Path file) throws IOException {
+        Optional<String> open = editor.activeDocument()
+                .filter(document -> Path.of(document.file()).toAbsolutePath().normalize()
+                        .equals(file.toAbsolutePath().normalize()))
+                .map(BuiltinEditor.DocumentView::text);
+        if (open.isPresent()) {
+            return open;
+        }
+        return Files.isRegularFile(file) ? Optional.of(Files.readString(file)) : Optional.empty();
     }
 
     void showVcsWorkingTreeDiff() {

@@ -95,12 +95,23 @@ It is a test/debug surface, not a public Git API; it remains disabled unless
 `vintelli.vcs.debug-endpoint.enabled=true`, and every write requires
 `confirm=true`.
 
+## Diff viewer
+
+`headContent(path)` reads the committed blob of one file from the `HEAD` tree.
+It is empty when the file is not in `HEAD` (an added or untracked file, or a
+repository without commits) and failed for a path outside the project. Show
+Diff compares that content with the working file (the open editor text when the
+file is the active document) in a read-only editor tab: `DiffModel` aligns the
+lines with java-diff-utils, side by side or unified, and `DiffViewElement`
+draws it. See the diff viewer section of `docs/keymap.md` for the keys.
+
 ## Missing Git
 
 When the project is not inside a Git worktree (or the repository cannot be
 read), the provider reports `ProviderHealth.unavailable(...)` and every read
 returns a failed `CapabilityResult`. The shell therefore surfaces an explicit
 "Version control unavailable" state and the rest of the shell keeps working.
+Show Diff reports "Not under version control" instead.
 
 ## Native image impact
 
