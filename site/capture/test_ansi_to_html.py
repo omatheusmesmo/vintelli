@@ -8,6 +8,7 @@ from contextlib import redirect_stderr, redirect_stdout
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import ansi_to_html  # noqa: E402
+import row_widths  # noqa: E402
 
 ESC = "\x1b["
 SPAN_OPEN = '<span style="'
@@ -168,6 +169,17 @@ class DashTest(unittest.TestCase):
     def test_hyphen_and_colon_pass(self):
         rendered = ansi_to_html.convert("2020-2025: fine")
         self.assertIn("2020-2025: fine", rendered)
+
+
+class RowPaddingTest(unittest.TestCase):
+    def test_rows_without_trailing_blanks_are_padded_to_the_widest_row(self):
+        rendered = ansi_to_html.convert(f"{ESC}31mwide row{ESC}0m\nab\n{ESC}44mxyz{ESC}0m\n")
+        self.assertEqual([], row_widths.ragged_rows(rendered))
+        self.assertEqual([8, 8, 8], row_widths.row_widths(rendered))
+
+    def test_padding_keeps_the_row_style_out_of_the_blank_cells(self):
+        rendered = ansi_to_html.convert(f"{ESC}44mab{ESC}0m\nwider\n")
+        self.assertIn(">ab</span>   \n", rendered)
 
 
 class EmptyCaptureTest(unittest.TestCase):

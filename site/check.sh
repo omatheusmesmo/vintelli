@@ -36,6 +36,9 @@ if [ -d "$CAPTURES_DIR" ]; then
     if grep -qE '/home/|/Users/|/root/|/tmp/|[A-Za-z]:\\\\Users' "$fragment"; then
       report "capture $(basename "$fragment") contains an absolute path"
     fi
+    if ! python3 "$SITE_DIR/capture/row_widths.py" "$fragment"; then
+      report "capture $(basename "$fragment") has rows of different widths"
+    fi
   done < <(find "$CAPTURES_DIR" -name '*.html' -type f)
 fi
 
