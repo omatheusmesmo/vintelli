@@ -2,16 +2,26 @@ package dev.omatheusmesmo.vintelli;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Duration;
 import java.util.Optional;
 
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyboardMode;
+import dev.omatheusmesmo.vintelli.tui.terminal.UnderlineColorBackend;
+import dev.tamboui.terminal.Backend;
 import dev.tamboui.terminal.KeyboardProtocol;
 import org.junit.jupiter.api.Test;
 
 class VintelliMainTest {
+
+    @Test
+    void theShellDrawsThroughTheBackendThatWritesUnderlineColorsInTheColonForm() throws Exception {
+        try (Backend backend = VintelliMain.shellBackend()) {
+            assertInstanceOf(UnderlineColorBackend.class, backend);
+        }
+    }
 
     @Test
     void anIdleShellTicksAtMostOncePerSecond() {

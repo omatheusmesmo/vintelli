@@ -1,5 +1,7 @@
 package dev.omatheusmesmo.vintelli;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
@@ -14,6 +16,8 @@ import dev.omatheusmesmo.vintelli.tui.keymap.KeyboardMode;
 import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeymapRegistry;
 import dev.omatheusmesmo.vintelli.tui.terminal.TerminalBackground;
+import dev.omatheusmesmo.vintelli.tui.terminal.UnderlineColorBackend;
+import dev.tamboui.terminal.Backend;
 import dev.tamboui.tfx.toolkit.ToolkitEffects;
 import dev.tamboui.toolkit.app.ToolkitPostRenderProcessor;
 import dev.tamboui.toolkit.app.ToolkitRunner;
@@ -79,6 +83,14 @@ public final class VintelliMain implements QuarkusApplication {
                 .build();
     }
 
+    static Backend shellBackend() {
+        try {
+            return new UnderlineColorBackend();
+        } catch (IOException failure) {
+            throw new UncheckedIOException("the terminal cannot be opened", failure);
+        }
+    }
+
     static String tuiFailure(String message, boolean fileLogging, Optional<String> logFile) {
         String line = "Vintelli cannot start the TUI: " + message;
         if (fileLogging && logFile.isPresent()) {
@@ -105,7 +117,7 @@ public final class VintelliMain implements QuarkusApplication {
                                 processMotionEffects.process(frame, elements, styledAreas, focus, elapsed);
                             }
                         })
-                        .config(shellConfig(keymap.keyboardMode()))
+                        .config(shellConfig(keymap.keyboardMode()).toBuilder().backend(shellBackend()).build())
                         .bindings(keymap.bindings())
                         .styleEngine(shellThemes.engine())
                         .mouseCapture(true)
