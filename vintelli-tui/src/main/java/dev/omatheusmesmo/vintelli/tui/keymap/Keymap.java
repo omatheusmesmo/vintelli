@@ -286,6 +286,7 @@ public final class Keymap {
         bindPlainCtrl(builder, keyboardMode, 'f', KeyActions.FIND);
         builder.bind(KeyTrigger.alt('i'), KeyActions.TOGGLE_IMPORT_FOLD);
         builder.bind(KeyTrigger.ctrl('o'), KeyActions.GO_TO_FILE);
+        bindPlainCtrl(builder, keyboardMode, 'n', KeyActions.GO_TO_CLASS);
         builder.bind(KeyTrigger.alt('f'), KeyActions.FIND_IN_FILES);
         builder.bind(KeyTrigger.key(KeyCode.ENTER, false, true, false), KeyActions.QUICK_FIX);
         builder.bind(KeyTrigger.ctrl(' '), KeyActions.COMPLETION);
@@ -331,6 +332,7 @@ public final class Keymap {
         switch (profile) {
             case INTELLIJ -> {
                 builder.bind(new ShiftedKeyTrigger(KeyTrigger.ctrl('n')), KeyActions.GO_TO_FILE);
+                builder.bind(new CtrlAltShiftKeyTrigger('n'), KeyActions.GO_TO_SYMBOL);
                 builder.bind(new ShiftedKeyTrigger(KeyTrigger.ctrl('f')), KeyActions.FIND_IN_FILES);
                 builder.bind(new ShiftedKeyTrigger(KeyTrigger.ctrl('z')), KeyActions.REDO);
                 builder.bind(KeyTrigger.key(KeyCode.KP_ADD, true, false, true), KeyActions.PROJECT_EXPAND_ALL);

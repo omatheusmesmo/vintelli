@@ -74,6 +74,8 @@ deleteWordForward,Ctrl+Delete,,vintelli-only,"Deletes the word after the caret i
 navigation_goToFile,Ctrl+O | Ctrl+Shift+N,Ctrl+Shift+N,different,"Go to File is Ctrl+Shift+N in IntelliJ, which a Kitty-capable terminal sends as its own chord; Ctrl+O stays as the fallback for terminals without the Kitty keyboard protocol (docs/keymap.md)"
 navigation_findInFiles,Alt+F | Ctrl+Shift+F,Ctrl+Shift+F,different,"Find in Files is Ctrl+Shift+F in IntelliJ, which a Kitty-capable terminal sends as its own chord; Alt+F stays as the fallback for terminals without the Kitty keyboard protocol"
 navigation_goToLine,Ctrl+G,Ctrl+G,same,"Go to Line with the IntelliJ chord; the vim profile binds Alt+G instead (docs/keymap.md)"
+navigation_goToClass,Ctrl+N,Ctrl+N,same,"Go to Class with the IntelliJ chord; Ctrl+Shift+N stays Go to File, so the unshifted chord is bound (docs/keymap.md)"
+navigation_goToSymbol,Ctrl+Alt+Shift+N,Ctrl+Alt+Shift+N,same,"Go to Symbol with the IntelliJ chord, which needs the Kitty keyboard protocol; tmux and ghostty may intercept it, and the palette and the Navigate menu reach it (docs/keymap.md)"
 layout_project_wider,Alt+=,,vintelli-only,"Widens the project panel; no IntelliJ chord confirmed"
 layout_project_narrower,Alt+-,,vintelli-only,"Narrows the project panel; no IntelliJ chord confirmed"
 layout_bottom_taller,Alt+.,,vintelli-only,"Grows the bottom tool window; no IntelliJ chord confirmed"

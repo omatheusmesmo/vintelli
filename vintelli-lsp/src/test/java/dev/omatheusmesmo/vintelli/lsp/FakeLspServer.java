@@ -71,7 +71,10 @@ import org.eclipse.lsp4j.ResourceOperation;
 import org.eclipse.lsp4j.ReferenceParams;
 import org.eclipse.lsp4j.ServerCapabilities;
 import org.eclipse.lsp4j.ServerInfo;
+import org.eclipse.lsp4j.SymbolInformation;
 import org.eclipse.lsp4j.SymbolKind;
+import org.eclipse.lsp4j.WorkspaceSymbol;
+import org.eclipse.lsp4j.WorkspaceSymbolParams;
 import org.eclipse.lsp4j.TextDocumentSyncKind;
 import org.eclipse.lsp4j.jsonrpc.Launcher;
 import org.eclipse.lsp4j.jsonrpc.ResponseErrorException;
@@ -209,6 +212,7 @@ public final class FakeLspServer {
             capabilities.setCompletionProvider(completion);
             capabilities.setCallHierarchyProvider(true);
             capabilities.setDocumentSymbolProvider(true);
+            capabilities.setWorkspaceSymbolProvider(true);
             capabilities.setCodeActionProvider(true);
             capabilities.setExecuteCommandProvider(new ExecuteCommandOptions(advertisedCommands()));
             return CompletableFuture.completedFuture(new InitializeResult(capabilities,
@@ -305,6 +309,10 @@ public final class FakeLspServer {
             return marker;
         }
     }
+
+    public static final String WORKSPACE_SYMBOL_QUERY = "AbCo";
+    public static final String WORKSPACE_TYPE_URI = "file:///fake/workspace/AbstractController.java";
+    public static final String LIBRARY_TYPE_URI = "jdt://contents/rt.jar/java.util/ArrayList.class?=fake";
 
     public static final int RICH_COMPLETION_LINE = 1;
     public static final int BUFFER_COMPLETION_LINE = 2;
@@ -603,6 +611,24 @@ public final class FakeLspServer {
 
         @Override
         public void didChangeWatchedFiles(org.eclipse.lsp4j.DidChangeWatchedFilesParams params) {
+        }
+
+        @Override
+        public CompletableFuture<Either<List<? extends SymbolInformation>, List<? extends WorkspaceSymbol>>> symbol(
+                WorkspaceSymbolParams params) {
+            server.trace("workspace/symbol");
+            if (!WORKSPACE_SYMBOL_QUERY.equals(params.getQuery())) {
+                return CompletableFuture.completedFuture(Either.forLeft(List.of()));
+            }
+            return CompletableFuture.completedFuture(Either.forLeft(List.of(
+                    new SymbolInformation("AbstractController", SymbolKind.Class, new Location(
+                            WORKSPACE_TYPE_URI, new Range(new Position(4, 13), new Position(4, 31))),
+                            "com.example.web"),
+                    new SymbolInformation("abcoRun", SymbolKind.Method, new Location(
+                            WORKSPACE_TYPE_URI, new Range(new Position(9, 4), new Position(9, 10))),
+                            "AbstractController"),
+                    new SymbolInformation("ArrayList", SymbolKind.Class, new Location(
+                            LIBRARY_TYPE_URI, new Range(new Position(0, 0), new Position(0, 9))), "java.util"))));
         }
 
         @Override

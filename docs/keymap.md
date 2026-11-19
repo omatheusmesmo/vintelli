@@ -190,6 +190,8 @@ keeps the chords these actions had before, and gains the chords marked new.
 | `project_select_opened_file` (Select Opened File) | `Alt+F1` | `Alt+F1` | `F3` |
 | `editor_duplicateLine` (Duplicate Line) | `Ctrl+D` | `Ctrl+D` | none, the `vim` profile binds nothing here |
 | `navigation_goToLine` (Go to Line) | `Ctrl+G` | `Ctrl+G` | none, `vim` binds `Alt+G` (new) |
+| `navigation_goToClass` (Go to Class) | `Ctrl+N` | `Ctrl+N` | none, `vim` binds `Ctrl+N` too (new) |
+| `navigation_goToSymbol` (Go to Symbol) | `Ctrl+Alt+Shift+N` | `Ctrl+Alt+Shift+N` | none, the palette and the Navigate menu reach it |
 | `editor_selectAll` (Select All) | `Ctrl+A` | `Ctrl+A` | `Ctrl+E` |
 
 Decisions behind the table:
@@ -300,6 +302,8 @@ and the bytes the terminal sends always agree.
   - `Ctrl+Shift+N` (Go to File), `Ctrl+Shift+F` (Find in Files) and
     `Ctrl+Shift+Z` (Redo). The plain `Ctrl+F` and `Ctrl+Z` no longer run Find
     and Undo while Shift is held.
+  - `Ctrl+Alt+Shift+N` (Go to Symbol). The plain `Ctrl+N` runs Go to Class and
+    does not answer while Shift is held, so `Ctrl+Shift+N` still runs Go to File.
   - `Ctrl+Shift+NumPad +` (Expand All) and `Ctrl+Shift+NumPad -` (Collapse All)
     in the project pane and from the palette.
   - The keypad keys as their own keys: the keypad arrows, Home, End, Page Up,
@@ -326,6 +330,7 @@ never sends:
 | IntelliJ chord (`auto`) | Fallback chord, kept in both modes | Action |
 |---|---|---|
 | `Ctrl+Shift+N` | `Ctrl+O` | Go to File |
+| `Ctrl+Alt+Shift+N` | none, the palette (`Ctrl+P`) and the Navigate menu reach it | Go to Symbol |
 | `Ctrl+Shift+F` | `Alt+F` | Find in Files |
 | `Ctrl+Shift+Z` | `Ctrl+Y` | Redo |
 | `Ctrl+Shift+NumPad +` | `F4` | Expand All |
@@ -382,6 +387,36 @@ panel open with a message and leaves the caret where it was. `Enter` confirms
 and returns the focus to the text, `Escape` cancels and does the same. The
 status line shows the new position, and a target inside a folded import block
 expands the block to reach it.
+
+## Go to Class and Go to Symbol
+
+`Go to Class` (`Ctrl+N` in both profiles, and the Navigate menu or the command
+palette) lists the types of the workspace: classes, interfaces, enums and
+structs, library types included. `Go to Symbol` (`Ctrl+Alt+Shift+N` in the
+`intellij` profile, and the same menu and palette) lists every kind of symbol,
+methods and fields included. Both ask the language server for the workspace
+symbols, so the matching (a camel hump such as `AbCo` finds
+`AbstractController`) is the server's.
+
+- Each row shows the kind, the name and the container: the package of a
+  top-level type, or the outer type of a member.
+- The query is sent once typing pauses for 150 ms. An answer that arrives after
+  the query has moved on is dropped, so the rows always belong to the text in
+  the box.
+- Enter opens the symbol at its line. A library type has a `jdt://` location,
+  which the editor does not open yet: its row is drawn dimmed with
+  `(not openable)`, and Enter leaves the overlay open.
+- Without a language server the overlay shows the reason in place of the rows.
+
+`Ctrl+N` is free in both profiles, and `Ctrl+Shift+N` still runs Go to File in a
+Kitty-capable terminal. A terminal without the Kitty protocol sends `Ctrl+Shift+N`
+as the same byte as `Ctrl+N`, so there it runs Go to Class; Go to File keeps its
+`Ctrl+O` fallback. Like `Ctrl+O`, `Ctrl+N` stays with a window that captures
+input: the terminal keeps it for shell history and the ACP chat for a new
+conversation, as IntelliJ's terminal does by default. `Ctrl+Alt+Shift+N` is a Ctrl+Alt chord, and tmux and ghostty
+may intercept Ctrl+Alt letters before the shell sees them (see Focus Editor
+below); the command palette and the Navigate menu are the fallback there.
+Search Everywhere does not list these symbols as a tab yet.
 
 ## Focus Editor
 
@@ -518,6 +553,8 @@ adding it to that test on purpose.
 | navigation_goToFile | Ctrl+O \| Ctrl+Shift+N | Ctrl+Shift+N | different | Go to File is Ctrl+Shift+N in IntelliJ, which a Kitty-capable terminal sends as its own chord; Ctrl+O stays as the fallback for terminals without the Kitty keyboard protocol (docs/keymap.md) |
 | navigation_findInFiles | Alt+F \| Ctrl+Shift+F | Ctrl+Shift+F | different | Find in Files is Ctrl+Shift+F in IntelliJ, which a Kitty-capable terminal sends as its own chord; Alt+F stays as the fallback for terminals without the Kitty keyboard protocol |
 | navigation_goToLine | Ctrl+G | Ctrl+G | same | Go to Line with the IntelliJ chord; the vim profile binds Alt+G instead (docs/keymap.md) |
+| navigation_goToClass | Ctrl+N | Ctrl+N | same | Go to Class with the IntelliJ chord; Ctrl+Shift+N stays Go to File, so the unshifted chord is bound (docs/keymap.md) |
+| navigation_goToSymbol | Ctrl+Alt+Shift+N | Ctrl+Alt+Shift+N | same | Go to Symbol with the IntelliJ chord, which needs the Kitty keyboard protocol; tmux and ghostty may intercept it, and the palette and the Navigate menu reach it (docs/keymap.md) |
 | layout_project_wider | Alt+= | - | vintelli-only | Widens the project panel; no IntelliJ chord confirmed |
 | layout_project_narrower | Alt+- | - | vintelli-only | Narrows the project panel; no IntelliJ chord confirmed |
 | layout_bottom_taller | Alt+. | - | vintelli-only | Grows the bottom tool window; no IntelliJ chord confirmed |

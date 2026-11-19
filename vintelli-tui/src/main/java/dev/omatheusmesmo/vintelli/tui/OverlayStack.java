@@ -24,6 +24,7 @@ final class OverlayStack {
         MENU(false),
         RUN_CONFIGURATION(false),
         PROJECT_SEARCH(false),
+        SYMBOL_SEARCH(false),
         GO_TO_LINE(false),
         BREAKPOINT_CONDITION(false),
         QUICK_FIX(false),

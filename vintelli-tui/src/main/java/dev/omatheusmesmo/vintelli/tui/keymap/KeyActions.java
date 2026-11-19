@@ -48,6 +48,8 @@ public final class KeyActions {
     public static final String DUPLICATE_LINE = "editor_duplicateLine";
     public static final String SELECT_ALL = "editor_selectAll";
     public static final String GO_TO_FILE = "navigation_goToFile";
+    public static final String GO_TO_CLASS = "navigation_goToClass";
+    public static final String GO_TO_SYMBOL = "navigation_goToSymbol";
     public static final String GO_TO_LINE = "navigation_goToLine";
     public static final String FOCUS_NAVIGATION_BAR = "navigation_focusBreadcrumbs";
     public static final String FIND_IN_FILES = "navigation_findInFiles";
@@ -143,6 +145,8 @@ public final class KeyActions {
                 new KeyAction(TOGGLE_BREAKPOINT, "Toggle Line Breakpoint"),
                 new KeyAction(EDIT_BREAKPOINT_CONDITION, "Edit Breakpoint Condition"),
                 new KeyAction(GO_TO_FILE, "Go to File"),
+                new KeyAction(GO_TO_CLASS, "Go to Class"),
+                new KeyAction(GO_TO_SYMBOL, "Go to Symbol"),
                 new KeyAction(GO_TO_LINE, "Go to Line"),
                 new KeyAction(FOCUS_NAVIGATION_BAR, "Focus Navigation Bar"),
                 new KeyAction(FIND_IN_FILES, "Find in Files"),
@@ -221,7 +225,8 @@ public final class KeyActions {
     public static Set<String> reservedActionIds(List<ToolWindow> toolWindows) {
         Set<String> reserved = new LinkedHashSet<>(List.of(SEARCH_EVERYWHERE, KEYMAP_HELP));
         shellActions().stream().map(KeyAction::id)
-                .filter(id -> !OPEN_FILE.equals(id) && !CLIPBOARD_ACTIONS.contains(id) && !SELECT_ALL.equals(id))
+                .filter(id -> !OPEN_FILE.equals(id) && !CLIPBOARD_ACTIONS.contains(id) && !SELECT_ALL.equals(id)
+                        && !GO_TO_CLASS.equals(id))
                 .forEach(reserved::add);
         for (ToolWindow toolWindow : toolWindows) {
             reserved.add(activateToolWindow(toolWindow.id()));

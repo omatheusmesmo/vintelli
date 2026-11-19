@@ -34,6 +34,9 @@ import org.eclipse.lsp4j.CallHierarchyIncomingCall;
 import org.eclipse.lsp4j.CallHierarchyItem;
 import org.eclipse.lsp4j.CallHierarchyOutgoingCall;
 import org.eclipse.lsp4j.SymbolInformation;
+import org.eclipse.lsp4j.SymbolKind;
+import org.eclipse.lsp4j.WorkspaceSymbol;
+import org.eclipse.lsp4j.WorkspaceSymbolLocation;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionItemKind;
 import org.eclipse.lsp4j.CompletionList;
@@ -388,6 +391,14 @@ public final class LspClient implements AutoCloseable, JavaDebugAdapterPort {
     }
 
     /**
+     * @return the workspace symbols the server ranks for the query, the empty query included; a symbol whose
+     *         location is not a file has no file
+     */
+    public CapabilityResult<List<WorkspaceSymbolEntry>> workspaceSymbols(String query) {
+        return serve(requestSelection(), current -> current.workspaceSymbol(query), LspClient::workspaceSymbolsOf);
+    }
+
+    /**
      * @return the code actions the server offers for the range, the diagnostics
      *         overlapping it are handed over as context; a failed result with
      *         reason {@code malformed} when the server answers with a payload that
@@ -598,6 +609,48 @@ public final class LspClient implements AutoCloseable, JavaDebugAdapterPort {
             }
         }
         return mapped;
+    }
+
+    private static List<WorkspaceSymbolEntry> workspaceSymbolsOf(
+            Either<List<? extends SymbolInformation>, List<? extends WorkspaceSymbol>> result) {
+        if (result == null) {
+            return List.of();
+        }
+        List<WorkspaceSymbolEntry> mapped = new ArrayList<>();
+        if (result.isLeft()) {
+            for (SymbolInformation info : result.getLeft()) {
+                Location location = info.getLocation();
+                mapped.add(workspaceSymbolOf(info.getName(), info.getKind(), info.getContainerName(),
+                        location == null ? null : location.getUri(), location == null ? null : location.getRange()));
+            }
+        } else {
+            for (WorkspaceSymbol symbol : result.getRight()) {
+                Either<Location, WorkspaceSymbolLocation> location = symbol.getLocation();
+                mapped.add(location.isLeft()
+                        ? workspaceSymbolOf(symbol.getName(), symbol.getKind(), symbol.getContainerName(),
+                                location.getLeft().getUri(), location.getLeft().getRange())
+                        : workspaceSymbolOf(symbol.getName(), symbol.getKind(), symbol.getContainerName(),
+                                location.getRight().getUri(), null));
+            }
+        }
+        return List.copyOf(mapped);
+    }
+
+    private static WorkspaceSymbolEntry workspaceSymbolOf(String name, SymbolKind kind, String container, String uri,
+            Range range) {
+        return new WorkspaceSymbolEntry(name == null ? "" : name, kind == null ? 0 : kind.getValue(),
+                container == null ? "" : container, fileOf(uri), lineOf(range), characterOf(range));
+    }
+
+    private static Optional<Path> fileOf(String uri) {
+        if (uri == null || !uri.startsWith("file:")) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(Path.of(LspServerSession.fileFor(uri)));
+        } catch (IllegalArgumentException invalid) {
+            return Optional.empty();
+        }
     }
 
     private static DocumentSymbol documentSymbolOf(org.eclipse.lsp4j.DocumentSymbol symbol) {

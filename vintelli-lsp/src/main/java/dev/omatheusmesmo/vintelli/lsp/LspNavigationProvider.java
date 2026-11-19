@@ -56,6 +56,22 @@ public final class LspNavigationProvider implements NavigationCapability {
         return CapabilityResult.failed(failed.failure());
     }
 
+    @Override
+    public CapabilityResult<List<NavigationCapability.WorkspaceSymbol>> workspaceSymbols(String query) {
+        CapabilityResult<List<WorkspaceSymbolEntry>> result = client.workspaceSymbols(query);
+        if (result instanceof CapabilityResult.Ok<List<WorkspaceSymbolEntry>> ok) {
+            return CapabilityResult.ok(ok.value().stream().map(LspNavigationProvider::map).toList());
+        }
+        CapabilityResult.Failed<List<WorkspaceSymbolEntry>> failed =
+                (CapabilityResult.Failed<List<WorkspaceSymbolEntry>>) result;
+        return CapabilityResult.failed(failed.failure());
+    }
+
+    private static NavigationCapability.WorkspaceSymbol map(WorkspaceSymbolEntry symbol) {
+        return new NavigationCapability.WorkspaceSymbol(symbol.name(), symbol.kind(), symbol.container(),
+                symbol.file().map(file -> new Location(file, symbol.line(), symbol.column())));
+    }
+
     private static NavigationCapability.DocumentSymbol map(dev.omatheusmesmo.vintelli.lsp.DocumentSymbol symbol) {
         return new NavigationCapability.DocumentSymbol(symbol.name(), symbol.kind().getValue(), symbol.startLine(), symbol.startColumn(),
                 symbol.endLine(), symbol.endColumn(), symbol.selectionStartLine(), symbol.selectionStartColumn(),

@@ -179,7 +179,8 @@ class KeymapTest {
                 "editor_quickDocumentation",
                 "editor_toggleImportFold",
                 "editor_toggleBreakpoint", "editor_editBreakpointCondition",
-                "navigation_goToFile", "navigation_findInFiles", "navigation_goToLine",
+                "navigation_goToFile", "navigation_goToClass", "navigation_goToSymbol", "navigation_findInFiles",
+                "navigation_goToLine",
                 "navigation_focusBreadcrumbs",
                 "layout_project_wider", "layout_project_narrower", "layout_bottom_taller", "layout_bottom_shorter",
                 "focusEditor", "shell.theme.switch", "shell.settings", "project_new_file", "project_new_directory", "project_rename",
@@ -585,6 +586,15 @@ class KeymapTest {
     }
 
     @Test
+    void ctrlNGoesToClassButStaysWithACapturingWindow() {
+        Keymap keymap = Keymap.ofProfile(KeymapProfile.DEFAULT, WINDOWS);
+
+        assertTrue(keymap.matches(keypress('n', KeyModifiers.CTRL), KeyActions.GO_TO_CLASS));
+        assertFalse(keymap.matchesReserved(keypress('n', KeyModifiers.CTRL), KeyActions.GO_TO_CLASS),
+                "a capturing terminal keeps Ctrl+N for its history and the ACP chat for a new conversation");
+    }
+
+    @Test
     void vimProfileSelectsAllOnCtrlEBecauseCtrlAIsVimIncrement() {
         Keymap vim = Keymap.ofProfile(KeymapProfile.VIM, WINDOWS);
 
@@ -687,8 +697,8 @@ class KeymapTest {
     void theLegacyKeymapHasNoCtrlShiftChordAndAnswersThePlainBytesAsBefore() {
         Keymap legacy = Keymap.ofProfile(KeymapProfile.DEFAULT, KeyboardMode.LEGACY, WINDOWS);
 
-        assertEquals(Set.of(), answeringActions(legacy, keypress('n', KeyModifiers.CTRL)),
-                "Ctrl+N is no chord of Go to File in the legacy protocol");
+        assertEquals(Set.of(KeyActions.GO_TO_CLASS), answeringActions(legacy, keypress('n', KeyModifiers.CTRL)),
+                "plain Ctrl+N is Go to Class in the legacy protocol, which cannot tell Ctrl+Shift+N apart");
         assertEquals(Set.of(), answeringActions(legacy, KeyEvent.ofKey(KeyCode.KP_ADD, CTRL_SHIFT)),
                 "Ctrl+Shift+KP_ADD is no chord in the legacy protocol");
         assertEquals(Set.of(KeyActions.FIND), answeringActions(legacy, keypress('f', KeyModifiers.CTRL)));

@@ -36,6 +36,8 @@ import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
 import dev.omatheusmesmo.vintelli.tui.icons.JavaTypeKinds;
 import dev.omatheusmesmo.vintelli.tui.search.ProjectSearchModel;
 import dev.omatheusmesmo.vintelli.tui.search.ProjectSearchOverlay;
+import dev.omatheusmesmo.vintelli.tui.symbol.SymbolSearchModel;
+import dev.omatheusmesmo.vintelli.tui.symbol.SymbolSearchOverlay;
 import dev.omatheusmesmo.vintelli.api.search.ProjectSearch;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityRegistry;
 import dev.omatheusmesmo.vintelli.api.idea.IdeaMcpConnection;
@@ -44,6 +46,7 @@ import dev.omatheusmesmo.vintelli.api.capability.ProjectFileOperations;
 import dev.omatheusmesmo.vintelli.api.capability.VersionControlCapability;
 import dev.omatheusmesmo.vintelli.api.dependencies.ProjectDependencyGraph;
 import dev.omatheusmesmo.vintelli.api.dependencies.ProjectDependencyGraphProvider;
+import dev.omatheusmesmo.vintelli.api.capability.CapabilityFailure;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityStatus;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Diagnostic;
@@ -149,6 +152,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
      */
     private record KeymapParts(Keymap keymap, CommandPalette commandPalette, KeymapHelpOverlay keymapHelp,
             MenuPopup menuPopup, ProjectSearchModel searchModel, ProjectSearchOverlay searchOverlay,
+            SymbolSearchModel symbolSearch, SymbolSearchOverlay symbolSearchOverlay,
             OverlayStack stack, RunConfigurationChooser runConfigurations, GoToLineOverlay goToLine,
             BreakpointConditionOverlay breakpointCondition) {
     }
@@ -402,13 +406,16 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 MainToolbar.MENU_ORIGIN);
         ProjectSearchOverlay searchOverlay = searchModel == null ? null
                 : new ProjectSearchOverlay(searchModel, fileIcons);
+        SymbolSearchModel symbolSearch = new SymbolSearchModel(this::workspaceSymbols);
+        SymbolSearchOverlay symbolSearchOverlay = new SymbolSearchOverlay(symbolSearch);
         OverlayStack stack = new OverlayStack();
         GoToLineOverlay goToLine = new GoToLineOverlay();
         BreakpointConditionOverlay breakpointCondition = new BreakpointConditionOverlay();
         RunConfigurationChooser runConfigurations = new RunConfigurationChooser(
                 () -> runWindow == null ? List.of() : runWindow.configurations());
         KeymapParts built = new KeymapParts(keymap, commandPalette, keymapHelp, menuPopup, searchModel,
-                searchOverlay, stack, runConfigurations, goToLine, breakpointCondition);
+                searchOverlay, symbolSearch, symbolSearchOverlay, stack, runConfigurations, goToLine,
+                breakpointCondition);
         stack.registerOverlay(Kind.COMMAND_PALETTE, commandPalette::isOpen, commandPalette::close);
         stack.registerOverlay(Kind.KEYMAP_HELP, keymapHelp::isOpen, keymapHelp::close);
         stack.registerOverlay(Kind.MENU, menuPopup::isOpen, () -> closeMenu(built));
@@ -421,6 +428,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         if (searchModel != null) {
             stack.registerOverlay(Kind.PROJECT_SEARCH, searchModel::isOpen, searchModel::close);
         }
+        stack.registerOverlay(Kind.SYMBOL_SEARCH, symbolSearch::isOpen, symbolSearch::close);
         stack.registerPrompt(Kind.PROJECT_DELETE, projects::deletePending);
         if (editor != null) {
             stack.registerPrompt(Kind.EDITOR_CLOSE, editor::closeConfirmationPending);
@@ -1130,6 +1138,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             case RUN_CONFIGURATION -> new OverlayElement(RunConfigurationChooser.ID,
                     (frame, area) -> parts.runConfigurations().render(frame, area, mainToolbar.configurationColumn()));
             case PROJECT_SEARCH -> new OverlayElement("project-search", parts.searchOverlay()::render);
+            case SYMBOL_SEARCH -> new OverlayElement("symbol-search", parts.symbolSearchOverlay()::render);
             case GO_TO_LINE -> new OverlayElement("go-to-line", parts.goToLine()::render);
             case BREAKPOINT_CONDITION -> new OverlayElement("breakpoint-condition", parts.breakpointCondition()::render);
             case QUICK_FIX -> new OverlayElement("quick-fix", (frame, area) -> quickFixOverlay.render(frame, area,
@@ -1182,7 +1191,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             }
             return EventResult.HANDLED;
         }
-        if (top == Kind.GO_TO_LINE || top == Kind.BREAKPOINT_CONDITION) {
+        if (top == Kind.GO_TO_LINE || top == Kind.BREAKPOINT_CONDITION || top == Kind.SYMBOL_SEARCH) {
             return EventResult.HANDLED;
         }
         if (top == Kind.QUICK_DOCUMENTATION) {
@@ -1343,6 +1352,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             case RUN_CONFIGURATION -> parts.runConfigurations().handleKey(key)
                     .ifPresent(identifier -> selectRunConfiguration(parts, identifier));
             case PROJECT_SEARCH -> parts.searchOverlay().handleKey(key)
+                    .ifPresent(target -> editorController.openRevealed(target.file(), target.line()));
+            case SYMBOL_SEARCH -> parts.symbolSearchOverlay().handleKey(key)
                     .ifPresent(target -> editorController.openRevealed(target.file(), target.line()));
             case GO_TO_LINE -> handleGoToLineKey(parts, key);
             case BREAKPOINT_CONDITION -> handleBreakpointConditionKey(parts, key);
@@ -1669,6 +1680,14 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 parts.stack().closeOverlays();
                 openSearch(parts, ProjectSearchModel.Mode.FILES);
             }
+            case KeyActions.GO_TO_CLASS -> {
+                parts.stack().closeOverlays();
+                openSymbolSearch(parts, SymbolSearchModel.Scope.TYPES);
+            }
+            case KeyActions.GO_TO_SYMBOL -> {
+                parts.stack().closeOverlays();
+                openSymbolSearch(parts, SymbolSearchModel.Scope.ALL);
+            }
             case KeyActions.GO_TO_LINE -> {
                 parts.stack().closeOverlays();
                 openGoToLine(parts);
@@ -1948,6 +1967,20 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         inputCaptured = false;
         parts.stack().open(Kind.PROJECT_SEARCH, () -> parts.searchModel().open(mode));
         status = mode == ProjectSearchModel.Mode.FILES ? "Go to File: type to filter" : "Find in Files: type to search";
+    }
+
+    private void openSymbolSearch(KeymapParts parts, SymbolSearchModel.Scope scope) {
+        inputCaptured = false;
+        parts.stack().open(Kind.SYMBOL_SEARCH, () -> parts.symbolSearch().open(scope));
+        status = scope == SymbolSearchModel.Scope.TYPES ? "Go to Class: type a name" : "Go to Symbol: type a name";
+    }
+
+    private CapabilityResult<List<NavigationCapability.WorkspaceSymbol>> workspaceSymbols(String query) {
+        NavigationCapability provider = availableNavigationProvider();
+        if (provider == null) {
+            return CapabilityResult.failed(new CapabilityFailure("unavailable", "Navigation provider unavailable"));
+        }
+        return provider.workspaceSymbols(query);
     }
 
 
