@@ -13,6 +13,7 @@ import dev.tamboui.buffer.Buffer;
 import dev.tamboui.buffer.Cell;
 import dev.tamboui.css.cascade.CssStyleResolver;
 import dev.tamboui.layout.Rect;
+import dev.tamboui.style.AnsiColor;
 import dev.tamboui.style.Color;
 import dev.tamboui.style.ColorConverter;
 import dev.tamboui.style.Modifier;
@@ -67,6 +68,8 @@ final class EditorElement implements Element {
     private static final String QUICK_FIX_ASCII = "* ";
     private static final List<String> TYPING_FOCUS_IDS = List.of(BuiltinEditor.TEXT_AREA_ID, "editor-panel", "editor-content");
     private static final int WHEEL_STEP = 3;
+    private static final String MARKER = "■";
+    private static final String MARKER_ASCII = "#";
 
     private final BuiltinEditor editor;
     private final TextAreaElement textArea = Toolkit.textArea();
@@ -77,7 +80,9 @@ final class EditorElement implements Element {
     private Rect renderedArea = Rect.ZERO;
     private Rect bodyArea = Rect.ZERO;
     private Rect textBody = Rect.ZERO;
+    private Rect barArea = Rect.ZERO;
     private EditorDocument dragDocument;
+    private EditorDocument barDragDocument;
     private Rect caretCell;
 
     EditorElement(BuiltinEditor editor) {
@@ -92,13 +97,17 @@ final class EditorElement implements Element {
         List<EditorTabBarElement.Label> labels = new ArrayList<>();
         int selected = 0;
         List<BuiltinEditor.TabView> tabs = editor.tabs();
+        EditorDocument active = editor.document();
         for (int index = 0; index < tabs.size(); index++) {
             BuiltinEditor.TabView tab = tabs.get(index);
             String name = fileName(tab.file());
             String vcs = editor.vcsState(tab.file()).map(state -> " " + VcsMarkers.of(state)).orElse("");
             String dirty = tab.dirty() ? " " + (ascii ? DIRTY_MARK_ASCII : DIRTY_MARK) : "";
+            String problems = tab.active() && active != null
+                    ? ErrorStripe.summary(active.diagnostics(), active.analysed(), ascii).map(text -> " " + text).orElse("")
+                    : "";
             FileIcon icon = icons.iconFor(name, editor.javaKindOf(tab.file()));
-            labels.add(new EditorTabBarElement.Label(icon.span(icons.mode()), name + vcs + dirty));
+            labels.add(new EditorTabBarElement.Label(icon.span(icons.mode()), name + vcs + dirty + problems));
             if (tab.active()) {
                 selected = index;
             }
@@ -145,6 +154,116 @@ final class EditorElement implements Element {
         public EventResult handleKeyEvent(KeyEvent event, boolean focused) {
             return EditorElement.this.handleKeyEvent(event, focused);
         }
+    }
+
+    /**
+     * The marker bar on the right edge of the body: one cell per body row, each showing the most severe marker of
+     * the document rows it covers, with the viewport drawn as a lighter background behind those cells.
+     */
+    private final class MarkerBar extends StyledElement<MarkerBar> {
+        private MarkerBar() {
+            id("editor-marker-bar");
+        }
+
+        @Override
+        protected void renderContent(Frame frame, Rect area, RenderContext context) {
+            barArea = area;
+            EditorDocument document = editor.document();
+            if (document != null && !area.isEmpty()) {
+                paintBar(frame.buffer(), area, document, context);
+            }
+        }
+
+        @Override
+        public Size preferredSize(int width, int height, RenderContext context) {
+            return Size.of(1, height);
+        }
+    }
+
+    private void paintBar(Buffer buffer, Rect area, EditorDocument document, RenderContext context) {
+        ShellEditorPalette palette = editor.palette();
+        Color track = ColorConverter.INSTANCE.convert(palette.background()).orElse(null);
+        Color thumb = ColorConverter.INSTANCE.convert(palette.selection()).orElse(null);
+        ErrorStripe.Mark[] cells = ErrorStripe.bucket(document.lineCount(), area.height(), marks(document));
+        int[] covered = viewportCells(document, area.height());
+        String glyph = editor.icons().mode() == IconMode.ASCII ? MARKER_ASCII : MARKER;
+        for (int cell = 0; cell < area.height(); cell++) {
+            boolean inThumb = cell >= covered[0] && cell <= covered[1];
+            Style style = Style.EMPTY;
+            Color background = inThumb ? thumb : track;
+            if (background != null) {
+                style = style.bg(background);
+            }
+            String symbol = " ";
+            if (cells[cell] != null) {
+                symbol = glyph;
+                style = style.patch(markerStyle(cells[cell].kind(), context));
+            }
+            buffer.setString(area.x(), area.y() + cell, symbol, style);
+        }
+    }
+
+    private static Style markerStyle(ErrorStripe.Kind kind, RenderContext context) {
+        return switch (kind) {
+            case ERROR -> Style.EMPTY.fg(Color.ansi(AnsiColor.BRIGHT_RED));
+            case WARNING -> Style.EMPTY.fg(Color.ansi(AnsiColor.BRIGHT_YELLOW));
+            case SEARCH -> Style.EMPTY.fg(Color.ansi(AnsiColor.CYAN));
+            case BREAKPOINT -> roleStyle(context, VERIFIED_BREAKPOINT_ROLE);
+            case CHANGE -> Style.EMPTY.fg(Color.ansi(AnsiColor.BRIGHT_BLUE));
+        };
+    }
+
+    private List<ErrorStripe.Mark> marks(EditorDocument document) {
+        List<ErrorStripe.Mark> marks = new ArrayList<>();
+        for (Diagnostic diagnostic : document.diagnostics()) {
+            if (diagnostic.severity() == Severity.ERROR) {
+                marks.add(new ErrorStripe.Mark(ErrorStripe.Kind.ERROR, diagnostic.startLine(), diagnostic.startColumn()));
+            } else if (diagnostic.severity() == Severity.WARNING) {
+                marks.add(new ErrorStripe.Mark(ErrorStripe.Kind.WARNING, diagnostic.startLine(), diagnostic.startColumn()));
+            }
+        }
+        if (find.isOpenOn(document)) {
+            for (EditorFind.Match match : find.matches()) {
+                marks.add(new ErrorStripe.Mark(ErrorStripe.Kind.SEARCH, match.row(), match.column()));
+            }
+        }
+        for (Integer row : editor.breakpoints(document).keySet()) {
+            marks.add(new ErrorStripe.Mark(ErrorStripe.Kind.BREAKPOINT, row, 0));
+        }
+        for (Integer row : editor.vcsChangedRows(document)) {
+            marks.add(new ErrorStripe.Mark(ErrorStripe.Kind.CHANGE, row, 0));
+        }
+        return marks;
+    }
+
+    private int[] viewportCells(EditorDocument document, int cellCount) {
+        TextAreaState state = document.state();
+        int last = Math.max(state.scrollRow(), Math.min(state.lineCount(), state.scrollRow() + textBody.height()) - 1);
+        return ErrorStripe.thumb(document.documentRow(state.scrollRow()), document.documentRow(last),
+                document.lineCount(), cellCount);
+    }
+
+    private void scrollToDocumentRow(EditorDocument document, int row) {
+        int viewRow = Math.max(0, document.viewRow(row));
+        int top = ErrorStripe.topRowCentering(viewRow, textBody.height(), document.state().lineCount());
+        document.scrollBy(top - document.scrollRow(), textBody.height());
+    }
+
+    private void pressBar(EditorDocument document, int y) {
+        int cell = Math.clamp(y - barArea.y(), 0, barArea.height() - 1);
+        ErrorStripe.Mark hit = ErrorStripe.bucket(document.lineCount(), barArea.height(), marks(document))[cell];
+        if (hit != null) {
+            document.goTo(hit.row(), hit.column());
+            scrollToDocumentRow(document, hit.row());
+            editor.requestFocus();
+            return;
+        }
+        scrollToCell(document, cell);
+        barDragDocument = document;
+    }
+
+    private void scrollToCell(EditorDocument document, int cell) {
+        scrollToDocumentRow(document, ErrorStripe.rowAtCell(cell, document.lineCount(), barArea.height()));
     }
 
     /**
@@ -241,11 +360,13 @@ final class EditorElement implements Element {
             find.syncTo(document);
             if (!area.equals(renderedArea)) {
                 dragDocument = null;
+                barDragDocument = null;
                 if (document != null) { document.requestReveal(); }
             }
             renderedArea = area;
             textBody = Rect.ZERO;
             bodyArea = Rect.ZERO;
+            barArea = Rect.ZERO;
             Column column = Toolkit.column().id("editor-document");
             if (document == null) {
                 column.add(Toolkit.text("Open a file from Project or Go to File").fill());
@@ -264,6 +385,9 @@ final class EditorElement implements Element {
                 textArea.state(document.state()).highlighter(document.highlighter(), language(document.file().toString()))
                         .clip().fill();
                 body.add(menuAwareTextArea);
+                if (area.width() >= ErrorStripe.MIN_EDITOR_WIDTH && bodyHeight > 0) {
+                    body.add(new MarkerBar().length(1));
+                }
                 column.add(body);
                 if (finding) {
                     column.add(findRow);
@@ -358,6 +482,17 @@ final class EditorElement implements Element {
                 dragDocument = null;
                 return false;
             }
+            if (barDragDocument != null) {
+                if (barDragDocument != document || event.isRelease()) {
+                    barDragDocument = null;
+                    return true;
+                }
+                if (event.kind() == MouseEventKind.DRAG && event.isLeftButton()) {
+                    scrollToCell(document, Math.clamp(event.y() - barArea.y(), 0, barArea.height() - 1));
+                    return true;
+                }
+                barDragDocument = null;
+            }
             if (dragDocument != null) {
                 if (event.isRelease()) {
                     dragDocument = null;
@@ -370,6 +505,10 @@ final class EditorElement implements Element {
                     return true;
                 }
                 dragDocument = null;
+            }
+            if (event.isPress() && event.isLeftButton() && barArea.contains(event.x(), event.y())) {
+                pressBar(document, event.y());
+                return true;
             }
             if (event.isPress() && event.isLeftButton() && bodyArea.contains(event.x(), event.y())
                     && event.x() < textBody.x()) {
@@ -422,6 +561,7 @@ final class EditorElement implements Element {
 
     void cancelPointer() {
         dragDocument = null;
+        barDragDocument = null;
     }
 
     /**

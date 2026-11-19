@@ -370,7 +370,11 @@ public final class ProblemsToolWindow implements ToolWindow {
                 state = State.EMPTY;
                 message = "No problems in open files";
             }
-            editor.setDiagnostics(collected);
+            if (state == State.ERROR) {
+                editor.diagnosticsUnavailable();
+            } else {
+                editor.setDiagnostics(collected);
+            }
         }
     }
 
@@ -393,7 +397,7 @@ public final class ProblemsToolWindow implements ToolWindow {
         problems.clear();
         selection = Selection.ofProblem(0);
         scrollOffset = 0;
-        editor.setDiagnostics(List.of());
+        editor.diagnosticsUnavailable();
     }
 
     private List<ProblemRows.Row> buildRows(int width, Function<String, Style> roles) {

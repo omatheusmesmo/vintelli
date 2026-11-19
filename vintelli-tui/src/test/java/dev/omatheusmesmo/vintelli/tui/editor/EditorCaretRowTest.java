@@ -48,8 +48,8 @@ class EditorCaretRowTest {
         }
         assertEquals(caret, buffer.get(TEXT_LEFT + 3, 1).style().bg().orElse(null),
                 "the caret row continues past the selection");
-        assertEquals(caret, buffer.get(WIDTH - 1, 1).style().bg().orElse(null),
-                "the caret row reaches the right edge of the text width");
+        assertEquals(caret, buffer.get(WIDTH - 2, 1).style().bg().orElse(null),
+                "the caret row reaches the right edge of the text width, which the marker bar column bounds");
         assertFalse(caret.equals(buffer.get(TEXT_LEFT + 10, 0).style().bg().orElse(null)),
                 "the row above the caret keeps the plain editor background");
     }
