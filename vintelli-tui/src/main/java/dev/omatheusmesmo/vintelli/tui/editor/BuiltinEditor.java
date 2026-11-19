@@ -215,6 +215,10 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     public synchronized void cancelPointer() {
         element.cancelPointer();
     }
+    /** Places the caret under a press over the document text, without a drag selection. */
+    public synchronized boolean placeCaretAt(MouseEvent event) {
+        return element.placeCaret(event);
+    }
     public synchronized Optional<PointerState> pointerState() {
         EditorDocument document = document();
         if (document == null) {
