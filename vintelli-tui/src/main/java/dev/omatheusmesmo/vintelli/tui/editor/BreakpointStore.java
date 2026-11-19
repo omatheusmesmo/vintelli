@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.TreeMap;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability;
@@ -26,21 +27,28 @@ import dev.omatheusmesmo.vintelli.api.capability.DebugCapability;
  * the anchors of the revision it returns to.
  */
 final class BreakpointStore {
-    record Source(Path file, List<Integer> lines, Map<Integer, String> conditions) {
+    record Source(Path file, List<Integer> lines, Map<Integer, String> conditions, Map<Integer, String> logMessages,
+            Map<Integer, String> hitConditions) {
         Source {
             lines = lines == null ? List.of() : lines.stream().filter(line -> line >= 0).distinct().sorted().toList();
-            conditions = retainedConditions(conditions, lines);
+            conditions = retained(conditions, lines);
+            logMessages = retained(logMessages, lines);
+            hitConditions = retained(hitConditions, lines);
         }
 
-        private static Map<Integer, String> retainedConditions(Map<Integer, String> conditions, List<Integer> lines) {
-            return conditions == null ? Map.of() : Map.copyOf(conditions.entrySet().stream()
+        private static Map<Integer, String> retained(Map<Integer, String> values, List<Integer> lines) {
+            return values == null ? Map.of() : Map.copyOf(values.entrySet().stream()
                     .filter(entry -> lines.contains(entry.getKey()) && entry.getValue() != null
                             && !entry.getValue().isBlank())
                     .collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().strip())));
         }
 
+        Source(Path file, List<Integer> lines, Map<Integer, String> conditions) {
+            this(file, lines, conditions, Map.of(), Map.of());
+        }
+
         Source(Path file, List<Integer> lines) {
-            this(file, lines, Map.of());
+            this(file, lines, Map.of(), Map.of(), Map.of());
         }
     }
 
@@ -89,7 +97,11 @@ final class BreakpointStore {
                         }
                         lines = restored;
                     }
-                    sources.add(new Source(candidate, lines, restoredConditions(properties, prefix, lines)));
+                    sources.add(new Source(candidate, lines,
+                            restored(properties, prefix + ".condition.", lines, BreakpointStore::isStorableCondition),
+                            restored(properties, prefix + ".logMessage.", lines, BreakpointStore::isStorableLogMessage),
+                            restored(properties, prefix + ".hitCondition.", lines,
+                                    DebugCapability.SourceBreakpoint::isValidHitCondition)));
                 }
             } catch (IOException | IllegalArgumentException invalid) {
                 // A missing target behind a broken link is not a restorable in-project location.
@@ -105,7 +117,8 @@ final class BreakpointStore {
         List<Source> ordered = sources.stream().map(source -> {
             try {
                 Path resolved = safeAbsolutePath(root, source.file());
-                return resolved == null ? null : new Source(resolved, source.lines(), source.conditions());
+                return resolved == null ? null : new Source(resolved, source.lines(), source.conditions(), source.logMessages(),
+                        source.hitConditions());
             } catch (IOException | IllegalArgumentException invalid) {
                 return null;
             }
@@ -120,9 +133,9 @@ final class BreakpointStore {
             for (int line = 0; line < source.lines().size(); line++) {
                 properties.setProperty(prefix + ".line." + line, Integer.toString(source.lines().get(line)));
             }
-            for (Map.Entry<Integer, String> condition : source.conditions().entrySet()) {
-                properties.setProperty(prefix + ".condition." + condition.getKey(), condition.getValue());
-            }
+            source.conditions().forEach((line, value) -> properties.setProperty(prefix + ".condition." + line, value));
+            source.logMessages().forEach((line, value) -> properties.setProperty(prefix + ".logMessage." + line, value));
+            source.hitConditions().forEach((line, value) -> properties.setProperty(prefix + ".hitCondition." + line, value));
         }
         Files.createDirectories(file.getParent());
         Path temporary = Files.createTempFile(file.getParent(), "editor-breakpoints-", ".tmp");
@@ -193,20 +206,26 @@ final class BreakpointStore {
         return missing.startsWith(root) ? missing : null;
     }
 
-    private static Map<Integer, String> restoredConditions(Properties properties, String prefix, List<Integer> lines) {
-        Map<Integer, String> conditions = new TreeMap<>();
+    private static Map<Integer, String> restored(Properties properties, String keyPrefix, List<Integer> lines,
+            Predicate<String> storable) {
+        Map<Integer, String> values = new TreeMap<>();
         for (int line : lines) {
-            String value = properties.getProperty(prefix + ".condition." + line);
-            if (value != null && isStorableCondition(value.strip())) {
-                conditions.put(line, value.strip());
+            String value = properties.getProperty(keyPrefix + line);
+            if (value != null && storable.test(value.strip())) {
+                values.put(line, value.strip());
             }
         }
-        return conditions;
+        return values;
     }
 
     private static boolean isStorableCondition(String condition) {
         return !condition.isEmpty() && condition.length() <= DebugCapability.SourceBreakpoint.MAX_CONDITION_LENGTH
                 && condition.indexOf('\n') < 0 && condition.indexOf('\r') < 0;
+    }
+
+    private static boolean isStorableLogMessage(String message) {
+        return !message.isEmpty() && message.length() <= DebugCapability.SourceBreakpoint.MAX_LOG_MESSAGE_LENGTH
+                && message.indexOf('\n') < 0 && message.indexOf('\r') < 0;
     }
 
     private static int number(Properties properties, String key) {

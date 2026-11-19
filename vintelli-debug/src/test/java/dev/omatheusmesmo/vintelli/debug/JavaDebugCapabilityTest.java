@@ -8,6 +8,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -857,6 +858,99 @@ class JavaDebugCapabilityTest {
             assertEquals("Conditional breakpoints are not supported by this adapter", applied.get(1).message());
             session.disconnect();
         }
+    }
+
+    @Test
+    void logMessagesAndHitCountsAreSentWithSourceBreakpointsAndKeptOnTheReportedOnes() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.NORMAL)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "logpoints"), ignored -> { }));
+
+            List<DebugCapability.SourceBreakpoint> applied = ok(capability.setBreakpoints("/project/Main.java",
+                    List.of(logpoint(9, "count={count}"), hitCounted(4, "3"), new DebugCapability.SourceBreakpoint(
+                            "/project/Main.java", 12))));
+
+            assertEquals(List.of(4, 9, 12), twin.breakpointLines());
+            assertEquals(List.of("", "count={count}", ""), twin.breakpointLogMessages());
+            assertEquals(List.of("3", "", ""), twin.breakpointHitConditions());
+            assertEquals("3", applied.getFirst().hitCondition());
+            assertTrue(applied.get(1).isLogpoint(), "the editor anchor keeps its log message");
+            assertEquals("count={count}", applied.get(1).logMessage());
+            assertFalse(applied.get(2).isLogpoint());
+            assertEquals(DebugCapability.BreakpointState.VERIFIED, applied.get(1).state());
+            session.disconnect();
+        }
+    }
+
+    @Test
+    void aMalformedLogMessageIsRejectedForItsLineOnlyWithTheAdapterMessage() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.NORMAL)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "bad log"), ignored -> { }));
+
+            List<DebugCapability.SourceBreakpoint> applied = ok(capability.setBreakpoints("/project/Main.java",
+                    List.of(logpoint(4, "count={count"), logpoint(9, "count={count}"))));
+
+            assertEquals(DebugCapability.BreakpointState.REJECTED, applied.getFirst().state());
+            assertEquals("Malformed log message expression", applied.getFirst().message());
+            assertEquals("count={count", applied.getFirst().logMessage());
+            assertEquals(DebugCapability.BreakpointState.VERIFIED, applied.get(1).state());
+            session.disconnect();
+        }
+    }
+
+    @Test
+    void adapterWithoutLogpointsOrHitCountsRejectsThoseLinesInsteadOfSuspendingOnThem() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.UNSUPPORTED_LOGPOINTS_AND_HIT_COUNTS)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "no logpoints"), ignored -> { }));
+
+            List<DebugCapability.SourceBreakpoint> applied = ok(capability.setBreakpoints("/project/Main.java",
+                    List.of(new DebugCapability.SourceBreakpoint("/project/Main.java", 3), hitCounted(4, "3"),
+                            logpoint(9, "count={count}"))));
+
+            assertEquals(List.of(3), twin.breakpointLines(),
+                    "a logpoint or hit count the adapter cannot honour is never sent as a plain breakpoint");
+            assertEquals(DebugCapability.BreakpointState.VERIFIED, applied.getFirst().state());
+            assertEquals(DebugCapability.BreakpointState.REJECTED, applied.get(1).state());
+            assertEquals("Hit counts on breakpoints are not supported by this adapter", applied.get(1).message());
+            assertEquals(DebugCapability.BreakpointState.REJECTED, applied.get(2).state());
+            assertEquals("Logpoints are not supported by this adapter", applied.get(2).message());
+            assertEquals("count={count}", applied.get(2).logMessage());
+            session.disconnect();
+        }
+    }
+
+    @Test
+    void logpointOutputReachesTheConsolePrefixedWithItsLocationAndOtherOutputIsUntouched() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.NORMAL)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            List<String> console = new CopyOnWriteArrayList<>();
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "logpoint output"), console::add));
+            awaitState(session, DebugCapability.State.STOPPED);
+
+            twin.connection().logpointOutput("/project/Main.java", 9, "count=2\n");
+            twin.connection().plainOutput("program output\n");
+
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+            while (console.size() < 2 && System.nanoTime() < deadline) Thread.sleep(10);
+            assertEquals(List.of("/project/Main.java:9 count=2\n", "program output\n"), List.copyOf(console));
+            session.disconnect();
+        }
+    }
+
+    private static DebugCapability.SourceBreakpoint logpoint(int line, String logMessage) {
+        return new DebugCapability.SourceBreakpoint("/project/Main.java", line,
+                DebugCapability.BreakpointState.PENDING, "", null, "/project/Main.java", "", logMessage, "");
+    }
+
+    private static DebugCapability.SourceBreakpoint hitCounted(int line, String hitCondition) {
+        return new DebugCapability.SourceBreakpoint("/project/Main.java", line,
+                DebugCapability.BreakpointState.PENDING, "", null, "/project/Main.java", "", "", hitCondition);
     }
 
     private static DebugCapability.SourceBreakpoint conditional(int line, String condition) {

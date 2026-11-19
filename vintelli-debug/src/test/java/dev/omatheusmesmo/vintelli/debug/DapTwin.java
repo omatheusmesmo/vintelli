@@ -75,6 +75,8 @@ final class DapTwin implements AutoCloseable {
     private final List<String> assignments = new CopyOnWriteArrayList<>();
     private volatile String answerValue = "42";
     private volatile List<String> breakpointConditions = List.of();
+    private volatile List<String> breakpointLogMessages = List.of();
+    private volatile List<String> breakpointHitConditions = List.of();
 
     DapTwin(Mode mode) throws IOException {
         this.mode = mode;
@@ -98,6 +100,8 @@ final class DapTwin implements AutoCloseable {
     List<String> evaluations() { return List.copyOf(evaluations); }
     List<String> breakpointConditions() { return breakpointConditions; }
     List<String> assignments() { return List.copyOf(assignments); }
+    List<String> breakpointLogMessages() { return breakpointLogMessages; }
+    List<String> breakpointHitConditions() { return breakpointHitConditions; }
     int stackTraceCalls() { return stackTraceCalls.get(); }
     void releaseStaleStackTrace() { connections.forEach(Connection::releaseStaleStackTrace); }
 
@@ -158,6 +162,7 @@ final class DapTwin implements AutoCloseable {
         PAUSE_NO_EVENT,
         STALE_STACK_TRACE,
         UNSUPPORTED_CONDITIONS,
+        UNSUPPORTED_LOGPOINTS_AND_HIT_COUNTS,
         EVALUATE_UNSUPPORTED,
         EVALUATE_NO_RESPONSE,
         EVALUATE_HOLD,
@@ -189,6 +194,14 @@ final class DapTwin implements AutoCloseable {
         long close = condition.chars().filter(character -> character == ')').count();
         String trimmed = condition.strip();
         return open != close || List.of("&&", "||", "==", "!=", "+", "-", ".").stream().anyMatch(trimmed::endsWith);
+    }
+
+    static boolean malformedLogMessage(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        return message.chars().filter(character -> character == '{').count()
+                != message.chars().filter(character -> character == '}').count();
     }
 
     final class Connection {
@@ -285,6 +298,22 @@ final class DapTwin implements AutoCloseable {
             }
         }
 
+        void logpointOutput(String path, int line, String text) {
+            OutputEventArguments event = new OutputEventArguments();
+            Source source = new Source();
+            source.setPath(path);
+            event.setSource(source);
+            event.setLine(line);
+            event.setOutput(text);
+            client.output(event);
+        }
+
+        void plainOutput(String text) {
+            OutputEventArguments event = new OutputEventArguments();
+            event.setOutput(text);
+            client.output(event);
+        }
+
         void stopAgain() { server.stopAtBreakpoint(); }
         void releaseStaleStackTrace() {
             CompletableFuture<StackTraceResponse> pending = staleStackTrace;
@@ -311,6 +340,8 @@ final class DapTwin implements AutoCloseable {
                 capabilities.setSupportsConfigurationDoneRequest(mode != Mode.UNSUPPORTED);
                 capabilities.setSupportsConditionalBreakpoints(mode != Mode.UNSUPPORTED_CONDITIONS);
                 capabilities.setSupportsSetVariable(mode != Mode.SET_VARIABLE_UNSUPPORTED);
+                capabilities.setSupportsLogPoints(mode != Mode.UNSUPPORTED_LOGPOINTS_AND_HIT_COUNTS);
+                capabilities.setSupportsHitConditionalBreakpoints(mode != Mode.UNSUPPORTED_LOGPOINTS_AND_HIT_COUNTS);
                 return CompletableFuture.completedFuture(capabilities);
             }
 
@@ -504,11 +535,18 @@ final class DapTwin implements AutoCloseable {
                 breakpointConditions = requested.stream()
                         .map(sourceBreakpoint -> sourceBreakpoint.getCondition() == null ? "" : sourceBreakpoint.getCondition())
                         .toList();
+                breakpointLogMessages = requested.stream()
+                        .map(sourceBreakpoint -> sourceBreakpoint.getLogMessage() == null ? "" : sourceBreakpoint.getLogMessage())
+                        .toList();
+                breakpointHitConditions = requested.stream()
+                        .map(sourceBreakpoint -> sourceBreakpoint.getHitCondition() == null ? "" : sourceBreakpoint.getHitCondition())
+                        .toList();
                 SetBreakpointsResponse response = new SetBreakpointsResponse();
                 response.setBreakpoints(requested.stream().map(sourceBreakpoint -> {
                     Breakpoint breakpoint = new Breakpoint();
                     breakpoint.setLine(sourceBreakpoint.getLine());
-                    boolean malformed = malformedCondition(sourceBreakpoint.getCondition());
+                    boolean malformedLog = malformedLogMessage(sourceBreakpoint.getLogMessage());
+                    boolean malformed = malformedCondition(sourceBreakpoint.getCondition()) || malformedLog;
                     boolean verified = (mode != Mode.REJECT_BREAKPOINT || sourceBreakpoint.getLine() != 4)
                             && (mode != Mode.REJECT_SECOND_SESSION || connectionNumber != 2) && !malformed;
                     breakpoint.setVerified(verified);
@@ -518,7 +556,9 @@ final class DapTwin implements AutoCloseable {
                         resolved.setPath("/mapped/Main.java");
                         breakpoint.setSource(resolved);
                     }
-                    if (malformed) {
+                    if (malformedLog) {
+                        breakpoint.setMessage("Malformed log message expression");
+                    } else if (malformed) {
                         breakpoint.setMessage("Malformed breakpoint condition");
                     } else if (!verified) {
                         breakpoint.setMessage("Source line is not executable");

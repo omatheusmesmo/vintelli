@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
 
 /**
  * Starts or attaches to a debug session and exposes its state without leaking
@@ -129,9 +130,23 @@ public interface DebugCapability extends ProviderDescriptor {
 
     enum BreakpointState { PENDING, VERIFIED, REJECTED }
 
+    /**
+     * A source line breakpoint. A non-blank {@code logMessage} makes it a logpoint: the adapter prints
+     * the message, interpolating {@code {expression}} parts, and the program is not suspended.
+     *
+     * @param condition a Java condition that must hold for the breakpoint to trigger, or empty
+     * @param logMessage one line printed on each hit instead of suspending, or empty
+     * @param hitCondition a positive hit count such as {@code 3}, optionally with an operator
+     *        ({@code >=}, {@code >}, {@code ==}, {@code <=}, {@code <}, {@code %}), or empty
+     */
     record SourceBreakpoint(String sourcePath, int line, BreakpointState state, String message,
-            Integer resolvedLine, String resolvedSourcePath, String condition) {
+            Integer resolvedLine, String resolvedSourcePath, String condition, String logMessage,
+            String hitCondition) {
         public static final int MAX_CONDITION_LENGTH = 500;
+        public static final int MAX_LOG_MESSAGE_LENGTH = 500;
+        public static final int MAX_HIT_CONDITION_LENGTH = 20;
+        private static final Pattern HIT_CONDITION =
+                Pattern.compile("(?:==|>=|<=|>|<|%)?\\s*[1-9][0-9]{0,8}");
 
         public SourceBreakpoint {
             if (sourcePath == null || sourcePath.isBlank()) {
@@ -148,30 +163,64 @@ public interface DebugCapability extends ProviderDescriptor {
             message = message == null ? "" : message;
             resolvedSourcePath = resolvedSourcePath == null || resolvedSourcePath.isBlank()
                     ? sourcePath : resolvedSourcePath.trim();
-            condition = normalizeCondition(condition);
+            condition = normalizeLine(condition, "condition", MAX_CONDITION_LENGTH);
+            logMessage = normalizeLine(logMessage, "log message", MAX_LOG_MESSAGE_LENGTH);
+            hitCondition = normalizeLine(hitCondition, "hit count", MAX_HIT_CONDITION_LENGTH);
+            if (!hitCondition.isEmpty() && !isValidHitCondition(hitCondition)) {
+                throw new IllegalArgumentException(
+                        "A breakpoint hit count is a positive number such as 3, optionally after >=, >, ==, <=, < or %");
+            }
+        }
+
+        public SourceBreakpoint(String sourcePath, int line, BreakpointState state, String message,
+                Integer resolvedLine, String resolvedSourcePath, String condition) {
+            this(sourcePath, line, state, message, resolvedLine, resolvedSourcePath, condition, "", "");
         }
 
         public SourceBreakpoint(String sourcePath, int line, BreakpointState state, String message,
                 Integer resolvedLine, String resolvedSourcePath) {
-            this(sourcePath, line, state, message, resolvedLine, resolvedSourcePath, "");
+            this(sourcePath, line, state, message, resolvedLine, resolvedSourcePath, "", "", "");
         }
 
         public SourceBreakpoint(String sourcePath, int line) {
-            this(sourcePath, line, BreakpointState.PENDING, "", null, sourcePath, "");
+            this(sourcePath, line, BreakpointState.PENDING, "", null, sourcePath, "", "", "");
         }
 
         public SourceBreakpoint(String sourcePath, int line, BreakpointState state, String message) {
-            this(sourcePath, line, state, message, null, sourcePath, "");
+            this(sourcePath, line, state, message, null, sourcePath, "", "", "");
         }
 
-        private static String normalizeCondition(String value) {
+        /** True when the breakpoint prints a message and never suspends. */
+        public boolean isLogpoint() {
+            return !logMessage.isEmpty();
+        }
+
+        /** A copy of this breakpoint with the adapter's verdict, keeping condition, log message and hit count. */
+        public SourceBreakpoint withOutcome(BreakpointState newState, String newMessage, Integer newResolvedLine,
+                String newResolvedSourcePath) {
+            return new SourceBreakpoint(sourcePath, line, newState, newMessage, newResolvedLine,
+                    newResolvedSourcePath, condition, logMessage, hitCondition);
+        }
+
+        /** A pending copy of this breakpoint on another one based line, keeping its condition, log message and hit count. */
+        public SourceBreakpoint pendingAt(int newLine, String newMessage) {
+            return new SourceBreakpoint(sourcePath, newLine, BreakpointState.PENDING, newMessage, null,
+                    sourcePath, condition, logMessage, hitCondition);
+        }
+
+        public static boolean isValidHitCondition(String value) {
+            return value != null && value.length() <= MAX_HIT_CONDITION_LENGTH
+                    && HIT_CONDITION.matcher(value.strip()).matches();
+        }
+
+        private static String normalizeLine(String value, String name, int maxLength) {
             String trimmed = value == null ? "" : value.strip();
             if (trimmed.indexOf('\n') >= 0 || trimmed.indexOf('\r') >= 0) {
-                throw new IllegalArgumentException("A breakpoint condition must be one line");
+                throw new IllegalArgumentException("A breakpoint " + name + " must be one line");
             }
-            if (trimmed.length() > MAX_CONDITION_LENGTH) {
-                throw new IllegalArgumentException("A breakpoint condition can have at most "
-                        + MAX_CONDITION_LENGTH + " characters");
+            if (trimmed.length() > maxLength) {
+                throw new IllegalArgumentException("A breakpoint " + name + " can have at most "
+                        + maxLength + " characters");
             }
             return trimmed;
         }

@@ -13,6 +13,7 @@ import dev.omatheusmesmo.vintelli.tui.maven.MavenToolWindow;
 import dev.omatheusmesmo.vintelli.tui.icons.JavaTypeKind;
 import dev.omatheusmesmo.vintelli.tui.layout.ShellLayoutStore;
 import dev.omatheusmesmo.vintelli.tui.layout.ShellLayout;
+import dev.omatheusmesmo.vintelli.api.capability.DebugCapability;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityRegistry;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilitySelection;
@@ -6171,6 +6172,96 @@ class VintelliShellTest {
             pilot.press(KeyCode.ESCAPE);
             settle(pilot);
         }
+    }
+
+    @Test
+    void pilotBreakpointEditorTurnsTheBreakpointIntoALogpointWithItsOwnGutterGlyph() throws Exception {
+        EditorShell fixture = openEditorShell("Logpoint.txt", "alpha\nbeta\ngamma\n", 1);
+        assertTrue(fixture.editor().toggleBreakpointAtCaret());
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            fixture.editor().requestFocus();
+            settle(pilot);
+            Rect gutter = pilot.findElement("editor-gutter");
+            assertTrue(Set.of("o ", "◌ ").contains(gutterMarker(test, gutter, 1)), "a plain breakpoint is pending");
+
+            pilot.press(KeyCode.F8, KeyModifiers.ALT);
+            settle(pilot);
+            String editorFrame = test.renderedFrame();
+            assertTrue(editorFrame.contains("Condition:") && editorFrame.contains("Log message:")
+                    && editorFrame.contains("Hit count:") && editorFrame.contains("Suspend:"),
+                    "the breakpoint editor shows its four fields: " + editorFrame);
+
+            pilot.press(KeyCode.DOWN);
+            type(pilot, "n={n}");
+            pilot.press(KeyCode.ENTER);
+            settle(pilot);
+            assertTrue(test.renderedFrame().contains("Breakpoint"), "a log message with Suspend on is refused and the panel stays open");
+            assertTrue(test.renderedFrame().contains("turn Suspend off"), "the refusal says how to fix it");
+            assertFalse(fixture.editor().breakpointAtCaret().orElseThrow().isLogpoint());
+
+            pilot.press(KeyCode.DOWN);
+            pilot.press(KeyCode.DOWN);
+            type(pilot, " ");
+            pilot.press(KeyCode.ENTER);
+            settle(pilot);
+
+            assertFalse(test.renderedFrame().contains("Log message:"), "a confirmed edit closes the panel");
+            DebugCapability.SourceBreakpoint point = fixture.editor().breakpointAtCaret().orElseThrow();
+            assertTrue(point.isLogpoint());
+            assertEquals("n={n}", point.logMessage());
+            assertTrue(Set.of("L ", "◆ ").contains(gutterMarker(test, gutter, 1)),
+                    "a logpoint has its own gutter glyph: " + gutterMarker(test, gutter, 1));
+        }
+    }
+
+    @Test
+    void pilotBreakpointEditorMarksConditionsAndHitCountsOnTheGutter() throws Exception {
+        EditorShell fixture = openEditorShell("Counted.txt", "alpha\nbeta\ngamma\n", 1);
+        assertTrue(fixture.editor().toggleBreakpointAtCaret());
+        try (MouseShellRunner test = runMouseShell(fixture.shell(), SIZE)) {
+            Pilot pilot = test.pilot();
+            fixture.editor().requestFocus();
+            settle(pilot);
+            Rect gutter = pilot.findElement("editor-gutter");
+
+            pilot.press(KeyCode.F8, KeyModifiers.ALT);
+            settle(pilot);
+            pilot.press(KeyCode.DOWN);
+            pilot.press(KeyCode.DOWN);
+            type(pilot, "3");
+            pilot.press(KeyCode.ENTER);
+            settle(pilot);
+            assertEquals("3", fixture.editor().breakpointAtCaret().orElseThrow().hitCondition());
+            assertTrue(Set.of("o#", "◌#").contains(gutterMarker(test, gutter, 1)),
+                    "a hit count marks the dot: " + gutterMarker(test, gutter, 1));
+
+            pilot.press(KeyCode.F8, KeyModifiers.ALT);
+            settle(pilot);
+            type(pilot, "n > 1");
+            pilot.press(KeyCode.ENTER);
+            settle(pilot);
+            assertEquals("n > 1", fixture.editor().breakpointAtCaret().orElseThrow().condition());
+            assertTrue(Set.of("o?", "◌?").contains(gutterMarker(test, gutter, 1)),
+                    "a condition marks the dot: " + gutterMarker(test, gutter, 1));
+
+            pilot.press(KeyCode.F8, KeyModifiers.ALT);
+            settle(pilot);
+            pilot.press(KeyCode.DOWN);
+            pilot.press(KeyCode.DOWN);
+            type(pilot, "often");
+            pilot.press(KeyCode.ENTER);
+            settle(pilot);
+            assertEquals("3", fixture.editor().breakpointAtCaret().orElseThrow().hitCondition(),
+                    "an invalid hit count keeps the stored one");
+            assertTrue(test.renderedFrame().contains("hit count"), "the panel says why it did not close");
+            pilot.press(KeyCode.ESCAPE);
+            settle(pilot);
+        }
+    }
+
+    private static String gutterMarker(MouseShellRunner test, Rect gutter, int row) {
+        return test.renderedFrame().split("\n", -1)[gutter.y() + row].substring(gutter.x(), gutter.x() + 2);
     }
 
     @Test

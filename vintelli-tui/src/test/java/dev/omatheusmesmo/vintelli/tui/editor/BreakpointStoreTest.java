@@ -96,4 +96,34 @@ class BreakpointStoreTest {
         assertTrue(tampered.getFirst().conditions().isEmpty(), "a condition without a stored line or beyond the bound is dropped");
         assertEquals(canonicalProject.resolve("src/Main.java"), tampered.getFirst().file());
     }
+
+    @Test
+    void roundTripsLogMessagesAndHitConditionsOnlyForStoredLinesAndDropsInvalidOnes() throws Exception {
+        Path project = Files.createDirectories(temporary.resolve("logpoints"));
+        Path storeFile = temporary.resolve("settings/logpoints.properties");
+        BreakpointStore store = new BreakpointStore(storeFile);
+        store.save(project, List.of(new BreakpointStore.Source(project.resolve("src/Main.java"), List.of(3, 7),
+                Map.of(), Map.of(3, "  count={count}  ", 7, "   "), Map.of(3, ">= 2", 7, "  "))));
+
+        BreakpointStore.Source restored = store.load(project).getFirst();
+
+        assertEquals(Map.of(3, "count={count}"), restored.logMessages());
+        assertEquals(Map.of(3, ">= 2"), restored.hitConditions());
+
+        Properties properties = new Properties();
+        try (Reader reader = Files.newBufferedReader(storeFile, StandardCharsets.UTF_8)) {
+            properties.load(reader);
+        }
+        properties.setProperty("breakpoint.0.logMessage.99", "orphan");
+        properties.setProperty("breakpoint.0.logMessage.3", "x".repeat(501));
+        properties.setProperty("breakpoint.0.hitCondition.3", "often");
+        try (Writer writer = Files.newBufferedWriter(storeFile, StandardCharsets.UTF_8)) {
+            properties.store(writer, null);
+        }
+
+        BreakpointStore.Source tampered = store.load(project).getFirst();
+
+        assertTrue(tampered.logMessages().isEmpty(), "a log message without a stored line or beyond the bound is dropped");
+        assertTrue(tampered.hitConditions().isEmpty(), "a hit count that is not a number is dropped");
+    }
 }

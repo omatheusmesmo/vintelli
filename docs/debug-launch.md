@@ -90,18 +90,41 @@ the palette starts the same input. The request carries the stop it was typed
 for, so a resumed or advanced session never applies it. An adapter that does not
 advertise `supportsSetVariable` reports that setting a value is not supported.
 
-## Conditional breakpoints
+## Conditions, logpoints and hit counts
 
 Put the cursor on a breakpoint line and run **Edit Breakpoint Condition**
-(`Alt+F8`). Enter saves the Java condition and an empty condition clears it. The
-condition is one line of at most 500 characters and is stored with the breakpoint
-in the same per-project file as its line. Changing a condition keeps the line
-anchor, and the condition moves with the line when the text above it changes.
+(`Alt+F8`). The small breakpoint editor has four fields: **Condition**, **Log
+message**, **Hit count** and **Suspend**. Up, Down and Tab move between them,
+Space flips **Suspend**, Enter saves and Escape cancels. An empty text field
+clears that setting. All three texts are one line, stored with the breakpoint in
+the same per-project file as its line, and they move with the line when the text
+above it changes.
+
+- **Condition** is a Java condition of at most 500 characters that must hold to
+  stop.
+- **Log message** (at most 500 characters) turns the breakpoint into a logpoint:
+  it prints the message on every hit, evaluating each `{expression}` (for
+  example `count={count}`), and the program never suspends. The output goes to
+  the Debug console prefixed with the `file:line` of the logpoint. A debug
+  adapter logs or suspends but never both, so a log message needs **Suspend**
+  off, and **Suspend** off needs a log message; the editor stays open with the
+  reason otherwise. A condition and a hit count still apply to a logpoint.
+- **Hit count** is a positive number such as `3`, which triggers on the third
+  hit, optionally after `>=`, `>`, `==`, `<=`, `<` or `%` (`% 2` is every
+  second hit). The adapter evaluates it.
+
+The gutter draws a logpoint as `◆` (`L` in ASCII icon mode) in the
+`editor-breakpoint-logpoint` role, and a breakpoint with a condition or a hit
+count as its usual marker followed by `?` (condition) or `#` (hit count only).
+A rejected breakpoint keeps the rejected marker.
+
 The toolbar and each edit send the complete source breakpoint set, including
-conditions, to the Debug provider. The adapter reports a malformed condition as a
-rejected breakpoint with its message. An adapter that does not advertise
-conditional breakpoints rejects only the conditioned lines, and it never receives
-them as unconditional breakpoints.
+these fields, to the Debug provider. The adapter reports a malformed condition,
+log message expression or hit count as a rejected breakpoint with its message.
+An adapter that does not advertise conditional breakpoints, logpoints
+(`supportsLogPoints`) or hit counts (`supportsHitConditionalBreakpoints`)
+rejects only the lines that use them with a message saying so, and it never
+receives them as plain breakpoints that would suspend.
 
 ## Source breakpoints
 
