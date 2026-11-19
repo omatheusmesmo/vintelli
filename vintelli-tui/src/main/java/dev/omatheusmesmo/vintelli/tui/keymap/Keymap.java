@@ -368,6 +368,9 @@ public final class Keymap {
                 builder.bind(KeyTrigger.ctrl('g'), KeyActions.GO_TO_LINE);
                 builder.bind(KeyTrigger.ctrl('a'), KeyActions.SELECT_ALL);
                 builder.bind(KeyTrigger.key(KeyCode.INSERT, false, true, false), KeyActions.GENERATE);
+                builder.bind(new CtrlAltKeyTrigger('v'), KeyActions.EXTRACT_VARIABLE);
+                builder.bind(new CtrlAltKeyTrigger('m'), KeyActions.EXTRACT_METHOD);
+                builder.bind(new CtrlAltKeyTrigger('c'), KeyActions.EXTRACT_CONSTANT);
             }
             case VIM -> {
                 builder.bind(KeyTrigger.key(KeyCode.F3), KeyActions.PROJECT_SELECT_OPENED_FILE);

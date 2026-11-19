@@ -39,6 +39,7 @@ class KeymapTest {
 
     private static final List<ToolWindow> WINDOWS = windowList();
     private static final KeyModifiers CTRL_SHIFT = KeyModifiers.of(true, false, true);
+    private static final KeyModifiers CTRL_ALT = KeyModifiers.of(true, true, false);
 
     private static List<ToolWindow> windowList() {
         ShellThemes themes = themes();
@@ -177,6 +178,7 @@ class KeymapTest {
                 "editor_close", "editor_nextTab", "editor_previousTab", "editor_definition",
                 "editor_usages", "editor_nextProblem", "editor_previousProblem", "editor_quickFix", "editor_completion",
                 "editor_quickDocumentation", "editor_generate",
+                "editor_extractVariable", "editor_extractMethod", "editor_extractConstant",
                 "editor_toggleImportFold",
                 "editor_toggleBreakpoint", "editor_editBreakpointCondition",
                 "navigation_goToFile", "navigation_goToClass", "navigation_goToSymbol", "navigation_findInFiles",
@@ -600,6 +602,37 @@ class KeymapTest {
 
         assertTrue(vim.matches(keypress('e', KeyModifiers.CTRL), "editor_selectAll"));
         assertFalse(vim.matches(keypress('a', KeyModifiers.CTRL), "editor_selectAll"));
+    }
+
+    @Test
+    void ctrlAltVMAndCExtractInTheIntellijProfileAndReachTheShellWhileCaptured() {
+        Keymap keymap = Keymap.ofProfile(KeymapProfile.DEFAULT, WINDOWS);
+
+        assertTrue(keymap.matches(keypress('v', CTRL_ALT), KeyActions.EXTRACT_VARIABLE));
+        assertTrue(keymap.matches(keypress('m', CTRL_ALT), KeyActions.EXTRACT_METHOD));
+        assertTrue(keymap.matches(keypress('c', CTRL_ALT), KeyActions.EXTRACT_CONSTANT));
+        assertTrue(keymap.matchesReserved(keypress('v', CTRL_ALT), KeyActions.EXTRACT_VARIABLE),
+                "the extract chords keep reaching the shell while the editor captures the keyboard");
+    }
+
+    @Test
+    void eachExtractChordAnswersOnlyItsOwnActionInTheIntellijProfile() {
+        Keymap keymap = Keymap.ofProfile(KeymapProfile.DEFAULT, WINDOWS);
+
+        assertEquals(Set.of(KeyActions.EXTRACT_VARIABLE), answeringActions(keymap, keypress('v', CTRL_ALT)));
+        assertEquals(Set.of(KeyActions.EXTRACT_METHOD), answeringActions(keymap, keypress('m', CTRL_ALT)));
+        assertEquals(Set.of(KeyActions.EXTRACT_CONSTANT), answeringActions(keymap, keypress('c', CTRL_ALT)),
+                "Alt+C stays Collapse All, which needs no Ctrl");
+    }
+
+    @Test
+    void vimProfileBindsNoExtractChord() {
+        Keymap vim = Keymap.ofProfile(KeymapProfile.VIM, WINDOWS);
+
+        assertFalse(vim.isBound(KeyActions.EXTRACT_VARIABLE));
+        assertFalse(vim.isBound(KeyActions.EXTRACT_METHOD));
+        assertFalse(vim.isBound(KeyActions.EXTRACT_CONSTANT));
+        assertFalse(vim.matches(keypress('v', CTRL_ALT), KeyActions.EXTRACT_VARIABLE));
     }
 
     private static void assertNoActionAnswers(Keymap keymap, KeyEvent event, String description) {

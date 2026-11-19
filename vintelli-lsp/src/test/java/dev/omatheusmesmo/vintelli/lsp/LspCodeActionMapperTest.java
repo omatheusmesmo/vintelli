@@ -24,6 +24,7 @@ import org.eclipse.lsp4j.TextEdit;
 import org.eclipse.lsp4j.VersionedTextDocumentIdentifier;
 import org.eclipse.lsp4j.WorkspaceEdit;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
+import com.google.gson.JsonParser;
 import org.junit.jupiter.api.Test;
 
 class LspCodeActionMapperTest {
@@ -162,5 +163,33 @@ class LspCodeActionMapperTest {
 
         assertThrows(LspCodeActionMapper.MalformedPayload.class,
                 () -> LspCodeActionMapper.codeActionsOf(List.of(Either.forRight(generate))));
+    }
+
+    @Test
+    void theEditOfTheClientApplyWorkspaceEditCommandBecomesTheActionsEditAndNoCommand() {
+        CodeAction extraction = new CodeAction("Extract to local variable");
+        extraction.setKind("refactor.extract.variable");
+        extraction.setCommand(new Command("Extract to local variable", "java.apply.workspaceEdit", List.of(
+                JsonParser.parseString("{\"changes\":{\"" + GREETER_URI + "\":[{\"range\":{\"start\":"
+                        + "{\"line\":3,\"character\":8},\"end\":{\"line\":3,\"character\":12}},"
+                        + "\"newText\":\"newLocal\"}]}}"))));
+
+        CodeActionCapability.CodeAction action = LspCodeActionMapper.codeActionsOf(
+                List.of(Either.forRight(extraction))).getFirst();
+
+        assertEquals("refactor.extract.variable", action.kind());
+        assertNull(action.command());
+        assertEquals(List.of(new CodeActionCapability.WorkspaceEdit.DocumentEdit(GREETER, List.of(
+                new CodeActionCapability.WorkspaceEdit.TextEdit(3, 8, 3, 12, "newLocal")))),
+                action.edit().documents());
+    }
+
+    @Test
+    void aClientApplyWorkspaceEditCommandWithoutAnEditIsMalformed() {
+        CodeAction extraction = new CodeAction("Extract to local variable");
+        extraction.setCommand(new Command("Extract to local variable", "java.apply.workspaceEdit", List.of()));
+
+        assertThrows(LspCodeActionMapper.MalformedPayload.class,
+                () -> LspCodeActionMapper.codeActionsOf(List.of(Either.forRight(extraction))));
     }
 }

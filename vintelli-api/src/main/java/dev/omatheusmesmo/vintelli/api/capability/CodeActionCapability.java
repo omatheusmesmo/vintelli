@@ -25,10 +25,13 @@ public interface CodeActionCapability extends ProviderDescriptor {
             List<DiagnosticsCapability.Diagnostic> diagnostics);
 
     /**
+     * Offers the actions of a range asking for the given kinds only, when the provider can filter by kind. The
+     * answer may still hold actions of other kinds, so the caller picks the kinds it wants.
+     *
      * @param file file the actions apply to
      * @param range zero based range the actions are requested for
      * @param diagnostics problems overlapping the range, handed to the server as context
-     * @param kinds action kinds the caller wants, such as {@code source}
+     * @param kinds action kinds the caller wants, such as {@code source} or {@code refactor.extract.variable}
      * @return the same outcome as {@link #codeActions(Path, SourceRange, List)}
      */
     default CapabilityResult<List<CodeAction>> codeActions(Path file, SourceRange range,

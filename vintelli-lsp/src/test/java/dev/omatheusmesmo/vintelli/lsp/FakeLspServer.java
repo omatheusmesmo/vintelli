@@ -519,8 +519,11 @@ public final class FakeLspServer {
          * Answers by the start line of the requested range, so one twin serves every
          * code action failure mode: line 0 a quick fix with a bare command, line 1 an
          * empty list, line 2 an error response, line 3 an edit without a range (a
-         * malformed payload) and line 4 a file creation the editor cannot apply. A request for the
-         * {@code source} kind at line 0 answers the generate actions instead.
+         * malformed payload), line 4 a file creation the editor cannot apply, line 5 a
+         * variable extraction whose edit travels in a {@code java.apply.workspaceEdit}
+         * command and line 6 a method extraction with an edit. A request for the
+         * {@code source} kind at line 0 answers the generate actions instead. Every request
+         * traces the kinds it asked for in {@code context.only}.
          */
         @Override
         public CompletableFuture<List<Either<Command, CodeAction>>> codeAction(CodeActionParams params) {
@@ -539,6 +542,8 @@ public final class FakeLspServer {
                 case 2 -> CompletableFuture.failedFuture(new ResponseErrorException(new ResponseError(
                         ResponseErrorCode.InternalError, "the fake server cannot compute fixes", null)));
                 case 3 -> CompletableFuture.completedFuture(List.of(Either.forRight(malformedFix())));
+                case 5 -> CompletableFuture.completedFuture(List.of(Either.forRight(extractVariable(uri))));
+                case 6 -> CompletableFuture.completedFuture(List.of(Either.forRight(extractMethod(uri))));
                 default -> CompletableFuture.completedFuture(List.of(Either.forRight(createFileFix(uri))));
             };
         }
@@ -565,6 +570,28 @@ public final class FakeLspServer {
             imports.setKind("source.organizeImports");
             imports.setEdit(new WorkspaceEdit(Map.of(uri, List.of())));
             return List.of(Either.forRight(accessors), Either.forRight(toString), Either.forRight(imports));
+        }
+
+        /**
+         * The variable extraction as jdt.ls sends it: the edit travels in the argument of the client side
+         * command {@code java.apply.workspaceEdit}, not in the action's edit.
+         */
+        private static CodeAction extractVariable(String uri) {
+            CodeAction extraction = new CodeAction("Extract to local variable");
+            extraction.setKind("refactor.extract.variable");
+            extraction.setCommand(new Command("Extract to local variable", "java.apply.workspaceEdit",
+                    List.of(new WorkspaceEdit(Map.of(uri, List.of(
+                            new TextEdit(new Range(new Position(0, 0), new Position(0, 0)),
+                                    "int extracted = 1;\n")))))));
+            return extraction;
+        }
+
+        private static CodeAction extractMethod(String uri) {
+            CodeAction extraction = new CodeAction("Extract to method");
+            extraction.setKind("refactor.extract.function");
+            extraction.setEdit(new WorkspaceEdit(Map.of(uri, List.of(
+                    new TextEdit(new Range(new Position(0, 0), new Position(0, 0)), "void extracted() {}\n")))));
+            return extraction;
         }
 
         private static CodeAction quickFix(String uri) {

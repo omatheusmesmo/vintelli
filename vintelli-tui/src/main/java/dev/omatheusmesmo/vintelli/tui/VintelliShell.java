@@ -22,6 +22,7 @@ import dev.omatheusmesmo.vintelli.tui.editor.GoToLine;
 import dev.omatheusmesmo.vintelli.tui.editor.BreakpointConditionOverlay;
 import dev.omatheusmesmo.vintelli.tui.editor.GoToLineOverlay;
 import dev.omatheusmesmo.vintelli.tui.editor.CodeActionPopup;
+import dev.omatheusmesmo.vintelli.tui.editor.ExtractController;
 import dev.omatheusmesmo.vintelli.tui.editor.QuickFixController;
 import dev.omatheusmesmo.vintelli.tui.editor.QuickFixOverlay;
 import dev.omatheusmesmo.vintelli.tui.editor.QuickFixRequest;
@@ -194,6 +195,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private final EditorController editorController;
     private final EditorPanel editorPanel;
     private final QuickFixController quickFix;
+    private final ExtractController extract;
     private final QuickFixOverlay quickFixOverlay;
     private final QuickFixController generate;
     private final QuickFixOverlay generateOverlay;
@@ -307,6 +309,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         this.generate = new QuickFixController(CodeActionPopup.GENERATE, capabilityRegistry, editor,
                 this::deliverToRenderThread, message -> status = message);
         this.generateOverlay = new QuickFixOverlay(generate);
+        this.extract = new ExtractController(capabilityRegistry, editor, this::deliverToRenderThread,
+                message -> status = message);
         this.completion = new CompletionController(capabilityRegistry, editor, this::deliverToRenderThread,
                 message -> status = message);
         this.completionOverlay = new CompletionOverlay(completion);
@@ -1717,6 +1721,18 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             case KeyActions.GENERATE -> {
                 parts.stack().closeOverlays();
                 openGenerate(parts);
+            }
+            case KeyActions.EXTRACT_VARIABLE -> {
+                parts.stack().closeOverlays();
+                status = extract.run(ExtractController.Extraction.VARIABLE);
+            }
+            case KeyActions.EXTRACT_METHOD -> {
+                parts.stack().closeOverlays();
+                status = extract.run(ExtractController.Extraction.METHOD);
+            }
+            case KeyActions.EXTRACT_CONSTANT -> {
+                parts.stack().closeOverlays();
+                status = extract.run(ExtractController.Extraction.CONSTANT);
             }
             case KeyActions.COMPLETION -> {
                 parts.stack().closeOverlays();

@@ -43,6 +43,9 @@ public final class KeyActions {
     public static final String COMPLETION = "editor_completion";
     public static final String QUICK_DOCUMENTATION = "editor_quickDocumentation";
     public static final String GENERATE = "editor_generate";
+    public static final String EXTRACT_VARIABLE = "editor_extractVariable";
+    public static final String EXTRACT_METHOD = "editor_extractMethod";
+    public static final String EXTRACT_CONSTANT = "editor_extractConstant";
     public static final String TOGGLE_IMPORT_FOLD = "editor_toggleImportFold";
     public static final String TOGGLE_BREAKPOINT = "editor_toggleBreakpoint";
     public static final String EDIT_BREAKPOINT_CONDITION = "editor_editBreakpointCondition";
@@ -143,6 +146,9 @@ public final class KeyActions {
                 new KeyAction(COMPLETION, "Code Completion"),
                 new KeyAction(QUICK_DOCUMENTATION, "Quick Documentation"),
                 new KeyAction(GENERATE, "Generate"),
+                new KeyAction(EXTRACT_VARIABLE, "Extract Variable"),
+                new KeyAction(EXTRACT_METHOD, "Extract Method"),
+                new KeyAction(EXTRACT_CONSTANT, "Extract Constant"),
                 new KeyAction(TOGGLE_IMPORT_FOLD, "Fold or Unfold Imports"),
                 new KeyAction(TOGGLE_BREAKPOINT, "Toggle Line Breakpoint"),
                 new KeyAction(EDIT_BREAKPOINT_CONDITION, "Edit Breakpoint Condition"),

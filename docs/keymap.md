@@ -42,6 +42,7 @@ Key actions in the `intellij` profile:
 | `editor_copy`, `editor_cut`, `editor_paste` | `Ctrl+C` (copy, only with a selection), `Ctrl+X`, `Ctrl+V` | `Ctrl+C`, `Ctrl+X`, `Ctrl+V` |
 | `editor_selectAll` (Select All), Shift+arrows | `Ctrl+A` (`Ctrl+E` in the `vim` profile); `Shift` with the arrows, Home, End, PageUp and PageDown extend the selection | `Ctrl+A`, `Shift+arrows` |
 | `editor_quickFix` | `Alt+Enter` | `Alt+Enter` |
+| `editor_extractVariable`, `editor_extractMethod`, `editor_extractConstant` (Extract Variable, Method, Constant) | `Ctrl+Alt+V`, `Ctrl+Alt+M`, `Ctrl+Alt+C`; the palette runs them too | `Ctrl+Alt+V`, `Ctrl+Alt+M`, `Ctrl+Alt+C` |
 | `editor_completion` | `Ctrl+Space` (`Ctrl+@` too) | `Ctrl+Space` |
 | `editor_quickDocumentation` | `Ctrl+Q` | `Ctrl+Q` |
 | `editor_generate` | `Alt+Insert` (the command palette, `Ctrl+P`, is the fallback) | `Alt+Insert` |
@@ -266,6 +267,13 @@ Decisions behind the table:
   did) and with folded imports. Known gap: with a selection, IntelliJ
   duplicates the selected text, while Vintelli duplicates the caret line only
   and clears the selection. Duplicating the selected text is not done yet.
+- **`Ctrl+Alt+V`, `Ctrl+Alt+M`, `Ctrl+Alt+C`** (Extract Variable, Method and
+  Constant) run the language server's `refactor.extract` code action for the
+  selection, or the caret when nothing is selected, and apply it as one undo
+  step. The chords reach the shell only under the Kitty keyboard protocol: a
+  legacy terminal sends Ctrl+Alt+letter as an escape followed by a control byte,
+  which TamboUI maps to no key (spike 27). The command palette runs the three
+  actions in every terminal. The `vim` profile binds no extract chord.
 - **`Ctrl+A`** (Select All) is IntelliJ's chord and is free in both profiles.
   The `vim` profile uses `Ctrl+E` instead: Vim gives `Ctrl+A` to the increment
   command, which this editor does not have, so the chord stays free for it.
@@ -274,7 +282,8 @@ Decisions behind the table:
   TamboUI debug overlay, #363), and TamboUI's trigger ignores Shift unless it
   asks for it, so a `Ctrl+F12` binding would also fire on `Ctrl+Shift+F12`.
   `Alt` with a digit is intercepted by tmux and ghostty (see the spike 27
-  chord matrix), and `Ctrl+Alt+letter` does not reach the shell. An F-key with
+  chord matrix), and `Ctrl+Alt+letter` does not reach the shell in a legacy
+  terminal (the extract chords under the decisions below are the exception). An F-key with
   a Ctrl modifier is sent by the legacy protocol (`ESC[23;5~`), and no profile
   binds it. The comparison table keeps the IntelliJ chord as the reference.
 
@@ -581,6 +590,9 @@ adding it to that test on purpose.
 | editor_nextProblem | F2 | F2 | same | Next Highlighted Error; the bare F2 trigger refuses Shift, and F8 is left unbound (docs/keymap.md) |
 | editor_previousProblem | Shift+F2 | Shift+F2 | same | Previous Highlighted Error on its own Shift+F2 trigger (docs/keymap.md) |
 | editor_quickFix | Alt+Enter | Alt+Enter | same | Quick fixes from the language server for the selection or caret, offered in a popup (docs/keymap.md) |
+| editor_extractVariable | Ctrl+Alt+V | Ctrl+Alt+V | same | Extract Variable from the selection through the language server; a legacy terminal does not send Ctrl+Alt+letter, so the command palette runs it there (docs/keymap.md) |
+| editor_extractMethod | Ctrl+Alt+M | Ctrl+Alt+M | same | Extract Method from the selected statements through the language server; the Ctrl+Alt+letter limit of Extract Variable applies (docs/keymap.md) |
+| editor_extractConstant | Ctrl+Alt+C | Ctrl+Alt+C | same | Extract Constant from the selection through the language server; the Ctrl+Alt+letter limit of Extract Variable applies (docs/keymap.md) |
 | editor_completion | Ctrl+Space \| Ctrl+@ | Ctrl+Space | same | Code completion from the language server at the caret, offered in a popup; Ctrl+@ is the NUL spelling of the same key that some terminals send (docs/keymap.md) |
 | editor_quickDocumentation | Ctrl+Q | Ctrl+Q | same | Quick documentation of the symbol at the caret from the language server, in a popup beside the caret (docs/keymap.md) |
 | editor_generate | Alt+Insert | Alt+Insert | same | Generate from the language server's source actions for the class at the caret, in a popup beside the caret; the vim profile binds no chord (docs/keymap.md) |
