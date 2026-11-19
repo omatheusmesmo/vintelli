@@ -2,6 +2,7 @@ package dev.omatheusmesmo.vintelli.tui.editor;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.BitSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +34,9 @@ import dev.tamboui.widgets.syntax.TokenType;
  *   <li>diagnostic background tint with a severity-colored underline, and
  *   keyboard selection tint, driven from state kept outside
  *   {@code TextAreaState}.</li>
+ *   <li>a matched brace tint on the bracket next to the caret and its partner,
+ *   paired by {@link BraceMatcher} over the code brackets this scanner
+ *   records.</li>
  * </ul>
  *
  * <p>The {@link Diagnostic} map is keyed by logical document row. The editor
@@ -70,6 +74,8 @@ final class EditorSyntaxHighlighter implements SyntaxHighlighter {
     private static final String OPERATOR_CHARS = "+-*/%=<>!&|^~?:";
 
     private static final String PUNCTUATION_CHARS = "(){}[];,.";
+
+    private static final String BRACKET_CHARS = "()[]{}";
 
     private enum LexState {
         NORMAL,
@@ -111,7 +117,7 @@ final class EditorSyntaxHighlighter implements SyntaxHighlighter {
         }
     }
 
-    private record Tokenization(List<Span> spans, LexState endState) {
+    private record Tokenization(List<Span> spans, LexState endState, BitSet codeBrackets) {
     }
 
     private static final class CachedLine {
@@ -119,6 +125,7 @@ final class EditorSyntaxHighlighter implements SyntaxHighlighter {
         private final LexState startState;
         private final LexState endState;
         private final List<Span> tokens;
+        private final BitSet codeBrackets;
         private final Line plainLine;
         private Line tintedLine;
         private int tintStamp = -1;
@@ -128,6 +135,7 @@ final class EditorSyntaxHighlighter implements SyntaxHighlighter {
             this.startState = startState;
             this.endState = endState;
             this.tokens = tokenization.spans();
+            this.codeBrackets = tokenization.codeBrackets();
             this.plainLine = Line.from(tokenization.spans());
             this.tintedLine = this.plainLine;
         }
@@ -154,6 +162,20 @@ final class EditorSyntaxHighlighter implements SyntaxHighlighter {
     private int tintGeneration;
 
     private int lastTokenizedLines;
+
+    private Style matchedBraceStyle = Style.EMPTY;
+
+    private int caretRow = -1;
+
+    private int caretColumn = -1;
+
+    private BraceMatcher.BracePair braces;
+
+    private String bracesCode;
+
+    private int bracesRow = -1;
+
+    private int bracesColumn = -1;
 
     void editorPalette(ShellEditorPalette palette) {
         if (!Objects.equals(editorPalette, palette)) {
@@ -201,7 +223,6 @@ final class EditorSyntaxHighlighter implements SyntaxHighlighter {
         String normalized = code.endsWith("\n") ? code.substring(0, code.length() - 1) : code;
         String[] lines = normalized.isEmpty() ? new String[] {""} : normalized.split("\n", -1);
         realign(cache, lines);
-        List<Line> out = new ArrayList<>(lines.length);
         LexState state = LexState.NORMAL;
         int tokenized = 0;
         for (int i = 0; i < lines.length; i++) {
@@ -216,9 +237,13 @@ final class EditorSyntaxHighlighter implements SyntaxHighlighter {
                 state = tokenization.endState();
                 tokenized++;
             }
-            out.add(lineFor(i, cached));
         }
         lastTokenizedLines = tokenized;
+        updateBraces(code, Arrays.asList(lines));
+        List<Line> out = new ArrayList<>(lines.length);
+        for (int i = 0; i < lines.length; i++) {
+            out.add(lineFor(i, cache.get(i)));
+        }
         previousCode = code;
         previousLines = List.copyOf(out);
         previousTint = tintGeneration;
@@ -278,7 +303,8 @@ final class EditorSyntaxHighlighter implements SyntaxHighlighter {
             && row >= selection.startRow() && row <= selection.endRow();
         boolean hasDiagnostic = diagnostics.containsKey(row);
         boolean hasDeprecated = deprecatedRanges.containsKey(row);
-        if (selectionRow || hasDiagnostic || hasDeprecated) {
+        boolean hasBrace = braces != null && (row == braces.row() || row == braces.matchRow());
+        if (selectionRow || hasDiagnostic || hasDeprecated || hasBrace) {
             if (cached.tintStamp != tintGeneration) {
                 cached.tintedLine = tint(row, cached.tokens);
                 cached.tintStamp = tintGeneration;
@@ -308,6 +334,11 @@ final class EditorSyntaxHighlighter implements SyntaxHighlighter {
         for (DeprecatedRange range : deprecatedRanges.getOrDefault(row, List.of())) {
             if (range.endColumn() > range.startColumn()) {
                 styled = styleRange(styled, range.startColumn(), range.endColumn(), style -> style.patch(deprecatedStyle));
+            }
+        }
+        if (braces != null) {
+            for (int column : braces.columnsOn(row)) {
+                styled = styleRange(styled, column, column + 1, style -> style.patch(matchedBraceStyle));
             }
         }
         return Line.from(styled);
@@ -353,6 +384,7 @@ final class EditorSyntaxHighlighter implements SyntaxHighlighter {
 
     private Tokenization tokenize(String line, LexState startState, Style base, SyntaxTheme theme) {
         List<Span> spans = new ArrayList<>();
+        BitSet codeBrackets = new BitSet();
         LexState state = startState;
         int i = 0;
         while (i < line.length()) {
@@ -478,6 +510,9 @@ final class EditorSyntaxHighlighter implements SyntaxHighlighter {
                 continue;
             }
             if (PUNCTUATION_CHARS.indexOf(c) >= 0) {
+                if (BRACKET_CHARS.indexOf(c) >= 0) {
+                    codeBrackets.set(i);
+                }
                 emitToken(spans, line.substring(i, i + 1), TokenType.PUNCTUATION, base, theme);
                 i++;
                 continue;
@@ -485,7 +520,7 @@ final class EditorSyntaxHighlighter implements SyntaxHighlighter {
             emitToken(spans, line.substring(i, i + 1), TokenType.PLAIN, base, theme);
             i++;
         }
-        return new Tokenization(spans, state);
+        return new Tokenization(spans, state, codeBrackets);
     }
 
     private static int scanQuoted(String line, int from, char quote) {
@@ -729,6 +764,56 @@ final class EditorSyntaxHighlighter implements SyntaxHighlighter {
     }
 
     /**
+     * Sets the color and emphasis of the matched brace cells, which come from the editor theme.
+     *
+     * @param style the matched brace style, applied on top of the token style
+     */
+    void setMatchedBraceStyle(Style style) {
+        if (!Objects.equals(matchedBraceStyle, style)) {
+            matchedBraceStyle = style;
+            tintGeneration++;
+        }
+    }
+
+    /**
+     * Sets the caret the matched brace tint follows. The row and column are in the
+     * coordinates of the text handed to {@link #highlight}, so a folded view passes its own caret.
+     *
+     * @param row the caret row, or a negative value when there is no caret
+     * @param column the caret character column
+     */
+    void setCaret(int row, int column) {
+        if (caretRow != row || caretColumn != column) {
+            caretRow = row;
+            caretColumn = column;
+            tintGeneration++;
+        }
+    }
+
+    private void updateBraces(String code, List<String> lines) {
+        if (Objects.equals(code, bracesCode) && caretRow == bracesRow && caretColumn == bracesColumn) {
+            return;
+        }
+        bracesCode = code;
+        bracesRow = caretRow;
+        bracesColumn = caretColumn;
+        BraceMatcher.BracePair found = BraceMatcher.find(lines, this::isCodeBracket, caretRow, caretColumn)
+                .orElse(null);
+        if (!Objects.equals(found, braces)) {
+            braces = found;
+            tintGeneration++;
+        }
+    }
+
+    boolean isCodeBracket(int row, int column) {
+        if (row < 0 || row >= cache.size() || column < 0) {
+            return false;
+        }
+        CachedLine cached = cache.get(row);
+        return cached != null && cached.codeBrackets.get(column);
+    }
+
+    /**
      * Number of lines re-tokenized by the last {@link #highlight} call; the
      * keystroke path should return a small count against a warm cache.
      *
@@ -749,6 +834,10 @@ final class EditorSyntaxHighlighter implements SyntaxHighlighter {
         diagnostics.clear();
         deprecatedRanges.clear();
         selection = SelectionCursor.collapsed(0, 0);
+        caretRow = -1;
+        caretColumn = -1;
+        braces = null;
+        bracesCode = null;
         tintGeneration++;
     }
 }

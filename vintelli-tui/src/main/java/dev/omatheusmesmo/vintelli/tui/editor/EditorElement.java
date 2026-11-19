@@ -64,6 +64,7 @@ final class EditorElement implements Element {
     private static final String LOGPOINT_ROLE = "editor-breakpoint-logpoint";
     private static final String EXECUTION_LINE_ROLE = "editor-execution-line";
     private static final String CARET_ROLE = "editor-caret";
+    private static final String MATCHED_BRACE_ROLE = "editor-matched-brace";
     private static final String QUICK_FIX_ROLE = "editor-quick-fix";
     private static final String QUICK_FIX = "☼ ";
     private static final String QUICK_FIX_ASCII = "* ";
@@ -412,6 +413,8 @@ final class EditorElement implements Element {
                 body.add(Toolkit.richText(gutter(document, bodyHeight, gutterWidth, context))
                         .length(gutterWidth).id("editor-gutter"));
                 document.highlighter().editorPalette(editor.palette());
+                document.highlighter().setMatchedBraceStyle(roleStyle(context, MATCHED_BRACE_ROLE));
+                document.highlighter().setCaret(document.state().cursorRow(), document.state().cursorCol());
                 textArea.state(document.state()).highlighter(document.highlighter(), language(document.file().toString()))
                         .clip().fill();
                 body.add(menuAwareTextArea);
