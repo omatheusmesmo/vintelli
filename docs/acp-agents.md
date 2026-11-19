@@ -75,6 +75,21 @@ expands or collapses the latest thought, and a click on a thought's heading
 toggles that one. The agent's plan is one checklist that updates in place, and
 a user prompt replayed from a stored session renders like a typed one.
 
+Type `/` as the first character of the prompt to open the agent's slash
+commands. The list narrows to the names that start with what you type after
+the slash, ignoring case. Up and Down move through it, Enter or Tab inserts
+`/name ` into the prompt, and Escape closes it. While the list is open, Enter
+inserts the command instead of sending the prompt. An agent without commands
+shows no list, and `/` is ordinary text. A new command list from the agent
+replaces the one shown.
+
+When the agent offers session modes, the tab row shows `Mode: <name>` for the
+current conversation. `Shift+Tab` in the prompt asks the agent to switch to the
+next mode it offers. The label changes when the agent confirms the switch with
+a `current_mode_update`, and the agent may also switch modes on its own. An
+agent without modes shows no label, and `Shift+Tab` keeps its usual focus
+movement.
+
 The same catalog is available headlessly:
 
 ```bash

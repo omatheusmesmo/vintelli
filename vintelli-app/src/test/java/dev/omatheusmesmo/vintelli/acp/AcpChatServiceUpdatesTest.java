@@ -19,6 +19,17 @@ class AcpChatServiceUpdatesTest {
     AcpChatService chat;
 
     @Test
+    void anAgentThatOffersNoSessionModesOpensWithoutModeUpdates() {
+        List<AcpChatPort.Update> updates = new CopyOnWriteArrayList<>();
+        String session = chat.openSession(updates::add, request -> AcpChatPort.PermissionChoice.cancel());
+        try {
+            assertEquals(List.of(), updates);
+        } finally {
+            chat.close(session);
+        }
+    }
+
+    @Test
     void thoughtsUserPromptsPlansAndNonTextBlocksMapToPortRecords() {
         List<AcpChatPort.Update> updates = new CopyOnWriteArrayList<>();
         String session = chat.openSession(updates::add, request -> AcpChatPort.PermissionChoice.cancel());

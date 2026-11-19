@@ -81,8 +81,11 @@ public final class AcpChatService implements AcpChatPort, AcpSessionIdsView {
     @Override
     public String openSession(String agentId, Consumer<Update> updates,
             Function<PermissionRequest, PermissionChoice> permissionHandler) {
-        return openRemoteSession(agentId, updates, permissionHandler,
-                client -> client.newSession(new AcpSchema.NewSessionRequest(projectRoot.toString())).sessionId());
+        return openRemoteSession(agentId, updates, permissionHandler, client -> {
+            AcpSchema.NewSessionResponse response = client.newSession(new AcpSchema.NewSessionRequest(projectRoot.toString()));
+            announceModes(response.modes(), updates);
+            return response.sessionId();
+        });
     }
 
     @Override
@@ -105,7 +108,9 @@ public final class AcpChatService implements AcpChatPort, AcpSessionIdsView {
         }
         return openRemoteSession(agentId, updates, permissionHandler, client -> {
             requireAdvertised(agentId, client, NegotiatedCapabilities::supportsLoadSession, "loading sessions");
-            client.loadSession(new AcpSchema.LoadSessionRequest(remoteSessionId, projectRoot.toString(), List.of()));
+            AcpSchema.LoadSessionResponse response =
+                    client.loadSession(new AcpSchema.LoadSessionRequest(remoteSessionId, projectRoot.toString(), List.of()));
+            announceModes(response.modes(), updates);
             return remoteSessionId;
         });
     }
@@ -131,6 +136,12 @@ public final class AcpChatService implements AcpChatPort, AcpSessionIdsView {
         if (session != null) {
             session.client().cancel(new AcpSchema.CancelNotification(session.remoteId()));
         }
+    }
+
+    @Override
+    public void setMode(String sessionId, String modeId) {
+        Session session = requireSession(sessionId);
+        session.client().setSessionMode(new AcpSchema.SetSessionModeRequest(session.remoteId(), modeId));
     }
 
     @Override
@@ -300,7 +311,28 @@ public final class AcpChatService implements AcpChatPort, AcpSessionIdsView {
             updates.accept(toolCall(toolCall));
         } else if (update instanceof AcpSchema.ToolCallUpdateNotification toolCall) {
             updates.accept(toolCall(toolCall));
+        } else if (update instanceof AcpSchema.AvailableCommandsUpdate commands) {
+            updates.accept(new AvailableCommands(commands.availableCommands().stream().map(AcpChatService::command).toList()));
+        } else if (update instanceof AcpSchema.CurrentModeUpdate mode) {
+            updates.accept(new CurrentMode(mode.currentModeId()));
         }
+    }
+
+    private static void announceModes(AcpSchema.SessionModeState modes, Consumer<Update> updates) {
+        if (modes == null) {
+            return;
+        }
+        updates.accept(new AvailableModes(modes.availableModes().stream().map(AcpChatService::mode).toList()));
+        updates.accept(new CurrentMode(modes.currentModeId()));
+    }
+
+    private static Command command(AcpSchema.AvailableCommand command) {
+        String hint = command.input() == null ? "" : command.input().hint();
+        return new Command(command.name(), command.description(), hint);
+    }
+
+    private static Mode mode(AcpSchema.SessionMode mode) {
+        return new Mode(mode.id(), mode.name(), mode.description());
     }
 
     private static String chunkText(AcpSchema.ContentBlock content) {
