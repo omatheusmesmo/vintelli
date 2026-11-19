@@ -27,9 +27,13 @@ import org.eclipse.lsp4j.CallHierarchyOutgoingCall;
 import org.eclipse.lsp4j.CallHierarchyOutgoingCallsParams;
 import org.eclipse.lsp4j.CallHierarchyPrepareParams;
 import org.eclipse.lsp4j.CodeAction;
+import org.eclipse.lsp4j.CodeActionContext;
 import org.eclipse.lsp4j.CodeActionKind;
 import org.eclipse.lsp4j.CodeActionParams;
 import org.eclipse.lsp4j.Command;
+import org.eclipse.lsp4j.DocumentFormattingParams;
+import org.eclipse.lsp4j.DocumentRangeFormattingParams;
+import org.eclipse.lsp4j.FormattingOptions;
 import org.eclipse.lsp4j.CreateFile;
 import org.eclipse.lsp4j.TextDocumentEdit;
 import org.eclipse.lsp4j.TextEdit;
@@ -112,7 +116,8 @@ public final class FakeLspServer {
      * of the document, as jdt.ls does when the workspace goes through a link.
      * {@code --deprecated-tag} tags the diagnostic published on open with the
      * {@code Deprecated} tag. {@code --resolve-provider} advertises
-     * {@code completionItem/resolve} for the completions.
+     * {@code completionItem/resolve} for the completions. {@code --no-formatting}
+     * leaves the formatting providers out of the advertised capabilities.
      */
     public static void main(String[] args) throws Exception {
         if (List.of(args).contains("--hold")) {
@@ -214,6 +219,10 @@ public final class FakeLspServer {
             capabilities.setDocumentSymbolProvider(true);
             capabilities.setWorkspaceSymbolProvider(true);
             capabilities.setCodeActionProvider(true);
+            if (!arguments.contains("--no-formatting")) {
+                capabilities.setDocumentFormattingProvider(true);
+                capabilities.setDocumentRangeFormattingProvider(true);
+            }
             capabilities.setExecuteCommandProvider(new ExecuteCommandOptions(advertisedCommands()));
             return CompletableFuture.completedFuture(new InitializeResult(capabilities,
                     new ServerInfo("fake-language-server", "1.0.0")));
@@ -531,6 +540,12 @@ public final class FakeLspServer {
             server.trace("codeAction only " + (params.getContext().getOnly() == null ? "none"
                     : params.getContext().getOnly()));
             String uri = params.getTextDocument().getUri();
+            if (asksForOrganizeImports(params)) {
+                server.trace("organizeImports");
+                CodeAction organize = organizeImports(uri);
+                return CompletableFuture.completedFuture(organize == null ? List.of()
+                        : List.of(Either.forRight(organize)));
+            }
             if (isSourceRequest(params) && params.getRange().getStart().getLine() == 0) {
                 return CompletableFuture.completedFuture(generateActions(uri));
             }
@@ -619,6 +634,77 @@ public final class FakeLspServer {
                     Either.forRight(new CreateFile(uri.replace("Fake.java", "Missing.java"))));
             fix.setEdit(new WorkspaceEdit(changes));
             return fix;
+        }
+
+        /**
+         * Formats by one rule: a line indented with exactly two spaces is indented with four, every other line
+         * stays. The answer uses the text the client synchronized, so unsaved edits are what gets formatted, and
+         * the trace records the options the client sent.
+         */
+        @Override
+        public CompletableFuture<List<? extends TextEdit>> formatting(DocumentFormattingParams params) {
+            server.trace("formatting");
+            FormattingOptions options = params.getOptions();
+            server.trace("formatting tab=" + options.getTabSize() + " spaces=" + options.isInsertSpaces());
+            String uri = params.getTextDocument().getUri();
+            return CompletableFuture.completedFuture(reindent(uri, 0, Integer.MAX_VALUE));
+        }
+
+        @Override
+        public CompletableFuture<List<? extends TextEdit>> rangeFormatting(DocumentRangeFormattingParams params) {
+            server.trace("rangeFormatting");
+            FormattingOptions options = params.getOptions();
+            server.trace("rangeFormatting tab=" + options.getTabSize() + " spaces=" + options.isInsertSpaces());
+            String uri = params.getTextDocument().getUri();
+            return CompletableFuture.completedFuture(reindent(uri, params.getRange().getStart().getLine(),
+                    params.getRange().getEnd().getLine()));
+        }
+
+        private List<TextEdit> reindent(String uri, int fromLine, int toLine) {
+            String[] lines = texts.getOrDefault(uri, "").split("\n", -1);
+            List<TextEdit> edits = new ArrayList<>();
+            for (int line = fromLine; line <= Math.min(toLine, lines.length - 1); line++) {
+                if (lines[line].startsWith("  ") && !lines[line].startsWith("   ")) {
+                    edits.add(new TextEdit(new Range(new Position(line, 0), new Position(line, 2)), "    "));
+                }
+            }
+            return edits;
+        }
+
+        private static boolean asksForOrganizeImports(CodeActionParams params) {
+            CodeActionContext context = params.getContext();
+            return context != null && context.getOnly() != null
+                    && context.getOnly().contains(CodeActionKind.SourceOrganizeImports);
+        }
+
+        /**
+         * Removes every import whose simple name the rest of the text does not use; no action when none is unused.
+         */
+        private CodeAction organizeImports(String uri) {
+            String[] lines = texts.getOrDefault(uri, "").split("\n", -1);
+            List<TextEdit> removals = new ArrayList<>();
+            for (int line = 0; line < lines.length; line++) {
+                if (lines[line].startsWith("import ") && !usedElsewhere(lines, lines[line])) {
+                    removals.add(new TextEdit(new Range(new Position(line, 0), new Position(line + 1, 0)), ""));
+                }
+            }
+            if (removals.isEmpty()) {
+                return null;
+            }
+            CodeAction organize = new CodeAction("Organize imports");
+            organize.setKind(CodeActionKind.SourceOrganizeImports);
+            organize.setEdit(new WorkspaceEdit(Map.of(uri, removals)));
+            return organize;
+        }
+
+        private static boolean usedElsewhere(String[] lines, String importLine) {
+            String name = importLine.substring(importLine.lastIndexOf('.') + 1).replace(";", "").strip();
+            for (String line : lines) {
+                if (!line.startsWith("import ") && line.contains(name)) {
+                    return true;
+                }
+            }
+            return false;
         }
 
         @Override

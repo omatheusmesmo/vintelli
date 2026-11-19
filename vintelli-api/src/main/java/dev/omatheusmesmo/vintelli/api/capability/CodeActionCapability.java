@@ -9,8 +9,10 @@ import java.util.Objects;
 /**
  * Offers code actions (quick fixes, source actions) for a range of a file: the
  * LSP {@code textDocument/codeAction} request served by the generic LSP client,
- * or by any other provider that can name fixes for a range. Results carry
- * Vintelli-owned records only; applying an edit is the job of the editor.
+ * or by any other provider that can name fixes for a range. Formatting and the
+ * organize imports action are served by the same language services, because the
+ * editor applies their edits the same way. Results carry Vintelli-owned records
+ * only; applying an edit is the job of the editor.
  */
 public interface CodeActionCapability extends ProviderDescriptor {
 
@@ -60,6 +62,65 @@ public interface CodeActionCapability extends ProviderDescriptor {
      */
     default CapabilityResult<Integer> executeCommand(CommandRef command, WorkspaceEditSink edits) {
         return CapabilityResult.failed(new CapabilityFailure("not-supported", "the provider cannot run commands"));
+    }
+
+    /**
+     * Formats the whole document the way the server formats it. The server formats the text the editor holds,
+     * unsaved edits included, so the returned edits apply to the document on screen.
+     *
+     * @param file the document to format
+     * @param content the text of the document the editor holds
+     * @param options tab size and spaces-or-tabs the server formats with
+     * @return the text edits that change the document, empty when it is already formatted, or a failed result
+     *         when the language services cannot answer
+     */
+    default CapabilityResult<List<WorkspaceEdit.TextEdit>> formatDocument(Path file, String content,
+            FormattingOptions options) {
+        return CapabilityResult.failed(new CapabilityFailure("not-supported", "the provider cannot format documents"));
+    }
+
+    /**
+     * Formats the lines of one range the way the server formats it, with the same text rules as
+     * {@link #formatDocument}.
+     *
+     * @param file the document to format
+     * @param content the text of the document the editor holds
+     * @param range zero based range to format
+     * @param options tab size and spaces-or-tabs the server formats with
+     * @return the text edits inside the range, empty when the range is already formatted, or a failed result
+     *         when the language services cannot answer
+     */
+    default CapabilityResult<List<WorkspaceEdit.TextEdit>> formatRange(Path file, String content, SourceRange range,
+            FormattingOptions options) {
+        return CapabilityResult.failed(new CapabilityFailure("not-supported", "the provider cannot format documents"));
+    }
+
+    /**
+     * Asks for the source action that organizes the imports of the document, through the same request as the
+     * other code actions, with the server's {@code source.organizeImports} kind.
+     *
+     * @param file the document whose imports are organized
+     * @param content the text of the document the editor holds
+     * @return the organize imports actions the server offers, empty when there is nothing to organize, or a
+     *         failed result when the language services cannot answer
+     */
+    default CapabilityResult<List<CodeAction>> organizeImports(Path file, String content) {
+        return CapabilityResult.failed(new CapabilityFailure("not-supported", "the provider cannot organize imports"));
+    }
+
+    /**
+     * Options of a formatting request, the indent the server writes.
+     *
+     * @param tabSize columns of one indent level, at least one
+     * @param insertSpaces whether indents are spaces rather than tab characters
+     */
+    record FormattingOptions(int tabSize, boolean insertSpaces) {
+
+        public FormattingOptions {
+            if (tabSize < 1) {
+                throw new IllegalArgumentException("A tab size is at least one column");
+            }
+        }
     }
 
     /**

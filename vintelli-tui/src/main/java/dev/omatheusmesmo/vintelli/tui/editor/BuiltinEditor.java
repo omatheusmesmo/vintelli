@@ -847,6 +847,44 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     }
 
     /**
+     * The file, the text and the selection of the active document, the state a formatting or organize imports
+     * request is made for. Empty when no file is open.
+     */
+    public synchronized Optional<FormatSite> formatSite() {
+        EditorDocument document = document();
+        if (document == null) {
+            return Optional.empty();
+        }
+        SelectionCursor selection = document.selection();
+        SourceRange range = selection.isEmpty() ? null
+                : new SourceRange(selection.startRow(), selection.startCol(), selection.endRow(), selection.endCol());
+        return Optional.of(new FormatSite(document.file(), document.text(), range));
+    }
+
+    /**
+     * Applies the edits a formatting or organize imports request returned, as one undoable step that marks the
+     * document dirty and keeps the caret on its code line. The document must still hold the text the request was
+     * made for; otherwise the answer is stale and the text stays untouched.
+     */
+    public synchronized WorkspaceEditApplier.Result applyFormatting(FormatSite asked, WorkspaceEdit edit) {
+        EditorDocument document = document();
+        if (document == null) {
+            return new WorkspaceEditApplier.Rejected("no file is open");
+        }
+        if (!document.file().equals(asked.file())) {
+            return new WorkspaceEditApplier.Rejected("the active file changed while the server worked on it");
+        }
+        if (!document.text().equals(asked.text())) {
+            return new WorkspaceEditApplier.Rejected("the text changed while the server worked on it");
+        }
+        WorkspaceEditApplier.Result result = WorkspaceEditApplier.applyKeepingLine(document, edit);
+        if (result instanceof WorkspaceEditApplier.Applied applied && applied.editCount() > 0) {
+            changed();
+        }
+        return result;
+    }
+
+    /**
      * The text and caret of the active document, the state a completion request is made for. Empty when no
      * file is open.
      */

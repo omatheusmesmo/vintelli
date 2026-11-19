@@ -292,6 +292,8 @@ public final class Keymap {
         builder.bind(KeyTrigger.ctrl(' '), KeyActions.COMPLETION);
         builder.bind(KeyTrigger.ctrl('@'), KeyActions.COMPLETION);
         builder.bind(KeyTrigger.ctrl('q'), KeyActions.QUICK_DOCUMENTATION);
+        builder.bind(new CtrlAltKeyTrigger('l'), KeyActions.REFORMAT_CODE);
+        builder.bind(new CtrlAltKeyTrigger('o'), KeyActions.OPTIMIZE_IMPORTS);
         builder.bind(KeyTrigger.alt('='), KeyActions.PROJECT_WIDER);
         builder.bind(KeyTrigger.alt('-'), KeyActions.PROJECT_NARROWER);
         builder.bind(KeyTrigger.alt('.'), KeyActions.BOTTOM_TALLER);

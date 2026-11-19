@@ -179,6 +179,7 @@ class KeymapTest {
                 "editor_usages", "editor_nextProblem", "editor_previousProblem", "editor_quickFix", "editor_completion",
                 "editor_quickDocumentation", "editor_generate",
                 "editor_extractVariable", "editor_extractMethod", "editor_extractConstant",
+                "editor_reformatCode", "editor_optimizeImports",
                 "editor_toggleImportFold",
                 "editor_toggleBreakpoint", "editor_editBreakpointCondition",
                 "navigation_goToFile", "navigation_goToClass", "navigation_goToSymbol", "navigation_findInFiles",
@@ -213,6 +214,25 @@ class KeymapTest {
         assertTrue(vim.matches(KeyEvent.ofKey(KeyCode.ENTER, KeyModifiers.ALT), KeyActions.QUICK_FIX));
         assertFalse(intellij.matches(KeyEvent.ofKey(KeyCode.ENTER), KeyActions.QUICK_FIX));
         assertTrue(intellij.matches(KeyEvent.ofKey(KeyCode.ENTER), KeyActions.OPEN_FILE));
+    }
+
+    @Test
+    void ctrlAltLReformatsAndCtrlAltOOptimizesImportsWithoutTakingCtrlO() {
+        Keymap intellij = Keymap.ofProfile(KeymapProfile.DEFAULT, WINDOWS);
+        Keymap vim = Keymap.ofProfile(KeymapProfile.VIM, WINDOWS);
+        KeyModifiers ctrlAlt = KeyModifiers.of(true, true, false);
+
+        assertTrue(intellij.matches(keypress('l', ctrlAlt), KeyActions.REFORMAT_CODE));
+        assertTrue(intellij.matches(keypress('o', ctrlAlt), KeyActions.OPTIMIZE_IMPORTS));
+        assertTrue(vim.matches(keypress('l', ctrlAlt), KeyActions.REFORMAT_CODE));
+        assertFalse(intellij.matches(keypress('l', ctrlAlt), KeyActions.OPTIMIZE_IMPORTS));
+        assertFalse(intellij.matches(keypress('o', KeyModifiers.CTRL), KeyActions.OPTIMIZE_IMPORTS));
+        assertTrue(intellij.matches(keypress('o', KeyModifiers.CTRL), KeyActions.GO_TO_FILE));
+        assertFalse(intellij.matches(keypress('o', KeyModifiers.of(true, true, true)), KeyActions.OPTIMIZE_IMPORTS),
+                "Ctrl+Alt+Shift+O stays unbound");
+        assertTrue(intellij.matchesReserved(keypress('l', ctrlAlt), KeyActions.REFORMAT_CODE),
+                "the chord still reaches the shell while the editor has focus");
+        assertTrue(intellij.matchesReserved(keypress('o', ctrlAlt), KeyActions.OPTIMIZE_IMPORTS));
     }
 
     @Test

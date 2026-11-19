@@ -442,6 +442,90 @@ public final class LspClient implements AutoCloseable, JavaDebugAdapterPort {
     }
 
     /**
+     * @return the edits that format the whole document as the server sees {@code content}, empty when the
+     *         server has nothing to change
+     */
+    public CapabilityResult<List<CodeActionCapability.WorkspaceEdit.TextEdit>> formatDocument(Path file,
+            String content, CodeActionCapability.FormattingOptions options) {
+        return format(file, content, null, options);
+    }
+
+    /**
+     * @return the edits that format the lines of the range as the server sees {@code content}, empty when the
+     *         server has nothing to change inside it
+     */
+    public CapabilityResult<List<CodeActionCapability.WorkspaceEdit.TextEdit>> formatRange(Path file,
+            String content, CodeActionCapability.SourceRange range, CodeActionCapability.FormattingOptions options) {
+        return format(file, content, range, options);
+    }
+
+    /**
+     * @return the source actions of the {@code source.organizeImports} kind for the document as the server sees
+     *         {@code content}; empty when the server offers none
+     */
+    public CapabilityResult<List<CodeActionCapability.CodeAction>> organizeImports(Path file, String content) {
+        Selection selection = requestSelection();
+        if (selection.failure() != null) {
+            return CapabilityResult.failed(new CapabilityFailure("unavailable", selection.failure()));
+        }
+        try {
+            LspServerSession current = ensureStarted(selection);
+            current.synchronizeDocument(file, content);
+            return CapabilityResult.ok(LspCodeActionMapper.codeActionsOf(
+                    current.organizeImports(LspServerSession.uriFor(file), wholeDocument(content))));
+        } catch (LspCodeActionMapper.MalformedPayload malformed) {
+            return CapabilityResult.failed(new CapabilityFailure("malformed",
+                    "the language server of profile '" + selection.profile() + "' sent a malformed code action: "
+                            + malformed.getMessage()));
+        } catch (IOException | InterruptedException | ExecutionException | TimeoutException | RuntimeException failure) {
+            if (failure instanceof InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+            return CapabilityResult.failed(failureDetail(selection, failure));
+        }
+    }
+
+    private CapabilityResult<List<CodeActionCapability.WorkspaceEdit.TextEdit>> format(Path file, String content,
+            CodeActionCapability.SourceRange range, CodeActionCapability.FormattingOptions options) {
+        Selection selection = requestSelection();
+        if (selection.failure() != null) {
+            return CapabilityResult.failed(new CapabilityFailure("unavailable", selection.failure()));
+        }
+        try {
+            LspServerSession current = ensureStarted(selection);
+            if (!current.supportsFormatting(range != null)) {
+                return CapabilityResult.failed(new CapabilityFailure("not-supported",
+                        "the language server of profile '" + selection.profile() + "' does not advertise "
+                                + (range == null ? "textDocument/formatting" : "textDocument/rangeFormatting")));
+            }
+            current.synchronizeDocument(file, content);
+            String uri = LspServerSession.uriFor(file);
+            List<? extends TextEdit> edits = range == null
+                    ? current.formatting(uri, options.tabSize(), options.insertSpaces())
+                    : current.rangeFormatting(uri, LspCodeActionMapper.rangeOf(range), options.tabSize(),
+                            options.insertSpaces());
+            return CapabilityResult.ok(LspCodeActionMapper.textEditsOf(edits));
+        } catch (LspCodeActionMapper.MalformedPayload malformed) {
+            return CapabilityResult.failed(new CapabilityFailure("malformed",
+                    "the language server of profile '" + selection.profile() + "' sent a malformed text edit: "
+                            + malformed.getMessage()));
+        } catch (IOException | InterruptedException | ExecutionException | TimeoutException | RuntimeException failure) {
+            if (failure instanceof InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+            return CapabilityResult.failed(failureDetail(selection, failure));
+        }
+    }
+
+    /**
+     * The range that covers the whole text, which a source action request names.
+     */
+    private static Range wholeDocument(String content) {
+        String[] lines = content.split("\n", -1);
+        return new Range(new Position(0, 0), new Position(lines.length - 1, lines[lines.length - 1].length()));
+    }
+
+    /**
      * Runs a command of a code action through {@code workspace/executeCommand}. The server may ask for
      * workspace edits while the command runs; each one goes to the sink, and the sink's decision is the
      * answer the server receives. A command the server does not advertise is refused before the request;

@@ -2,6 +2,7 @@ package dev.omatheusmesmo.vintelli.tui.editor;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import dev.omatheusmesmo.vintelli.api.capability.CodeActionCapability.FormattingOptions;
 import org.junit.jupiter.api.Test;
 
 class EditorIndentTest {
@@ -33,5 +34,14 @@ class EditorIndentTest {
     @Test
     void unindentedTextHasNoIndentToReport() {
         assertEquals("", EditorIndent.describe("first line\nsecond line\n"));
+    }
+
+    @Test
+    void theFormattingRequestKeepsTheIndentTheDocumentAlreadyUses() {
+        assertEquals(new FormattingOptions(2, true), EditorIndent.formattingOptions("root:\n  child: 1\n  other: 2\n"));
+        assertEquals(new FormattingOptions(4, false),
+                EditorIndent.formattingOptions("class Main {\n\tvoid run() {\n\t}\n}\n"));
+        assertEquals(new FormattingOptions(4, true), EditorIndent.formattingOptions("first line\nsecond line\n"),
+                "a document without an indent gets four spaces");
     }
 }

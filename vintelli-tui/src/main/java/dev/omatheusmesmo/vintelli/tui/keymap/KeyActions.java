@@ -46,6 +46,8 @@ public final class KeyActions {
     public static final String EXTRACT_VARIABLE = "editor_extractVariable";
     public static final String EXTRACT_METHOD = "editor_extractMethod";
     public static final String EXTRACT_CONSTANT = "editor_extractConstant";
+    public static final String REFORMAT_CODE = "editor_reformatCode";
+    public static final String OPTIMIZE_IMPORTS = "editor_optimizeImports";
     public static final String TOGGLE_IMPORT_FOLD = "editor_toggleImportFold";
     public static final String TOGGLE_BREAKPOINT = "editor_toggleBreakpoint";
     public static final String EDIT_BREAKPOINT_CONDITION = "editor_editBreakpointCondition";
@@ -149,6 +151,8 @@ public final class KeyActions {
                 new KeyAction(EXTRACT_VARIABLE, "Extract Variable"),
                 new KeyAction(EXTRACT_METHOD, "Extract Method"),
                 new KeyAction(EXTRACT_CONSTANT, "Extract Constant"),
+                new KeyAction(REFORMAT_CODE, "Reformat Code"),
+                new KeyAction(OPTIMIZE_IMPORTS, "Optimize Imports"),
                 new KeyAction(TOGGLE_IMPORT_FOLD, "Fold or Unfold Imports"),
                 new KeyAction(TOGGLE_BREAKPOINT, "Toggle Line Breakpoint"),
                 new KeyAction(EDIT_BREAKPOINT_CONDITION, "Edit Breakpoint Condition"),

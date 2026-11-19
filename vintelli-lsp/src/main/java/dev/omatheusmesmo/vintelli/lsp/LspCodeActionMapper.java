@@ -84,6 +84,21 @@ final class LspCodeActionMapper {
         return List.copyOf(mapped);
     }
 
+    /**
+     * Maps the answer of {@code textDocument/formatting} or {@code textDocument/rangeFormatting}; a null answer
+     * is an empty list, which the protocol uses for a document that needs no change.
+     */
+    static List<CodeActionCapability.WorkspaceEdit.TextEdit> textEditsOf(List<? extends TextEdit> edits) {
+        if (edits == null) {
+            return List.of();
+        }
+        List<CodeActionCapability.WorkspaceEdit.TextEdit> mapped = new ArrayList<>(edits.size());
+        for (TextEdit edit : edits) {
+            mapped.add(textEditOf(edit));
+        }
+        return List.copyOf(mapped);
+    }
+
     static List<Diagnostic> lspDiagnosticsOf(List<DiagnosticsCapability.Diagnostic> problems) {
         return problems.stream().map(LspCodeActionMapper::lspDiagnosticOf).toList();
     }
