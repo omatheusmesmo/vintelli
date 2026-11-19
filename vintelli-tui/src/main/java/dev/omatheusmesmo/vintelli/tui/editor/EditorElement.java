@@ -424,6 +424,26 @@ final class EditorElement implements Element {
         dragDocument = null;
     }
 
+    /**
+     * Places the caret at the text cell under a press without starting a drag selection, for a gesture that acts on
+     * the symbol there.
+     *
+     * @return true when the press is over the document text
+     */
+    boolean placeCaret(MouseEvent event) {
+        synchronized (editor) {
+            EditorDocument document = editor.document();
+            if (document == null || !event.isPress() || !textBody.contains(event.x(), event.y())) {
+                return false;
+            }
+            TextPosition at = textPosition(document, event.x(), event.y());
+            document.pointerPress(at.row(), at.column());
+            dragDocument = null;
+            editor.requestFocus();
+            return true;
+        }
+    }
+
     void openFind(EditorDocument document) {
         find.open(document);
     }

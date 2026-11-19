@@ -144,6 +144,16 @@ Migration: `Ctrl+C` used to quit in every window, the editor included. Now it
 copies when editor text is selected. There has been no release, so no alias is
 kept. With no selection, `Ctrl+C` quits as before.
 
+### Ctrl+click
+
+A left click with `Ctrl` held on a symbol in the editor text goes to its
+definition, as in IntelliJ: the caret moves to the clicked character and
+Go to Definition runs from there. It works in both profiles, does not start a
+selection, and a click on the gutter keeps toggling breakpoints. A plain click
+only moves the caret. The terminal must report mouse presses with their
+modifiers; a terminal that keeps `Ctrl+click` for itself (to open links, for
+example) needs `Ctrl+B` or the command palette instead.
+
 ### Selecting text
 
 The mouse and the keyboard make the same selection: the same highlight, the
@@ -272,7 +282,8 @@ Terminal caveats, from the captures in `docs/spikes/spike-27-keyboard-and-colors
 and `docs/spikes/spike-49-per-terminal-capture.md`:
 
 - `Ctrl+B` is the second prefix of the Omarchy tmux configuration, which
-  swallows it, so Go to Definition needs the command palette there.
+  swallows it, so Go to Definition needs the command palette or a Ctrl+click
+  there.
 - `Alt+Left` and `Alt+Right` are bound by the Omarchy tmux configuration as
   pane switches, so the tab switches need the palette there too.
 - `Ctrl+F4`, `Alt+F7`, `Alt+F1`, `Shift+F6` and `Shift+F2` have not been

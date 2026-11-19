@@ -12,6 +12,7 @@ import dev.tamboui.toolkit.element.Element;
 import dev.tamboui.toolkit.elements.RichTextElement;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
+import dev.tamboui.tui.event.KeyModifiers;
 import dev.tamboui.tui.event.MouseEvent;
 
 import java.nio.file.Path;
@@ -85,12 +86,25 @@ final class EditorPanel {
     }
 
     /**
-     * Routes a press, drag, release or wheel event over the text of the open document.
+     * Routes a press, drag, release or wheel event over the text of the open document. A left press with Ctrl held
+     * over the text goes to the definition of the symbol under the pointer, as a Ctrl+click does in IntelliJ.
      *
      * @return true when the editor took the pointer event
      */
     boolean pointer(MouseEvent mouse) {
-        return editor != null && editor.handlePointer(mouse);
+        if (editor == null) {
+            return false;
+        }
+        if (isDefinitionClick(mouse) && editor.placeCaretAt(mouse)) {
+            controller.navigateToSymbol(false);
+            return true;
+        }
+        return editor.handlePointer(mouse);
+    }
+
+    private static boolean isDefinitionClick(MouseEvent mouse) {
+        KeyModifiers modifiers = mouse.modifiers();
+        return mouse.isPress() && mouse.isLeftButton() && modifiers.ctrl() && !modifiers.alt() && !modifiers.shift();
     }
 
     /**

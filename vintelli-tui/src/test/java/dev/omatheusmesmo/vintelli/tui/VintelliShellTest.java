@@ -48,6 +48,8 @@ import dev.tamboui.tui.event.KeyModifiers;
 import dev.tamboui.tui.event.KeyEvent;
 import dev.tamboui.tui.event.MouseButton;
 import dev.tamboui.tui.event.MouseEvent;
+import dev.tamboui.tui.event.MouseEventKind;
+import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability;
 import dev.tamboui.tui.event.ResizeEvent;
 import dev.tamboui.tui.event.TickEvent;
 import dev.tamboui.tui.pilot.Pilot;
@@ -1531,6 +1533,73 @@ class VintelliShellTest {
             pilot.press('n');
             settle(pilot);
         }
+    }
+
+    @Test
+    void ctrlClickOnASymbolOpensItsDefinitionAndAPlainClickOnlyMovesTheCaret() throws IOException {
+        Path main = project.resolve("src/Main.java");
+        Path util = project.resolve("src/Util.java");
+        Files.createDirectories(main.getParent());
+        Files.writeString(main, "class Main { Util helper; }\n");
+        Files.writeString(util, "class Util {}\n");
+        ShellThemes themes = defaultThemes();
+        BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
+        List<ToolWindow> windows = new ArrayList<>(defaultWindows());
+        windows.add(editor);
+        List<NavigationCapability.SourcePosition> asked = new ArrayList<>();
+        NavigationCapability navigation = new NavigationCapability() {
+            @Override public CapabilityResult<List<NavigationCapability.Location>> definition(
+                    NavigationCapability.SourcePosition position) {
+                asked.add(position);
+                return CapabilityResult.ok(List.of(new NavigationCapability.Location(util, 0, 6)));
+            }
+            @Override public CapabilityResult<List<NavigationCapability.Location>> references(
+                    NavigationCapability.SourcePosition position, boolean includeDeclaration) {
+                return CapabilityResult.ok(List.of());
+            }
+            @Override public CapabilityResult<List<DocumentSymbol>> documentSymbols(Path file) {
+                return CapabilityResult.ok(List.of());
+            }
+            @Override public String identifier() { return "ctrl-click-test"; }
+            @Override public ProviderHealth health() { return ProviderHealth.available(); }
+            @Override public String provenance() { return "temporary navigation test provider"; }
+        };
+        VintelliShell shell = new VintelliShell(ShellConfig.of(new ToolWindowRegistry(windows).toolWindows(),
+                new ShellState(), themes).withNavigationProviders(List.of(navigation)));
+        editor.open(new OpenRequest(main.toRealPath(), 0));
+        Buffer buffer = offlineFrame(shell);
+        int[] symbol = findText(buffer, "Util helper");
+        assertTrue(symbol[0] >= 0, "the symbol is drawn:\n" + bufferText(buffer));
+
+        shell.handle(new MouseEvent(MouseEventKind.PRESS, MouseButton.LEFT, symbol[0] + 1, symbol[1], KeyModifiers.NONE));
+        shell.handle(new MouseEvent(MouseEventKind.RELEASE, MouseButton.LEFT, symbol[0] + 1, symbol[1], KeyModifiers.NONE));
+        assertTrue(asked.isEmpty(), "a plain click must not navigate");
+        assertEquals(main.toRealPath().toString(), editor.activeDocument().orElseThrow().file());
+
+        shell.handle(new MouseEvent(MouseEventKind.PRESS, MouseButton.LEFT, symbol[0] + 1, symbol[1], KeyModifiers.CTRL));
+        shell.handle(new MouseEvent(MouseEventKind.RELEASE, MouseButton.LEFT, symbol[0] + 1, symbol[1], KeyModifiers.CTRL));
+
+        assertEquals(1, asked.size(), "a Ctrl+click asks for the definition once");
+        assertEquals(new NavigationCapability.SourcePosition(main.toRealPath(), 0, 14), asked.getFirst(),
+                "the definition is asked at the clicked character");
+        assertEquals(util.toRealPath().toString(), editor.activeDocument().orElseThrow().file(),
+                "the definition opens in the editor");
+        assertEquals("", editor.pointerState().orElseThrow().selectedText(), "a Ctrl+click does not select text");
+    }
+
+    private static int[] findText(Buffer buffer, String text) {
+        for (int row = 0; row < buffer.height(); row++) {
+            for (int x = 0; x + text.length() <= buffer.width(); x++) {
+                boolean match = true;
+                for (int index = 0; index < text.length() && match; index++) {
+                    match = String.valueOf(text.charAt(index)).equals(buffer.get(x + index, row).symbol());
+                }
+                if (match) {
+                    return new int[] {x, row};
+                }
+            }
+        }
+        return new int[] {-1, -1};
     }
 
     @Test
