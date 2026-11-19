@@ -60,6 +60,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.TreeMap;
@@ -121,6 +122,7 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     private CompletionController completion;
     private QuickDocumentationController quickDocumentation;
     private UsageHighlightController usageHighlights;
+    private final NavigationHistory navigationHistory = new NavigationHistory();
 
     @Inject
     public BuiltinEditor(@ConfigProperty(name = "vintelli.local.project-root") Optional<String> configuredRoot,
@@ -554,7 +556,48 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     @Override
     public synchronized CapabilityResult<Opened> open(OpenRequest request) {
         ensureSession();
-        return openFile(request, true);
+        NavigationHistory.Place left = caretPlace();
+        CapabilityResult<Opened> opened = openFile(request, true);
+        if (!opened.isFailure()) {
+            navigationHistory.jumped(left, caretPlace());
+        }
+        return opened;
+    }
+
+    /** Goes back to the place the last jump left; false when no place is left to go back to. */
+    public synchronized boolean navigateBack() {
+        return walkHistory(true);
+    }
+
+    /** Goes forward to the place the last Back left; false when no place is left to go forward to. */
+    public synchronized boolean navigateForward() {
+        return walkHistory(false);
+    }
+
+    private boolean walkHistory(boolean back) {
+        ensureSession();
+        NavigationHistory.Place current = caretPlace();
+        Predicate<Path> available = file -> Files.isRegularFile(file);
+        Optional<NavigationHistory.Place> target = back ? navigationHistory.back(current, available)
+                : navigationHistory.forward(current, available);
+        if (target.isEmpty()) {
+            status = back ? "No place to go back to" : "No place to go forward to";
+            return false;
+        }
+        NavigationHistory.Place place = target.get();
+        if (openFile(new OpenRequest(place.file(), place.line()), true).isFailure()) {
+            return false;
+        }
+        document().goTo(place.line(), place.column());
+        status = (back ? "Back to " : "Forward to ") + project.relativize(document().file()) + ":"
+                + (document().row() + 1);
+        return true;
+    }
+
+    private NavigationHistory.Place caretPlace() {
+        EditorDocument document = document();
+        return document == null ? null
+                : new NavigationHistory.Place(document.file(), document.row(), document.column());
     }
 
     private CapabilityResult<Opened> openFile(OpenRequest request, boolean persist) {
@@ -827,7 +870,9 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
             status = "No file is open";
             return false;
         }
+        NavigationHistory.Place left = caretPlace();
         document.goTo(line - 1, column - 1);
+        navigationHistory.jumped(left, caretPlace());
         status = "Line " + (document.row() + 1) + ", column " + (document.column() + 1);
         return true;
     }
@@ -860,9 +905,11 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
         int total = documents.size() + diffs.size();
         if (total == 0) { return; }
         int target = Math.floorMod(index, total);
+        NavigationHistory.Place left = caretPlace();
         if (target < documents.size()) {
             active = target;
             activeDiff = -1;
+            navigationHistory.jumped(left, caretPlace());
         } else {
             activeDiff = target - documents.size();
         }
@@ -1059,7 +1106,9 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     public synchronized boolean jumpToDiagnostic(int index) {
         if (document() == null || index < 0 || index >= document().diagnostics().size()) { return false; }
         Diagnostic diagnostic = document().diagnostics().get(index);
+        NavigationHistory.Place left = caretPlace();
         document().position(diagnostic.startLine(), diagnostic.startColumn());
+        navigationHistory.jumped(left, caretPlace());
         status = diagnostic.severity() + ": " + diagnostic.message();
         return true;
     }
@@ -1374,7 +1423,14 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
                 synchronized (BuiltinEditor.this) { replaceBreakpoints(file, snapshot); }
             }
             @Override public void edited(String before, String after) {
-                synchronized (BuiltinEditor.this) { shiftBreakpoints(file, LineShift.between(before, after)); }
+                synchronized (BuiltinEditor.this) {
+                    LineShift shift = LineShift.between(before, after);
+                    shiftBreakpoints(file, shift);
+                    navigationHistory.shift(file, line -> {
+                        int moved = shift.map(line);
+                        return moved >= 0 ? moved : shift.prefix();
+                    });
+                }
             }
         };
     }

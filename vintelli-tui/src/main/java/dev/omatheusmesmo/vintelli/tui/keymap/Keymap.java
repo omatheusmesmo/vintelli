@@ -331,15 +331,18 @@ public final class Keymap {
     }
 
     /**
-     * Ctrl+Shift chords of the {@code intellij} profile, which the Kitty keyboard protocol delivers as chords
-     * of their own. The IntelliJ chords are added on top of the existing fallbacks (Ctrl+O, Alt+F, Ctrl+Y, F4,
-     * Alt+C), so a terminal without the protocol still reaches every action.
+     * Ctrl+Shift and Ctrl+Alt chords of the {@code intellij} profile, which the Kitty keyboard protocol delivers as
+     * chords of their own. The IntelliJ chords are added on top of the existing fallbacks (Ctrl+O, Alt+F, Ctrl+Y,
+     * F4, Alt+C), so a terminal without the protocol still reaches every action; Back and Forward have no such
+     * fallback and stay in the palette and the Navigate menu there.
      */
     private static void bindCtrlShiftChords(Bindings.Builder builder, KeymapProfile profile) {
         switch (profile) {
             case INTELLIJ -> {
                 builder.bind(new ShiftedKeyTrigger(KeyTrigger.ctrl('n')), KeyActions.GO_TO_FILE);
                 builder.bind(new CtrlAltShiftKeyTrigger('n'), KeyActions.GO_TO_SYMBOL);
+                builder.bind(KeyTrigger.key(KeyCode.LEFT, true, true, false), KeyActions.NAVIGATION_BACK);
+                builder.bind(KeyTrigger.key(KeyCode.RIGHT, true, true, false), KeyActions.NAVIGATION_FORWARD);
                 builder.bind(new ShiftedKeyTrigger(KeyTrigger.ctrl('f')), KeyActions.FIND_IN_FILES);
                 builder.bind(new ShiftedKeyTrigger(KeyTrigger.ctrl('z')), KeyActions.REDO);
                 builder.bind(KeyTrigger.key(KeyCode.KP_ADD, true, false, true), KeyActions.PROJECT_EXPAND_ALL);

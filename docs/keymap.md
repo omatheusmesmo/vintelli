@@ -292,6 +292,8 @@ keeps the chords these actions had before, and gains the chords marked new.
 | `navigation_goToLine` (Go to Line) | `Ctrl+G` | `Ctrl+G` | none, `vim` binds `Alt+G` (new) |
 | `navigation_goToClass` (Go to Class) | `Ctrl+N` | `Ctrl+N` | none, `vim` binds `Ctrl+N` too (new) |
 | `navigation_goToSymbol` (Go to Symbol) | `Ctrl+Alt+Shift+N` | `Ctrl+Alt+Shift+N` | none, the palette and the Navigate menu reach it |
+| `navigation_back` (Navigate Back) | `Ctrl+Alt+Left` | `Ctrl+Alt+Left` | none, the palette and the Navigate menu reach it |
+| `navigation_forward` (Navigate Forward) | `Ctrl+Alt+Right` | `Ctrl+Alt+Right` | none, the palette and the Navigate menu reach it |
 | `editor_selectAll` (Select All) | `Ctrl+A` | `Ctrl+A` | `Ctrl+E` |
 
 Decisions behind the table:
@@ -355,6 +357,10 @@ Decisions behind the table:
   terminal (the extract chords under the decisions below are the exception). An F-key with
   a Ctrl modifier is sent by the legacy protocol (`ESC[23;5~`), and no profile
   binds it. The comparison table keeps the IntelliJ chord as the reference.
+- **Navigate Back and Forward** have no fallback chord. `Alt+Left` and
+  `Alt+Right` are the tab switches here and the pane switches of tmux, and no
+  other arrow chord is free and delivered in every profile, so the palette and
+  the Navigate menu are the only way to them outside a Kitty-capable terminal.
 
 Terminal caveats, from the captures in `docs/spikes/spike-27-keyboard-and-colors.md`
 and `docs/spikes/spike-49-per-terminal-capture.md`:
@@ -364,6 +370,9 @@ and `docs/spikes/spike-49-per-terminal-capture.md`:
   there.
 - `Alt+Left` and `Alt+Right` are bound by the Omarchy tmux configuration as
   pane switches, so the tab switches need the palette there too.
+- `Ctrl+Alt+Left` and `Ctrl+Alt+Right` (Navigate Back and Forward) are taken by
+  tmux and some terminals before the shell sees them, so the palette and the
+  Navigate menu are the way there in that case.
 - `Ctrl+F4`, `Alt+F7`, `Alt+F1`, `Shift+F6` and `Shift+F2` have not been
   checked in a live terminal yet. The TamboUI key parser reads the F-key
   modifiers (spike 27), but each sequence is unverified on each terminal.
@@ -419,6 +428,8 @@ and the bytes the terminal sends always agree.
     and Undo while Shift is held.
   - `Ctrl+Alt+Shift+N` (Go to Symbol). The plain `Ctrl+N` runs Go to Class and
     does not answer while Shift is held, so `Ctrl+Shift+N` still runs Go to File.
+  - `Ctrl+Alt+Left` (Navigate Back) and `Ctrl+Alt+Right` (Navigate Forward),
+    see Back and Forward below.
   - `Ctrl+Shift+NumPad +` (Expand All) and `Ctrl+Shift+NumPad -` (Collapse All)
     in the project pane and from the palette.
   - The keypad keys as their own keys: the keypad arrows, Home, End, Page Up,
@@ -446,6 +457,8 @@ never sends:
 |---|---|---|
 | `Ctrl+Shift+N` | `Ctrl+O` | Go to File |
 | `Ctrl+Alt+Shift+N` | none, the palette (`Ctrl+P`) and the Navigate menu reach it | Go to Symbol |
+| `Ctrl+Alt+Left` | none, the palette and the Navigate menu reach it | Navigate Back |
+| `Ctrl+Alt+Right` | none, the palette and the Navigate menu reach it | Navigate Forward |
 | `Ctrl+Shift+F` | `Alt+F` | Find in Files |
 | `Ctrl+Shift+Z` | `Ctrl+Y` | Redo |
 | `Ctrl+Shift+NumPad +` | `F4` | Expand All |
@@ -532,6 +545,23 @@ conversation, as IntelliJ's terminal does by default. `Ctrl+Alt+Shift+N` is a Ct
 may intercept Ctrl+Alt letters before the shell sees them (see Focus Editor
 below); the command palette and the Navigate menu are the fallback there.
 Search Everywhere does not list these symbols as a tab yet.
+
+## Back and Forward
+
+`Navigate Back` (`Ctrl+Alt+Left`) and `Navigate Forward` (`Ctrl+Alt+Right`)
+walk the caret places the editor has left, as IntelliJ does:
+
+- A jump records the place it leaves when it changes the file or moves the
+  caret more than five lines. Go to Definition, Go to File, Go to Class, Go to
+  Symbol, Find in Files, a breadcrumb, a problem, a tab switch and Go to Line
+  all count as jumps. Typing and plain caret movement do not.
+- Each direction keeps 25 places, the oldest leaving first. A place on the same
+  line of the same file as the one before it collapses into it.
+- A new jump after Back drops the forward places, as in IntelliJ.
+- Back and Forward to a file that is closed reopen it. A place in a file that
+  was deleted is skipped.
+- The line of a stored place follows the edits of its file while the file is
+  open, as breakpoints do.
 
 ## Focus Editor
 
@@ -677,6 +707,8 @@ adding it to that test on purpose.
 | navigation_goToLine | Ctrl+G | Ctrl+G | same | Go to Line with the IntelliJ chord; the vim profile binds Alt+G instead (docs/keymap.md) |
 | navigation_goToClass | Ctrl+N | Ctrl+N | same | Go to Class with the IntelliJ chord; Ctrl+Shift+N stays Go to File, so the unshifted chord is bound (docs/keymap.md) |
 | navigation_goToSymbol | Ctrl+Alt+Shift+N | Ctrl+Alt+Shift+N | same | Go to Symbol with the IntelliJ chord, which needs the Kitty keyboard protocol; tmux and ghostty may intercept it, and the palette and the Navigate menu reach it (docs/keymap.md) |
+| navigation_back | Ctrl+Alt+Left | Ctrl+Alt+Left | same | Navigate Back with the IntelliJ chord, which needs the Kitty keyboard protocol; tmux may intercept it, and the palette and the Navigate menu reach it (docs/keymap.md) |
+| navigation_forward | Ctrl+Alt+Right | Ctrl+Alt+Right | same | Navigate Forward with the IntelliJ chord, which needs the Kitty keyboard protocol; tmux may intercept it, and the palette and the Navigate menu reach it (docs/keymap.md) |
 | layout_project_wider | Alt+= | - | vintelli-only | Widens the project panel; no IntelliJ chord confirmed |
 | layout_project_narrower | Alt+- | - | vintelli-only | Narrows the project panel; no IntelliJ chord confirmed |
 | layout_bottom_taller | Alt+. | - | vintelli-only | Grows the bottom tool window; no IntelliJ chord confirmed |

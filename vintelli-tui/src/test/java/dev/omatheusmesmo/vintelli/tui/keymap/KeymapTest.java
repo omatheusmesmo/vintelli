@@ -196,7 +196,7 @@ class KeymapTest {
                 "editor_toggleImportFold",
                 "editor_toggleBreakpoint", "editor_editBreakpointCondition",
                 "navigation_goToFile", "navigation_goToClass", "navigation_goToSymbol", "navigation_findInFiles",
-                "navigation_goToLine",
+                "navigation_goToLine", "navigation_back", "navigation_forward",
                 "navigation_focusBreadcrumbs",
                 "layout_project_wider", "layout_project_narrower", "layout_bottom_taller", "layout_bottom_shorter",
                 "focusEditor", "shell.theme.switch", "shell.settings", "project_new_file", "project_new_directory", "project_rename",

@@ -477,6 +477,20 @@ final class EditorController {
                 : result == BuiltinEditor.CloseResult.EMPTY ? "No editor tab is open" : "Tab closed");
     }
 
+    void navigateHistory(boolean back) {
+        if (editor == null) {
+            host.status("Built-in editor unavailable");
+            return;
+        }
+        boolean moved = back ? editor.navigateBack() : editor.navigateForward();
+        if (moved) {
+            editor.activeDocument().ifPresent(document -> revealFile(Path.of(document.file())));
+            host.refreshVcs();
+            host.refreshDiagnostics();
+        }
+        host.status(editor.status());
+    }
+
     void selectEditorTab(boolean next) {
         if (editor == null || !editor.hasOpenTab() && editor.tabs().isEmpty()) {
             host.status("No editor tab is open");
@@ -660,6 +674,16 @@ final class EditorController {
             case KeyActions.DIFF_TOGGLE_UNIFIED -> {
                 closeOverlays.run();
                 runDiffAction(editor == null ? null : editor::toggleDiffLayout);
+                yield true;
+            }
+            case KeyActions.NAVIGATION_BACK -> {
+                closeOverlays.run();
+                navigateHistory(true);
+                yield true;
+            }
+            case KeyActions.NAVIGATION_FORWARD -> {
+                closeOverlays.run();
+                navigateHistory(false);
                 yield true;
             }
             case KeyActions.TOGGLE_IMPORT_FOLD -> {
