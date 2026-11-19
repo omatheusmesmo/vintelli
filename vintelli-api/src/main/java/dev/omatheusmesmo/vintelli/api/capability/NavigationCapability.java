@@ -3,6 +3,7 @@ package dev.omatheusmesmo.vintelli.api.capability;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /** Resolves symbol definitions and references from a document position. */
 public interface NavigationCapability extends ProviderDescriptor {
@@ -34,6 +35,12 @@ public interface NavigationCapability extends ProviderDescriptor {
         return documentSymbols(file);
     }
 
+    /**
+     * @return the symbols of the workspace that match the query, in the order the server ranks them, or a failed
+     *         result when the provider cannot answer
+     */
+    CapabilityResult<List<WorkspaceSymbol>> workspaceSymbols(String query);
+
     /** A source document position, with zero based line and UTF-16 column. */
     record SourcePosition(Path filePath, int line, int column) {
         public SourcePosition {
@@ -45,6 +52,19 @@ public interface NavigationCapability extends ProviderDescriptor {
     record Location(Path filePath, int line, int column) {
         public Location {
             Objects.requireNonNull(filePath, "filePath");
+        }
+    }
+
+    /**
+     * One symbol of the workspace. {@code kind} is the LSP symbol kind number, {@code container} the package or the
+     * outer type, and {@code location} is empty when the symbol is not in a file the editor can open, such as a
+     * library type.
+     */
+    record WorkspaceSymbol(String name, int kind, String container, Optional<Location> location) {
+        public WorkspaceSymbol {
+            Objects.requireNonNull(name, "name");
+            Objects.requireNonNull(container, "container");
+            Objects.requireNonNull(location, "location");
         }
     }
 

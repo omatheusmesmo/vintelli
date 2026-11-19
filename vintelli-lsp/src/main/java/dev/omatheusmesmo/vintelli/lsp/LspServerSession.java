@@ -83,6 +83,8 @@ import org.eclipse.lsp4j.VersionedTextDocumentIdentifier;
 import org.eclipse.lsp4j.WorkspaceClientCapabilities;
 import org.eclipse.lsp4j.WorkspaceEdit;
 import org.eclipse.lsp4j.WorkspaceFolder;
+import org.eclipse.lsp4j.WorkspaceSymbol;
+import org.eclipse.lsp4j.WorkspaceSymbolParams;
 import org.eclipse.lsp4j.jsonrpc.Launcher;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.eclipse.lsp4j.launch.LSPLauncher;
@@ -329,6 +331,13 @@ final class LspServerSession implements AutoCloseable {
         DocumentSymbolParams params = new DocumentSymbolParams(new TextDocumentIdentifier(uri));
         return server.getTextDocumentService()
                 .documentSymbol(params)
+                .get(REQUEST_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+    }
+
+    Either<List<? extends SymbolInformation>, List<? extends WorkspaceSymbol>> workspaceSymbol(String query)
+            throws ExecutionException, InterruptedException, TimeoutException {
+        return server.getWorkspaceService()
+                .symbol(new WorkspaceSymbolParams(query))
                 .get(REQUEST_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
     }
 
