@@ -15,6 +15,8 @@ import com.agentclientprotocol.sdk.client.transport.AgentParameters;
 import com.agentclientprotocol.sdk.client.transport.StdioAcpClientTransport;
 import com.agentclientprotocol.sdk.json.AcpJsonMapper;
 import com.agentclientprotocol.sdk.spec.AcpSchema;
+import dev.omatheusmesmo.vintelli.core.acp.AcpTerminalRegistry;
+import dev.omatheusmesmo.vintelli.core.acp.AcpWorkspace;
 import dev.omatheusmesmo.vintelli.web.AcpProbeConfig;
 import dev.omatheusmesmo.vintelli.web.AcpProbeRun;
 import jakarta.inject.Inject;
@@ -94,24 +96,24 @@ public final class AcpAgentClientFactory {
                 .build();
     }
 
-    /** Builds the production chat client with streamed updates and user-mediated permissions. */
-    public AcpSyncClient chatClient(Consumer<AcpSchema.SessionNotification> updates,
-            Function<AcpSchema.RequestPermissionRequest, AcpSchema.RequestPermissionResponse> permissions) {
-        return chatClient(catalog.defaultAgent(), updates, permissions);
-    }
-
-    public AcpSyncClient chatClient(String agentId, Consumer<AcpSchema.SessionNotification> updates,
+    /**
+     * Builds the production chat client for one session: streamed updates, user-mediated permissions,
+     * and file and terminal access confined to the session's own workspace and terminal registry.
+     */
+    public AcpSyncClient chatClient(String agentId, AcpWorkspace workspace, AcpTerminalRegistry terminals,
+            Consumer<AcpSchema.SessionNotification> updates,
             Function<AcpSchema.RequestPermissionRequest, AcpSchema.RequestPermissionResponse> permissions) {
         AcpAgentCatalog.Launch launch = catalog.require(agentId);
         AgentParameters parameters = AgentParameters.builder(launch.command()).args(launch.args()).build();
         StdioAcpClientTransport transport = new StdioAcpClientTransport(parameters, acpJsonMapper);
-        return AcpClient.sync(transport)
+        AcpClient.SyncSpec spec = AcpClient.sync(transport)
                 .requestTimeout(REQUEST_TIMEOUT)
                 .promptTimeout(CHAT_PROMPT_TIMEOUT)
                 .clientInfo(new AcpSchema.Implementation("vintelli", "1.0.0"))
+                .clientCapabilities(chatClientCapabilities())
                 .requestPermissionHandler(permissions)
-                .sessionUpdateHandler(updates)
-                .build();
+                .sessionUpdateHandler(updates);
+        return withFileAndTerminalHandlers(spec, workspace, terminals).build();
     }
 
     /**
@@ -122,29 +124,42 @@ public final class AcpAgentClientFactory {
     public AcpSyncClient client(AcpProbeRun run) {
         AgentParameters parameters = AgentParameters.builder(command).args(args).build();
         StdioAcpClientTransport transport = new StdioAcpClientTransport(parameters, acpJsonMapper);
-        return AcpClient.sync(transport)
+        AcpClient.SyncSpec spec = AcpClient.sync(transport)
                 .requestTimeout(REQUEST_TIMEOUT)
                 .promptTimeout(PROMPT_TIMEOUT)
                 .clientInfo(new AcpSchema.Implementation("vintelli", "1.0.0"))
                 .clientCapabilities(AcpProbeRun.clientCapabilities())
                 .requestPermissionHandler(run::permission)
+                .createElicitationHandler(run::elicitation)
+                .sessionUpdateHandler(run::onSessionUpdate);
+        return withFileAndTerminalHandlers(spec, run.workspace(), run.terminals()).build();
+    }
+
+    private static AcpSchema.ClientCapabilities chatClientCapabilities() {
+        return AcpSchema.ClientCapabilities.builder()
+                .readTextFile()
+                .writeTextFile()
+                .terminal()
+                .build();
+    }
+
+    private static AcpClient.SyncSpec withFileAndTerminalHandlers(AcpClient.SyncSpec spec,
+            AcpWorkspace workspace, AcpTerminalRegistry terminals) {
+        return spec
                 .readTextFileHandler(request -> new AcpSchema.ReadTextFileResponse(
-                        unchecked(() -> run.workspace().read(request.path(), request.line(), request.limit()))))
+                        unchecked(() -> workspace.read(request.path(), request.line(), request.limit()))))
                 .writeTextFileHandler(request -> {
                     unchecked(() -> {
-                        run.workspace().write(request.path(), request.content());
+                        workspace.write(request.path(), request.content());
                         return null;
                     });
                     return new AcpSchema.WriteTextFileResponse();
                 })
-                .createTerminalHandler(request -> unchecked(() -> run.terminals().create(request)))
-                .terminalOutputHandler(request -> run.terminals().output(request.terminalId()))
-                .waitForTerminalExitHandler(request -> unchecked(() -> run.terminals().waitForExit(request.terminalId())))
-                .killTerminalHandler(request -> run.terminals().kill(request.terminalId()))
-                .releaseTerminalHandler(request -> run.terminals().release(request.terminalId()))
-                .createElicitationHandler(run::elicitation)
-                .sessionUpdateHandler(run::onSessionUpdate)
-                .build();
+                .createTerminalHandler(request -> unchecked(() -> terminals.create(request)))
+                .terminalOutputHandler(request -> terminals.output(request.terminalId()))
+                .waitForTerminalExitHandler(request -> unchecked(() -> terminals.waitForExit(request.terminalId())))
+                .killTerminalHandler(request -> terminals.kill(request.terminalId()))
+                .releaseTerminalHandler(request -> terminals.release(request.terminalId()));
     }
 
     /**
