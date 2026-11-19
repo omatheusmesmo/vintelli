@@ -21,6 +21,7 @@ import dev.omatheusmesmo.vintelli.tui.editor.QuickDocumentationOverlay;
 import dev.omatheusmesmo.vintelli.tui.editor.GoToLine;
 import dev.omatheusmesmo.vintelli.tui.editor.BreakpointConditionOverlay;
 import dev.omatheusmesmo.vintelli.tui.editor.GoToLineOverlay;
+import dev.omatheusmesmo.vintelli.tui.editor.CodeActionPopup;
 import dev.omatheusmesmo.vintelli.tui.editor.QuickFixController;
 import dev.omatheusmesmo.vintelli.tui.editor.QuickFixOverlay;
 import dev.omatheusmesmo.vintelli.tui.editor.QuickFixRequest;
@@ -194,6 +195,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private final EditorPanel editorPanel;
     private final QuickFixController quickFix;
     private final QuickFixOverlay quickFixOverlay;
+    private final QuickFixController generate;
+    private final QuickFixOverlay generateOverlay;
     private final CompletionController completion;
     private final CompletionOverlay completionOverlay;
     private final QuickDocumentationController quickDocumentation;
@@ -301,6 +304,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         this.quickFix = new QuickFixController(capabilityRegistry, editor, this::deliverToRenderThread,
                 message -> status = message);
         this.quickFixOverlay = new QuickFixOverlay(quickFix);
+        this.generate = new QuickFixController(CodeActionPopup.GENERATE, capabilityRegistry, editor,
+                this::deliverToRenderThread, message -> status = message);
+        this.generateOverlay = new QuickFixOverlay(generate);
         this.completion = new CompletionController(capabilityRegistry, editor, this::deliverToRenderThread,
                 message -> status = message);
         this.completionOverlay = new CompletionOverlay(completion);
@@ -424,6 +430,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         stack.registerOverlay(Kind.BREAKPOINT_CONDITION, breakpointCondition::isOpen,
                 () -> closeBreakpointCondition(breakpointCondition));
         stack.registerOverlay(Kind.QUICK_FIX, quickFix::isOpen, this::releaseQuickFix);
+        stack.registerOverlay(Kind.GENERATE, generate::isOpen, this::releaseGenerate);
         stack.registerOverlay(Kind.QUICK_DOCUMENTATION, quickDocumentation::isOpen, this::releaseQuickDocumentation);
         if (searchModel != null) {
             stack.registerOverlay(Kind.PROJECT_SEARCH, searchModel::isOpen, searchModel::close);
@@ -1143,6 +1150,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             case BREAKPOINT_CONDITION -> new OverlayElement("breakpoint-condition", parts.breakpointCondition()::render);
             case QUICK_FIX -> new OverlayElement("quick-fix", (frame, area) -> quickFixOverlay.render(frame, area,
                     editor == null ? Optional.empty() : editor.caretCell()));
+            case GENERATE -> new OverlayElement("generate", (frame, area) -> generateOverlay.render(frame, area,
+                    editor == null ? Optional.empty() : editor.caretCell()));
             case QUICK_DOCUMENTATION -> new OverlayElement("quick-documentation",
                     (frame, area) -> quickDocumentationOverlay.render(frame, area,
                             editor == null ? Optional.empty() : editor.caretCell()));
@@ -1204,6 +1213,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         }
         if (top == Kind.QUICK_FIX) {
             handleQuickFixPointer(mouse);
+            return EventResult.HANDLED;
+        }
+        if (top == Kind.GENERATE) {
+            handleGeneratePointer(mouse);
             return EventResult.HANDLED;
         }
         if (top == null && handleCompletionPointer(mouse)) {
@@ -1358,6 +1371,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             case GO_TO_LINE -> handleGoToLineKey(parts, key);
             case BREAKPOINT_CONDITION -> handleBreakpointConditionKey(parts, key);
             case QUICK_FIX -> handleQuickFixKey(key);
+            case GENERATE -> handleGenerateKey(key);
             case QUICK_DOCUMENTATION -> handleQuickDocumentationKey(key);
             default -> throw new IllegalStateException("Not a drawn overlay: " + overlay);
         }
@@ -1700,6 +1714,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 parts.stack().closeOverlays();
                 openQuickFix(parts);
             }
+            case KeyActions.GENERATE -> {
+                parts.stack().closeOverlays();
+                openGenerate(parts);
+            }
             case KeyActions.COMPLETION -> {
                 parts.stack().closeOverlays();
                 inputCaptured = false;
@@ -1875,6 +1893,21 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         status = "Looking for quick fixes...";
     }
 
+    private void openGenerate(KeymapParts parts) {
+        Optional<QuickFixRequest> request = editor == null || !editor.hasDocument() ? Optional.empty()
+                : editor.quickFixRequest();
+        if (request.isEmpty()) {
+            status = "Open a file to generate code in";
+            return;
+        }
+        inputCaptured = false;
+        parts.stack().open(Kind.GENERATE, () -> {
+            editor.overlayInputActive(true);
+            generate.open(request.get());
+        });
+        status = generate.popup().loadingText();
+    }
+
     private void deliverToRenderThread(Runnable update) {
         if (uiWorkQueue != null) {
             uiWorkQueue.execute(update);
@@ -1885,6 +1918,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     private void handleQuickFixKey(KeyEvent key) {
         afterQuickFixInput(quickFix.press(OverlayInput.key(key)));
+    }
+
+    private void handleGenerateKey(KeyEvent key) {
+        afterGenerateInput(generate.press(OverlayInput.key(key)));
     }
 
     private void openQuickDocumentation(KeymapParts parts) {
@@ -1930,6 +1967,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 OverlayInput.scrollDirection(mouse), System.nanoTime()));
     }
 
+    private void handleGeneratePointer(MouseEvent mouse) {
+        afterGenerateInput(generate.pointer(mouse.x(), mouse.y(), mouse.isClick(),
+                OverlayInput.scrollDirection(mouse), System.nanoTime()));
+    }
+
     private void afterQuickFixInput(String message) {
         if (!message.isEmpty()) {
             status = message;
@@ -1943,6 +1985,24 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
 
     private void releaseQuickFix() {
         quickFix.close();
+        if (editor != null) {
+            editor.overlayInputActive(false);
+        }
+    }
+
+    private void afterGenerateInput(String message) {
+        if (!message.isEmpty()) {
+            status = message;
+        }
+        if (!generate.isOpen()) {
+            releaseGenerate();
+            inputCaptured = false;
+            editor.requestFocus();
+        }
+    }
+
+    private void releaseGenerate() {
+        generate.close();
         if (editor != null) {
             editor.overlayInputActive(false);
         }

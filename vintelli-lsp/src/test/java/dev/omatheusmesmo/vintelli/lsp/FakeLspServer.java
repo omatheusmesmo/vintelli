@@ -519,12 +519,18 @@ public final class FakeLspServer {
          * Answers by the start line of the requested range, so one twin serves every
          * code action failure mode: line 0 a quick fix with a bare command, line 1 an
          * empty list, line 2 an error response, line 3 an edit without a range (a
-         * malformed payload) and line 4 a file creation the editor cannot apply.
+         * malformed payload) and line 4 a file creation the editor cannot apply. A request for the
+         * {@code source} kind at line 0 answers the generate actions instead.
          */
         @Override
         public CompletableFuture<List<Either<Command, CodeAction>>> codeAction(CodeActionParams params) {
             server.trace("codeAction");
+            server.trace("codeAction only " + (params.getContext().getOnly() == null ? "none"
+                    : params.getContext().getOnly()));
             String uri = params.getTextDocument().getUri();
+            if (isSourceRequest(params) && params.getRange().getStart().getLine() == 0) {
+                return CompletableFuture.completedFuture(generateActions(uri));
+            }
             return switch (params.getRange().getStart().getLine()) {
                 case 0 -> CompletableFuture.completedFuture(List.of(
                         Either.forRight(quickFix(uri)),
@@ -535,6 +541,30 @@ public final class FakeLspServer {
                 case 3 -> CompletableFuture.completedFuture(List.of(Either.forRight(malformedFix())));
                 default -> CompletableFuture.completedFuture(List.of(Either.forRight(createFileFix(uri))));
             };
+        }
+
+        private static boolean isSourceRequest(CodeActionParams params) {
+            List<String> only = params.getContext().getOnly();
+            return only != null && only.contains(CodeActionKind.Source);
+        }
+
+        /**
+         * Source actions for a request that asks for the {@code source} kind: a generate action with a plain
+         * edit, a jdtls prompt command that needs a field selection, and an organize imports action the client
+         * has to leave out of a generate menu.
+         */
+        private static List<Either<Command, CodeAction>> generateActions(String uri) {
+            CodeAction accessors = new CodeAction("Generate Getters and Setters");
+            accessors.setKind("source.generate.accessors");
+            accessors.setEdit(new WorkspaceEdit(Map.of(uri, List.of(new TextEdit(
+                    new Range(new Position(0, 0), new Position(0, 0)), "public int getCount() { return 0; }\n")))));
+            CodeAction toString = new CodeAction("Generate toString()");
+            toString.setKind("source.generate.toString");
+            toString.setCommand(new Command("Generate toString()", "java.action.generateToStringPrompt"));
+            CodeAction imports = new CodeAction("Organize Imports");
+            imports.setKind("source.organizeImports");
+            imports.setEdit(new WorkspaceEdit(Map.of(uri, List.of())));
+            return List.of(Either.forRight(accessors), Either.forRight(toString), Either.forRight(imports));
         }
 
         private static CodeAction quickFix(String uri) {

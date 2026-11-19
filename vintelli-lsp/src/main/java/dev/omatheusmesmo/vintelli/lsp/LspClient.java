@@ -406,6 +406,17 @@ public final class LspClient implements AutoCloseable, JavaDebugAdapterPort {
      */
     public CapabilityResult<List<CodeActionCapability.CodeAction>> codeActions(Path file,
             CodeActionCapability.SourceRange range, List<DiagnosticsCapability.Diagnostic> diagnostics) {
+        return codeActions(file, range, diagnostics, List.of());
+    }
+
+    /**
+     * @param kinds the action kinds the server is asked for through {@code context.only}, an empty list asks
+     *        for every kind
+     * @return the same outcome as {@link #codeActions(Path, CodeActionCapability.SourceRange, List)}
+     */
+    public CapabilityResult<List<CodeActionCapability.CodeAction>> codeActions(Path file,
+            CodeActionCapability.SourceRange range, List<DiagnosticsCapability.Diagnostic> diagnostics,
+            List<String> kinds) {
         Selection selection = requestSelection();
         if (selection.failure() != null) {
             return CapabilityResult.failed(new CapabilityFailure("unavailable", selection.failure()));
@@ -417,7 +428,7 @@ public final class LspClient implements AutoCloseable, JavaDebugAdapterPort {
             }
             return CapabilityResult.ok(LspCodeActionMapper.codeActionsOf(current.codeAction(
                     LspServerSession.uriFor(file), LspCodeActionMapper.rangeOf(range),
-                    LspCodeActionMapper.lspDiagnosticsOf(diagnostics))));
+                    LspCodeActionMapper.lspDiagnosticsOf(diagnostics), kinds)));
         } catch (LspCodeActionMapper.MalformedPayload malformed) {
             return CapabilityResult.failed(new CapabilityFailure("malformed",
                     "the language server of profile '" + selection.profile() + "' sent a malformed code action: "

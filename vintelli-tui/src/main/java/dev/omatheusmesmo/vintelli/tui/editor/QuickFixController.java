@@ -25,10 +25,12 @@ import java.util.function.Consumer;
  * An action with a command runs off the render thread; the workspace edits the server sends while it runs,
  * together with the action's own edit, are applied as one undoable step only when the command completes,
  * so a command that times out or loses its connection leaves the document unchanged. The capability is only
- * asked on an explicit request, never on caret moves.
+ * asked on an explicit request, never on caret moves. The same controller serves the generate popup, which asks
+ * for the source kind and lists only the generate actions; see {@link CodeActionPopup}.
  */
 public final class QuickFixController {
 
+    private final CodeActionPopup popup;
     private final CapabilityRegistry registry;
     private final BuiltinEditor editor;
     private final Consumer<Runnable> deliver;
@@ -43,6 +45,17 @@ public final class QuickFixController {
      */
     public QuickFixController(CapabilityRegistry registry, BuiltinEditor editor, Consumer<Runnable> deliver,
             Consumer<String> status) {
+        this(CodeActionPopup.QUICK_FIX, registry, editor, deliver, status);
+    }
+
+    /**
+     * @param popup the popup this controller serves, which decides the kinds asked and the words it shows
+     * @param deliver hands the update of the popup to the render thread, which applies it on its next pass
+     * @param status shows a line in the status bar; called on the render thread only
+     */
+    public QuickFixController(CodeActionPopup popup, CapabilityRegistry registry, BuiltinEditor editor,
+            Consumer<Runnable> deliver, Consumer<String> status) {
+        this.popup = popup;
         this.registry = registry;
         this.editor = editor;
         this.deliver = deliver;
@@ -67,6 +80,17 @@ public final class QuickFixController {
 
     public boolean isOpen() {
         return menu.isOpen();
+    }
+
+    public CodeActionPopup popup() {
+        return popup;
+    }
+
+    /**
+     * @return whether the action is listed but cannot run yet because it needs a field selection
+     */
+    public boolean needsFieldSelection(CodeAction action) {
+        return popup.needsFieldSelection(action);
     }
 
     /**
@@ -117,10 +141,14 @@ public final class QuickFixController {
 
     private Runnable ask(CodeActionCapability runner, QuickFixRequest asked, long ticket) {
         CapabilityResult<List<CodeAction>> result = runner.codeActions(asked.file(), asked.range(),
-                asked.diagnostics());
+                asked.diagnostics(), popup.requestKinds());
         if (result instanceof CapabilityResult.Ok<List<CodeAction>> ok) {
-            List<CodeAction> actions = ok.value();
-            return () -> menu.showActions(ticket, actions);
+            List<CodeAction> actions = ok.value().stream().filter(popup::keeps).toList();
+            return () -> {
+                if (menu.showActions(ticket, actions) && actions.isEmpty()) {
+                    status.accept(popup.emptyText());
+                }
+            };
         }
         String reason = result.failureOf()
                 .map(failure -> failure.detail().isBlank() ? failure.reason()
@@ -130,6 +158,11 @@ public final class QuickFixController {
     }
 
     private String apply(CodeAction action) {
+        if (popup.needsFieldSelection(action)) {
+            String notice = action.title() + " needs field selection, which Vintelli does not offer yet";
+            menu.say(notice);
+            return notice;
+        }
         CodeActionCapability runner = provider;
         if (action.command() != null && runner != null && runner.supportsCommands()) {
             return runCommand(action, runner);
@@ -141,16 +174,16 @@ public final class QuickFixController {
         }
         WorkspaceEditApplier.Result result = editor.applyQuickFix(request, action.edit());
         if (result instanceof WorkspaceEditApplier.Rejected rejected) {
-            String notice = "Quick fix not applied: " + rejected.reason();
+            String notice = popup.statusName() + " not applied: " + rejected.reason();
             menu.say(notice);
             return notice;
         }
         menu.close();
         int edits = ((WorkspaceEditApplier.Applied) result).editCount();
         String commandNote = action.command() == null ? "" : "; its follow-up command is not run yet";
-        return edits == 0 ? "Quick fix changed nothing" + commandNote
-                : "Quick fix applied: " + action.title() + " (" + edits + (edits == 1 ? " edit" : " edits") + ")"
-                        + commandNote;
+        return edits == 0 ? capitalized(popup.statusName()) + " changed nothing" + commandNote
+                : capitalized(popup.statusName()) + " applied: " + action.title() + " (" + edits
+                        + (edits == 1 ? " edit" : " edits") + ")" + commandNote;
     }
 
     private String runCommand(CodeAction action, CodeActionCapability runner) {
@@ -159,7 +192,7 @@ public final class QuickFixController {
         if (action.edit() != null) {
             String refusal = WorkspaceEditApplier.refusal(asked.file(), action.edit());
             if (refusal != null) {
-                String notice = "Quick fix not applied: " + refusal;
+                String notice = popup.statusName() + " not applied: " + refusal;
                 menu.say(notice);
                 return notice;
             }
@@ -202,19 +235,25 @@ public final class QuickFixController {
         Optional<CapabilityFailure> failure = outcome.failureOf();
         if (failure.isPresent()) {
             String detail = failure.get().detail().isBlank() ? failure.get().reason() : failure.get().detail();
-            return "Quick fix '" + action.title() + "' did not complete: " + detail
+            return capitalized(popup.statusName()) + " '" + action.title() + "' did not complete: " + detail
                     + "; nothing was applied, the document is unchanged";
         }
         if (received.isEmpty()) {
-            return "Quick fix '" + action.title() + "' ran and offered no change";
+            return capitalized(popup.statusName()) + " '" + action.title() + "' ran and offered no change";
         }
         WorkspaceEditApplier.Result result = editor.applyQuickFix(asked, merged(received));
         if (result instanceof WorkspaceEditApplier.Rejected rejected) {
-            return "Quick fix not applied: " + rejected.reason() + "; the document is unchanged";
+            return capitalized(popup.statusName()) + " not applied: " + rejected.reason()
+                    + "; the document is unchanged";
         }
         int edits = ((WorkspaceEditApplier.Applied) result).editCount();
-        return edits == 0 ? "Quick fix changed nothing"
-                : "Quick fix applied: " + action.title() + " (" + edits + (edits == 1 ? " edit" : " edits") + ")";
+        return edits == 0 ? capitalized(popup.statusName()) + " changed nothing"
+                : capitalized(popup.statusName()) + " applied: " + action.title() + " (" + edits
+                        + (edits == 1 ? " edit" : " edits") + ")";
+    }
+
+    private static String capitalized(String text) {
+        return Character.toUpperCase(text.charAt(0)) + text.substring(1);
     }
 
     private static WorkspaceEdit merged(List<WorkspaceEdit> edits) {

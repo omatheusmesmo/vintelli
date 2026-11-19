@@ -105,14 +105,18 @@ final class QuickFixMenu {
         notice = text;
     }
 
-    synchronized void showActions(long answer, List<CodeAction> found) {
+    /**
+     * @return whether the answer belonged to the open request and was shown
+     */
+    synchronized boolean showActions(long answer, List<CodeAction> found) {
         if (!answers(answer)) {
-            return;
+            return false;
         }
         actions = List.copyOf(found);
         state = actions.isEmpty() ? State.EMPTY : State.ACTIONS;
         selected = 0;
         firstVisible = 0;
+        return true;
     }
 
     synchronized void showUnavailable(long answer, String reason) {

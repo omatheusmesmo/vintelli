@@ -25,6 +25,18 @@ public interface CodeActionCapability extends ProviderDescriptor {
             List<DiagnosticsCapability.Diagnostic> diagnostics);
 
     /**
+     * @param file file the actions apply to
+     * @param range zero based range the actions are requested for
+     * @param diagnostics problems overlapping the range, handed to the server as context
+     * @param kinds action kinds the caller wants, such as {@code source}
+     * @return the same outcome as {@link #codeActions(Path, SourceRange, List)}
+     */
+    default CapabilityResult<List<CodeAction>> codeActions(Path file, SourceRange range,
+            List<DiagnosticsCapability.Diagnostic> diagnostics, List<String> kinds) {
+        return codeActions(file, range, diagnostics);
+    }
+
+    /**
      * @return whether {@link #executeCommand} runs commands; the editor runs command actions only
      *         through providers that do
      */

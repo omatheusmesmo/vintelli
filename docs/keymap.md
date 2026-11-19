@@ -44,6 +44,7 @@ Key actions in the `intellij` profile:
 | `editor_quickFix` | `Alt+Enter` | `Alt+Enter` |
 | `editor_completion` | `Ctrl+Space` (`Ctrl+@` too) | `Ctrl+Space` |
 | `editor_quickDocumentation` | `Ctrl+Q` | `Ctrl+Q` |
+| `editor_generate` | `Alt+Insert` (the command palette, `Ctrl+P`, is the fallback) | `Alt+Insert` |
 | `focusEditor` | `Ctrl+F11` | `Ctrl+Shift+F12` |
 
 The command palette lists every action with its active chord and, when the
@@ -87,6 +88,31 @@ shows `Loading...` while the server answers, `No documentation found` for an
 empty answer, and the reason when the server cannot answer. An answer that
 arrives after the caret or the text moved is dropped, so the popup never shows
 the documentation of a position the caret has left.
+
+### Generate
+
+`Alt+Insert` asks the language server for the `source.generate` actions of the
+file at the caret (or the selection) and opens a popup titled `Generate` beside
+the caret. The menu lists what jdtls offers for the class, such as
+`Generate Getters and Setters`, `Generate Constructors`,
+`Generate hashCode() and equals()` and `Generate toString()`; other source
+actions, such as organize imports, are left out. `Up`, `Down`, `Enter` and
+`Escape` work as in the quick fix popup, and `Enter` applies the chosen action as
+one undo step. When the class has nothing to generate the popup and the status
+line say `Nothing to generate here`, and a server that cannot answer says why in
+the popup.
+
+Some jdtls generate actions first ask the client to pick the fields (their
+commands are `java.action.generateAccessorsPrompt`,
+`java.action.generateConstructorsPrompt`, `java.action.hashCodeEqualsPrompt` and
+`java.action.generateToStringPrompt`). Those rows are listed dimmed with
+`(needs field selection)` and do not run: the field checklist is not built yet.
+Actions that come back with a plain edit, or with the client side command
+`java.apply.workspaceEdit`, apply as usual.
+
+The chord is only bound in the `intellij` profile. A terminal that does not
+deliver `Alt+Insert` still reaches the action through the command palette
+(`Ctrl+P`, then `Generate`), which is the fallback to use there.
 
 ### Copy, cut and paste
 
@@ -546,6 +572,7 @@ adding it to that test on purpose.
 | editor_quickFix | Alt+Enter | Alt+Enter | same | Quick fixes from the language server for the selection or caret, offered in a popup (docs/keymap.md) |
 | editor_completion | Ctrl+Space \| Ctrl+@ | Ctrl+Space | same | Code completion from the language server at the caret, offered in a popup; Ctrl+@ is the NUL spelling of the same key that some terminals send (docs/keymap.md) |
 | editor_quickDocumentation | Ctrl+Q | Ctrl+Q | same | Quick documentation of the symbol at the caret from the language server, in a popup beside the caret (docs/keymap.md) |
+| editor_generate | Alt+Insert | Alt+Insert | same | Generate from the language server's source actions for the class at the caret, in a popup beside the caret; the vim profile binds no chord (docs/keymap.md) |
 | moveWordLeft | Ctrl+Left | Ctrl+Left | same | Move Caret to Previous Word; the editor text area takes it under the Kitty keyboard protocol |
 | moveWordRight | Ctrl+Right | Ctrl+Right | same | Move Caret to Next Word; the editor text area takes it under the Kitty keyboard protocol |
 | deleteWordBackward | Ctrl+Backspace | - | vintelli-only | Deletes the word before the caret in the editor under the Kitty keyboard protocol; no IntelliJ chord is confirmed on the reference page for this action |
