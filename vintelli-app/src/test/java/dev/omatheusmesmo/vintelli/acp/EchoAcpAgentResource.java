@@ -42,6 +42,7 @@ public class EchoAcpAgentResource implements QuarkusTestResourceLifecycleManager
             throw new UncheckedIOException(e);
         }
         return Map.of(
+                "vintelli.acp.enabled", "false",
                 "vintelli.acp.probe.enabled", "true",
                 "vintelli.acp.probe.agent-command", COMMAND,
                 "vintelli.acp.probe.agent-args", AgentArgumentFile.launcherArgument(argumentFile));

@@ -35,14 +35,22 @@ public final class AcpAgentCatalog {
         boolean legacy = probe.enabled().orElse(false) && !probe.agentCommand().orElse("").isBlank();
         if (legacy) choices.add(new Launch("configured", "Configured agent", probe.agentCommand().orElseThrow(),
                 probe.agentArgs().map(value -> List.of(value.split(","))).orElse(List.of()), true));
-        defaultAgent = legacy && !config.enabled() ? "configured" : config.defaultAgent();
-        choices.sort(Comparator.comparing((Launch launch) -> !launch.id().equals(defaultAgent)).thenComparing(Launch::id));
+        String configuredDefault = legacy && !config.enabled() ? "configured" : config.defaultAgent();
+        choices.sort(Comparator.comparing(Launch::id));
         launches = List.copyOf(choices);
-        agents = launches.stream().map(launch -> {
+        List<Agent> discovered = launches.stream().map(launch -> {
             String reason = !launch.enabled() ? "Enable vintelli.acp.enabled to start agents"
                     : executable(launch.command(), environment, windows) ? "" : "Executable not found: " + launch.command();
             return new Agent(launch.id(), launch.name(), reason.isEmpty(), reason);
         }).toList();
+        defaultAgent = effectiveDefault(configuredDefault, discovered);
+        agents = discovered.stream().sorted(Comparator.comparing((Agent agent) -> !agent.id().equals(defaultAgent))).toList();
+    }
+
+    private static String effectiveDefault(String configuredDefault, List<Agent> discovered) {
+        boolean configuredAvailable = discovered.stream().anyMatch(agent -> agent.id().equals(configuredDefault) && agent.available());
+        if (configuredAvailable) return configuredDefault;
+        return discovered.stream().filter(Agent::available).map(Agent::id).findFirst().orElse(configuredDefault);
     }
 
     public List<Agent> agents() {

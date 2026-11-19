@@ -59,6 +59,22 @@ class AcpAgentCatalogTest {
     }
 
     @Test
+    void unavailableDefaultFallsBackToTheFirstAvailablePreset() throws Exception {
+        assertTrue(Files.writeString(directory.resolve("claude-agent-acp"), "must never execute during discovery")
+                .toFile().setExecutable(true));
+        AcpAgentCatalog catalog = new AcpAgentCatalog(config(true, "opencode", Map.of(
+                "opencode", entry("OpenCode", "opencode", List.of("acp")),
+                "claude", entry("Claude Code", "claude-agent-acp", List.of()),
+                "pi", entry("pi", "pi-acp", List.of()))), probe(false, ""),
+                Map.of("PATH", directory.toString()), false);
+
+        assertEquals("claude", catalog.defaultAgent());
+        assertEquals(List.of("claude", "opencode", "pi"), catalog.agents().stream().map(agent -> agent.id()).toList());
+        assertTrue(catalog.agents().getFirst().available());
+        assertEquals("Executable not found: opencode", catalog.agents().get(1).reason());
+    }
+
+    @Test
     void windowsPathExtensionsAndExplicitPathsAreRecognized() throws Exception {
         Path adapter = Files.writeString(directory.resolve("adapter.cmd"), "@exit /b 0");
         assertTrue(AcpAgentCatalog.executable("adapter", Map.of("PATH", directory.toString(), "PATHEXT", ".EXE;.CMD"), true));
