@@ -68,7 +68,10 @@ public final class AgentPromptCommand implements Command<CommandInvocation> {
             id = agent == null ? chat.openSession(updates, request -> AcpChatPort.PermissionChoice.cancel())
                     : chat.openSession(agent, updates, request -> AcpChatPort.PermissionChoice.cancel());
             String reason = chat.prompt(id, promptText);
-            chunks.forEach(invocation::println);
+            String reply = String.join("", chunks);
+            if (!reply.isEmpty()) {
+                invocation.println(reply);
+            }
             invocation.println("Stop reason: " + reason);
             return CommandResult.SUCCESS;
         } catch (RuntimeException failure) {
