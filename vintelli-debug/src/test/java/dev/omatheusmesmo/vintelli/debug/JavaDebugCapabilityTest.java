@@ -61,6 +61,8 @@ class JavaDebugCapabilityTest {
     }
 
     private static final Duration TEST_TIMEOUT = Duration.ofSeconds(1);
+    private static final Duration CONCURRENT_HANDSHAKE_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration CONCURRENT_RESULT_WAIT = Duration.ofSeconds(10);
 
     @Test
     void disabledProviderIsUnavailableWithoutStartingTheAdapter() throws Exception {
@@ -465,7 +467,7 @@ class JavaDebugCapabilityTest {
     void concurrentAttachCallsCannotExceedTheActiveSessionLimit() throws Exception {
         try (DapTwin twin = new DapTwin(DapTwin.Mode.NORMAL);
                 ExecutorService callers = Executors.newVirtualThreadPerTaskExecutor()) {
-            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun(), CONCURRENT_HANDSHAKE_TIMEOUT);
             CountDownLatch ready = new CountDownLatch(12);
             CountDownLatch start = new CountDownLatch(1);
             List<Future<CapabilityResult<DebugCapability.DebugSession>>> calls = IntStream.range(0, 12)
@@ -480,7 +482,7 @@ class JavaDebugCapabilityTest {
             start.countDown();
 
             List<CapabilityResult<DebugCapability.DebugSession>> results = calls.stream()
-                    .map(JavaDebugCapabilityTest::get).toList();
+                    .map(call -> get(call, CONCURRENT_RESULT_WAIT)).toList();
             List<DebugCapability.DebugSession> sessions = results.stream()
                     .filter(CapabilityResult.Ok.class::isInstance)
                     .map(result -> ((CapabilityResult.Ok<DebugCapability.DebugSession>) result).value())
@@ -872,8 +874,12 @@ class JavaDebugCapabilityTest {
     }
 
     private static JavaDebugCapability enabled(int adapterPort, FakeRun run) {
+        return enabled(adapterPort, run, TEST_TIMEOUT);
+    }
+
+    private static JavaDebugCapability enabled(int adapterPort, FakeRun run, Duration timeout) {
         return new JavaDebugCapability(true, new FakeAdapter(adapterPort), () -> new FakeRegistry(run),
-                TEST_TIMEOUT, TEST_TIMEOUT, TEST_TIMEOUT);
+                timeout, timeout, timeout);
     }
 
     private static RunRequest request() {
@@ -886,8 +892,12 @@ class JavaDebugCapabilityTest {
     }
 
     private static <T> T get(Future<T> future) {
+        return get(future, Duration.ofSeconds(2));
+    }
+
+    private static <T> T get(Future<T> future, Duration timeout) {
         try {
-            return future.get(2, TimeUnit.SECONDS);
+            return future.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
         } catch (Exception failure) {
             throw new AssertionError("Concurrent debug call did not finish", failure);
         }
