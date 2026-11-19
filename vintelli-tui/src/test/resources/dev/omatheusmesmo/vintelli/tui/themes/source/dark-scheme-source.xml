@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <scheme name="Dark" version="142" parent_scheme="Darcula">
-  <!-- excerpt of the `colors` option block with the caret row color and of the `attributes` option blocks for TEXT, the keyword, string, comment, number constant, read identifier under caret and write identifier under caret attributes; taken verbatim from themes/expUI/expUI_darkScheme.xml of IntelliJ IDEA Ultimate 2026.2.3 (build IU-262.10968.63), Apache License, Version 2.0 by JetBrains -->
+  <!-- excerpt of the `colors` option block with the caret row color and of the `attributes` option blocks for TEXT, the keyword, string, comment, number constant, read identifier under caret, write identifier under caret and matched brace attributes; taken verbatim from themes/expUI/expUI_darkScheme.xml of IntelliJ IDEA Ultimate 2026.2.3 (build IU-262.10968.63), Apache License, Version 2.0 by JetBrains -->
   <colors>
     <option name="CARET_ROW_COLOR" value="26282e" />
   </colors>
@@ -50,6 +50,12 @@
         <option name="BACKGROUND" value="402f33" deuteranopia="253873" protanopia="253873" />
         <option name="ERROR_STRIPE_COLOR" value="ba6387" deuteranopia="5fcc" protanopia="5fcc" />
         <option name="EFFECT_TYPE" value="1" />
+      </value>
+    </option>
+    <option name="MATCHED_BRACE_ATTRIBUTES">
+      <value>
+        <option name="BACKGROUND" value="43454a" />
+        <option name="FONT_TYPE" value="1" />
       </value>
     </option>
   </attributes>

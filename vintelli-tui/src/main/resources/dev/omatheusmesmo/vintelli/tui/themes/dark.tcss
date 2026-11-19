@@ -229,6 +229,11 @@ EditorTabBarElement-overflow {
   text-style: reversed;
 }
 
+.editor-matched-brace {
+  background: #43454A;  /* New UI Dark editor scheme MATCHED_BRACE_ATTRIBUTES BACKGROUND */
+  text-style: bold;
+}
+
 #editor-find {
   color: $editor-fg;
   background: $editor-bg;
