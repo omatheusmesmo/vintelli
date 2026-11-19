@@ -89,7 +89,7 @@ Scripted, one command per process (`java -jar vintelli-app/target/quarkus-app/qu
   choose an option or decline it. The standalone `agents prompt <text>` command
   remains available for one-shot prompts; `agents list` shows agent availability
   and `agents prompt --agent=opencode <text>` selects an agent explicitly.
-  Enable `vintelli.acp.enabled` and see [agent setup](acp-agents.md) for presets,
+  See [agent setup](acp-agents.md) for presets,
   installation and compatibility with the older probe configuration.
 - `help` (or `--help` / `-h`) lists the available commands or prints the usage of a named command; `version` (or `--version` / `-v`) prints the application version
 - unknown names fail with exit code 127, failed commands with 1, misuse

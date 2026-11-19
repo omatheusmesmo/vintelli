@@ -47,7 +47,7 @@ public final class AgentPromptCommand implements Command<CommandInvocation> {
     @Override
     public CommandResult execute(CommandInvocation invocation) throws CommandException, InterruptedException {
         if (agent == null && !chat.isConfigured()) {
-            invocation.println("No ACP agent is ready: use agents list and enable vintelli.acp.enabled");
+            invocation.println("No ACP agent is ready: run agents list to see which executables are missing");
             return CommandResult.FAILURE;
         }
         if (words == null || words.isEmpty()) {

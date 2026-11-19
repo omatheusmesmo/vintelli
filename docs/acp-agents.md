@@ -1,9 +1,11 @@
 # ACP agents
 
-Vintelli hosts agents through the official ACP Java SDK over stdio. Agent
-processes are off by default. Install and authenticate the agents you want
-before enabling them; Vintelli does not install packages or start an agent
-while checking availability.
+Vintelli hosts agents through the official ACP Java SDK over stdio. The agent
+catalog is on by default: **ACP Agents** (`Alt+8`) lists the presets below and
+whether each executable is on the `PATH`. An agent process starts only when a
+conversation opens with it. Install and authenticate the agents you want to
+use; Vintelli does not install packages or start an agent while checking
+availability. Set `vintelli.acp.enabled=false` to hide every agent.
 
 | Agent id | Process | Installation |
 |---|---|---|
@@ -18,12 +20,19 @@ executable or changing `PATH`.
 
 ## Configure
 
-Set these application properties (use `%dev.` when configuring dev mode):
+Both properties have defaults, so the presets work without configuration. Set
+them in application properties (use `%dev.` when configuring dev mode):
 
 ```properties
 vintelli.acp.enabled=true
 vintelli.acp.default-agent=opencode
 ```
+
+`vintelli.acp.enabled` defaults to `true`; `false` hides every agent.
+`vintelli.acp.default-agent` defaults to `opencode`. When that agent is
+unavailable and another agent is available, the first available agent in
+alphabetical order of its id becomes the default. The configured default is
+kept whenever it is available or when no agent is.
 
 The built-in presets provide the names, commands and arguments in the table.
 Override them or add another named agent with the same property structure:
@@ -45,8 +54,9 @@ and credential stores.
 
 The older `vintelli.acp.probe.enabled`, `vintelli.acp.probe.agent-command` and
 `vintelli.acp.probe.agent-args` settings still expose a `configured` agent.
-It stays the default when the probe is enabled and `vintelli.acp.enabled` is
-false. Enabling production agents does not enable the HTTP probe endpoints.
+It is the default only when the probe is enabled and `vintelli.acp.enabled` is
+set to `false`; with the catalog on, the default follows the rule above. Enabling
+production agents does not enable the HTTP probe endpoints.
 
 ## Choose an agent
 

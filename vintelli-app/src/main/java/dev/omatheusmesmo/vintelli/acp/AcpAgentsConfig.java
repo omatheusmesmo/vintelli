@@ -10,7 +10,7 @@ import io.smallrye.config.WithDefault;
 @ConfigMapping(prefix = "vintelli.acp")
 public interface AcpAgentsConfig {
 
-    @WithDefault("false")
+    @WithDefault("true")
     boolean enabled();
 
     @WithDefault("opencode")
