@@ -60,6 +60,11 @@ Type a prompt and press Enter to send it. `Shift+Enter` inserts a newline,
 `Ctrl+C` cancels an active turn, and `Ctrl+W` closes the conversation.
 Permission requests wait for an explicit choice in the TUI.
 
+Agent thoughts render as a dimmed block collapsed to one line. `Ctrl+R`
+expands or collapses the latest thought, and a click on a thought's heading
+toggles that one. The agent's plan is one checklist that updates in place, and
+a user prompt replayed from a stored session renders like a typed one.
+
 The same catalog is available headlessly:
 
 ```bash
