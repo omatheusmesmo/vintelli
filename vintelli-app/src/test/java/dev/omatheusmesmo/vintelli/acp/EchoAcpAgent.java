@@ -137,7 +137,9 @@ public final class EchoAcpAgent {
         if (text.contains(CANCEL_TRIGGER)) {
             return cancellable(context);
         }
-        if (text.contains("kinds")) {
+        if (text.contains("sparse-tool")) {
+            streamSparseToolCall(context);
+        } else if (text.contains("kinds")) {
             streamEveryKind(context);
         } else if (text.contains("rich")) {
             streamRichContent(context);
@@ -168,6 +170,13 @@ public final class EchoAcpAgent {
         }
         boolean wasCancelled = cancelled.completeOnTimeout(false, CANCEL_DEADLINE_MILLIS, TimeUnit.MILLISECONDS).join();
         return wasCancelled ? AcpSchema.PromptResponse.cancelled() : AcpSchema.PromptResponse.endTurn();
+    }
+
+    private static void streamSparseToolCall(SyncPromptContext context) {
+        context.sendSessionUpdate(new AcpSchema.ToolCall("tool_call", "tool-read", "Read notes.txt", null,
+                AcpSchema.ToolKind.READ, AcpSchema.ToolCallStatus.PENDING, List.of(), List.of(), null, null, Map.of()));
+        context.sendSessionUpdate(new AcpSchema.ToolCallUpdateNotification("tool_call_update", "tool-read", null, null,
+                null, AcpSchema.ToolCallStatus.COMPLETED, null, null, null, null, Map.of()));
     }
 
     private static void streamEveryKind(SyncPromptContext context) {

@@ -44,4 +44,21 @@ class AcpChatServiceUpdatesTest {
             chat.close(session);
         }
     }
+
+    @Test
+    void aToolCallWithoutANameShowsItsKindAndAnUpdateSendsOnlyWhatChanged() {
+        List<AcpChatPort.Update> updates = new CopyOnWriteArrayList<>();
+        String session = chat.openSession(updates::add, request -> AcpChatPort.PermissionChoice.cancel());
+        try {
+            chat.prompt(session, "sparse-tool");
+
+            assertEquals(List.of(
+                    new AcpChatPort.ToolCall("tool-read", "Read notes.txt", "read", "pending", ""),
+                    new AcpChatPort.ToolCall("tool-read", "", "", "completed", ""),
+                    new AcpChatPort.TurnStopped("end_turn")),
+                    updates);
+        } finally {
+            chat.close(session);
+        }
+    }
 }

@@ -15,6 +15,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import dev.omatheusmesmo.vintelli.api.acp.AcpChatPort;
 import dev.omatheusmesmo.vintelli.api.acp.AcpChatPort.PermissionChoice;
@@ -477,10 +479,15 @@ public final class AcpAgentsToolWindow implements ToolWindow {
         }
     }
 
+    private static String toolHeading(ToolBlock tool) {
+        String title = tool.title.isBlank() ? "Tool call" : tool.title;
+        return Stream.of(title, tool.name, tool.status).filter(part -> !part.isBlank())
+                .collect(Collectors.joining(" · ", "◆ ", ""));
+    }
+
     private static List<Line> toolLines(ToolBlock tool, ShellThemes active) {
         List<Line> lines = new ArrayList<>();
-        lines.add(Line.styled("◆ " + tool.title + " · " + tool.name + " · " + tool.status,
-                active.resolver("tool-window-title").toStyle()));
+        lines.add(Line.styled(toolHeading(tool), active.resolver("tool-window-title").toStyle()));
         if (!tool.diff.isBlank()) {
             String[] diffLines = tool.diff.split("\\R", -1);
             int limit = Math.min(diffLines.length, MAX_DIFF_LINES);
@@ -937,9 +944,9 @@ public final class AcpAgentsToolWindow implements ToolWindow {
                 tools.put(update.id(), tool);
                 blocks.add(tool);
             } else {
-                tool.title = plainText(update.title());
-                tool.name = plainText(update.name());
-                tool.status = plainText(update.status());
+                if (!update.title().isBlank()) tool.title = plainText(update.title());
+                if (!update.name().isBlank()) tool.name = plainText(update.name());
+                if (!update.status().isBlank()) tool.status = plainText(update.status());
                 if (!update.diff().isBlank()) tool.diff = plainText(update.diff());
             }
             trim();

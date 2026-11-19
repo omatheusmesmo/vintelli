@@ -108,11 +108,15 @@ public interface AcpChatPort {
         }
     }
 
-    /** One ACP tool card; an optional unified diff is rendered inline. */
+    /**
+     * One ACP tool card; an optional unified diff is rendered inline. An update
+     * for a known id carries only what changed, so a blank field keeps the
+     * card's earlier value. The name falls back to the ACP tool kind.
+     */
     record ToolCall(String id, String title, String name, String status, String diff) implements Update {
         public ToolCall {
             id = Objects.requireNonNullElse(id, "");
-            title = Objects.requireNonNullElse(title, "Tool call");
+            title = Objects.requireNonNullElse(title, "");
             name = Objects.requireNonNullElse(name, "");
             status = Objects.requireNonNullElse(status, "");
             diff = Objects.requireNonNullElse(diff, "");
