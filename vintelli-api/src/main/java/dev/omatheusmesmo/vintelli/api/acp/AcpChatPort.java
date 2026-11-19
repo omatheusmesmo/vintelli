@@ -65,12 +65,45 @@ public interface AcpChatPort {
     /** Closes the remote session and its transport. */
     void close(String sessionId);
 
-    sealed interface Update permits Message, ToolCall, TurnStopped, Failure {
+    sealed interface Update permits Message, Thought, Plan, UserMessage, ToolCall, TurnStopped, Failure {
     }
 
     /** One streamed assistant markdown fragment. */
     record Message(String text) implements Update {
         public Message {
+            text = Objects.requireNonNullElse(text, "");
+        }
+    }
+
+    /** One streamed fragment of the agent's reasoning, shown collapsed by default. */
+    record Thought(String text) implements Update {
+        public Thought {
+            text = Objects.requireNonNullElse(text, "");
+        }
+    }
+
+    /**
+     * The agent's task list as it stands now. A newer plan replaces the previous one, so the TUI
+     * keeps a single checklist per conversation.
+     */
+    record Plan(List<PlanEntry> entries) implements Update {
+        public Plan {
+            entries = entries == null ? List.of() : List.copyOf(entries);
+        }
+    }
+
+    /** One plan entry: its text, its ACP status (pending, in_progress, completed) and its ACP priority. */
+    record PlanEntry(String content, String status, String priority) {
+        public PlanEntry {
+            content = Objects.requireNonNullElse(content, "");
+            status = Objects.requireNonNullElse(status, "");
+            priority = Objects.requireNonNullElse(priority, "");
+        }
+    }
+
+    /** A user prompt the agent replayed from a loaded session; it renders like a typed prompt. */
+    record UserMessage(String text) implements Update {
+        public UserMessage {
             text = Objects.requireNonNullElse(text, "");
         }
     }

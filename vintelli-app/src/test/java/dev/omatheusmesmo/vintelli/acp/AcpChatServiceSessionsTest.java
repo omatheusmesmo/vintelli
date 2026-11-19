@@ -37,7 +37,8 @@ class AcpChatServiceSessionsTest {
         try {
             assertTrue(chat.activeSessionIds().contains(id));
             assertEquals(activeBefore + 1, chat.activeSessionIds().size());
-            assertEquals(List.of(new AcpChatPort.Message("replayed:" + STORED_SESSION.remoteId())), updates);
+            assertEquals(List.of(new AcpChatPort.UserMessage("replayed-user:" + STORED_SESSION.remoteId()),
+                    new AcpChatPort.Message("replayed:" + STORED_SESSION.remoteId())), updates);
 
             chat.prompt(id, "after-load");
 

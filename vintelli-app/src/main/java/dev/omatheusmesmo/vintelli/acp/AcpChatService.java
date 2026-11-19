@@ -276,14 +276,62 @@ public final class AcpChatService implements AcpChatPort, AcpSessionIdsView {
 
     private static void forwardUpdate(AcpSchema.SessionNotification notification, Consumer<Update> updates) {
         AcpSchema.SessionUpdate update = notification.update();
-        if (update instanceof AcpSchema.AgentMessageChunk chunk
-                && chunk.content() instanceof AcpSchema.TextContent content) {
-            updates.accept(new Message(content.text()));
+        if (update instanceof AcpSchema.AgentMessageChunk chunk) {
+            updates.accept(new Message(chunkText(chunk.content())));
+        } else if (update instanceof AcpSchema.AgentThoughtChunk chunk) {
+            updates.accept(new Thought(chunkText(chunk.content())));
+        } else if (update instanceof AcpSchema.UserMessageChunk chunk) {
+            updates.accept(new UserMessage(chunkText(chunk.content())));
+        } else if (update instanceof AcpSchema.Plan plan) {
+            updates.accept(new Plan(plan.entries().stream().map(AcpChatService::planEntry).toList()));
         } else if (update instanceof AcpSchema.ToolCall toolCall) {
             updates.accept(toolCall(toolCall));
         } else if (update instanceof AcpSchema.ToolCallUpdateNotification toolCall) {
             updates.accept(toolCall(toolCall));
         }
+    }
+
+    private static String chunkText(AcpSchema.ContentBlock content) {
+        if (content instanceof AcpSchema.TextContent text) {
+            return text.text();
+        }
+        return "\n" + placeholder(content) + "\n";
+    }
+
+    private static String placeholder(AcpSchema.ContentBlock content) {
+        if (content instanceof AcpSchema.ImageContent) {
+            return "[image]";
+        }
+        if (content instanceof AcpSchema.AudioContent) {
+            return "[audio]";
+        }
+        if (content instanceof AcpSchema.ResourceLink link) {
+            return resourcePlaceholder(link.uri());
+        }
+        if (content instanceof AcpSchema.Resource resource) {
+            return resourcePlaceholder(embeddedUri(resource.resource()));
+        }
+        return "[content]";
+    }
+
+    private static String resourcePlaceholder(String uri) {
+        return uri == null || uri.isBlank() ? "[resource]" : "[resource: " + uri + "]";
+    }
+
+    private static String embeddedUri(AcpSchema.EmbeddedResourceResource resource) {
+        if (resource instanceof AcpSchema.TextResourceContents text) {
+            return text.uri();
+        }
+        if (resource instanceof AcpSchema.BlobResourceContents blob) {
+            return blob.uri();
+        }
+        return null;
+    }
+
+    private static PlanEntry planEntry(AcpSchema.PlanEntry entry) {
+        String status = entry.status() == null ? "" : entry.status().value();
+        String priority = entry.priority() == null ? "" : entry.priority().value();
+        return new PlanEntry(entry.content(), status, priority);
     }
 
     private static AcpSchema.RequestPermissionResponse answerPermission(AcpSchema.RequestPermissionRequest request,

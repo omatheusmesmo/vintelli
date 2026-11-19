@@ -32,7 +32,8 @@ import java.util.stream.Collectors;
  * streams agent thought, agent message, tool call, tool call update and plan updates, {@code permit}
  * asks for permission, {@code fs:<root>} reads, writes and probes a path outside
  * the root, {@code terminal} runs a command, {@code elicit} asks the user for a
- * URL and a form, and {@code cancel-me} waits for a cancel notification.
+ * URL and a form, {@code rich} streams thought chunks, a user prompt, image, resource
+ * and plan updates, and {@code cancel-me} waits for a cancel notification.
  */
 public final class EchoAcpAgent {
 
@@ -76,6 +77,8 @@ public final class EchoAcpAgent {
         if (!STORED_SESSION_ID.equals(request.sessionId())) {
             throw new AcpProtocolException(AcpErrorCodes.INVALID_PARAMS, "the echo agent has no stored session " + request.sessionId());
         }
+        running.sendSessionUpdate(request.sessionId(),
+                new AcpSchema.UserMessageChunk(new AcpSchema.TextContent("replayed-user:" + request.sessionId())));
         running.sendSessionUpdate(request.sessionId(),
                 new AcpSchema.AgentMessageChunk(new AcpSchema.TextContent("replayed:" + request.sessionId())));
         return new AcpSchema.LoadSessionResponse((AcpSchema.SessionModeState) null);
@@ -136,6 +139,8 @@ public final class EchoAcpAgent {
         }
         if (text.contains("kinds")) {
             streamEveryKind(context);
+        } else if (text.contains("rich")) {
+            streamRichContent(context);
         } else if (text.contains("edit")) {
             streamEdit(context);
         } else if (text.contains("permit")) {
@@ -172,6 +177,24 @@ public final class EchoAcpAgent {
                 AcpSchema.ToolKind.EXECUTE, AcpSchema.ToolCallStatus.COMPLETED, List.of(), List.of(), null, null, Map.of()));
         context.sendSessionUpdate(new AcpSchema.Plan(List.of(
                 new AcpSchema.PlanEntry("read the notes", AcpSchema.PlanEntryPriority.HIGH, AcpSchema.PlanEntryStatus.COMPLETED))));
+    }
+
+    private static void streamRichContent(SyncPromptContext context) {
+        context.sendSessionUpdate(new AcpSchema.AgentThoughtChunk(new AcpSchema.TextContent("first ")));
+        context.sendSessionUpdate(new AcpSchema.AgentThoughtChunk(new AcpSchema.TextContent("second")));
+        context.sendSessionUpdate(new AcpSchema.UserMessageChunk(new AcpSchema.TextContent("replayed prompt")));
+        context.sendSessionUpdate(new AcpSchema.AgentMessageChunk(
+                new AcpSchema.ImageContent("image", "aW1n", "image/png", null, null, Map.of())));
+        context.sendSessionUpdate(new AcpSchema.AgentMessageChunk(new AcpSchema.ResourceLink(
+                "resource_link", "Main", "file:///src/Main.java", null, null, null, null, null, Map.of())));
+        context.sendSessionUpdate(new AcpSchema.AgentMessageChunk(new AcpSchema.Resource("resource",
+                new AcpSchema.TextResourceContents("notes", "file:///notes.txt", "text/plain"), null, Map.of())));
+        context.sendSessionUpdate(new AcpSchema.Plan(List.of(
+                new AcpSchema.PlanEntry("read the notes", AcpSchema.PlanEntryPriority.HIGH, AcpSchema.PlanEntryStatus.PENDING),
+                new AcpSchema.PlanEntry("edit the code", AcpSchema.PlanEntryPriority.MEDIUM, AcpSchema.PlanEntryStatus.IN_PROGRESS))));
+        context.sendSessionUpdate(new AcpSchema.Plan(List.of(
+                new AcpSchema.PlanEntry("read the notes", AcpSchema.PlanEntryPriority.HIGH, AcpSchema.PlanEntryStatus.COMPLETED),
+                new AcpSchema.PlanEntry("edit the code", AcpSchema.PlanEntryPriority.MEDIUM, AcpSchema.PlanEntryStatus.IN_PROGRESS))));
     }
 
     private static void streamEdit(SyncPromptContext context) {

@@ -22,6 +22,8 @@ import dev.omatheusmesmo.vintelli.api.acp.AcpChatPort.PermissionOption;
 import dev.omatheusmesmo.vintelli.api.acp.AcpChatPort.PermissionRequest;
 import dev.omatheusmesmo.vintelli.api.acp.AcpChatPort.ToolCall;
 import dev.omatheusmesmo.vintelli.api.acp.AcpChatPort.Update;
+import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
+import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import dev.tamboui.buffer.Buffer;
 import dev.tamboui.layout.Rect;
@@ -48,6 +50,7 @@ public final class AcpAgentsToolWindow implements ToolWindow {
     private static final String CHAT_GLYPH = "";
     private static final int MAX_BLOCKS = 250;
     private static final int MAX_DIFF_LINES = 80;
+    private static final int MAX_THOUGHT_LINES = 120;
     private static final int MAX_PROMPT_CHARS = 32_000;
     private static final int TAB_ROW = 0;
     private static final int TRANSCRIPT_TOP = 1;
@@ -59,14 +62,17 @@ public final class AcpAgentsToolWindow implements ToolWindow {
     private static final String ACP_PERMISSION = KeyActions.ACP_CHAT_PERMISSION;
     private static final String ACP_CLOSE = KeyActions.ACP_CHAT_CLOSE;
     private static final String ACP_SELECT_TAB = KeyActions.ACP_CHAT_SELECT_TAB;
+    private static final String ACP_THOUGHT_TOGGLE = "acp.chat.thought-toggle";
 
     private final Provider<ShellThemes> themes;
     private final AcpChatPort chat;
     private final UiWorkQueue uiWork;
+    private final IconMode iconMode;
     private final ExecutorService worker = Executors.newVirtualThreadPerTaskExecutor();
     private final List<ChatSession> sessions = new ArrayList<>();
     private final List<TabHit> renderedTabs = new ArrayList<>();
     private final List<AgentHit> renderedAgents = new ArrayList<>();
+    private final List<ThoughtHit> renderedThoughts = new ArrayList<>();
     private List<AcpChatPort.Agent> agentChoices = List.of();
     private boolean agentPickerOpen;
     private int selectedAgent;
@@ -76,6 +82,7 @@ public final class AcpAgentsToolWindow implements ToolWindow {
     private int scrollOffset;
     private int permissionChoiceIndex;
     private int actionIndex = -1;
+    private ThoughtBlock actionThought;
     private int promptRow = -1;
     private int permissionStartRow = -1;
     private List<Integer> permissionChoiceByVisibleRow = List.of();
@@ -91,9 +98,14 @@ public final class AcpAgentsToolWindow implements ToolWindow {
 
     @Inject
     public AcpAgentsToolWindow(Provider<ShellThemes> themes, AcpChatPort chat, UiWorkQueue uiWork) {
+        this(themes, chat, uiWork, FileIcons.resolve().mode());
+    }
+
+    AcpAgentsToolWindow(Provider<ShellThemes> themes, AcpChatPort chat, UiWorkQueue uiWork, IconMode iconMode) {
         this.themes = themes;
         this.chat = chat;
         this.uiWork = uiWork;
+        this.iconMode = iconMode;
     }
 
     private ShellThemes activeThemes() {
@@ -125,6 +137,10 @@ public final class AcpAgentsToolWindow implements ToolWindow {
         if (event.hasCtrl() && event.isCharIgnoreCase('n')) return ACP_NEW;
         if (event.hasCtrl() && event.isCharIgnoreCase('w')) return ACP_CLOSE;
         ChatSession active = activeSession();
+        if (event.hasCtrl() && event.isCharIgnoreCase('r') && active != null) {
+            actionThought = active.latestThought();
+            return ACP_THOUGHT_TOGGLE;
+        }
         if (active != null && active.permission != null) {
             if (Keys.is(event, KeyCode.ENTER)) {
                 actionIndex = permissionChoiceIndex;
@@ -230,6 +246,12 @@ public final class AcpAgentsToolWindow implements ToolWindow {
             if (x >= Math.max(1, lastArea.width() - 10)) return ACP_CLOSE;
             if (x >= Math.max(1, lastArea.width() - 20)) return ACP_NEW;
         }
+        for (ThoughtHit hit : renderedThoughts) {
+            if (y == hit.row()) {
+                actionThought = hit.block();
+                return ACP_THOUGHT_TOGGLE;
+            }
+        }
         if (y == promptRow && x >= Math.max(1, lastArea.width() - 12)) return ACP_SEND;
         int permissionRow = y - permissionStartRow;
         if (permissionStartRow >= 0 && permissionRow >= 0
@@ -281,6 +303,11 @@ public final class AcpAgentsToolWindow implements ToolWindow {
             choosePermission(actionIndex);
             return true;
         }
+        if (ACP_THOUGHT_TOGGLE.equals(actionId)) {
+            if (actionThought != null) actionThought.expanded = !actionThought.expanded;
+            actionThought = null;
+            return true;
+        }
         return false;
     }
 
@@ -304,6 +331,7 @@ public final class AcpAgentsToolWindow implements ToolWindow {
         lastArea = area;
         renderedTabs.clear();
         renderedAgents.clear();
+        renderedThoughts.clear();
         permissionStartRow = -1;
         permissionChoiceByVisibleRow = List.of();
         promptRow = Math.max(TRANSCRIPT_TOP, area.height() - 1);
@@ -411,13 +439,17 @@ public final class AcpAgentsToolWindow implements ToolWindow {
                 int visibleHeight = Math.min(blockHeight, height - used);
                 frame.renderWidget(view, new Rect(area.x() + CONTENT_INSET, top + used, innerWidth, visibleHeight));
                 used += blockHeight;
-            } else if (item instanceof ToolBlock tool) {
-                List<Line> lines = toolLines(tool, active);
+            } else if (item instanceof ToolBlock || item instanceof ThoughtBlock || item instanceof PlanBlock) {
+                List<Line> lines = item instanceof ToolBlock tool ? toolLines(tool, active)
+                        : item instanceof ThoughtBlock thought ? thoughtLines(thought, active)
+                        : planLines((PlanBlock) item, active);
                 int blockHeight = lines.size() + 1;
+                boolean headerShown = true;
                 if (skipped < scrollOffset) {
                     int skip = Math.min(blockHeight, scrollOffset - skipped);
                     skipped += skip;
                     if (skip == blockHeight) continue;
+                    headerShown = skip == 0;
                     lines = lines.subList(skip, lines.size());
                     blockHeight -= skip;
                 }
@@ -426,6 +458,9 @@ public final class AcpAgentsToolWindow implements ToolWindow {
                 if (visibleHeight > 0) {
                     frame.renderWidget(Paragraph.builder().text(Text.from(lines.subList(0, visibleHeight))).build(),
                             new Rect(area.x() + CONTENT_INSET, top + used, innerWidth, visibleHeight));
+                }
+                if (headerShown && visibleHeight > 0 && item instanceof ThoughtBlock thought) {
+                    renderedThoughts.add(new ThoughtHit(TRANSCRIPT_TOP + used, thought));
                 }
                 used += blockHeight;
             } else if (item instanceof NoticeBlock status) {
@@ -460,6 +495,50 @@ public final class AcpAgentsToolWindow implements ToolWindow {
             }
         }
         return lines;
+    }
+
+    private List<Line> thoughtLines(ThoughtBlock thought, ShellThemes active) {
+        boolean ascii = iconMode == IconMode.ASCII;
+        Style dim = active.resolver("tool-window").toStyle().dim();
+        List<Line> lines = new ArrayList<>();
+        String marker = thought.expanded ? (ascii ? "v " : "▾ ") : (ascii ? "> " : "▸ ");
+        lines.add(Line.styled(marker + "Thinking", dim));
+        if (!thought.expanded) return lines;
+        String[] body = thought.text.strip().split("\\R", -1);
+        int limit = Math.min(body.length, MAX_THOUGHT_LINES);
+        for (int index = 0; index < limit; index++) {
+            lines.add(Line.styled("  " + body[index], dim));
+        }
+        if (body.length > limit) {
+            lines.add(Line.styled("  … " + (body.length - limit) + " more thought lines", dim));
+        }
+        return lines;
+    }
+
+    private List<Line> planLines(PlanBlock plan, ShellThemes active) {
+        Style title = active.resolver("tool-window-title").toStyle();
+        Style body = active.resolver("tool-window").toStyle();
+        Style done = body.dim();
+        List<Line> lines = new ArrayList<>();
+        lines.add(Line.styled("Plan", title));
+        for (AcpChatPort.PlanEntry entry : plan.entries) {
+            Style style = switch (entry.status()) {
+                case "completed" -> done;
+                case "in_progress" -> title;
+                default -> body;
+            };
+            lines.add(Line.styled(planGlyph(entry.status()) + " " + entry.content(), style));
+        }
+        return lines;
+    }
+
+    private String planGlyph(String status) {
+        boolean ascii = iconMode == IconMode.ASCII;
+        return switch (status) {
+            case "completed" -> ascii ? "[x]" : "☑";
+            case "in_progress" -> ascii ? "[~]" : "◐";
+            default -> ascii ? "[ ]" : "☐";
+        };
     }
 
     private void renderPermission(Frame frame, Rect area, ChatSession session, ShellThemes active) {
@@ -722,6 +801,12 @@ public final class AcpAgentsToolWindow implements ToolWindow {
         if (session.closed) return;
         if (update instanceof AcpChatPort.Message message) {
             session.addMarkdown("Agent", message.text());
+        } else if (update instanceof AcpChatPort.UserMessage prompt) {
+            session.addMarkdown("You", prompt.text());
+        } else if (update instanceof AcpChatPort.Thought thought) {
+            session.addThought(thought.text());
+        } else if (update instanceof AcpChatPort.Plan plan) {
+            session.updatePlan(plan.entries());
         } else if (update instanceof ToolCall toolCall) {
             session.updateTool(toolCall);
         } else if (update instanceof AcpChatPort.TurnStopped stopped) {
@@ -750,6 +835,7 @@ public final class AcpAgentsToolWindow implements ToolWindow {
         private final String title;
         private final List<ChatBlock> blocks = new ArrayList<>();
         private final Map<String, ToolBlock> tools = new HashMap<>();
+        private PlanBlock plan;
         private volatile PendingPermission permission;
         private final Deque<PendingPermission> queuedPermissions = new ArrayDeque<>();
         private volatile boolean opening = true;
@@ -807,6 +893,37 @@ public final class AcpAgentsToolWindow implements ToolWindow {
             trim();
         }
 
+        private void addThought(String rawText) {
+            String text = plainText(rawText);
+            if (text.isEmpty()) return;
+            if (!blocks.isEmpty() && blocks.getLast() instanceof ThoughtBlock last) {
+                last.text += text;
+            } else {
+                blocks.add(new ThoughtBlock(text));
+            }
+            trim();
+        }
+
+        private void updatePlan(List<AcpChatPort.PlanEntry> entries) {
+            List<AcpChatPort.PlanEntry> sanitized = entries.stream()
+                    .map(entry -> new AcpChatPort.PlanEntry(plainText(entry.content()), plainText(entry.status()),
+                            plainText(entry.priority())))
+                    .toList();
+            if (plan == null) {
+                plan = new PlanBlock();
+                blocks.add(plan);
+            }
+            plan.entries = sanitized;
+            trim();
+        }
+
+        private ThoughtBlock latestThought() {
+            for (int index = blocks.size() - 1; index >= 0; index--) {
+                if (blocks.get(index) instanceof ThoughtBlock thought) return thought;
+            }
+            return null;
+        }
+
         private void addNotice(String text) {
             blocks.add(new NoticeBlock(plainText(text)));
             trim();
@@ -832,11 +949,22 @@ public final class AcpAgentsToolWindow implements ToolWindow {
             while (blocks.size() > MAX_BLOCKS) {
                 ChatBlock removed = blocks.removeFirst();
                 if (removed instanceof ToolBlock tool) tools.values().remove(tool);
+                if (removed == plan) plan = null;
             }
         }
     }
 
-    private sealed interface ChatBlock permits MarkdownBlock, ToolBlock, NoticeBlock {
+    private sealed interface ChatBlock permits MarkdownBlock, ToolBlock, NoticeBlock, ThoughtBlock, PlanBlock {
+    }
+
+    private static final class ThoughtBlock implements ChatBlock {
+        private String text;
+        private boolean expanded;
+        private ThoughtBlock(String text) { this.text = text; }
+    }
+
+    private static final class PlanBlock implements ChatBlock {
+        private List<AcpChatPort.PlanEntry> entries = List.of();
     }
 
     private static final class MarkdownBlock implements ChatBlock {
@@ -859,4 +987,5 @@ public final class AcpAgentsToolWindow implements ToolWindow {
     private record PendingPermission(PermissionRequest request, CompletableFuture<PermissionChoice> answer) { }
     private record TabHit(int index, int start, int end) { }
     private record AgentHit(int index, int row) { }
+    private record ThoughtHit(int row, ThoughtBlock block) { }
 }

@@ -25,6 +25,7 @@ import dev.omatheusmesmo.vintelli.api.acp.AcpChatPort;
 import dev.omatheusmesmo.vintelli.api.acp.AcpChatPort.PermissionChoice;
 import dev.omatheusmesmo.vintelli.api.acp.AcpChatPort.PermissionRequest;
 import dev.omatheusmesmo.vintelli.api.acp.AcpChatPort.Update;
+import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
 import dev.tamboui.buffer.Buffer;
 import dev.tamboui.layout.Size;
 import dev.tamboui.tui.event.KeyCode;
@@ -458,6 +459,155 @@ class AcpAgentsToolWindowTest {
         }
     }
 
+    @Test
+    void aThoughtRendersCollapsedAndTheToggleKeyOrAClickExpandsIt() throws Exception {
+        ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
+        UiWorkQueue uiWork = new UiWorkQueue();
+        ScriptedChat chat = new ScriptedChat(List.of(), List.of(
+                new AcpChatPort.Thought("first line\nsecond line"),
+                new AcpChatPort.Thought(" more")));
+        AcpAgentsToolWindow window = new AcpAgentsToolWindow(() -> themes, chat, uiWork, IconMode.NERD);
+        AtomicReference<Buffer> rendered = new AtomicReference<>();
+        window.observeRenderedBuffer(buffer -> rendered.set(buffer.copy()));
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window), new ShellState(), themes));
+        shell.useUiWorkQueue(uiWork);
+        Size size = new Size(120, 42);
+        try (ToolkitTestRunner test = runShell(shell, size)) {
+            Pilot pilot = test.pilot();
+            pilot.press('8', KeyModifiers.ALT);
+            pilot.press(KeyCode.ENTER);
+            assertTrue(chat.opened.await(5, TimeUnit.SECONDS));
+            pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("ACP session ready"));
+            pilot.press("go");
+            pilot.press(KeyCode.ENTER);
+            pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("▸ Thinking"));
+            assertFalse(screen(rendered).contains("second line"), "a collapsed thought must hide its body\n" + screen(rendered));
+
+            pilot.press('r', KeyModifiers.CTRL);
+            pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("second line more"));
+            assertTrue(screen(rendered).contains("▾ Thinking"), screen(rendered));
+
+            pilot.press('r', KeyModifiers.CTRL);
+            pauseUntil(pilot, rendered, size, () -> !screen(rendered).contains("second line more"));
+
+            var area = pilot.findElement("tool-acp.agents");
+            pilot.click(area.x() + 4, findRow(rendered.get(), "▸ Thinking"));
+            pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("second line more"));
+        }
+    }
+
+    @Test
+    void aSecondPlanUpdatesAnEntryStatusInPlaceAndIsShownOnce() throws Exception {
+        ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
+        UiWorkQueue uiWork = new UiWorkQueue();
+        ScriptedChat chat = new ScriptedChat(List.of(), List.of(
+                new AcpChatPort.Plan(List.of(
+                        new AcpChatPort.PlanEntry("read the notes", "pending", "high"),
+                        new AcpChatPort.PlanEntry("edit the code", "pending", "medium"))),
+                new AcpChatPort.Message("working"),
+                new AcpChatPort.Plan(List.of(
+                        new AcpChatPort.PlanEntry("read the notes", "completed", "high"),
+                        new AcpChatPort.PlanEntry("edit the code", "in_progress", "medium")))));
+        AcpAgentsToolWindow window = new AcpAgentsToolWindow(() -> themes, chat, uiWork, IconMode.NERD);
+        AtomicReference<Buffer> rendered = new AtomicReference<>();
+        window.observeRenderedBuffer(buffer -> rendered.set(buffer.copy()));
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window), new ShellState(), themes));
+        shell.useUiWorkQueue(uiWork);
+        Size size = new Size(120, 42);
+        try (ToolkitTestRunner test = runShell(shell, size)) {
+            Pilot pilot = test.pilot();
+            pilot.press('8', KeyModifiers.ALT);
+            pilot.press(KeyCode.ENTER);
+            assertTrue(chat.opened.await(5, TimeUnit.SECONDS));
+            pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("ACP session ready"));
+            pilot.press("go");
+            pilot.press(KeyCode.ENTER);
+            pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("◐ edit the code"));
+
+            String visible = screen(rendered);
+            assertTrue(visible.contains("☑ read the notes"), visible);
+            assertFalse(visible.contains("☐ read the notes"), visible);
+            assertEquals(1, occurrences(visible, "read the notes"), visible);
+            assertEquals(1, occurrences(visible, "Plan"), visible);
+        }
+    }
+
+    @Test
+    void thePlanFallsBackToAsciiMarkersInAsciiIconMode() throws Exception {
+        ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
+        UiWorkQueue uiWork = new UiWorkQueue();
+        ScriptedChat chat = new ScriptedChat(List.of(), List.of(
+                new AcpChatPort.Plan(List.of(
+                        new AcpChatPort.PlanEntry("read the notes", "completed", "high"),
+                        new AcpChatPort.PlanEntry("edit the code", "in_progress", "medium"),
+                        new AcpChatPort.PlanEntry("ship it", "pending", "low")))));
+        AcpAgentsToolWindow window = new AcpAgentsToolWindow(() -> themes, chat, uiWork, IconMode.ASCII);
+        AtomicReference<Buffer> rendered = new AtomicReference<>();
+        window.observeRenderedBuffer(buffer -> rendered.set(buffer.copy()));
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window), new ShellState(), themes));
+        shell.useUiWorkQueue(uiWork);
+        Size size = new Size(120, 42);
+        try (ToolkitTestRunner test = runShell(shell, size)) {
+            Pilot pilot = test.pilot();
+            pilot.press('8', KeyModifiers.ALT);
+            pilot.press(KeyCode.ENTER);
+            assertTrue(chat.opened.await(5, TimeUnit.SECONDS));
+            pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("ACP session ready"));
+            pilot.press("go");
+            pilot.press(KeyCode.ENTER);
+            pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("[ ] ship it"));
+
+            String visible = screen(rendered);
+            assertTrue(visible.contains("[x] read the notes"), visible);
+            assertTrue(visible.contains("[~] edit the code"), visible);
+            assertFalse(visible.contains("☑"), visible);
+        }
+    }
+
+    @Test
+    void aReplayedUserPromptRendersAsAUserPromptAndNeverMergesWithATypedOne() throws Exception {
+        ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
+        UiWorkQueue uiWork = new UiWorkQueue();
+        ScriptedChat chat = new ScriptedChat(List.of(
+                new AcpChatPort.UserMessage("earlier question"),
+                new AcpChatPort.Message("earlier answer"),
+                new AcpChatPort.UserMessage("unanswered question")), List.of());
+        AcpAgentsToolWindow window = new AcpAgentsToolWindow(() -> themes, chat, uiWork, IconMode.NERD);
+        AtomicReference<Buffer> rendered = new AtomicReference<>();
+        window.observeRenderedBuffer(buffer -> rendered.set(buffer.copy()));
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window), new ShellState(), themes));
+        shell.useUiWorkQueue(uiWork);
+        Size size = new Size(120, 42);
+        try (ToolkitTestRunner test = runShell(shell, size)) {
+            Pilot pilot = test.pilot();
+            pilot.press('8', KeyModifiers.ALT);
+            pilot.press(KeyCode.ENTER);
+            assertTrue(chat.opened.await(5, TimeUnit.SECONDS));
+            pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("You unanswered question"));
+
+            String visible = screen(rendered);
+            assertTrue(visible.contains("You earlier question"), visible);
+            assertTrue(visible.contains("Agent earlier answer"), visible);
+            assertTrue(findRow(rendered.get(), "You earlier question") < findRow(rendered.get(), "Agent earlier answer"),
+                    visible);
+
+            pilot.press('g');
+            pilot.press('o');
+            pilot.press(KeyCode.ENTER);
+            pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("You go"));
+            assertTrue(screen(rendered).contains("You unanswered question"),
+                    "a typed prompt must not merge into the unanswered replayed prompt\n" + screen(rendered));
+        }
+    }
+
+    private static int occurrences(String text, String needle) {
+        int count = 0;
+        for (int index = text.indexOf(needle); index >= 0; index = text.indexOf(needle, index + needle.length())) {
+            count++;
+        }
+        return count;
+    }
+
     private static ToolkitTestRunner runShell(VintelliShell shell, Size size) throws Exception {
         ToolkitTestRunner test = ToolkitTestRunner.runTest(shell::root, size);
         test.runner().styleEngine(shell.themes().engine());
@@ -622,6 +772,37 @@ class AcpAgentsToolWindowTest {
             closeCount++;
             closed.countDown();
         }
+    }
+
+    private static final class ScriptedChat implements AcpChatPort {
+        private final CountDownLatch opened = new CountDownLatch(1);
+        private final List<Update> replayed;
+        private final List<Update> turn;
+        private Consumer<Update> updates;
+
+        private ScriptedChat(List<Update> replayed, List<Update> turn) {
+            this.replayed = replayed;
+            this.turn = turn;
+        }
+
+        @Override public boolean isConfigured() { return true; }
+
+        @Override
+        public String openSession(Consumer<Update> updates, Function<PermissionRequest, PermissionChoice> permissionHandler) {
+            this.updates = updates;
+            replayed.forEach(updates);
+            opened.countDown();
+            return "session-1";
+        }
+
+        @Override
+        public String prompt(String sessionId, String text) {
+            turn.forEach(updates);
+            return "end_turn";
+        }
+
+        @Override public void cancel(String sessionId) { }
+        @Override public void close(String sessionId) { }
     }
 
     private static final class ParallelPermissionChat implements AcpChatPort {
