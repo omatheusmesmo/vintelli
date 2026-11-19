@@ -137,11 +137,16 @@ final class BreakpointStore {
             source.logMessages().forEach((line, value) -> properties.setProperty(prefix + ".logMessage." + line, value));
             source.hitConditions().forEach((line, value) -> properties.setProperty(prefix + ".hitCondition." + line, value));
         }
+        writeAtomically(file, properties, "Vintelli source breakpoints");
+    }
+
+    /** Replaces the file in one move, so a crash never leaves a partly written store. */
+    static void writeAtomically(Path file, Properties properties, String comment) throws IOException {
         Files.createDirectories(file.getParent());
         Path temporary = Files.createTempFile(file.getParent(), "editor-breakpoints-", ".tmp");
         try {
             try (Writer writer = Files.newBufferedWriter(temporary, StandardCharsets.UTF_8)) {
-                properties.store(writer, "Vintelli source breakpoints");
+                properties.store(writer, comment);
             }
             try {
                 Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);

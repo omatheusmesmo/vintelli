@@ -8,6 +8,7 @@ import dev.omatheusmesmo.vintelli.api.ShellUnifiedDiff;
 import dev.omatheusmesmo.vintelli.tui.ProjectTreeController.InputMode;
 import dev.omatheusmesmo.vintelli.tui.keymap.CommandPalette;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
+import dev.omatheusmesmo.vintelli.api.capability.DebugCapability;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyAction;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeymapHelpOverlay;
 import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
@@ -57,7 +58,6 @@ import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilitySelection;
 import dev.omatheusmesmo.vintelli.api.capability.ReadFileCapability;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityStatus;
-import dev.omatheusmesmo.vintelli.api.capability.DebugCapability;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Diagnostic;
 import dev.omatheusmesmo.vintelli.api.statusbar.StatusBarWidgetContributor;
 import dev.tamboui.layout.Constraint;
@@ -362,6 +362,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 projectHost());
         this.runWindow = this.toolWindows.stream().filter(RunToolWindow.class::isInstance)
                 .map(RunToolWindow.class::cast).findFirst().orElse(null);
+        if (runWindow != null) {
+            runWindow.bindStopAnnouncement(message -> status = message);
+        }
         this.toolbar = new ToolbarController(projectRoot.getFileName() == null ? projectRoot.toString()
                 : projectRoot.getFileName().toString(), runWindow, this::toolbarBranch, toolbarHost());
         this.mainToolbar = new MainToolbar(toolbar::model, MENUS, fileIcons.mode(), () -> themes);
@@ -424,11 +427,27 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         return parts;
     }
 
+    private List<KeyAction> paletteActions(Keymap keymap) {
+        if (editor == null) {
+            return keymap.actions();
+        }
+        DebugCapability.ExceptionBreakpoints exceptions = editor.exceptionBreakpoints();
+        return keymap.actions().stream().map(action -> switch (action.id()) {
+            case KeyActions.DEBUG_EXCEPTION_UNCAUGHT -> stateLabel(action, exceptions.uncaught());
+            case KeyActions.DEBUG_EXCEPTION_CAUGHT -> stateLabel(action, exceptions.caught());
+            default -> action;
+        }).toList();
+    }
+
+    private static KeyAction stateLabel(KeyAction action, boolean enabled) {
+        return new KeyAction(action.id(), action.label() + (enabled ? " (on)" : " (off)"));
+    }
+
     private KeymapParts buildOverlays() {
         Keymap keymap = keymapSupplier.get();
         ProjectSearchModel searchModel = projectSearch == null ? null : new ProjectSearchModel(projectSearch);
         ShellMenuCatalog menuCatalog = new ShellMenuCatalog(menuCatalogHost());
-        CommandPalette commandPalette = new CommandPalette(keymap.actions(), keymap);
+        CommandPalette commandPalette = new CommandPalette(() -> paletteActions(keymap), keymap);
         KeymapHelpOverlay keymapHelp = new KeymapHelpOverlay(keymap);
         MenuPopup menuPopup = new MenuPopup(MENUS, menuCatalog::entries, keymap::describeBindings,
                 MainToolbar.MENU_ORIGIN);
@@ -1009,6 +1028,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             @Override
             public void status(String message) {
                 status = message;
+            }
+
+            @Override
+            public void deliverToRenderThread(Runnable update) {
+                VintelliShell.this.deliverToRenderThread(update);
             }
 
             @Override
@@ -2422,6 +2446,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 || KeyActions.DEBUG_RESUME.equals(actionId) || KeyActions.DEBUG_PAUSE.equals(actionId)
                 || KeyActions.DEBUG_STEP_OVER.equals(actionId) || KeyActions.DEBUG_STEP_INTO.equals(actionId)
                 || KeyActions.DEBUG_STEP_OUT.equals(actionId) || KeyActions.DEBUG_SET_VALUE.equals(actionId)
+                || KeyActions.DEBUG_EXCEPTION_UNCAUGHT.equals(actionId)
+                || KeyActions.DEBUG_EXCEPTION_CAUGHT.equals(actionId)
                 || KeyActions.MAVEN_ACTIVATE.equals(actionId) || KeyActions.TERMINAL_EXECUTE.equals(actionId)
                 || KeyActions.ACP_CHAT_NEW.equals(actionId) || KeyActions.ACP_CHAT_SEND.equals(actionId)
                 || KeyActions.ACP_CHAT_CANCEL.equals(actionId) || KeyActions.ACP_CHAT_PERMISSION.equals(actionId)

@@ -14,6 +14,7 @@ import dev.tamboui.widgets.paragraph.Paragraph;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 /**
  * IntelliJ-like Find Action overlay: Search Everywhere reachable through the
@@ -43,6 +44,12 @@ public final class CommandPalette {
     private final CommandPaletteController controller;
 
     public CommandPalette(List<KeyAction> actions, Keymap keymap) {
+        this.controller = new CommandPaletteController(actions);
+        this.keymap = keymap;
+    }
+
+    /** The actions are read again each time the palette opens, so a label can show the current state of a toggle. */
+    public CommandPalette(Supplier<List<KeyAction>> actions, Keymap keymap) {
         this.controller = new CommandPaletteController(actions);
         this.keymap = keymap;
     }

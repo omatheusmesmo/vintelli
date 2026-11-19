@@ -695,6 +695,8 @@ adding it to that test on purpose.
 | debug.step-into | - | F7 | different | Step Into is F7 in IntelliJ; F7 is New Project File in the project pane |
 | debug.step-out | - | Shift+F8 | different | Step Out is Shift+F8 in IntelliJ; unbound here, the debugger work decides |
 | debug.set-value | - | F2 | different | Set Value is F2 in IntelliJ; F2 sets the value only while the Debug window holds the keyboard (a window key like e for Evaluate), because the keymap keeps F2 on Next Problem, so the palette runs the action |
+| debug.exception-uncaught | - | - | vintelli-only | Toggles breaking on uncaught exceptions; IntelliJ manages exception breakpoints from its Breakpoints dialog, so no chord is bound here |
+| debug.exception-caught | - | - | vintelli-only | Toggles breaking on caught exceptions; IntelliJ manages exception breakpoints from its Breakpoints dialog, so no chord is bound here |
 | terminal.execute | - | - | vintelli-only | Runs the typed command in the terminal window; IntelliJ has no chord for it |
 | problems.navigate | - | - | vintelli-only | Opens the selected problem; no IntelliJ chord confirmed on the reference page for the Problems window |
 | problems.refresh | - | - | vintelli-only | Refreshes the problems; no IntelliJ chord confirmed on the reference page for the Problems window |
@@ -726,3 +728,12 @@ the table above.
 
 `run.debug` (**Debug Selected Configuration**) starts a supported selected run
 configuration waiting for an external debugger; it is available in the palette.
+
+`debug.exception-uncaught` (**Break on Uncaught Exceptions**) and
+`debug.exception-caught` (**Break on Caught Exceptions**) toggle which
+exceptions suspend a debug session; the palette rows show `(on)` or `(off)`, and
+the Debug tool window toggles them with `u` and `c`. The choice is stored per
+project beside the source breakpoints, uncaught exceptions are on by default,
+and a filter the debug adapter does not advertise is reported in the status
+line instead of being sent. When the debuggee stops on an exception, the Debug
+tool window and the status line show `Exception: <class>: <message>`.

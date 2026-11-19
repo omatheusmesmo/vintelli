@@ -26,6 +26,7 @@ import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugSession;
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugSessionSnapshot;
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.EvaluationRequest;
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.EvaluationResult;
+import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.style.Style;
@@ -49,6 +50,7 @@ public final class DebugToolWindow implements ToolWindow {
     private final Provider<ShellThemes> themes;
     private final RunToolWindow run;
     private final UiWorkQueue uiWork;
+    private final BuiltinEditor editor;
     private final ThreadPoolExecutor requests = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS,
             new ArrayBlockingQueue<>(8), Thread.ofVirtual().factory(), new ThreadPoolExecutor.DiscardOldestPolicy());
     private final AtomicLong generation = new AtomicLong();
@@ -71,9 +73,13 @@ public final class DebugToolWindow implements ToolWindow {
     private final DebugValuePrompt setValue = new DebugValuePrompt();
     private int setValueParent;
 
-    @Inject
     public DebugToolWindow(Provider<ShellThemes> themes, RunToolWindow run, UiWorkQueue uiWork) {
-        this.themes = themes; this.run = run; this.uiWork = uiWork;
+        this(themes, run, uiWork, null);
+    }
+
+    @Inject
+    public DebugToolWindow(Provider<ShellThemes> themes, RunToolWindow run, UiWorkQueue uiWork, BuiltinEditor editor) {
+        this.themes = themes; this.run = run; this.uiWork = uiWork; this.editor = editor;
     }
 
     @Override public String id() { return "debug"; }
@@ -107,6 +113,8 @@ public final class DebugToolWindow implements ToolWindow {
         if (evaluation.active()) { handleEvaluationKey(event); return true; }
         if (isSetValueKey(event)) { startSetValue(); return true; }
         if (event.isCharIgnoreCase('e')) { startEvaluation(); return true; }
+        if (event.isCharIgnoreCase('u')) { toggleExceptionBreakpoint(false); return true; }
+        if (event.isCharIgnoreCase('c')) { toggleExceptionBreakpoint(true); return true; }
         List<String> rows = renderModel(Rect.ZERO).rows();
         if (Keys.is(event, KeyCode.UP) || event.isCharIgnoreCase('k')) { selection = Math.max(0, selection - 1); return true; }
         if (Keys.is(event, KeyCode.DOWN) || event.isCharIgnoreCase('j')) { selection = Math.min(Math.max(0, rows.size()-1), selection + 1); return true; }
@@ -216,6 +224,18 @@ public final class DebugToolWindow implements ToolWindow {
             }
         }
         return CapabilityResult.ok(loaded);
+    }
+
+    private void toggleExceptionBreakpoint(boolean caught) {
+        if (editor == null) { status = "Exception breakpoints need the built-in editor"; return; }
+        status = editor.toggleExceptionBreakpoint(caught, message -> uiWork.execute(() -> status = message));
+    }
+
+    private String exceptionBreakpointsLine() {
+        if (editor == null) return "";
+        DebugCapability.ExceptionBreakpoints exceptions = editor.exceptionBreakpoints();
+        return "Break on exceptions: uncaught " + (exceptions.uncaught() ? "on" : "off")
+                + ", caught " + (exceptions.caught() ? "on" : "off") + "  (u uncaught, c caught)";
     }
 
     private void startEvaluation() {
@@ -478,7 +498,12 @@ public final class DebugToolWindow implements ToolWindow {
         if (session != null) {
             lines.add("Session: " + snapshot.configurationName() + "  State: " + snapshot.state());
             if (!snapshot.stoppedReason().isBlank()) lines.add("Reason: " + snapshot.stoppedReason());
+            if (snapshot.state() == DebugCapability.State.STOPPED) {
+                session.exceptionStop().ifPresent(stop -> lines.add(stop.summary()));
+            }
         }
+        String exceptionBreakpoints = exceptionBreakpointsLine();
+        if (!exceptionBreakpoints.isEmpty()) lines.add(exceptionBreakpoints);
         lines.add("Threads");
         List<DebugThread> visibleThreads = inspectable ? threads : List.of();
         List<DebugFrame> visibleFrames = inspectable ? frames : List.of();

@@ -20,6 +20,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.eclipse.lsp4j.debug.Capabilities;
 import org.eclipse.lsp4j.debug.EvaluateArguments;
 import org.eclipse.lsp4j.debug.EvaluateResponse;
+import org.eclipse.lsp4j.debug.ExceptionBreakpointsFilter;
+import org.eclipse.lsp4j.debug.ExceptionDetails;
+import org.eclipse.lsp4j.debug.ExceptionInfoArguments;
+import org.eclipse.lsp4j.debug.ExceptionInfoResponse;
+import org.eclipse.lsp4j.debug.SetExceptionBreakpointsArguments;
+import org.eclipse.lsp4j.debug.SetExceptionBreakpointsResponse;
 import org.eclipse.lsp4j.debug.ConfigurationDoneArguments;
 import org.eclipse.lsp4j.debug.ContinueArguments;
 import org.eclipse.lsp4j.debug.ContinueResponse;
@@ -77,6 +83,9 @@ final class DapTwin implements AutoCloseable {
     private volatile List<String> breakpointConditions = List.of();
     private volatile List<String> breakpointLogMessages = List.of();
     private volatile List<String> breakpointHitConditions = List.of();
+    private final List<ExceptionRequest> exceptionRequests = new CopyOnWriteArrayList<>();
+    private final CountDownLatch initializeRequested = new CountDownLatch(1);
+    private final CompletableFuture<Void> initializeReleased = new CompletableFuture<>();
 
     DapTwin(Mode mode) throws IOException {
         this.mode = mode;
@@ -102,6 +111,20 @@ final class DapTwin implements AutoCloseable {
     List<String> assignments() { return List.copyOf(assignments); }
     List<String> breakpointLogMessages() { return breakpointLogMessages; }
     List<String> breakpointHitConditions() { return breakpointHitConditions; }
+    List<ExceptionRequest> exceptionRequests() { return List.copyOf(exceptionRequests); }
+
+    void awaitInitializeRequest() {
+        try {
+            if (!initializeRequested.await(2, TimeUnit.SECONDS)) {
+                throw new AssertionError("DAP client did not send initialize");
+            }
+        } catch (InterruptedException interrupted) {
+            java.lang.Thread.currentThread().interrupt();
+            throw new AssertionError("Interrupted waiting for DAP initialize", interrupted);
+        }
+    }
+
+    void releaseInitialize() { initializeReleased.complete(null); }
     int stackTraceCalls() { return stackTraceCalls.get(); }
     void releaseStaleStackTrace() { connections.forEach(Connection::releaseStaleStackTrace); }
 
@@ -167,7 +190,32 @@ final class DapTwin implements AutoCloseable {
         EVALUATE_NO_RESPONSE,
         EVALUATE_HOLD,
         SET_VARIABLE_UNSUPPORTED,
-        SET_VARIABLE_HOLD
+        SET_VARIABLE_HOLD,
+        EXCEPTIONS,
+        EXCEPTIONS_UNCAUGHT_ONLY,
+        EXCEPTIONS_WITHOUT_INFO,
+        HOLD_INITIALIZE
+    }
+
+    record ExceptionRequest(List<String> filters, boolean afterConfigurationDone) { }
+
+    private boolean stopsOnException() {
+        return mode == Mode.EXCEPTIONS || mode == Mode.EXCEPTIONS_WITHOUT_INFO;
+    }
+
+    private boolean advertisesCaughtFilter() {
+        return mode == Mode.EXCEPTIONS || mode == Mode.EXCEPTIONS_WITHOUT_INFO || mode == Mode.HOLD_INITIALIZE;
+    }
+
+    private boolean advertisesExceptionFilters() {
+        return advertisesCaughtFilter() || mode == Mode.EXCEPTIONS_UNCAUGHT_ONLY;
+    }
+
+    private static ExceptionBreakpointsFilter filter(String name) {
+        ExceptionBreakpointsFilter filter = new ExceptionBreakpointsFilter();
+        filter.setFilter(name);
+        filter.setLabel(name);
+        return filter;
     }
 
     static EvaluateResponse evaluateResponse(String result, String type) {
@@ -342,6 +390,16 @@ final class DapTwin implements AutoCloseable {
                 capabilities.setSupportsSetVariable(mode != Mode.SET_VARIABLE_UNSUPPORTED);
                 capabilities.setSupportsLogPoints(mode != Mode.UNSUPPORTED_LOGPOINTS_AND_HIT_COUNTS);
                 capabilities.setSupportsHitConditionalBreakpoints(mode != Mode.UNSUPPORTED_LOGPOINTS_AND_HIT_COUNTS);
+                if (advertisesExceptionFilters()) {
+                    capabilities.setExceptionBreakpointFilters(advertisesCaughtFilter()
+                            ? new ExceptionBreakpointsFilter[] { filter("uncaught"), filter("caught") }
+                            : new ExceptionBreakpointsFilter[] { filter("uncaught") });
+                }
+                capabilities.setSupportsExceptionInfoRequest(mode == Mode.EXCEPTIONS);
+                if (mode == Mode.HOLD_INITIALIZE) {
+                    initializeRequested.countDown();
+                    return initializeReleased.thenApply(ignored -> capabilities);
+                }
                 return CompletableFuture.completedFuture(capabilities);
             }
 
@@ -569,6 +627,25 @@ final class DapTwin implements AutoCloseable {
             }
 
             @Override
+            public CompletableFuture<SetExceptionBreakpointsResponse> setExceptionBreakpoints(
+                    SetExceptionBreakpointsArguments arguments) {
+                exceptionRequests.add(new ExceptionRequest(List.of(arguments.getFilters()), configurationDone));
+                return CompletableFuture.completedFuture(new SetExceptionBreakpointsResponse());
+            }
+
+            @Override
+            public CompletableFuture<ExceptionInfoResponse> exceptionInfo(ExceptionInfoArguments arguments) {
+                ExceptionDetails details = new ExceptionDetails();
+                details.setFullTypeName("java.lang.IllegalStateException");
+                details.setMessage("boom");
+                ExceptionInfoResponse response = new ExceptionInfoResponse();
+                response.setExceptionId("java.lang.IllegalStateException");
+                response.setDescription("boom");
+                response.setDetails(details);
+                return CompletableFuture.completedFuture(response);
+            }
+
+            @Override
             public CompletableFuture<Void> disconnect(DisconnectArguments arguments) {
                 terminateDebuggee = Boolean.TRUE.equals(arguments.getTerminateDebuggee());
                 disconnectReceived.countDown();
@@ -582,7 +659,10 @@ final class DapTwin implements AutoCloseable {
                 IDebugProtocolClient remote = client;
                 if (remote != null) {
                     StoppedEventArguments stopped = new StoppedEventArguments();
-                    stopped.setReason("breakpoint");
+                    stopped.setReason(stopsOnException() ? "exception" : "breakpoint");
+                    if (mode == Mode.EXCEPTIONS_WITHOUT_INFO) {
+                        stopped.setDescription("java.lang.IllegalStateException: boom");
+                    }
                     stopped.setThreadId(1);
                     remote.stopped(stopped);
                 }

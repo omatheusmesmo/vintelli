@@ -14,7 +14,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -48,6 +50,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -928,6 +931,7 @@ class JavaDebugCapabilityTest {
     void logpointOutputReachesTheConsolePrefixedWithItsLocationAndOtherOutputIsUntouched() throws Exception {
         try (DapTwin twin = new DapTwin(DapTwin.Mode.NORMAL)) {
             JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            ok(capability.setExceptionBreakpoints(new DebugCapability.ExceptionBreakpoints(false, false)));
             List<String> console = new CopyOnWriteArrayList<>();
             DebugCapability.DebugSession session = ok(capability.attach(
                     new DebugCapability.AttachRequest(5005, "logpoint output"), console::add));
@@ -951,6 +955,162 @@ class JavaDebugCapabilityTest {
     private static DebugCapability.SourceBreakpoint hitCounted(int line, String hitCondition) {
         return new DebugCapability.SourceBreakpoint("/project/Main.java", line,
                 DebugCapability.BreakpointState.PENDING, "", null, "/project/Main.java", "", "", hitCondition);
+    }
+
+    @Test
+    void attachSendsTheDefaultUncaughtFilterBeforeConfigurationDone() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.EXCEPTIONS)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "defaults"), ignored -> { }));
+
+            assertEquals(List.of(new DapTwin.ExceptionRequest(List.of("uncaught"), false)), twin.exceptionRequests());
+            session.disconnect();
+        }
+    }
+
+    @Test
+    void launchSendsTheStoredExceptionChoiceBeforeConfigurationDone() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.EXCEPTIONS)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            assertEquals(new DebugCapability.ExceptionBreakpoints(false, true),
+                    ok(capability.setExceptionBreakpoints(new DebugCapability.ExceptionBreakpoints(false, true))));
+            assertTrue(twin.exceptionRequests().isEmpty(), "no session is live, so nothing is sent yet");
+
+            DebugCapability.DebugSession session = ok(capability.launch(
+                    new DebugCapability.DebugRequest(request(), "stored"), ignored -> { }));
+
+            assertEquals(List.of(new DapTwin.ExceptionRequest(List.of("caught"), false)), twin.exceptionRequests());
+            session.disconnect();
+        }
+    }
+
+    @Test
+    void anUnadvertisedExceptionFilterIsReportedAndNeverSent() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.EXCEPTIONS_UNCAUGHT_ONLY)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            ok(capability.setExceptionBreakpoints(new DebugCapability.ExceptionBreakpoints(true, true)));
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "uncaught only"), ignored -> { }));
+
+            assertEquals(List.of(new DapTwin.ExceptionRequest(List.of("uncaught"), false)), twin.exceptionRequests());
+            assertEquals(new DebugCapability.ExceptionBreakpoints(true, false),
+                    ok(capability.setExceptionBreakpoints(new DebugCapability.ExceptionBreakpoints(true, true))),
+                    "the caught filter is missing from the applied choice");
+            assertEquals(List.of("uncaught"), twin.exceptionRequests().getLast().filters());
+            session.disconnect();
+        }
+    }
+
+    @Test
+    void changingTheExceptionChoiceDuringASessionSendsTheNewFilters() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.EXCEPTIONS)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "toggle"), ignored -> { }));
+
+            assertEquals(new DebugCapability.ExceptionBreakpoints(false, true),
+                    ok(capability.setExceptionBreakpoints(new DebugCapability.ExceptionBreakpoints(false, true))));
+
+            assertEquals(new DapTwin.ExceptionRequest(List.of("caught"), true), twin.exceptionRequests().getLast());
+            session.disconnect();
+        }
+    }
+
+    @Test
+    void anAdapterWithoutExceptionFiltersReceivesNoExceptionRequest() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.NORMAL)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "no filters"), ignored -> { }));
+
+            assertEquals(new DebugCapability.ExceptionBreakpoints(false, false),
+                    ok(capability.setExceptionBreakpoints(new DebugCapability.ExceptionBreakpoints(true, true))));
+            assertTrue(twin.exceptionRequests().isEmpty());
+            session.disconnect();
+        }
+    }
+
+    @Test
+    void aToggleBeforeTheInitializeAnswerIsNotReportedAndIsSentOnConfiguration() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.HOLD_INITIALIZE)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            CompletableFuture<DebugCapability.DebugSession> attaching = CompletableFuture.supplyAsync(() ->
+                    ok(capability.attach(new DebugCapability.AttachRequest(5005, "pending"), ignored -> { })));
+            twin.awaitInitializeRequest();
+
+            assertEquals(new DebugCapability.ExceptionBreakpoints(true, true),
+                    ok(capability.setExceptionBreakpoints(new DebugCapability.ExceptionBreakpoints(true, true))),
+                    "the adapter has not answered initialize, so no filter is reported as unsupported");
+            assertTrue(twin.exceptionRequests().isEmpty(), "a pending session is not sent the choice yet");
+
+            twin.releaseInitialize();
+            DebugCapability.DebugSession session = get(attaching);
+            assertEquals(List.of(new DapTwin.ExceptionRequest(List.of("uncaught", "caught"), false)),
+                    twin.exceptionRequests());
+            session.disconnect();
+        }
+    }
+
+    @Test
+    void aStoredFilterTheAdapterLacksIsReportedOnceOnAttach() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.EXCEPTIONS_UNCAUGHT_ONLY)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            ok(capability.setExceptionBreakpoints(new DebugCapability.ExceptionBreakpoints(true, true)));
+            BlockingQueue<String> outputLines = new LinkedBlockingQueue<>();
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "stored"), outputLines::add));
+
+            assertEquals(List.of(new DapTwin.ExceptionRequest(List.of("uncaught"), false)), twin.exceptionRequests());
+            assertEquals("The debug adapter does not support breaking on caught exceptions",
+                    outputLines.poll(5, TimeUnit.SECONDS));
+            assertNull(outputLines.poll(200, TimeUnit.MILLISECONDS), "the unsupported filter is reported once");
+            session.disconnect();
+        }
+    }
+
+    @Test
+    void anExceptionStopShowsTheClassAndMessageFromExceptionInfo() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.EXCEPTIONS)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "exception"), ignored -> { }));
+
+            assertEquals("exception", session.snapshot().stoppedReason());
+            DebugCapability.ExceptionStop stop = session.exceptionStop().orElseThrow();
+            assertEquals(new DebugCapability.ExceptionStop("java.lang.IllegalStateException", "boom"), stop);
+            assertEquals("Exception: java.lang.IllegalStateException: boom", stop.summary());
+
+            ok(session.resume());
+            assertTrue(session.exceptionStop().isEmpty(), "a running session is not on an exception");
+            session.disconnect();
+        }
+    }
+
+    @Test
+    void anExceptionStopFallsBackToTheEventDescriptionWithoutExceptionInfo() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.EXCEPTIONS_WITHOUT_INFO)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "exception"), ignored -> { }));
+
+            assertEquals("Exception: java.lang.IllegalStateException: boom",
+                    session.exceptionStop().orElseThrow().summary());
+            session.disconnect();
+        }
+    }
+
+    @Test
+    void aBreakpointStopIsNotAnExceptionStop() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.NORMAL)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "breakpoint"), ignored -> { }));
+
+            assertEquals("breakpoint", session.snapshot().stoppedReason());
+            assertTrue(session.exceptionStop().isEmpty());
+            session.disconnect();
+        }
     }
 
     private static DebugCapability.SourceBreakpoint conditional(int line, String condition) {

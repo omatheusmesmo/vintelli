@@ -303,6 +303,45 @@ class RunToolWindowTest {
     }
 
     @Test
+    void debuggingSendsTheStoredExceptionChoiceAndAnExceptionStopReachesTheStatusAndTheDebugWindow() throws Exception {
+        ShellThemes themes = themes();
+        UiWorkQueue uiWork = new UiWorkQueue();
+        FakeRunProvider runProvider = new FakeRunProvider();
+        FakeDebugProvider debugProvider = new FakeDebugProvider();
+        debugProvider.exceptionStop = Optional.of(
+                new DebugCapability.ExceptionStop("java.lang.IllegalStateException", "boom"));
+        FakeRegistry registry = new FakeRegistry(runProvider);
+        registry.debugProvider = debugProvider;
+        FakeEditorBridge editorProvider = new FakeEditorBridge();
+        editorProvider.exceptionChoice = new DebugCapability.ExceptionBreakpoints(false, true);
+        registry.editorProvider = editorProvider;
+        RunToolWindow run = new RunToolWindow(() -> themes, registry, uiWork, ".");
+        List<String> announcements = new ArrayList<>();
+        run.bindStopAnnouncement(announcements::add);
+        run.refreshConfigurations();
+        assertTrue(runProvider.listed.await(5, TimeUnit.SECONDS));
+        awaitUi(uiWork, () -> run.configurations().size() == 2);
+
+        assertTrue(run.performAction(KeyActions.RUN_DEBUG));
+        assertTrue(runProvider.started.await(5, TimeUnit.SECONDS));
+        awaitUi(uiWork, () -> run.debugging());
+        awaitUi(uiWork, () -> !announcements.isEmpty());
+
+        assertEquals(new DebugCapability.ExceptionBreakpoints(false, true), debugProvider.exceptionRequest.get(),
+                "the stored choice reaches the debug provider before the session attaches");
+        assertEquals(List.of("Exception: java.lang.IllegalStateException: boom"), announcements);
+        assertEquals("Exception: java.lang.IllegalStateException: boom", run.statusMessage());
+
+        DebugToolWindow debug = new DebugToolWindow(() -> themes, run, uiWork);
+        Buffer buffer = Buffer.empty(Rect.of(100, 20));
+        debug.render(Frame.forTesting(buffer), Rect.of(100, 20));
+        assertTrue(bufferText(buffer).contains("Exception: java.lang.IllegalStateException: boom"),
+                bufferText(buffer));
+        assertTrue(run.performAction(KeyActions.RUN_STOP));
+        assertTrue(debugProvider.disconnected.await(5, TimeUnit.SECONDS));
+    }
+
+    @Test
     void debugToolbarReportsAnUnavailableDebugProviderBeforeStartingTheProcess() throws Exception {
         ShellThemes themes = themes();
         UiWorkQueue uiWork = new UiWorkQueue();
@@ -774,6 +813,14 @@ class RunToolWindowTest {
         private final java.util.concurrent.atomic.AtomicBoolean pauseFirstScopes = new java.util.concurrent.atomic.AtomicBoolean(true);
         private final java.util.concurrent.atomic.AtomicBoolean firstSync = new java.util.concurrent.atomic.AtomicBoolean(true);
         private volatile Runnable beforeFirstSync = () -> { };
+        private final AtomicReference<DebugCapability.ExceptionBreakpoints> exceptionRequest = new AtomicReference<>();
+        private volatile Optional<DebugCapability.ExceptionStop> exceptionStop = Optional.empty();
+
+        @Override public CapabilityResult<DebugCapability.ExceptionBreakpoints> setExceptionBreakpoints(
+                DebugCapability.ExceptionBreakpoints breakpoints) {
+            exceptionRequest.set(breakpoints);
+            return CapabilityResult.ok(breakpoints);
+        }
 
         @Override public String identifier() { return "fake-dap"; }
         @Override public ProviderHealth health() { return ProviderHealth.available(); }
@@ -795,6 +842,7 @@ class RunToolWindowTest {
                             new DebugCapabilities(true, true, true, true, true));
                 }
                 @Override public long inspectionGeneration() { return inspectionGeneration.get(); }
+                @Override public Optional<DebugCapability.ExceptionStop> exceptionStop() { return exceptionStop; }
                 @Override public CapabilityResult<List<DebugThread>> threads() {
                     inspectionCalls.incrementAndGet();
                     return CapabilityResult.ok(List.of(new DebugThread(1, "main")));
@@ -859,6 +907,9 @@ class RunToolWindowTest {
                 java.util.Map.of(Path.of("/project/Main.java"), List.of(
                         new DebugCapability.SourceBreakpoint("/project/Main.java", 4)));
 
+        private volatile DebugCapability.ExceptionBreakpoints exceptionChoice = DebugCapability.ExceptionBreakpoints.DEFAULT;
+
+        @Override public DebugCapability.ExceptionBreakpoints exceptionBreakpoints() { return exceptionChoice; }
         @Override public String identifier() { return "fake-editor"; }
         @Override public ProviderHealth health() { return ProviderHealth.available(); }
         @Override public String provenance() { return "fake editor"; }

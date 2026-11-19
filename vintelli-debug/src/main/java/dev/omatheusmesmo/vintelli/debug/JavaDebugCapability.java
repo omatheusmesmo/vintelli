@@ -42,6 +42,11 @@ import java.util.stream.Collectors;
 import org.eclipse.lsp4j.debug.Capabilities;
 import org.eclipse.lsp4j.debug.ConfigurationDoneArguments;
 import org.eclipse.lsp4j.debug.EvaluateArguments;
+import org.eclipse.lsp4j.debug.ExceptionBreakpointsFilter;
+import org.eclipse.lsp4j.debug.ExceptionDetails;
+import org.eclipse.lsp4j.debug.ExceptionInfoArguments;
+import org.eclipse.lsp4j.debug.ExceptionInfoResponse;
+import org.eclipse.lsp4j.debug.SetExceptionBreakpointsArguments;
 import org.eclipse.lsp4j.debug.EvaluateResponse;
 import org.eclipse.lsp4j.debug.ContinuedEventArguments;
 import org.eclipse.lsp4j.debug.DisconnectArguments;
@@ -91,6 +96,8 @@ import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugThread;
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugFrame;
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugCapabilities;
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.EvaluationRequest;
+import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.ExceptionBreakpoints;
+import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.ExceptionStop;
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.EvaluationResult;
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.State;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
@@ -119,6 +126,8 @@ public final class JavaDebugCapability implements DebugCapability {
     private static final int OUTPUT_QUEUE_CAPACITY = 256;
     private static final int MAX_EVALUATION_VALUE_CHARS = 1000;
     private static final int MAX_EVALUATION_TYPE_CHARS = 200;
+    private static final String UNCAUGHT_FILTER = "uncaught";
+    private static final String CAUGHT_FILTER = "caught";
     private static final String CONDITIONS_UNSUPPORTED = "Conditional breakpoints are not supported by this adapter";
     private static final String LOGPOINTS_UNSUPPORTED = "Logpoints are not supported by this adapter";
     private static final String HIT_CONDITIONS_UNSUPPORTED = "Hit counts on breakpoints are not supported by this adapter";
@@ -135,6 +144,8 @@ public final class JavaDebugCapability implements DebugCapability {
     private final ConcurrentHashMap<String, Object> sourceBreakpointLocks = new ConcurrentHashMap<>();
     private final Set<String> knownBreakpointSources = ConcurrentHashMap.newKeySet();
     private final Object breakpointSetsLock = new Object();
+    private final Object exceptionBreakpointsLock = new Object();
+    private volatile ExceptionBreakpoints exceptionBreakpoints = ExceptionBreakpoints.DEFAULT;
     private final Object lifecycleLock = new Object();
     private boolean closing;
 
@@ -318,6 +329,28 @@ public final class JavaDebugCapability implements DebugCapability {
         }
     }
 
+    @Override
+    public CapabilityResult<ExceptionBreakpoints> setExceptionBreakpoints(ExceptionBreakpoints requested) {
+        if (requested == null) {
+            return CapabilityResult.failed(new CapabilityFailure("Exception breakpoints are required", ""));
+        }
+        synchronized (exceptionBreakpointsLock) {
+            exceptionBreakpoints = requested;
+            ExceptionBreakpoints applied = requested;
+            for (DapSession session : sessions.values().stream().filter(value -> !value.isTerminal())
+                    .sorted(Comparator.comparing(value -> value.id)).toList()) {
+                CapabilityResult<ExceptionBreakpoints> sent = session.applyExceptionBreakpoints(requested);
+                if (sent instanceof CapabilityResult.Failed<ExceptionBreakpoints> failed) {
+                    return CapabilityResult.failed(failed.failure());
+                }
+                ExceptionBreakpoints sessionApplied = ((CapabilityResult.Ok<ExceptionBreakpoints>) sent).value();
+                applied = new ExceptionBreakpoints(applied.uncaught() && sessionApplied.uncaught(),
+                        applied.caught() && sessionApplied.caught());
+            }
+            return CapabilityResult.ok(applied);
+        }
+    }
+
     private CapabilityResult<List<DebugCapability.SourceBreakpoint>> applyBreakpointsToLiveSessions(String sourcePath,
             List<DebugCapability.SourceBreakpoint> requested) {
         Map<Integer, List<DebugCapability.SourceBreakpoint>> observations = new TreeMap<>();
@@ -488,6 +521,9 @@ public final class JavaDebugCapability implements DebugCapability {
         private volatile boolean setVariableSupported;
         private volatile boolean logPoints;
         private volatile boolean hitConditionalBreakpoints;
+        private volatile Set<String> exceptionFilters;
+        private volatile boolean exceptionInfoSupported;
+        private volatile ExceptionStop currentExceptionStop;
         private final AtomicBoolean executionRequestPending = new AtomicBoolean();
         private long stopGeneration;
         private PendingExecution pendingExecution;
@@ -560,6 +596,10 @@ public final class JavaDebugCapability implements DebugCapability {
             setVariableSupported = Boolean.TRUE.equals(capabilities.getSupportsSetVariable());
             logPoints = Boolean.TRUE.equals(capabilities.getSupportsLogPoints());
             hitConditionalBreakpoints = Boolean.TRUE.equals(capabilities.getSupportsHitConditionalBreakpoints());
+            exceptionInfoSupported = Boolean.TRUE.equals(capabilities.getSupportsExceptionInfoRequest());
+            ExceptionBreakpointsFilter[] advertised = capabilities.getExceptionBreakpointFilters();
+            exceptionFilters = advertised == null ? Set.of() : Arrays.stream(advertised).filter(Objects::nonNull)
+                    .map(ExceptionBreakpointsFilter::getFilter).filter(Objects::nonNull).collect(Collectors.toSet());
             if (isTerminal()) {
                 throw new IOException("The debug adapter ended during initialization");
             }
@@ -614,6 +654,7 @@ public final class JavaDebugCapability implements DebugCapability {
                 return false;
             }
             replayBreakpoints(this);
+            sendExceptionBreakpoints();
             protocol.configurationDone(new ConfigurationDoneArguments())
                     .get(requestTimeout.toMillis(), TimeUnit.MILLISECONDS);
             long remaining = deadline - System.nanoTime();
@@ -678,16 +719,22 @@ public final class JavaDebugCapability implements DebugCapability {
                 generation = ++stopGeneration;
                 stopPublication = published;
             }
-            topFrame(threadId).whenComplete((frame, failure) -> {
+            CompletableFuture<ExceptionStop> exception = "exception".equals(reason)
+                    ? exceptionDetails(event, threadId) : CompletableFuture.completedFuture(null);
+            topFrame(threadId).thenCombine(exception, StopDetails::new).whenComplete((details, failure) -> {
                 try {
-                    publishStopped(reason, threadId, frame, generation);
+                    publishStopped(reason, threadId, details == null ? null : details.frame(),
+                            details == null ? null : details.exception(), generation);
                 } finally {
                     published.complete(null);
                 }
             });
         }
 
-        private void publishStopped(String reason, int threadId, DebugFrame frame, long generation) {
+        private record StopDetails(DebugFrame frame, ExceptionStop exception) { }
+
+        private void publishStopped(String reason, int threadId, DebugFrame frame, ExceptionStop exception,
+                long generation) {
             synchronized (this) {
                 if (terminal || stopGeneration != generation) {
                     return;
@@ -698,9 +745,72 @@ public final class JavaDebugCapability implements DebugCapability {
                 String stateReason = stoppedState == State.EXECUTING
                         ? "Waiting for the requested debugger event" : "";
                 DebugFrame publishedFrame = stoppedState == State.STOPPED ? frame : null;
+                currentExceptionStop = stoppedState == State.STOPPED ? exception : null;
                 update(snapshot -> new DebugSessionSnapshot(id, label, stoppedState, snapshot.threads(), stateReason, reason,
                         threadId, publishedFrame, debugCapabilities));
                 if (matching) completePendingExecution(State.STOPPED, threadId);
+            }
+        }
+
+        private CompletableFuture<ExceptionStop> exceptionDetails(StoppedEventArguments event, int threadId) {
+            String description = event.getDescription() == null || event.getDescription().isBlank()
+                    ? event.getText() : event.getDescription();
+            ExceptionStop fallback = new ExceptionStop("", description);
+            IDebugProtocolServer protocol = server;
+            if (protocol == null || !exceptionInfoSupported || threadId <= 0) {
+                return CompletableFuture.completedFuture(fallback);
+            }
+            ExceptionInfoArguments arguments = new ExceptionInfoArguments();
+            arguments.setThreadId(threadId);
+            return protocol.exceptionInfo(arguments).orTimeout(requestTimeout.toMillis(), TimeUnit.MILLISECONDS)
+                    .handle((response, failure) -> failure == null && response != null
+                            ? exceptionStopOf(response, fallback) : fallback);
+        }
+
+        private ExceptionStop exceptionStopOf(ExceptionInfoResponse response, ExceptionStop fallback) {
+            ExceptionDetails details = response.getDetails();
+            String type = firstNonBlank(details == null ? null : details.getFullTypeName(),
+                    details == null ? null : details.getTypeName(), response.getExceptionId());
+            String message = firstNonBlank(response.getDescription(), details == null ? null : details.getMessage());
+            return type.isEmpty() && message.isEmpty() ? fallback : new ExceptionStop(type, message);
+        }
+
+        private String firstNonBlank(String... candidates) {
+            return Arrays.stream(candidates).filter(value -> value != null && !value.isBlank()).findFirst().orElse("");
+        }
+
+        private void sendExceptionBreakpoints() {
+            ExceptionBreakpoints requested;
+            CapabilityResult<ExceptionBreakpoints> sent;
+            synchronized (exceptionBreakpointsLock) {
+                requested = exceptionBreakpoints;
+                sent = applyExceptionBreakpoints(requested);
+            }
+            requested.reportOf(sent).ifPresent(message -> output(outputLines, message));
+        }
+
+        private CapabilityResult<ExceptionBreakpoints> applyExceptionBreakpoints(ExceptionBreakpoints requested) {
+            IDebugProtocolServer protocol = server;
+            Set<String> advertised = exceptionFilters;
+            if (protocol == null || advertised == null || isTerminal()) {
+                return CapabilityResult.ok(requested);
+            }
+            ExceptionBreakpoints sendable = new ExceptionBreakpoints(
+                    requested.uncaught() && advertised.contains(UNCAUGHT_FILTER),
+                    requested.caught() && advertised.contains(CAUGHT_FILTER));
+            if (!advertised.contains(UNCAUGHT_FILTER) && !advertised.contains(CAUGHT_FILTER)) {
+                return CapabilityResult.ok(sendable);
+            }
+            List<String> filters = new ArrayList<>();
+            if (sendable.uncaught()) filters.add(UNCAUGHT_FILTER);
+            if (sendable.caught()) filters.add(CAUGHT_FILTER);
+            SetExceptionBreakpointsArguments arguments = new SetExceptionBreakpointsArguments();
+            arguments.setFilters(filters.toArray(String[]::new));
+            try {
+                protocol.setExceptionBreakpoints(arguments).get(requestTimeout.toMillis(), TimeUnit.MILLISECONDS);
+                return CapabilityResult.ok(sendable);
+            } catch (Exception failure) {
+                return CapabilityResult.failed(new CapabilityFailure(failureReason(failure), ""));
             }
         }
 
@@ -726,6 +836,7 @@ public final class JavaDebugCapability implements DebugCapability {
                             ? State.EXECUTING : State.RUNNING;
                     String reason = runningState == State.EXECUTING
                             ? "Waiting for the requested debugger event" : "";
+                    currentExceptionStop = null;
                     update(snapshot -> new DebugSessionSnapshot(id, label, runningState, snapshot.threads(), reason, "",
                             0, null, debugCapabilities));
                     completePendingExecution(State.RUNNING, event == null
@@ -1081,6 +1192,13 @@ public final class JavaDebugCapability implements DebugCapability {
         @Override
         public synchronized long inspectionGeneration() {
             return stopGeneration;
+        }
+
+        @Override
+        public Optional<ExceptionStop> exceptionStop() {
+            DebugSessionSnapshot snapshot = snapshot();
+            return snapshot.state() == State.STOPPED && "exception".equals(snapshot.stoppedReason())
+                    ? Optional.ofNullable(currentExceptionStop) : Optional.empty();
         }
 
         @Override
