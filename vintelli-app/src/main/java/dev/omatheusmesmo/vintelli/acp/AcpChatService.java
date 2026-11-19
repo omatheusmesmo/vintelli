@@ -378,11 +378,18 @@ public final class AcpChatService implements AcpChatPort, AcpSessionIdsView {
     }
 
     private static ToolCall toolCall(AcpSchema.ToolCall update) {
-        return toolCall(update.toolCallId(), update.title(), update.name(), update.status(), update.content());
+        return toolCall(update.toolCallId(), update.title(), toolName(update.name(), update.kind()), update.status(),
+                update.content());
     }
 
     private static ToolCall toolCall(AcpSchema.ToolCallUpdateNotification update) {
-        return toolCall(update.toolCallId(), update.title(), update.name(), update.status(), update.content());
+        return toolCall(update.toolCallId(), update.title(), toolName(update.name(), update.kind()), update.status(),
+                update.content());
+    }
+
+    private static String toolName(String name, AcpSchema.ToolKind kind) {
+        if (name != null && !name.isBlank()) return name;
+        return kind == null ? "" : kind.value();
     }
 
     private static ToolCall toolCall(String id, String title, String name, AcpSchema.ToolCallStatus status,

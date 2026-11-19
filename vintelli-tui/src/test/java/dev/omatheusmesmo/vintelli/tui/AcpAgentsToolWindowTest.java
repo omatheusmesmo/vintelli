@@ -497,6 +497,33 @@ class AcpAgentsToolWindowTest {
     }
 
     @Test
+    void aStatusOnlyToolUpdateKeepsTheTitleAndKindOfItsCard() throws Exception {
+        ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
+        UiWorkQueue uiWork = new UiWorkQueue();
+        ScriptedChat chat = new ScriptedChat(List.of(), List.of(
+                new AcpChatPort.ToolCall("tool-read", "Read a", "read", "pending", ""),
+                new AcpChatPort.ToolCall("tool-read", null, null, "completed", null)));
+        AcpAgentsToolWindow window = new AcpAgentsToolWindow(() -> themes, chat, uiWork, IconMode.NERD);
+        AtomicReference<Buffer> rendered = new AtomicReference<>();
+        window.observeRenderedBuffer(buffer -> rendered.set(buffer.copy()));
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window), new ShellState(), themes));
+        shell.useUiWorkQueue(uiWork);
+        Size size = new Size(120, 42);
+        try (ToolkitTestRunner test = runShell(shell, size)) {
+            Pilot pilot = test.pilot();
+            pilot.press('8', KeyModifiers.ALT);
+            pilot.press(KeyCode.ENTER);
+            assertTrue(chat.opened.await(5, TimeUnit.SECONDS));
+            pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("ACP session ready"));
+            pilot.press("go");
+            pilot.press(KeyCode.ENTER);
+            pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("completed"));
+            assertTrue(screen(rendered).contains("◆ Read a · read · completed"), screen(rendered));
+            assertFalse(screen(rendered).contains("Tool call"), screen(rendered));
+        }
+    }
+
+    @Test
     void aSecondPlanUpdatesAnEntryStatusInPlaceAndIsShownOnce() throws Exception {
         ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
         UiWorkQueue uiWork = new UiWorkQueue();
