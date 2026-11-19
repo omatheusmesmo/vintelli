@@ -49,8 +49,8 @@ class MavenToolWindowInteractionContractTest {
 
     private static final Size VIEWPORT = new Size(100, 20);
     private static final String PHASE_ROW = "validate";
-    private static final int PHASE_VALIDATE_INDEX = 2;
-    private static final int PROFILE_CI_INDEX = MavenLifecycle.PHASES.size() + 2;
+    private static final int PHASE_VALIDATE_INDEX = 4;
+    private static final int PROFILE_CI_INDEX = MavenLifecycle.PHASES.size() + 4;
 
     @TempDir
     Path project;
@@ -203,6 +203,28 @@ class MavenToolWindowInteractionContractTest {
         }
     }
 
+    @Test
+    void skipTestsIsVisibleAndTogglesThroughKeyboardAndPointer() throws Exception {
+        try (ToolWindowInteractionAssertions.Session session = newSession()) {
+            ToolWindowPilotFixture fixture = session.fixture();
+            openMaven(fixture);
+
+            Rect area = fixture.pilot().findElement("tool-maven");
+            for (int wheel = 0; wheel < 12 && rowIndex(fixture.renderedText(), "tests") < 0; wheel++) {
+                fixture.scrollDown(area.x() + 2, area.y());
+            }
+
+            fixture.press('s');
+            assertTrue(rowText(fixture.renderedText(), "tests").contains("[x] Skip tests"),
+                    fixture.renderedText());
+
+            int skipRow = rowContaining(fixture.renderedText(), "tests");
+            fixture.pilot().click(area.x() + 2, skipRow);
+            assertTrue(rowText(fixture.renderedText(), "tests").contains("[ ] Skip tests"),
+                    fixture.renderedText());
+        }
+    }
+
     private ToolWindowInteractionAssertions.Session newSession() throws Exception {
         writeProject(project);
         return newSession(project);
@@ -253,7 +275,7 @@ class MavenToolWindowInteractionContractTest {
         ToolWindowPilotFixture fixture = session.fixture();
         MavenContext context = session.context(MavenContext.class);
         openMaven(fixture);
-        int steps = PHASE_ORDER.indexOf(phase) + 1;
+        int steps = PHASE_ORDER.indexOf(phase) + 3;
         for (int step = 0; step < steps; step++) {
             fixture.press(KeyCode.DOWN);
         }

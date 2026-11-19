@@ -1,10 +1,15 @@
 package dev.omatheusmesmo.vintelli.tui.maven;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 
@@ -28,6 +33,7 @@ import dev.tamboui.tui.event.MouseEvent;
 import dev.tamboui.tui.event.MouseEventKind;
 import dev.tamboui.widgets.paragraph.Paragraph;
 import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import jakarta.inject.Inject;
 import jakarta.inject.Provider;
 import jakarta.inject.Singleton;
@@ -49,9 +55,15 @@ public final class MavenToolWindow implements ToolWindow {
     private final Path projectRoot;
     private final LongSupplier nanos;
     private final MavenProjectController controller;
-    private final AtomicLong loadSequence = new AtomicLong();
     private volatile Consumer<MavenGoal> runHandler;
     private volatile Rect lastArea = Rect.ZERO;
+    private long loadSequence;
+    private boolean loading;
+    private Map<Path, Optional<PomStamp>> observedPoms = Map.of();
+    private Thread watcher;
+
+    private record PomStamp(FileTime modified, long size, Object fileKey) {
+    }
 
     @Inject
     public MavenToolWindow(Provider<ShellThemes> themes,
@@ -93,20 +105,71 @@ public final class MavenToolWindow implements ToolWindow {
     }
 
     @PostConstruct
-    void initialize() {
+    synchronized void initialize() {
         load();
+        watcher = Thread.ofVirtual().name("vintelli-maven-watch").start(() -> {
+            try {
+                while (!Thread.currentThread().isInterrupted()) {
+                    Thread.sleep(1000);
+                    refreshIfChanged();
+                }
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        });
+    }
+
+    @PreDestroy
+    synchronized void dispose() {
+        loadSequence++;
+        if (watcher != null) {
+            watcher.interrupt();
+        }
     }
 
     /** Reads the project tree on a virtual thread; the window shows its loading state until the read ends. */
-    public void load() {
-        long sequence = loadSequence.incrementAndGet();
+    public synchronized void load() {
+        long sequence = ++loadSequence;
+        loading = true;
         controller.startLoading();
         Thread.ofVirtual().name("vintelli-maven-load").start(() -> {
-            MavenProjectLoad result = MavenProjectReader.read(projectRoot);
-            if (sequence == loadSequence.get()) {
-                controller.finishLoading(result);
+            Map<Path, Optional<PomStamp>> stamps = new HashMap<>();
+            MavenProjectLoad result;
+            try {
+                result = MavenProjectReader.read(projectRoot, path -> stamps.computeIfAbsent(path, MavenToolWindow::pomStamp));
+            } catch (RuntimeException failure) {
+                String reason = failure.getMessage();
+                result = new MavenProjectLoad.Unreadable(reason == null ? failure.getClass().getSimpleName() : reason);
             }
+            finishLoad(sequence, result, stamps);
         });
+    }
+
+    private synchronized void finishLoad(long sequence, MavenProjectLoad result, Map<Path, Optional<PomStamp>> stamps) {
+        if (sequence == loadSequence) {
+            observedPoms = Map.copyOf(stamps);
+            controller.finishLoading(result);
+            loading = false;
+        }
+    }
+
+    /** Refreshes the tree when a POM observed during the last read changes. Runs on the watcher thread. */
+    void refreshIfChanged() {
+        long sequence;
+        Map<Path, Optional<PomStamp>> stamps;
+        synchronized (this) {
+            if (loading) {
+                return;
+            }
+            sequence = loadSequence;
+            stamps = observedPoms;
+        }
+        boolean changed = stamps.entrySet().stream().anyMatch(entry -> !entry.getValue().equals(pomStamp(entry.getKey())));
+        synchronized (this) {
+            if (changed && sequence == loadSequence) {
+                load();
+            }
+        }
     }
 
     public void setRunHandler(Consumer<MavenGoal> handler) {
@@ -170,6 +233,12 @@ public final class MavenToolWindow implements ToolWindow {
         if (Keys.is(event, KeyCode.LEFT)) {
             return KeyActions.MAVEN_COLLAPSE;
         }
+        if (event.isTyping() && event.codePoint() == 's' && !event.hasCtrl() && !event.hasAlt()) {
+            return KeyActions.MAVEN_TOGGLE_SKIP_TESTS;
+        }
+        if (event.isTyping() && event.codePoint() == 'r' && !event.hasCtrl() && !event.hasAlt()) {
+            return KeyActions.MAVEN_REFRESH;
+        }
         return null;
     }
 
@@ -192,6 +261,9 @@ public final class MavenToolWindow implements ToolWindow {
         int index = rowIndex(event);
         if (index < 0 || controller.isProfileRow(index)) {
             return null;
+        }
+        if (controller.isSkipTestsRow(index)) {
+            return KeyActions.MAVEN_TOGGLE_SKIP_TESTS;
         }
         return controller.registerClick(index, nanos.getAsLong()) ? KeyActions.MAVEN_ACTIVATE : null;
     }
@@ -234,6 +306,8 @@ public final class MavenToolWindow implements ToolWindow {
             case KeyActions.MAVEN_SELECT_PREVIOUS -> controller.selectPrevious();
             case KeyActions.MAVEN_EXPAND -> controller.expandSelected();
             case KeyActions.MAVEN_COLLAPSE -> controller.collapseSelected();
+            case KeyActions.MAVEN_TOGGLE_SKIP_TESTS -> controller.toggleSkipTests();
+            case KeyActions.MAVEN_REFRESH -> load();
             default -> {
                 return false;
             }
@@ -272,6 +346,15 @@ public final class MavenToolWindow implements ToolWindow {
                 .build(), area);
     }
 
+    private static Optional<PomStamp> pomStamp(Path path) {
+        try {
+            BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class);
+            return Optional.of(new PomStamp(attributes.lastModifiedTime(), attributes.size(), attributes.fileKey()));
+        } catch (IOException | SecurityException unavailable) {
+            return Optional.empty();
+        }
+    }
+
     private void runGoal(MavenGoal goal) {
         Consumer<MavenGoal> handler = runHandler;
         if (handler != null) {
@@ -298,9 +381,11 @@ public final class MavenToolWindow implements ToolWindow {
     private static String prefix(Row row) {
         String indent = "  ".repeat(row.depth());
         return switch (row.kind()) {
-            case PHASE, PROFILES -> indent;
+            case LIFECYCLE, PHASE, PROFILES, PLUGINS -> indent;
             case PROFILE -> indent + (row.checked() ? "[x] " : "[ ] ");
-            case MODULE -> indent + (row.expanded() ? "▾ " : "▸ ");
+            case MODULE, PLUGIN -> indent + (row.expanded() ? "▾ " : "▸ ");
+            case GOAL -> indent;
+            case SKIP_TESTS -> indent + (row.checked() ? "[x] " : "[ ] ");
         };
     }
 

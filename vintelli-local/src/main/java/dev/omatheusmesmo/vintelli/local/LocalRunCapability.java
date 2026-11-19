@@ -151,7 +151,7 @@ public final class LocalRunCapability implements RunCapability {
         if (!MavenLifecycle.acceptsArguments(request.arguments())) {
             return CapabilityResult.failed(new CapabilityFailure(
                     "Unsupported run arguments for '" + request.configurationName() + "'",
-                    "Only -pl <module> is accepted"));
+                    "Only -pl <module>, -P<profile>, and -DskipTests are accepted"));
         }
         Optional<BuildToolDetector.RunConfigurationSpecification> specification =
                 detector.specification(request.configurationName(), request.arguments());

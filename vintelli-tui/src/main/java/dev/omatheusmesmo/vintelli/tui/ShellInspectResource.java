@@ -30,6 +30,7 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcon;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
 import dev.omatheusmesmo.vintelli.tui.maven.MavenModule;
+import dev.omatheusmesmo.vintelli.tui.maven.MavenPlugin;
 import dev.omatheusmesmo.vintelli.tui.maven.MavenProjectLoad;
 import dev.omatheusmesmo.vintelli.tui.maven.MavenProjectReader;
 
@@ -330,9 +331,11 @@ public final class ShellInspectResource {
             throw new NotFoundException();
         }
         return switch (MavenProjectReader.read(projectRoot)) {
-            case MavenProjectLoad.Loaded loaded -> new MavenView("loaded", "", selectors(loaded.root()));
-            case MavenProjectLoad.Missing missing -> new MavenView("missing", missing.reason(), List.of());
-            case MavenProjectLoad.Unreadable unreadable -> new MavenView("unreadable", unreadable.reason(), List.of());
+            case MavenProjectLoad.Loaded loaded -> new MavenView("loaded", "", selectors(loaded.root()),
+                    plugins(loaded.root()));
+            case MavenProjectLoad.Missing missing -> new MavenView("missing", missing.reason(), List.of(), List.of());
+            case MavenProjectLoad.Unreadable unreadable -> new MavenView("unreadable", unreadable.reason(), List.of(),
+                    List.of());
         };
     }
 
@@ -352,6 +355,17 @@ public final class ShellInspectResource {
         found.add(module.selector());
         for (MavenModule child : module.modules()) {
             found.addAll(selectors(child));
+        }
+        return found;
+    }
+
+    private static List<String> plugins(MavenModule module) {
+        List<String> found = new ArrayList<>();
+        for (MavenPlugin plugin : module.plugins()) {
+            found.add(plugin.artifactId());
+        }
+        for (MavenModule child : module.modules()) {
+            found.addAll(plugins(child));
         }
         return found;
     }
@@ -455,6 +469,6 @@ public final class ShellInspectResource {
      * or {@code unreadable}, the reason for the last two, and the module
      * selectors in tree order with the empty root selector first.
      */
-    record MavenView(String state, String reason, List<String> selectors) {
+    record MavenView(String state, String reason, List<String> selectors, List<String> plugins) {
     }
 }

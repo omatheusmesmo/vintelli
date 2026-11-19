@@ -10,12 +10,14 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Consumer;
 
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 
+import dev.omatheusmesmo.vintelli.api.maven.MavenLifecycle;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
@@ -43,7 +45,13 @@ public final class MavenProjectReader {
     }
 
     public static MavenProjectLoad read(Path projectRoot) {
+        return read(projectRoot, pom -> { });
+    }
+
+    static MavenProjectLoad read(Path projectRoot, Consumer<Path> observePom) {
         Path root;
+        Path rootPom = projectRoot.resolve("pom.xml");
+        observePom.accept(rootPom);
         try {
             root = projectRoot.toRealPath();
         } catch (IOException unavailable) {
@@ -53,28 +61,45 @@ public final class MavenProjectReader {
             return new MavenProjectLoad.Missing("no pom.xml in the project root");
         }
         try {
-            return new MavenProjectLoad.Loaded(readModule(root, root, 0, new HashSet<>(), new int[1]));
+            return new MavenProjectLoad.Loaded(readModule(root, root, 0, new HashSet<>(), new int[1], observePom));
         } catch (ProjectReadException failure) {
             return new MavenProjectLoad.Unreadable(failure.getMessage());
         }
     }
 
-    private static MavenModule readModule(Path root, Path directory, int depth, Set<Path> visited, int[] counted) {
+    private static MavenModule readModule(Path root, Path directory, int depth, Set<Path> visited, int[] counted,
+            Consumer<Path> observePom) {
         if (depth > MAX_DEPTH) {
             throw new ProjectReadException("modules are nested deeper than " + MAX_DEPTH + " levels");
         }
         Path pom = directory.resolve("pom.xml");
-        if (!Files.isRegularFile(pom)) {
-            throw new ProjectReadException("no pom.xml in module " + directory.getFileName());
+        if (!directory.startsWith(root)) {
+            throw new ProjectReadException("module " + directory.getFileName() + " is outside the project root");
+        }
+        if (!Files.exists(directory)) {
+            observePom.accept(pom);
         }
         Path real = realDirectory(directory);
         if (!real.startsWith(root)) {
             throw new ProjectReadException("module " + directory.getFileName() + " is outside the project root");
         }
+        observePom.accept(pom);
+        if (!Files.isRegularFile(pom)) {
+            throw new ProjectReadException("no pom.xml in module " + directory.getFileName());
+        }
         if (!visited.add(real)) {
             throw new ProjectReadException("module " + directory.getFileName() + " is listed twice");
         }
-        Document document = parse(pom);
+        Path realPom;
+        try {
+            realPom = pom.toRealPath();
+        } catch (IOException unreadable) {
+            throw new ProjectReadException(describe(pom, unreadable));
+        }
+        if (!realPom.startsWith(root)) {
+            throw new ProjectReadException("pom.xml in module " + directory.getFileName() + " is outside the project root");
+        }
+        Document document = parse(realPom);
         Element project = document.getDocumentElement();
         if (!"project".equals(project.getTagName())) {
             throw new ProjectReadException(pom.getFileName() + " is not a Maven project descriptor");
@@ -82,14 +107,15 @@ public final class MavenProjectReader {
         String artifactId = childText(project, "artifactId")
                 .orElse(String.valueOf(real.getFileName()));
         List<String> profiles = profileIds(project);
+        List<MavenPlugin> plugins = plugins(project);
         List<MavenModule> children = new ArrayList<>();
         for (String name : moduleNames(project)) {
             if (++counted[0] > MAX_MODULES) {
                 throw new ProjectReadException("more than " + MAX_MODULES + " modules");
             }
-            children.add(readModule(root, directory.resolve(name).normalize(), depth + 1, visited, counted));
+            children.add(readModule(root, directory.resolve(name).normalize(), depth + 1, visited, counted, observePom));
         }
-        return new MavenModule(artifactId, selector(root, real), profiles, children);
+        return new MavenModule(artifactId, selector(root, real), profiles, plugins, children);
     }
 
     private static Path realDirectory(Path directory) {
@@ -153,6 +179,36 @@ public final class MavenProjectReader {
             }
         }
         return List.copyOf(ids);
+    }
+
+    private static List<MavenPlugin> plugins(Element project) {
+        List<MavenPlugin> found = new ArrayList<>();
+        for (Element build : childElements(project, "build")) {
+            for (Element plugins : childElements(build, "plugins")) {
+                for (Element plugin : childElements(plugins, "plugin")) {
+                    String artifactId = childText(plugin, "artifactId").orElse("");
+                    if (artifactId.isBlank()) {
+                        continue;
+                    }
+                    String groupId = childText(plugin, "groupId").orElse("org.apache.maven.plugins");
+                    Set<String> goals = new LinkedHashSet<>();
+                    for (Element executions : childElements(plugin, "executions")) {
+                        for (Element execution : childElements(executions, "execution")) {
+                            for (Element goalGroup : childElements(execution, "goals")) {
+                                for (Element goal : childElements(goalGroup, "goal")) {
+                                    String name = goal.getTextContent().trim();
+                                    if (MavenLifecycle.isPluginGoal(groupId + ":" + artifactId + ":" + name)) {
+                                        goals.add(name);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    found.add(new MavenPlugin(groupId, artifactId, List.copyOf(goals)));
+                }
+            }
+        }
+        return List.copyOf(found);
     }
 
     private static Optional<String> childText(Element parent, String name) {

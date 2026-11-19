@@ -783,6 +783,8 @@ adding it to that test on purpose.
 | diff_nextHunk | F7 | F7 | same | Next Difference in the diff viewer; F7 is New Project File only while the project pane has the focus |
 | diff_previousHunk | Shift+F7 | Shift+F7 | same | Previous Difference in the diff viewer |
 | diff_toggleUnified | Alt+D | - | vintelli-only | Switches the diff tab between side by side and unified; IntelliJ picks the viewer from a toolbar list |
+| maven.toggle-skip-tests | - | - | vintelli-only | Toggles -DskipTests for the next Maven goal in the Maven tool window; no IntelliJ chord confirmed |
+| maven.refresh | - | - | vintelli-only | Refreshes the Maven project tree; no IntelliJ chord confirmed |
 
 ### Palette and help layout
 
