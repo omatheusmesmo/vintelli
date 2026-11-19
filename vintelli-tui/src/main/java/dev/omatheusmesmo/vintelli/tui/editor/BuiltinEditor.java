@@ -591,6 +591,11 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
         return vcsChangedLines.getOrDefault(file, Set.of()).contains(row);
     }
 
+    synchronized Set<Integer> vcsChangedRows(EditorDocument document) {
+        String file = project.relativize(document.file()).toString().replace('\\', '/');
+        return vcsChangedLines.getOrDefault(file, Set.of());
+    }
+
     public synchronized CapabilityResult<Boolean> save() {
         if (document() == null) { return failed("No file is open", ""); }
         try {
@@ -785,7 +790,14 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
             byFile.computeIfAbsent(resolvedFile(diagnostic.filePath()), ignored -> new ArrayList<>()).add(diagnostic);
         }
         for (EditorDocument document : documents) {
-            document.diagnostics(byFile.getOrDefault(document.file(), List.of()));
+            document.reported(byFile.getOrDefault(document.file(), List.of()));
+        }
+    }
+
+    /** Drops the problems of every open document and forgets that they were analysed: no provider answered. */
+    public synchronized void diagnosticsUnavailable() {
+        for (EditorDocument document : documents) {
+            document.unreported();
         }
     }
 

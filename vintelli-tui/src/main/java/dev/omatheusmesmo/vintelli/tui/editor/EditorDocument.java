@@ -56,6 +56,7 @@ public final class EditorDocument {
     /** Exact on-disk contents last opened/saved; null means this is a recovered missing file. */
     private String savedDiskText;
     private List<Diagnostic> diagnostics = List.of();
+    private boolean analysed;
     private Breakpoints breakpoints = Breakpoints.NONE;
     /** While folded, {@code view} is the widget-facing copy of {@code state} with the import block replaced by its placeholder. */
     private ImportFold fold;
@@ -84,6 +85,8 @@ public final class EditorDocument {
     public String lineSeparator() { return newline; }
     public boolean dirty() { return savedText == null || !savedText.equals(text()); }
     public List<Diagnostic> diagnostics() { return diagnostics; }
+    /** True once a diagnostics provider reported on this file, so an empty list means clean rather than unknown. */
+    boolean analysed() { return analysed; }
     TextAreaState state() { return view != null ? view : state; }
     public int lineCount() { return state.lineCount(); }
     public boolean importsFolded() { return fold != null; }
@@ -516,6 +519,16 @@ public final class EditorDocument {
                 var input = Channels.newInputStream(channel)) {
             return new String(input.readAllBytes(), StandardCharsets.UTF_8);
         }
+    }
+
+    void reported(List<Diagnostic> values) {
+        analysed = true;
+        diagnostics(values);
+    }
+
+    void unreported() {
+        analysed = false;
+        diagnostics(List.of());
     }
 
     void diagnostics(List<Diagnostic> values) {

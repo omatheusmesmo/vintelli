@@ -4642,8 +4642,8 @@ class VintelliShellTest {
                 "the caret line number uses the editor foreground");
         assertEquals(themes.color("muted"), buffer.get(EDITOR_HEADER_X + 2, plainRow).style().fg().orElse(null),
                 "the other line numbers are muted");
-        assertEquals(caret, buffer.get(SIZE.width() - 1, caretRow).style().bg().orElse(null),
-                "the caret row is painted up to the right edge");
+        assertEquals(caret, buffer.get(SIZE.width() - 2, caretRow).style().bg().orElse(null),
+                "the caret row is painted up to the marker bar column at the right edge");
         assertEquals(caret, buffer.get(EDITOR_HEADER_X + 10, caretRow).style().bg().orElse(null));
         assertFalse(caret.equals(buffer.get(EDITOR_HEADER_X + 10, plainRow).style().bg().orElse(null)),
                 "other rows keep the editor background");
