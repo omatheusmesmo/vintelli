@@ -47,17 +47,18 @@ class IntellijKeymapTableTest {
             .collect(Collectors.toSet());
     private static final Map<String, Set<String>> BOUND_CHORDS = boundChordsByAction();
     private static final Map<String, Set<String>> ACTIONS_BY_CHORD = actionsByChord();
-    private static final Map<String, Set<String>> SHARED_CHORDS_BY_DESIGN = Map.of(
-            "enter", Set.of("select", "confirm", "editor_open"),
-            "kp_enter", Set.of("select", "confirm"),
-            "ctrl+c", Set.of("quit", "editor_copy"),
-            "delete", Set.of("deleteForward", "project_delete"),
-            "mouse.scroll_up", Set.of("scroll", "scrollUp"),
-            "mouse.scroll_down", Set.of("scroll", "scrollDown"),
-            "mouse.scroll_left", Set.of("scroll", "scrollLeft"),
-            "mouse.scroll_right", Set.of("scroll", "scrollRight"),
-            "f7", Set.of("project_new_file", "diff_nextHunk"),
-            "shift+f6", Set.of("project_rename", "editor_rename"));
+    private static final Map<String, Set<String>> SHARED_CHORDS_BY_DESIGN = Map.ofEntries(
+            Map.entry("enter", Set.of("select", "confirm", "editor_open")),
+            Map.entry("kp_enter", Set.of("select", "confirm")),
+            Map.entry("ctrl+c", Set.of("quit", "editor_copy")),
+            Map.entry("delete", Set.of("deleteForward", "project_delete")),
+            Map.entry("f7", Set.of("debug.step-into", "project_new_file", "diff_nextHunk")),
+            Map.entry("f9", Set.of("debug.resume", "project_new_directory")),
+            Map.entry("mouse.scroll_up", Set.of("scroll", "scrollUp")),
+            Map.entry("mouse.scroll_down", Set.of("scroll", "scrollDown")),
+            Map.entry("mouse.scroll_left", Set.of("scroll", "scrollLeft")),
+            Map.entry("mouse.scroll_right", Set.of("scroll", "scrollRight")),
+            Map.entry("shift+f6", Set.of("project_rename", "editor_rename")));
 
     private static List<ToolWindow> windowList() {
         ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);

@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.BiPredicate;
 import java.util.regex.Pattern;
 
 import static dev.omatheusmesmo.vintelli.tui.keymap.KeyActions.KEYMAP_HELP;
@@ -270,7 +271,7 @@ public final class Keymap {
         builder.bind(new UnshiftedKeyTrigger(KeyTrigger.key(KeyCode.F7)), KeyActions.DIFF_NEXT_HUNK);
         builder.bind(KeyTrigger.key(KeyCode.F7, false, false, true), KeyActions.DIFF_PREVIOUS_HUNK);
         builder.bind(KeyTrigger.alt('d'), KeyActions.DIFF_TOGGLE_UNIFIED);
-        builder.bind(KeyTrigger.key(KeyCode.F9), KeyActions.PROJECT_NEW_DIRECTORY);
+        builder.bind(new UnshiftedKeyTrigger(KeyTrigger.key(KeyCode.F9)), KeyActions.PROJECT_NEW_DIRECTORY);
         builder.bind(KeyTrigger.key(KeyCode.DELETE), KeyActions.PROJECT_DELETE);
         builder.bind(KeyTrigger.key(KeyCode.F5), KeyActions.PROJECT_REFRESH);
         builder.bind(KeyTrigger.key(KeyCode.F4), KeyActions.PROJECT_EXPAND_ALL);
@@ -382,6 +383,11 @@ public final class Keymap {
                 builder.bind(new CtrlAltKeyTrigger('v'), KeyActions.EXTRACT_VARIABLE);
                 builder.bind(new CtrlAltKeyTrigger('m'), KeyActions.EXTRACT_METHOD);
                 builder.bind(new CtrlAltKeyTrigger('c'), KeyActions.EXTRACT_CONSTANT);
+                builder.bind(new UnshiftedKeyTrigger(KeyTrigger.key(KeyCode.F8)), bindingName(KeyActions.DEBUG_STEP_OVER));
+                builder.bind(new UnshiftedKeyTrigger(KeyTrigger.key(KeyCode.F7)), bindingName(KeyActions.DEBUG_STEP_INTO));
+                builder.bind(KeyTrigger.key(KeyCode.F8, false, false, true), bindingName(KeyActions.DEBUG_STEP_OUT));
+                builder.bind(new UnshiftedKeyTrigger(KeyTrigger.key(KeyCode.F9)), bindingName(KeyActions.DEBUG_RESUME));
+                builder.bind(KeyTrigger.key(KeyCode.F9, false, false, true), bindingName(KeyActions.RUN_DEBUG));
             }
             case VIM -> {
                 builder.bind(KeyTrigger.key(KeyCode.F3), KeyActions.PROJECT_SELECT_OPENED_FILE);
@@ -634,7 +640,7 @@ public final class Keymap {
         for (String action : new TreeSet<>(mentioned)) {
             for (InputTrigger trigger : layered.triggersFor(bindingName(action))) {
                 for (String other : new TreeSet<>(knownIds)) {
-                    if (other.equals(action) || sharesCtrlC(action, other)) {
+                    if (other.equals(action) || sharesCtrlC(action, other) || sharesByContext(action, other)) {
                         continue;
                     }
                     for (InputTrigger otherTrigger : layered.triggersFor(bindingName(other))) {
@@ -656,6 +662,14 @@ public final class Keymap {
      */
     private static boolean sharesCtrlC(String action, String other) {
         return Set.of(QUIT, KeyActions.COPY).equals(Set.of(action, other));
+    }
+
+    /**
+     * A stepping action may share a chord with any other action: the {@link KeyContext} decides which of the
+     * two the chord reaches, so a user file that keeps {@code F7} on New File does not conflict with Step Into.
+     */
+    private static boolean sharesByContext(String action, String other) {
+        return KeyActions.DEBUG_SESSION_ACTIONS.contains(action) || KeyActions.DEBUG_SESSION_ACTIONS.contains(other);
     }
 
     /**
@@ -751,6 +765,34 @@ public final class Keymap {
         return matchesMainKeyAware(reserved, event, bindingName(actionId));
     }
 
+    /**
+     * Whether the event triggers the action in the given context. The stepping actions answer only while
+     * a debug session is suspended, and then they take their chords from every other action that shares
+     * them, so {@code F7} is Step Into instead of New File until the session ends or resumes.
+     */
+    public boolean matches(KeyEvent event, String actionId, KeyContext context) {
+        return inContext(event, actionId, context, this::matches);
+    }
+
+    /**
+     * {@link #matches(KeyEvent, String, KeyContext)} over the reserved chords only, for a capturing window.
+     */
+    public boolean matchesReserved(KeyEvent event, String actionId, KeyContext context) {
+        return inContext(event, actionId, context, this::matchesReserved);
+    }
+
+    private static boolean inContext(KeyEvent event, String actionId, KeyContext context,
+            BiPredicate<KeyEvent, String> matcher) {
+        if (!matcher.test(event, actionId)) {
+            return false;
+        }
+        if (KeyActions.DEBUG_SESSION_ACTIONS.contains(actionId)) {
+            return context.debugSessionSuspended();
+        }
+        return !context.debugSessionSuspended()
+                || KeyActions.DEBUG_SESSION_ACTIONS.stream().noneMatch(stepping -> matcher.test(event, stepping));
+    }
+
     private static boolean matchesMainKeyAware(Bindings source, KeyEvent event, String binding) {
         if (source.matches(event, binding)) {
             return true;
@@ -786,12 +828,13 @@ public final class Keymap {
 
     /**
      * TamboUI binding action names may only contain alphanumerics and
-     * underscores, while Vintelli action ids use dotted namespaces such as
-     * {@code shell.theme.switch}. Map the latter to a safe binding name so a
-     * chord can be stored and matched under the public action id.
+     * underscores, while Vintelli action ids use dotted namespaces and hyphens
+     * such as {@code shell.theme.switch} and {@code debug.step-over}. Map the
+     * latter to a safe binding name so a chord can be stored and matched under
+     * the public action id.
      */
     static String bindingName(String actionId) {
-        return actionId == null ? null : actionId.replace('.', '_');
+        return actionId == null ? null : actionId.replace('.', '_').replace('-', '_');
     }
 
     private static byte[] translateUserKeymapContent(byte[] content, java.util.Set<String> actions) {

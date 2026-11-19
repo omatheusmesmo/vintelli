@@ -10,6 +10,7 @@ import dev.omatheusmesmo.vintelli.tui.keymap.CommandPalette;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyAction;
+import dev.omatheusmesmo.vintelli.tui.keymap.KeyContext;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeymapHelpOverlay;
 import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeymapRegistry;
@@ -963,6 +964,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             }
 
             @Override
+            public KeyContext keyContext() {
+                return VintelliShell.this.keyContext();
+            }
+
+            @Override
             public boolean shortcutsBlocked() {
                 return inputCaptured || overlays().stack().overlayOpen();
             }
@@ -1597,6 +1603,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         if (inputCaptured && capturedWindow != null && capturedWindow.shouldHandleKeyBeforeShell(key)) {
             return handleToolWindowKey(parts, capturedWindow, key) ? EventResult.HANDLED : EventResult.UNHANDLED;
         }
+        KeyContext context = keyContext();
+        boolean debuggerKeysClaimed = debuggerKeysClaimed();
         for (KeyAction action : KeyActions.shellActions()) {
             if (KeyActions.QUIT.equals(action.id()) || KeyActions.MENU.equals(action.id())) {
                 continue;
@@ -1607,8 +1615,11 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             if (KeyActions.EDITOR_RENAME.equals(action.id()) && !editorHasFocus()) {
                 continue;
             }
-            boolean matched = inputCaptured ? parts.keymap().matchesReserved(key, action.id())
-                    : parts.keymap().matches(key, action.id());
+            if (debuggerKeysClaimed && KeyActions.DEBUGGER_KEY_ACTIONS.contains(action.id())) {
+                continue;
+            }
+            boolean matched = inputCaptured ? parts.keymap().matchesReserved(key, action.id(), context)
+                    : parts.keymap().matches(key, action.id(), context);
             if (matched) {
                 dispatch(parts, action.id());
                 return EventResult.HANDLED;
@@ -1747,6 +1758,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         }
         for (ToolWindow window : toolWindows) {
             if (window.performAction(actionId, sourceKey)) {
+                if (KeyActions.DEBUG_SESSION_ACTIONS.contains(actionId) && window == runWindow) {
+                    status = runWindow.statusMessage();
+                }
                 parts.stack().closeOverlays();
                 return;
             }
@@ -2502,6 +2516,28 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             actionSurface.set(previous);
             frameLock.unlock();
         }
+    }
+
+    private KeyContext keyContext() {
+        RunToolWindow run = runWindow;
+        return run != null && run.debugSessionSuspended() ? new KeyContext(true) : KeyContext.NONE;
+    }
+
+    /**
+     * Whether the window that holds the keyboard keeps the debugger chords for its own input: a terminal or
+     * a chat does, a list window that captures only its arrow and Enter keys does not, like the quit chord.
+     */
+    private boolean debuggerKeysClaimed() {
+        if (!inputCaptured) {
+            return false;
+        }
+        ToolWindow holder = capturedWindow;
+        if (holder == null) {
+            int bottomIndex = toolWindowHost.activeIndex(ToolWindow.Anchor.BOTTOM);
+            List<ToolWindow> bottomWindows = toolWindowHost.registered(ToolWindow.Anchor.BOTTOM);
+            holder = bottomIndex >= 0 && bottomIndex < bottomWindows.size() ? bottomWindows.get(bottomIndex) : null;
+        }
+        return holder == null || holder.claimsQuitChord();
     }
 
     private ToolWindow activeBottomWindow() {
