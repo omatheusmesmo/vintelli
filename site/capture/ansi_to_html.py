@@ -176,15 +176,28 @@ def plain_text(ansi_text):
 
 
 def render_html(ansi_text):
+    """Render the capture, padding each row with spaces to the widest row.
+
+    `capture-pane` drops the blank cells at the end of a row, so without the
+    padding the rows of one screen have different lengths.
+    """
     style = Style()
     body = []
-    position = 0
-    for match in ESCAPE_TOKEN.finditer(ansi_text):
-        body.append(_segment(ansi_text[position:match.start()], style))
-        position = match.end()
-        if match.group(1) is not None:
-            apply_sgr(style, match.group(1))
-    body.append(_segment(ansi_text[position:], style))
+    rows = ansi_text.replace("\r", "").split("\n")
+    widest = max(len(plain_text(row)) for row in rows)
+    for index, row in enumerate(rows):
+        if index:
+            body.append("\n")
+        position = 0
+        for match in ESCAPE_TOKEN.finditer(row):
+            body.append(_segment(row[position:match.start()], style))
+            position = match.end()
+            if match.group(1) is not None:
+                apply_sgr(style, match.group(1))
+        body.append(_segment(row[position:], style))
+        is_final_newline = index == len(rows) - 1 and not row
+        if not is_final_newline:
+            body.append(" " * (widest - len(plain_text(row))))
     return (
         f'<pre class="vintelli-capture" style="background-color:{DEFAULT_BACKGROUND};'
         f'color:{DEFAULT_FOREGROUND}">' + "".join(body) + "</pre>\n"

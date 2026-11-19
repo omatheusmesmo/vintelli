@@ -328,7 +328,9 @@ th {
 /*
  * A capture is 160 cells wide. The font size follows the frame width so the
  * whole screen always fits, like a screenshot, instead of scrolling sideways.
- * 0.6 is the advance of one cell of the capture font, in em.
+ * 0.6 is the advance of one cell of the capture font, in em. Rows align left:
+ * the home page hero centers its text, and a centered row of another length
+ * would start in another column.
  */
 .vintelli-capture {
   font-family: "Vintelli Mono", var(--mono);
@@ -338,6 +340,7 @@ th {
   margin: 0;
   overflow: hidden;
   padding: 0;
+  text-align: left;
   white-space: pre;
 }
 
