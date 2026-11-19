@@ -626,22 +626,21 @@ class VintelliShellTest {
                 .withLayoutStore(store));
         try (MouseShellRunner test = runMouseShell(shell, SIZE)) {
             Pilot pilot = test.pilot();
-            pilot.pause(STARTUP);
-            int projectBefore = pilot.findElement("project-panel").width();
-            Rect editorBefore = pilot.findElement("editor-panel");
-            int bottomBefore = pilot.findElement("bottom-stripe").height();
+            int projectBefore = test.awaitElementArea("project-panel", SIZE).width();
+            Rect editorBefore = test.awaitElementArea("editor-panel", SIZE);
+            int bottomBefore = test.awaitElementArea("bottom-stripe", SIZE).height();
 
             test.resize(pilot, FIFTY_BY_FIFTEEN);
-            settle(pilot);
-            Rect shrunk = pilot.findElement("editor-panel");
+            Rect shrunk = test.awaitElementArea("editor-panel", FIFTY_BY_FIFTEEN);
             assertTrue(shrunk.height() >= ShellLayout.MIN_EDITOR_HEIGHT, "editor rows at 50x15: " + shrunk);
             assertTrue(shrunk.width() >= ShellLayout.MIN_EDITOR_WIDTH, "editor columns at 50x15: " + shrunk);
 
             test.resize(pilot, SIZE);
-            settle(pilot);
-            assertEquals(projectBefore, pilot.findElement("project-panel").width(), "the project width comes back");
-            assertEquals(editorBefore, pilot.findElement("editor-panel"), "the editor comes back");
-            assertEquals(bottomBefore, pilot.findElement("bottom-stripe").height(), "the bottom height comes back");
+            assertEquals(projectBefore, test.awaitElementArea("project-panel", SIZE).width(),
+                    "the project width comes back");
+            assertEquals(editorBefore, test.awaitElementArea("editor-panel", SIZE), "the editor comes back");
+            assertEquals(bottomBefore, test.awaitElementArea("bottom-stripe", SIZE).height(),
+                    "the bottom height comes back");
         }
     }
 
