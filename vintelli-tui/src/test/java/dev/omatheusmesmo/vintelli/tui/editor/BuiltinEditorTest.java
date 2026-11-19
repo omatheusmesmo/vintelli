@@ -618,6 +618,57 @@ class BuiltinEditorTest {
     }
 
     @Test
+    void logpointsAndHitCountsSurviveARestartAndFollowTheirLineThroughEdits() throws IOException {
+        Path source = write("Logpoint.java", "class Logpoint {\n  void run() {}\n}\n");
+        Path session = project.resolve("editor.properties");
+        BuiltinEditor editor = editor(session);
+        editor.open(new OpenRequest(source, 1));
+        assertTrue(editor.toggleBreakpoint(1));
+
+        assertTrue(editor.editBreakpointAtCaret(new BreakpointEditorOverlay.Edit("count > 1", "count={count}", "3", false)));
+        editor.insert("// inserted above the source\n");
+
+        DebugCapability.SourceBreakpoint moved = editor.breakpoints(editor.document()).get(2);
+        assertTrue(moved.isLogpoint(), "the log message moves with its line");
+        assertEquals("count={count}", moved.logMessage());
+        assertEquals("3", moved.hitCondition());
+        assertEquals("count > 1", moved.condition());
+
+        BuiltinEditor restored = editor(session);
+        restored.restoreSession();
+        restored.open(new OpenRequest(source, 0));
+        DebugCapability.SourceBreakpoint reloaded = restored.breakpoints(restored.document()).get(2);
+        assertEquals("count={count}", reloaded.logMessage());
+        assertEquals("3", reloaded.hitCondition());
+        assertEquals("count > 1", reloaded.condition());
+        assertEquals(DebugCapability.BreakpointState.PENDING, reloaded.state());
+    }
+
+    @Test
+    void editingABreakpointAppliesSuspendAndRefusesWhatTheModelRejects() throws IOException {
+        Path source = write("Edit.java", "a\nb\n");
+        BuiltinEditor editor = editor(null);
+        editor.open(new OpenRequest(source, 0));
+        assertFalse(editor.editBreakpointAtCaret(new BreakpointEditorOverlay.Edit("", "", "", true)),
+                "no breakpoint on the caret line");
+        assertTrue(editor.toggleBreakpointAtCaret());
+
+        assertFalse(editor.editBreakpointAtCaret(new BreakpointEditorOverlay.Edit("", "", "soon", true)));
+        assertTrue(editor.status().contains("hit count"), editor.status());
+        assertTrue(editor.breakpointAtCaret().orElseThrow().hitCondition().isEmpty());
+
+        assertFalse(editor.editBreakpointAtCaret(new BreakpointEditorOverlay.Edit("", "x={x}", "", true)),
+                "an adapter logs or suspends, so a log message needs Suspend off");
+        assertFalse(editor.editBreakpointAtCaret(new BreakpointEditorOverlay.Edit("", "", "", false)),
+                "a breakpoint that neither suspends nor logs does nothing");
+        assertFalse(editor.breakpointAtCaret().orElseThrow().isLogpoint());
+
+        assertTrue(editor.editBreakpointAtCaret(new BreakpointEditorOverlay.Edit("", "x={x}", "", false)));
+        assertTrue(editor.breakpointAtCaret().orElseThrow().isLogpoint());
+        assertEquals("Logpoint saved", editor.status());
+    }
+
+    @Test
     void removesBreakpointsWhenEditsMakeTheirLineUnavailable() throws IOException {
         Path source = write("Shortened.java", "first\nsecond\nthird\n");
         BuiltinEditor editor = editor(null);

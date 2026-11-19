@@ -61,6 +61,7 @@ final class EditorElement implements Element {
     private static final String VERIFIED_BREAKPOINT_ROLE = "editor-breakpoint-verified";
     private static final String PENDING_BREAKPOINT_ROLE = "editor-breakpoint-pending";
     private static final String REJECTED_BREAKPOINT_ROLE = "editor-breakpoint-rejected";
+    private static final String LOGPOINT_ROLE = "editor-breakpoint-logpoint";
     private static final String EXECUTION_LINE_ROLE = "editor-execution-line";
     private static final String CARET_ROLE = "editor-caret";
     private static final String QUICK_FIX_ROLE = "editor-quick-fix";
@@ -451,6 +452,14 @@ final class EditorElement implements Element {
                     case VERIFIED -> { marker = ascii ? "B " : "● "; markerStyle = roleStyle(context, VERIFIED_BREAKPOINT_ROLE); }
                     case REJECTED -> { marker = ascii ? "! " : "× "; markerStyle = roleStyle(context, REJECTED_BREAKPOINT_ROLE); }
                     default -> { marker = ascii ? "o " : "◌ "; markerStyle = roleStyle(context, PENDING_BREAKPOINT_ROLE); }
+                }
+                if (breakpoint.isLogpoint() && breakpoint.state() != DebugCapability.BreakpointState.REJECTED) {
+                    marker = ascii ? "L " : "◆ ";
+                    markerStyle = roleStyle(context, LOGPOINT_ROLE);
+                } else if (!breakpoint.condition().isEmpty()) {
+                    marker = marker.charAt(0) + "?";
+                } else if (!breakpoint.hitCondition().isEmpty()) {
+                    marker = marker.charAt(0) + "#";
                 }
             } else if (quickFixHint) {
                 marker = ascii ? QUICK_FIX_ASCII : QUICK_FIX;

@@ -18,6 +18,12 @@ final class DapSourceBreakpoints {
             if (!point.condition().isBlank()) {
                 breakpoint.setCondition(point.condition());
             }
+            if (!point.logMessage().isBlank()) {
+                breakpoint.setLogMessage(point.logMessage());
+            }
+            if (!point.hitCondition().isBlank()) {
+                breakpoint.setHitCondition(point.hitCondition());
+            }
             return breakpoint;
         }).toArray(SourceBreakpoint[]::new);
     }

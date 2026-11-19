@@ -14,6 +14,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.Objects;
 import java.util.TreeMap;
@@ -119,6 +120,8 @@ public final class JavaDebugCapability implements DebugCapability {
     private static final int MAX_EVALUATION_VALUE_CHARS = 1000;
     private static final int MAX_EVALUATION_TYPE_CHARS = 200;
     private static final String CONDITIONS_UNSUPPORTED = "Conditional breakpoints are not supported by this adapter";
+    private static final String LOGPOINTS_UNSUPPORTED = "Logpoints are not supported by this adapter";
+    private static final String HIT_CONDITIONS_UNSUPPORTED = "Hit counts on breakpoints are not supported by this adapter";
 
     private final boolean enabled;
     private final JavaDebugAdapterPort adapter;
@@ -357,8 +360,7 @@ public final class JavaDebugCapability implements DebugCapability {
             String resolvedSource = resolvedSources.size() == 1 ? resolvedSources.getFirst() : sourcePath;
             Integer resolvedLine = everyReportResolved && resolvedLines.size() == 1 && resolvedSources.size() == 1
                     ? resolvedLines.getFirst() : null;
-            return new DebugCapability.SourceBreakpoint(sourcePath, point.line(), state, message, resolvedLine,
-                    resolvedSource, point.condition());
+            return point.withOutcome(state, message, resolvedLine, resolvedSource);
         }).toList();
         return CapabilityResult.ok(result);
     }
@@ -484,6 +486,8 @@ public final class JavaDebugCapability implements DebugCapability {
         private volatile DebugCapabilities debugCapabilities = new DebugCapabilities(false, false, false, false, false);
         private volatile boolean conditionalBreakpoints;
         private volatile boolean setVariableSupported;
+        private volatile boolean logPoints;
+        private volatile boolean hitConditionalBreakpoints;
         private final AtomicBoolean executionRequestPending = new AtomicBoolean();
         private long stopGeneration;
         private PendingExecution pendingExecution;
@@ -554,6 +558,8 @@ public final class JavaDebugCapability implements DebugCapability {
             debugCapabilities = new DebugCapabilities(true, false, true, true, true, false);
             conditionalBreakpoints = Boolean.TRUE.equals(capabilities.getSupportsConditionalBreakpoints());
             setVariableSupported = Boolean.TRUE.equals(capabilities.getSupportsSetVariable());
+            logPoints = Boolean.TRUE.equals(capabilities.getSupportsLogPoints());
+            hitConditionalBreakpoints = Boolean.TRUE.equals(capabilities.getSupportsHitConditionalBreakpoints());
             if (isTerminal()) {
                 throw new IOException("The debug adapter ended during initialization");
             }
@@ -938,6 +944,17 @@ public final class JavaDebugCapability implements DebugCapability {
             scheduleCleanup();
         }
 
+        private static String locatedOutput(OutputEventArguments event) {
+            String output = event.getOutput();
+            Source source = event.getSource();
+            Integer line = event.getLine();
+            if (output == null || output.isEmpty() || source == null || source.getPath() == null
+                    || source.getPath().isBlank() || line == null || line < 1) {
+                return output;
+            }
+            return source.getPath() + ":" + line + " " + output;
+        }
+
         private void eventOutput(String output) {
             if (output != null && !output.isEmpty()) {
                 output(outputLines, output);
@@ -1176,25 +1193,34 @@ public final class JavaDebugCapability implements DebugCapability {
                 List<DebugCapability.SourceBreakpoint> requested) {
             IDebugProtocolServer protocol = server;
             if (protocol == null || isTerminal()) {
-                return CapabilityResult.ok(requested.stream().map(point -> new DebugCapability.SourceBreakpoint(
-                        sourcePath, point.line(), DebugCapability.BreakpointState.PENDING, "", null, sourcePath,
-                        point.condition())).toList());
+                return CapabilityResult.ok(requested.stream().map(point -> point.withOutcome(
+                        DebugCapability.BreakpointState.PENDING, "", null, sourcePath)).toList());
             }
-            List<DebugCapability.SourceBreakpoint> sendable = requested.stream().filter(this::conditionSupported).toList();
+            List<DebugCapability.SourceBreakpoint> sendable = requested.stream()
+                    .filter(point -> unsupportedFeature(point).isEmpty()).toList();
             Iterator<DebugCapability.SourceBreakpoint> reported = sendSourceBreakpoints(protocol, sourcePath, sendable)
                     .iterator();
             List<DebugCapability.SourceBreakpoint> outcomes = new ArrayList<>(requested.size());
             for (DebugCapability.SourceBreakpoint point : requested) {
-                outcomes.add(conditionSupported(point) ? reported.next()
-                        : new DebugCapability.SourceBreakpoint(sourcePath, point.line(),
-                                DebugCapability.BreakpointState.REJECTED, CONDITIONS_UNSUPPORTED, null, sourcePath,
-                                point.condition()));
+                Optional<String> unsupported = unsupportedFeature(point);
+                outcomes.add(unsupported.isEmpty() ? reported.next()
+                        : point.withOutcome(DebugCapability.BreakpointState.REJECTED, unsupported.get(), null,
+                                sourcePath));
             }
             return CapabilityResult.ok(List.copyOf(outcomes));
         }
 
-        private boolean conditionSupported(DebugCapability.SourceBreakpoint point) {
-            return conditionalBreakpoints || point.condition().isBlank();
+        private Optional<String> unsupportedFeature(DebugCapability.SourceBreakpoint point) {
+            if (!conditionalBreakpoints && !point.condition().isBlank()) {
+                return Optional.of(CONDITIONS_UNSUPPORTED);
+            }
+            if (!logPoints && point.isLogpoint()) {
+                return Optional.of(LOGPOINTS_UNSUPPORTED);
+            }
+            if (!hitConditionalBreakpoints && !point.hitCondition().isBlank()) {
+                return Optional.of(HIT_CONDITIONS_UNSUPPORTED);
+            }
+            return Optional.empty();
         }
 
         private List<DebugCapability.SourceBreakpoint> sendSourceBreakpoints(IDebugProtocolServer protocol,
@@ -1228,9 +1254,8 @@ public final class JavaDebugCapability implements DebugCapability {
                 return List.copyOf(applied);
             } catch (Exception failure) {
                 String reason = failureReason(failure);
-                return requested.stream().map(point -> new DebugCapability.SourceBreakpoint(
-                        sourcePath, point.line(), DebugCapability.BreakpointState.REJECTED, reason, null, sourcePath,
-                        point.condition())).toList();
+                return requested.stream().map(point -> point.withOutcome(
+                        DebugCapability.BreakpointState.REJECTED, reason, null, sourcePath)).toList();
             }
         }
 
@@ -1384,7 +1409,7 @@ public final class JavaDebugCapability implements DebugCapability {
             @Override
             public void output(OutputEventArguments event) {
                 if (event != null) {
-                    eventOutput(event.getOutput());
+                    eventOutput(locatedOutput(event));
                 }
             }
         }

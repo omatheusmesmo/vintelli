@@ -57,6 +57,7 @@ import java.util.OptionalInt;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.HashMap;
 import java.util.TreeMap;
 import java.util.function.Supplier;
@@ -315,36 +316,38 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
         return Optional.ofNullable(breakpoints.getOrDefault(document.file(), Map.of()).get(document.row()));
     }
 
-    public synchronized boolean setBreakpointConditionAtCaret(String condition) {
+    public synchronized boolean editBreakpointAtCaret(BreakpointEditorOverlay.Edit edit) {
         EditorDocument document = document();
         Optional<DebugCapability.SourceBreakpoint> current = breakpointAtCaret();
         if (document == null || current.isEmpty()) {
-            status = "Set a breakpoint on this line before editing its condition";
+            status = "Set a breakpoint on this line before editing it";
+            return false;
+        }
+        String problem = edit.problem();
+        if (problem != null) {
+            status = "Breakpoint rejected: " + problem;
             return false;
         }
         DebugCapability.SourceBreakpoint point = current.get();
-        DebugCapability.SourceBreakpoint updated;
-        try {
-            updated = new DebugCapability.SourceBreakpoint(point.sourcePath(), point.line(),
-                    DebugCapability.BreakpointState.PENDING, "", null, point.sourcePath(), condition);
-        } catch (IllegalArgumentException invalid) {
-            status = "Breakpoint condition rejected: " + invalid.getMessage();
-            return false;
-        }
+        DebugCapability.SourceBreakpoint updated = new DebugCapability.SourceBreakpoint(point.sourcePath(),
+                point.line(), DebugCapability.BreakpointState.PENDING, "", null, point.sourcePath(),
+                edit.condition(), edit.logMessage(), edit.hitCondition());
         breakpoints.get(document.file()).put(document.row(), updated);
+        breakpointGeneration++;
         syncBreakpoints(document.file());
         persistBreakpoints();
-        status = updated.condition().isEmpty() ? "Breakpoint condition cleared" : "Breakpoint condition saved";
+        status = updated.isLogpoint() ? "Logpoint saved" : "Breakpoint saved";
         return true;
     }
 
-    private static Map<Integer, String> conditionsOf(Map<Integer, DebugCapability.SourceBreakpoint> points) {
-        return points.entrySet().stream().filter(entry -> !entry.getValue().condition().isBlank())
-                .collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().condition()));
+    private static Map<Integer, String> detailsOf(Map<Integer, DebugCapability.SourceBreakpoint> points,
+            Function<DebugCapability.SourceBreakpoint, String> detail) {
+        return points.entrySet().stream().filter(entry -> !detail.apply(entry.getValue()).isBlank())
+                .collect(Collectors.toMap(Map.Entry::getKey, entry -> detail.apply(entry.getValue())));
     }
 
     private static String breakpointIdentity(DebugCapability.SourceBreakpoint point) {
-        return point.line() + ":" + point.condition();
+        return point.line() + ":" + point.condition() + ":" + point.logMessage() + ":" + point.hitCondition();
     }
 
     synchronized boolean toggleBreakpoint(int line) {
@@ -437,9 +440,8 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
             return;
         }
         Map<Integer, DebugCapability.SourceBreakpoint> pending = new TreeMap<>();
-        source.forEach((line, point) -> pending.put(line, new DebugCapability.SourceBreakpoint(point.sourcePath(),
-                point.line(), DebugCapability.BreakpointState.PENDING, reason, null, point.sourcePath(),
-                point.condition())));
+        source.forEach((line, point) -> pending.put(line, point.withOutcome(DebugCapability.BreakpointState.PENDING,
+                reason, null, point.sourcePath())));
         breakpoints.put(file, pending);
     }
 
@@ -450,7 +452,10 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
         try {
             List<BreakpointStore.Source> sources = breakpoints.entrySet().stream()
                     .map(source -> new BreakpointStore.Source(source.getKey(),
-                            source.getValue().keySet().stream().toList(), conditionsOf(source.getValue())))
+                            source.getValue().keySet().stream().toList(),
+                            detailsOf(source.getValue(), DebugCapability.SourceBreakpoint::condition),
+                            detailsOf(source.getValue(), DebugCapability.SourceBreakpoint::logMessage),
+                            detailsOf(source.getValue(), DebugCapability.SourceBreakpoint::hitCondition)))
                     .toList();
             breakpointStore.save(project, sources);
         } catch (IOException failure) {
@@ -1189,10 +1194,7 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
         source.forEach((line, point) -> {
             int moved = shift.map(line);
             if (moved >= 0) {
-                shifted.put(moved, moved == line ? point
-                        : new DebugCapability.SourceBreakpoint(point.sourcePath(), moved + 1,
-                                DebugCapability.BreakpointState.PENDING, "", null, point.sourcePath(),
-                                point.condition()));
+                shifted.put(moved, moved == line ? point : point.pendingAt(moved + 1, ""));
             }
         });
         replaceBreakpoints(file, shifted);
@@ -1242,7 +1244,8 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
                     for (int line : source.lines()) {
                         restored.put(line, new DebugCapability.SourceBreakpoint(source.file().toString(), line + 1,
                                 DebugCapability.BreakpointState.PENDING, "", null, source.file().toString(),
-                                source.conditions().getOrDefault(line, "")));
+                                source.conditions().getOrDefault(line, ""), source.logMessages().getOrDefault(line, ""),
+                                source.hitConditions().getOrDefault(line, "")));
                     }
                 }
                 if (!breakpoints.isEmpty()) {

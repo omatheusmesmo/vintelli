@@ -19,7 +19,7 @@ import dev.omatheusmesmo.vintelli.tui.editor.CompletionSite;
 import dev.omatheusmesmo.vintelli.tui.editor.QuickDocumentationController;
 import dev.omatheusmesmo.vintelli.tui.editor.QuickDocumentationOverlay;
 import dev.omatheusmesmo.vintelli.tui.editor.GoToLine;
-import dev.omatheusmesmo.vintelli.tui.editor.BreakpointConditionOverlay;
+import dev.omatheusmesmo.vintelli.tui.editor.BreakpointEditorOverlay;
 import dev.omatheusmesmo.vintelli.tui.editor.FormatController;
 import dev.omatheusmesmo.vintelli.tui.editor.GoToLineOverlay;
 import dev.omatheusmesmo.vintelli.tui.editor.CodeActionPopup;
@@ -57,6 +57,7 @@ import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilitySelection;
 import dev.omatheusmesmo.vintelli.api.capability.ReadFileCapability;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityStatus;
+import dev.omatheusmesmo.vintelli.api.capability.DebugCapability;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Diagnostic;
 import dev.omatheusmesmo.vintelli.api.statusbar.StatusBarWidgetContributor;
 import dev.tamboui.layout.Constraint;
@@ -162,7 +163,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             MenuPopup menuPopup, ProjectSearchModel searchModel, ProjectSearchOverlay searchOverlay,
             SymbolSearchModel symbolSearch, SymbolSearchOverlay symbolSearchOverlay,
             OverlayStack stack, RunConfigurationChooser runConfigurations, GoToLineOverlay goToLine,
-            BreakpointConditionOverlay breakpointCondition) {
+            BreakpointEditorOverlay breakpointEditor) {
     }
 
     private final ShellThemes themes;
@@ -437,19 +438,19 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         SymbolSearchOverlay symbolSearchOverlay = new SymbolSearchOverlay(symbolSearch);
         OverlayStack stack = new OverlayStack();
         GoToLineOverlay goToLine = new GoToLineOverlay();
-        BreakpointConditionOverlay breakpointCondition = new BreakpointConditionOverlay();
+        BreakpointEditorOverlay breakpointEditor = new BreakpointEditorOverlay();
         RunConfigurationChooser runConfigurations = new RunConfigurationChooser(
                 () -> runWindow == null ? List.of() : runWindow.configurations());
         KeymapParts built = new KeymapParts(keymap, commandPalette, keymapHelp, menuPopup, searchModel,
                 searchOverlay, symbolSearch, symbolSearchOverlay, stack, runConfigurations, goToLine,
-                breakpointCondition);
+                breakpointEditor);
         stack.registerOverlay(Kind.COMMAND_PALETTE, commandPalette::isOpen, commandPalette::close);
         stack.registerOverlay(Kind.KEYMAP_HELP, keymapHelp::isOpen, keymapHelp::close);
         stack.registerOverlay(Kind.MENU, menuPopup::isOpen, () -> closeMenu(built));
         stack.registerOverlay(Kind.RUN_CONFIGURATION, runConfigurations::isOpen, runConfigurations::close);
         stack.registerOverlay(Kind.GO_TO_LINE, goToLine::isOpen, () -> closeGoToLine(goToLine));
-        stack.registerOverlay(Kind.BREAKPOINT_CONDITION, breakpointCondition::isOpen,
-                () -> closeBreakpointCondition(breakpointCondition));
+        stack.registerOverlay(Kind.BREAKPOINT_EDITOR, breakpointEditor::isOpen,
+                () -> closeBreakpointEditor(breakpointEditor));
         stack.registerOverlay(Kind.QUICK_FIX, quickFix::isOpen, this::releaseQuickFix);
         stack.registerOverlay(Kind.GENERATE, generate::isOpen, this::releaseGenerate);
         stack.registerOverlay(Kind.NAVIGATION_TARGETS, editorController.navigationTargets()::isOpen,
@@ -1196,7 +1197,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             case PROJECT_SEARCH -> new OverlayElement("project-search", parts.searchOverlay()::render);
             case SYMBOL_SEARCH -> new OverlayElement("symbol-search", parts.symbolSearchOverlay()::render);
             case GO_TO_LINE -> new OverlayElement("go-to-line", parts.goToLine()::render);
-            case BREAKPOINT_CONDITION -> new OverlayElement("breakpoint-condition", parts.breakpointCondition()::render);
+            case BREAKPOINT_EDITOR -> new OverlayElement("breakpoint-editor", parts.breakpointEditor()::render);
             case QUICK_FIX -> new OverlayElement("quick-fix", (frame, area) -> quickFixOverlay.render(frame, area,
                     editor == null ? Optional.empty() : editor.caretCell()));
             case GENERATE -> new OverlayElement("generate", (frame, area) -> generateOverlay.render(frame, area,
@@ -1252,7 +1253,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             }
             return EventResult.HANDLED;
         }
-        if (top == Kind.GO_TO_LINE || top == Kind.BREAKPOINT_CONDITION || top == Kind.SYMBOL_SEARCH) {
+        if (top == Kind.GO_TO_LINE || top == Kind.BREAKPOINT_EDITOR || top == Kind.SYMBOL_SEARCH) {
             return EventResult.HANDLED;
         }
         if (top == Kind.QUICK_DOCUMENTATION) {
@@ -1430,7 +1431,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             case SYMBOL_SEARCH -> parts.symbolSearchOverlay().handleKey(key)
                     .ifPresent(target -> editorController.openRevealed(target.file(), target.line()));
             case GO_TO_LINE -> handleGoToLineKey(parts, key);
-            case BREAKPOINT_CONDITION -> handleBreakpointConditionKey(parts, key);
+            case BREAKPOINT_EDITOR -> handleBreakpointEditorKey(parts, key);
             case QUICK_FIX -> handleQuickFixKey(key);
             case GENERATE -> handleGenerateKey(key);
             case NAVIGATION_TARGETS -> handleNavigationTargetsKey(key);
@@ -1773,7 +1774,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             }
             case KeyActions.EDIT_BREAKPOINT_CONDITION -> {
                 parts.stack().closeOverlays();
-                openBreakpointCondition(parts);
+                openBreakpointEditor(parts);
             }
             case KeyActions.QUICK_FIX -> {
                 parts.stack().closeOverlays();
@@ -1904,49 +1905,49 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         }
     }
 
-    private void openBreakpointCondition(KeymapParts parts) {
+    private void openBreakpointEditor(KeymapParts parts) {
         if (editor == null || !editor.hasDocument()) {
-            status = "Open a file to edit a breakpoint condition in";
+            status = "Open a file to edit a breakpoint in";
             return;
         }
         if (editor.breakpointAtCaret().isEmpty()) {
-            status = "Set a breakpoint on this line before editing its condition";
+            status = "Set a breakpoint on this line before editing it";
             return;
         }
-        String current = editor.breakpointAtCaret().get().condition();
+        DebugCapability.SourceBreakpoint current = editor.breakpointAtCaret().get();
         inputCaptured = false;
-        parts.stack().open(Kind.BREAKPOINT_CONDITION, () -> openBreakpointConditionInput(parts.breakpointCondition(), current));
-        status = BreakpointConditionOverlay.HINT;
+        parts.stack().open(Kind.BREAKPOINT_EDITOR, () -> openBreakpointEditorInput(parts.breakpointEditor(), current));
+        status = parts.breakpointEditor().status();
     }
 
-    private void openBreakpointConditionInput(BreakpointConditionOverlay overlay, String current) {
+    private void openBreakpointEditorInput(BreakpointEditorOverlay overlay, DebugCapability.SourceBreakpoint current) {
         overlay.open(current);
         if (editor != null) {
             editor.overlayInputActive(true);
         }
     }
 
-    private void closeBreakpointCondition(BreakpointConditionOverlay overlay) {
+    private void closeBreakpointEditor(BreakpointEditorOverlay overlay) {
         overlay.close();
         if (editor != null) {
             editor.overlayInputActive(false);
         }
     }
 
-    private void handleBreakpointConditionKey(KeymapParts parts, KeyEvent key) {
-        BreakpointConditionOverlay overlay = parts.breakpointCondition();
-        Optional<String> condition = overlay.handleKey(key);
+    private void handleBreakpointEditorKey(KeymapParts parts, KeyEvent key) {
+        BreakpointEditorOverlay overlay = parts.breakpointEditor();
+        Optional<BreakpointEditorOverlay.Edit> edit = overlay.handleKey(key);
         if (overlay.isOpen()) {
-            status = BreakpointConditionOverlay.HINT;
+            status = overlay.status();
             return;
         }
         editor.overlayInputActive(false);
         editor.requestFocus();
         inputCaptured = false;
-        condition.ifPresentOrElse(value -> {
-            editor.setBreakpointConditionAtCaret(value);
+        edit.ifPresentOrElse(value -> {
+            editor.editBreakpointAtCaret(value);
             status = editor.status();
-        }, () -> status = "Breakpoint condition unchanged");
+        }, () -> status = "Breakpoint unchanged");
     }
 
     private void handleGoToLineKey(KeymapParts parts, KeyEvent key) {

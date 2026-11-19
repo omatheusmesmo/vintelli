@@ -216,6 +216,10 @@ EditorTabBarElement-overflow {
   color: $editor-keyword;
 }
 
+.editor-breakpoint-logpoint {
+  color: $editor-constant;
+}
+
 .editor-execution-line {
   color: $editor-number;
   text-style: bold;
