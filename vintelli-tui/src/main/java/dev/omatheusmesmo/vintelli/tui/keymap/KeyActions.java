@@ -60,6 +60,8 @@ public final class KeyActions {
     public static final String GO_TO_LINE = "navigation_goToLine";
     public static final String FOCUS_NAVIGATION_BAR = "navigation_focusBreadcrumbs";
     public static final String FIND_IN_FILES = "navigation_findInFiles";
+    public static final String NAVIGATION_BACK = "navigation_back";
+    public static final String NAVIGATION_FORWARD = "navigation_forward";
     public static final String PROJECT_WIDER = "layout_project_wider";
     public static final String PROJECT_NARROWER = "layout_project_narrower";
     public static final String BOTTOM_TALLER = "layout_bottom_taller";
@@ -170,6 +172,8 @@ public final class KeyActions {
                 new KeyAction(GO_TO_LINE, "Go to Line"),
                 new KeyAction(FOCUS_NAVIGATION_BAR, "Focus Navigation Bar"),
                 new KeyAction(FIND_IN_FILES, "Find in Files"),
+                new KeyAction(NAVIGATION_BACK, "Back"),
+                new KeyAction(NAVIGATION_FORWARD, "Forward"),
                 new KeyAction(PROJECT_WIDER, "Widen Project Panel"),
                 new KeyAction(PROJECT_NARROWER, "Narrow Project Panel"),
                 new KeyAction(BOTTOM_TALLER, "Grow Tool Window"),

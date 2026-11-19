@@ -79,6 +79,8 @@ final class ShellMenuCatalog {
                 canEdit ? navigationUnavailable : editorUnavailable);
         addMenu(entries, "Navigate", KeyActions.GO_TO_CLASS, "Go to Class", navigationUnavailable);
         addMenu(entries, "Navigate", KeyActions.GO_TO_SYMBOL, "Go to Symbol", navigationUnavailable);
+        addMenu(entries, "Navigate", KeyActions.NAVIGATION_BACK, "Back", canEdit ? "" : editorUnavailable);
+        addMenu(entries, "Navigate", KeyActions.NAVIGATION_FORWARD, "Forward", canEdit ? "" : editorUnavailable);
         addMenu(entries, "Code", KeyActions.NEXT_PROBLEM, "Next Problem", canEdit ? "" : editorUnavailable);
         addMenu(entries, "Code", KeyActions.PREVIOUS_PROBLEM, "Previous Problem", canEdit ? "" : editorUnavailable);
         addMenu(entries, "Code", KeyActions.QUICK_FIX, "Quick Fix", canEdit ? "" : editorUnavailable);

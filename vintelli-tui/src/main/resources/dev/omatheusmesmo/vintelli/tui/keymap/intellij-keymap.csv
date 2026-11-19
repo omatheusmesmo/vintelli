@@ -83,6 +83,8 @@ navigation_findInFiles,Alt+F | Ctrl+Shift+F,Ctrl+Shift+F,different,"Find in File
 navigation_goToLine,Ctrl+G,Ctrl+G,same,"Go to Line with the IntelliJ chord; the vim profile binds Alt+G instead (docs/keymap.md)"
 navigation_goToClass,Ctrl+N,Ctrl+N,same,"Go to Class with the IntelliJ chord; Ctrl+Shift+N stays Go to File, so the unshifted chord is bound (docs/keymap.md)"
 navigation_goToSymbol,Ctrl+Alt+Shift+N,Ctrl+Alt+Shift+N,same,"Go to Symbol with the IntelliJ chord, which needs the Kitty keyboard protocol; tmux and ghostty may intercept it, and the palette and the Navigate menu reach it (docs/keymap.md)"
+navigation_back,Ctrl+Alt+Left,Ctrl+Alt+Left,same,"Navigate Back with the IntelliJ chord, which needs the Kitty keyboard protocol; tmux may intercept it, and the palette and the Navigate menu reach it (docs/keymap.md)"
+navigation_forward,Ctrl+Alt+Right,Ctrl+Alt+Right,same,"Navigate Forward with the IntelliJ chord, which needs the Kitty keyboard protocol; tmux may intercept it, and the palette and the Navigate menu reach it (docs/keymap.md)"
 layout_project_wider,Alt+=,,vintelli-only,"Widens the project panel; no IntelliJ chord confirmed"
 layout_project_narrower,Alt+-,,vintelli-only,"Narrows the project panel; no IntelliJ chord confirmed"
 layout_bottom_taller,Alt+.,,vintelli-only,"Grows the bottom tool window; no IntelliJ chord confirmed"
