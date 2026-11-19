@@ -21,22 +21,22 @@
         <dependency>
             <groupId>org.apache.maven</groupId>
             <artifactId>maven-model-builder</artifactId>
-            <version>3.9.8</version>
+            <version>${maven-libraries.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.maven</groupId>
             <artifactId>maven-resolver-provider</artifactId>
-            <version>3.9.8</version>
+            <version>${maven-libraries.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.maven</groupId>
             <artifactId>maven-artifact</artifactId>
-            <version>3.9.8</version>
+            <version>${maven-libraries.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.maven</groupId>
             <artifactId>maven-builder-support</artifactId>
-            <version>3.9.8</version>
+            <version>${maven-libraries.version}</version>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
@@ -51,49 +51,49 @@
         <dependency>
             <groupId>org.apache.maven.resolver</groupId>
             <artifactId>maven-resolver-supplier</artifactId>
-            <version>1.9.22</version>
+            <version>${maven-resolver.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.maven.resolver</groupId>
             <artifactId>maven-resolver-api</artifactId>
-            <version>1.9.22</version>
+            <version>${maven-resolver.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.maven.resolver</groupId>
             <artifactId>maven-resolver-util</artifactId>
-            <version>1.9.22</version>
+            <version>${maven-resolver.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.maven.resolver</groupId>
             <artifactId>maven-resolver-spi</artifactId>
-            <version>1.9.22</version>
+            <version>${maven-resolver.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.maven.resolver</groupId>
             <artifactId>maven-resolver-named-locks</artifactId>
-            <version>1.9.22</version>
+            <version>${maven-resolver.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.maven.resolver</groupId>
             <artifactId>maven-resolver-impl</artifactId>
-            <version>1.9.22</version>
+            <version>${maven-resolver.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.maven.resolver</groupId>
             <artifactId>maven-resolver-connector-basic</artifactId>
-            <version>1.9.22</version>
+            <version>${maven-resolver.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.maven.resolver</groupId>
             <artifactId>maven-resolver-transport-file</artifactId>
-            <version>1.9.22</version>
+            <version>${maven-resolver.version}</version>
         </dependency>
         <!-- RepositorySystemSupplier's checksum API lives in this artifact. The
              offline supplier registers no HTTP transporter at runtime. -->
         <dependency>
             <groupId>org.apache.maven.resolver</groupId>
             <artifactId>maven-resolver-transport-http</artifactId>
-            <version>1.9.22</version>
+            <version>${maven-resolver.version}</version>
         </dependency>
         <dependency>
             <groupId>org.jetbrains.pty4j</groupId>
