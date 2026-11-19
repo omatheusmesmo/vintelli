@@ -1,8 +1,10 @@
 package dev.omatheusmesmo.vintelli.tui.keymap;
 
+import dev.omatheusmesmo.vintelli.tui.StatusBarLayout;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.terminal.Frame;
 import dev.tamboui.style.Style;
+import dev.tamboui.text.CharWidth;
 import dev.tamboui.text.Span;
 import dev.tamboui.widgets.Clear;
 import dev.tamboui.widgets.block.Block;
@@ -61,17 +63,13 @@ final class OverlayPanel {
          */
         static ChordRow fit(String label, String chord, String hint, int width) {
             int room = width - 2;
-            boolean withHint = !hint.isEmpty() && label.length() + chord.length() + 1 + hint.length() <= room;
-            String name = label.length() + chord.length() <= room ? label : truncate(label, room - chord.length());
-            int used = 1 + name.length() + chord.length() + (withHint ? 1 + hint.length() : 0);
+            int chordWidth = CharWidth.of(chord);
+            boolean withHint = !hint.isEmpty() && CharWidth.of(label) + chordWidth + 1 + CharWidth.of(hint) <= room;
+            String name = CharWidth.of(label) + chordWidth <= room
+                    ? label
+                    : StatusBarLayout.truncate(label, room - chordWidth);
+            int used = 1 + CharWidth.of(name) + chordWidth + (withHint ? 1 + CharWidth.of(hint) : 0);
             return new ChordRow(name, " ".repeat(Math.max(1, width - used)), chord, withHint ? hint : "");
         }
-    }
-
-    private static String truncate(String value, int maxWidth) {
-        if (maxWidth <= 0) {
-            return "";
-        }
-        return value.length() <= maxWidth ? value : value.substring(0, maxWidth);
     }
 }

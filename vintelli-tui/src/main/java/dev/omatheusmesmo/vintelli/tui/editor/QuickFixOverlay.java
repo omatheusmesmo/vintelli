@@ -2,9 +2,11 @@ package dev.omatheusmesmo.vintelli.tui.editor;
 
 import dev.omatheusmesmo.vintelli.api.capability.CodeActionCapability.CodeAction;
 import dev.omatheusmesmo.vintelli.tui.OverlayInput;
+import dev.omatheusmesmo.vintelli.tui.StatusBarLayout;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.style.Style;
 import dev.tamboui.terminal.Frame;
+import dev.tamboui.text.CharWidth;
 import dev.tamboui.text.Line;
 import dev.tamboui.text.Span;
 import dev.tamboui.text.Text;
@@ -84,36 +86,29 @@ public final class QuickFixOverlay {
     }
 
     private static Line plain(String text, Style style, int width) {
-        return Line.from(Span.styled(truncate(text, width), style));
+        return Line.from(Span.styled(StatusBarLayout.truncate(text, width), style));
     }
 
     private static Line actionLine(CodeAction action, boolean selected, int width) {
         String kind = action.kind().isEmpty() ? "" : "  " + action.kind();
-        String row = truncate(" " + title(action) + kind, width);
-        return Line.from(Span.styled(row + " ".repeat(Math.max(0, width - row.length())),
+        String row = StatusBarLayout.truncate(" " + title(action) + kind, width);
+        return Line.from(Span.styled(row + " ".repeat(Math.max(0, width - CharWidth.of(row))),
                 selected ? SELECTION_STYLE : LABEL_STYLE));
     }
 
     private static int contentWidth(QuickFixMenu.View view) {
         int width = switch (view.state()) {
-            case ACTIONS -> view.actions().stream().mapToInt(action -> title(action).length() + 3
-                    + action.kind().length()).max().orElse(0);
-            case UNAVAILABLE -> ("Quick fixes unavailable: " + view.message()).length();
-            case FAILED -> ("Quick fixes failed: " + view.message()).length();
+            case ACTIONS -> view.actions().stream().mapToInt(action -> CharWidth.of(title(action)) + 3
+                    + CharWidth.of(action.kind())).max().orElse(0);
+            case UNAVAILABLE -> CharWidth.of("Quick fixes unavailable: " + view.message());
+            case FAILED -> CharWidth.of("Quick fixes failed: " + view.message());
             default -> 0;
         };
-        return Math.max(width, Math.max(view.notice().length(), HINT.length()));
+        return Math.max(width, Math.max(CharWidth.of(view.notice()), CharWidth.of(HINT)));
     }
 
     private static String title(CodeAction action) {
         return action.edit() != null || action.command() == null ? action.title() : action.title() + " (command)";
-    }
-
-    private static String truncate(String value, int width) {
-        if (width <= 0) {
-            return "";
-        }
-        return value.length() <= width ? value : value.substring(0, width);
     }
 
     private static Rect place(Rect area, int width, int height, Optional<Rect> caret) {
