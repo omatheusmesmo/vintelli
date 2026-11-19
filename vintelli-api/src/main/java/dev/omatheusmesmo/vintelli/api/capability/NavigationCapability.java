@@ -41,6 +41,30 @@ public interface NavigationCapability extends ProviderDescriptor {
      */
     CapabilityResult<List<WorkspaceSymbol>> workspaceSymbols(String query);
 
+    /**
+     * @return the occurrences of the symbol at {@code position} inside its own file, each with how it uses the
+     *         symbol, or a failed result when the provider cannot answer; the default fails with reason
+     *         {@code not-supported}, and a provider whose server does not offer the request fails with
+     *         {@code not-advertised}
+     */
+    default CapabilityResult<List<DocumentHighlight>> documentHighlights(SourcePosition position) {
+        return CapabilityResult.failed(new CapabilityFailure("not-supported",
+                "the provider cannot highlight the usages of a symbol"));
+    }
+
+    /** One occurrence of a symbol in the file, with the way the code uses it. */
+    record DocumentHighlight(CodeActionCapability.SourceRange range, Kind kind) {
+        public DocumentHighlight {
+            Objects.requireNonNull(range, "range");
+            Objects.requireNonNull(kind, "kind");
+        }
+
+        /** How an occurrence uses the symbol: plain text, a read of it or a write to it. */
+        public enum Kind {
+            TEXT, READ, WRITE
+        }
+    }
+
     /** A source document position, with zero based line and UTF-16 column. */
     record SourcePosition(Path filePath, int line, int column) {
         public SourcePosition {

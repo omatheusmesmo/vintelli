@@ -148,6 +148,7 @@ final class EditorElement implements Element {
             } else {
                 document.paintViewport(area.height(), () -> textArea.render(frame, area, context));
                 findRow.paintMatches(frame.buffer(), area, document, context);
+                paintUsages(frame.buffer(), area, document, context);
             }
             paintCaretRow(frame.buffer(), area);
             caretCell = caretCellOf(area);
@@ -164,6 +165,20 @@ final class EditorElement implements Element {
         @Override
         public EventResult handleKeyEvent(KeyEvent event, boolean focused) {
             return EditorElement.this.handleKeyEvent(event, focused);
+        }
+    }
+
+    private void observeUsages(EditorDocument document) {
+        UsageHighlightController usages = editor.usageHighlights();
+        if (usages != null) {
+            usages.observe(document);
+        }
+    }
+
+    private void paintUsages(Buffer buffer, Rect area, EditorDocument document, RenderContext context) {
+        UsageHighlightController usages = editor.usageHighlights();
+        if (usages != null) {
+            usages.paint(buffer, area, document, context);
         }
     }
 
@@ -369,6 +384,7 @@ final class EditorElement implements Element {
         synchronized (editor) {
             EditorDocument document = editor.document();
             find.syncTo(document);
+            observeUsages(document);
             if (!area.equals(renderedArea)) {
                 dragDocument = null;
                 barDragDocument = null;

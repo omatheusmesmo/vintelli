@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <scheme name="Dark" version="142" parent_scheme="Darcula">
-  <!-- excerpt of the `colors` option block with the caret row color and of the `attributes` option blocks for TEXT, the keyword, string, comment, number and constant attributes; taken verbatim from themes/expUI/expUI_darkScheme.xml of IntelliJ IDEA Ultimate 2026.2.3 (build IU-262.10968.63), Apache License, Version 2.0 by JetBrains -->
+  <!-- excerpt of the `colors` option block with the caret row color and of the `attributes` option blocks for TEXT, the keyword, string, comment, number constant, read identifier under caret and write identifier under caret attributes; taken verbatim from themes/expUI/expUI_darkScheme.xml of IntelliJ IDEA Ultimate 2026.2.3 (build IU-262.10968.63), Apache License, Version 2.0 by JetBrains -->
   <colors>
     <option name="CARET_ROW_COLOR" value="26282e" />
   </colors>
@@ -36,6 +36,20 @@
       <value>
         <option name="FOREGROUND" value="c77dbb" deuteranopia="828eba" protanopia="828eba" />
         <option name="FONT_TYPE" value="2" deuteranopia="bold" protanopia="bold"/>
+      </value>
+    </option>
+<option name="IDENTIFIER_UNDER_CARET_ATTRIBUTES">
+      <value>
+        <option name="BACKGROUND" value="373b39" deuteranopia="32394c" protanopia="32394c" />
+        <option name="ERROR_STRIPE_COLOR" value="5b786a" deuteranopia="4b6f99" protanopia="4b6f99" />
+        <option name="EFFECT_TYPE" value="1" />
+      </value>
+    </option>
+<option name="WRITE_IDENTIFIER_UNDER_CARET_ATTRIBUTES">
+      <value>
+        <option name="BACKGROUND" value="402f33" deuteranopia="253873" protanopia="253873" />
+        <option name="ERROR_STRIPE_COLOR" value="ba6387" deuteranopia="5fcc" protanopia="5fcc" />
+        <option name="EFFECT_TYPE" value="1" />
       </value>
     </option>
   </attributes>

@@ -44,6 +44,8 @@ import org.eclipse.lsp4j.InsertReplaceEdit;
 import org.eclipse.lsp4j.InsertTextFormat;
 import org.eclipse.lsp4j.TextEdit;
 import org.eclipse.lsp4j.Diagnostic;
+import org.eclipse.lsp4j.DocumentHighlight;
+import org.eclipse.lsp4j.DocumentHighlightKind;
 import org.eclipse.lsp4j.DiagnosticSeverity;
 import org.eclipse.lsp4j.DiagnosticTag;
 import org.eclipse.lsp4j.Hover;
@@ -291,6 +293,33 @@ public final class LspClient implements AutoCloseable, JavaDebugAdapterPort {
                 current -> current.references(LspServerSession.uriFor(file), new Position(line, column),
                         includeDeclaration),
                 LspClient::referenceTargets);
+    }
+
+    /**
+     * @return the occurrences of the symbol at the file position inside that file; a failed result with reason
+     *         {@code not-advertised} when the server does not advertise {@code documentHighlightProvider}, without
+     *         sending the request
+     */
+    public CapabilityResult<List<DocumentHighlightEntry>> documentHighlights(Path file, int line, int column) {
+        Selection selection = requestSelection();
+        if (selection.failure() != null) {
+            return CapabilityResult.failed(new CapabilityFailure("unavailable", selection.failure()));
+        }
+        try {
+            LspServerSession current = ensureStarted(selection);
+            if (!current.documentHighlightAdvertised()) {
+                return CapabilityResult.failed(new CapabilityFailure("not-advertised",
+                        "the language server of profile '" + selection.profile()
+                                + "' does not advertise documentHighlightProvider"));
+            }
+            return CapabilityResult.ok(current.documentHighlight(LspServerSession.uriFor(file),
+                    new Position(line, column)).stream().map(LspClient::highlightOf).toList());
+        } catch (ExecutionException | IOException | InterruptedException | TimeoutException | RuntimeException failure) {
+            if (failure instanceof InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+            return CapabilityResult.failed(failureDetail(selection, failure));
+        }
     }
 
     /**
@@ -807,6 +836,14 @@ public final class LspClient implements AutoCloseable, JavaDebugAdapterPort {
 
     private static List<CodeReference> referenceTargets(List<? extends Location> locations) {
         return locations.stream().map(LspClient::referenceOf).toList();
+    }
+
+    private static DocumentHighlightEntry highlightOf(DocumentHighlight highlight) {
+        Range range = highlight.getRange();
+        DocumentHighlightKind kind = highlight.getKind() == null ? DocumentHighlightKind.Text : highlight.getKind();
+        return new DocumentHighlightEntry(lineOf(range), characterOf(range),
+                range == null ? 0 : range.getEnd().getLine(),
+                range == null ? 0 : range.getEnd().getCharacter(), kind.getValue());
     }
 
     private static CodeReference referenceOf(Location location) {

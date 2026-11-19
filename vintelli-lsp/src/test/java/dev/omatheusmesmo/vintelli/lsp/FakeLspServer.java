@@ -50,6 +50,9 @@ import org.eclipse.lsp4j.DefinitionParams;
 import org.eclipse.lsp4j.Diagnostic;
 import org.eclipse.lsp4j.DiagnosticSeverity;
 import org.eclipse.lsp4j.DiagnosticTag;
+import org.eclipse.lsp4j.DocumentHighlight;
+import org.eclipse.lsp4j.DocumentHighlightKind;
+import org.eclipse.lsp4j.DocumentHighlightParams;
 import org.eclipse.lsp4j.DidChangeNotebookDocumentParams;
 import org.eclipse.lsp4j.DidChangeTextDocumentParams;
 import org.eclipse.lsp4j.DidCloseNotebookDocumentParams;
@@ -118,6 +121,8 @@ public final class FakeLspServer {
      * {@code Deprecated} tag. {@code --resolve-provider} advertises
      * {@code completionItem/resolve} for the completions. {@code --no-formatting}
      * leaves the formatting providers out of the advertised capabilities.
+     * {@code --no-document-highlight} leaves {@code documentHighlightProvider}
+     * out of the capabilities.
      */
     public static void main(String[] args) throws Exception {
         if (List.of(args).contains("--hold")) {
@@ -212,6 +217,7 @@ public final class FakeLspServer {
             capabilities.setHoverProvider(true);
             capabilities.setDefinitionProvider(true);
             capabilities.setReferencesProvider(true);
+            capabilities.setDocumentHighlightProvider(!arguments.contains("--no-document-highlight"));
             CompletionOptions completion = new CompletionOptions();
             completion.setResolveProvider(arguments.contains("--resolve-provider"));
             capabilities.setCompletionProvider(completion);
@@ -417,6 +423,22 @@ public final class FakeLspServer {
             return CompletableFuture.completedFuture(List.of(
                     new Location(params.getTextDocument().getUri(), new Range(new Position(2, 0), new Position(2, 4))),
                     new Location("file:///fake/other.java", new Range(new Position(3, 0), new Position(3, 4)))));
+        }
+
+        @Override
+        public CompletableFuture<List<? extends DocumentHighlight>> documentHighlight(
+                DocumentHighlightParams params) {
+            server.trace("textDocument/documentHighlight");
+            Position at = params.getPosition();
+            return CompletableFuture.completedFuture(List.of(
+                    new DocumentHighlight(new Range(at, new Position(at.getLine(), at.getCharacter() + 4)),
+                            DocumentHighlightKind.Read),
+                    new DocumentHighlight(new Range(new Position(at.getLine() + 1, 0),
+                            new Position(at.getLine() + 1, 4)), DocumentHighlightKind.Write),
+                    new DocumentHighlight(new Range(new Position(at.getLine() + 2, 2),
+                            new Position(at.getLine() + 2, 6)), DocumentHighlightKind.Text),
+                    new DocumentHighlight(new Range(new Position(at.getLine() + 3, 1),
+                            new Position(at.getLine() + 3, 5)))));
         }
 
         @Override

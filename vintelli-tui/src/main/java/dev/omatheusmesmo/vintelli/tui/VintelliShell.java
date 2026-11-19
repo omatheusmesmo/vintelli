@@ -18,6 +18,7 @@ import dev.omatheusmesmo.vintelli.tui.editor.CompletionOverlay;
 import dev.omatheusmesmo.vintelli.tui.editor.CompletionSite;
 import dev.omatheusmesmo.vintelli.tui.editor.QuickDocumentationController;
 import dev.omatheusmesmo.vintelli.tui.editor.QuickDocumentationOverlay;
+import dev.omatheusmesmo.vintelli.tui.editor.UsageHighlightController;
 import dev.omatheusmesmo.vintelli.tui.editor.GoToLine;
 import dev.omatheusmesmo.vintelli.tui.editor.BreakpointEditorOverlay;
 import dev.omatheusmesmo.vintelli.tui.editor.FormatController;
@@ -338,6 +339,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         if (editor != null) {
             editor.attachCompletion(completion);
             editor.attachQuickDocumentation(quickDocumentation);
+            editor.attachUsageHighlights(new UsageHighlightController(this::availableNavigationProvider, editor,
+                    this::deliverToRenderThread));
         }
         Path projectRoot = editor == null ? Path.of("").toAbsolutePath().normalize() : editor.project();
         Path configRoot = persistLayout ? ConfigDirectory.configRoot(ConfigDirectory.sharedConfigDir(),

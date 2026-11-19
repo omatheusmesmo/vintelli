@@ -243,6 +243,14 @@ EditorTabBarElement-overflow {
   text-style: bold;
 }
 
+.editor-usage-read {
+  background: #373B39;  /* New UI Dark editor scheme IDENTIFIER_UNDER_CARET_ATTRIBUTES BACKGROUND */
+}
+
+.editor-usage-write {
+  background: #402F33;  /* New UI Dark editor scheme WRITE_IDENTIFIER_UNDER_CARET_ATTRIBUTES BACKGROUND */
+}
+
 .editor-find-count {
   color: $muted;
 }

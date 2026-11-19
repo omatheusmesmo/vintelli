@@ -240,6 +240,14 @@ EditorTabBarElement-overflow {
   text-style: bold;
 }
 
+.editor-usage-read {
+  background: #344134;  /* Darcula editor scheme IDENTIFIER_UNDER_CARET_ATTRIBUTES BACKGROUND */
+}
+
+.editor-usage-write {
+  background: #40332B;  /* Darcula editor scheme WRITE_IDENTIFIER_UNDER_CARET_ATTRIBUTES BACKGROUND */
+}
+
 .editor-find-count {
   color: $muted;
 }
