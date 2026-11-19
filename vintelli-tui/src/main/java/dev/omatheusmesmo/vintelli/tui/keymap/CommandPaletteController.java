@@ -7,6 +7,7 @@ import dev.omatheusmesmo.vintelli.tui.OverlayRegion;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 /**
  * State and rules of the command palette: the filter, the selection, the scroll
@@ -16,7 +17,8 @@ import java.util.Optional;
  */
 final class CommandPaletteController {
 
-    private final List<KeyAction> actions;
+    private final Supplier<List<KeyAction>> source;
+    private List<KeyAction> actions;
     private final List<KeyAction> filtered = new ArrayList<>();
     private final DoubleClickTracker doubleClick = new DoubleClickTracker();
     private String filter = "";
@@ -30,10 +32,17 @@ final class CommandPaletteController {
     private List<KeyAction> renderedActions = List.of();
 
     CommandPaletteController(List<KeyAction> actions) {
-        this.actions = List.copyOf(actions);
+        this(() -> actions);
+    }
+
+    /** Reads the action list again each time the palette opens, so labels can show current state. */
+    CommandPaletteController(Supplier<List<KeyAction>> source) {
+        this.source = source;
+        this.actions = List.copyOf(source.get());
     }
 
     void openWith(String initialFilter) {
+        actions = List.copyOf(source.get());
         open = true;
         filter = initialFilter;
         selected = 0;

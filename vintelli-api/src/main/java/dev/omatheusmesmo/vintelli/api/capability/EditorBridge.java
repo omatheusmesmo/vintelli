@@ -53,6 +53,13 @@ public interface EditorBridge extends ProviderDescriptor {
         return Map.of();
     }
 
+    /**
+     * @return which exceptions suspend a debug session, as the user chose them for the project
+     */
+    default DebugCapability.ExceptionBreakpoints exceptionBreakpoints() {
+        return DebugCapability.ExceptionBreakpoints.DEFAULT;
+    }
+
     /** Returns an atomic source snapshot and its location generation. */
     default SourceBreakpointSnapshot sourceBreakpointSnapshot() {
         return new SourceBreakpointSnapshot(0, sourceBreakpoints());

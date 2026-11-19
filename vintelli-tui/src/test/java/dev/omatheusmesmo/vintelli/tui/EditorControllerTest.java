@@ -1,12 +1,14 @@
 package dev.omatheusmesmo.vintelli.tui;
 
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
+import dev.omatheusmesmo.vintelli.api.capability.DebugCapability;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Diagnostic;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Severity;
 import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability;
 import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability.Location;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
+import dev.omatheusmesmo.vintelli.tui.editor.DebugProviderFixture;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIconsFixture;
 import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
@@ -25,10 +27,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -49,6 +55,7 @@ class EditorControllerTest {
     private FakeNavigation navigation;
     private boolean findWindowShown;
     private final List<UsageSearch> usageSearches = new ArrayList<>();
+    private final BlockingQueue<Runnable> renderThreadWork = new LinkedBlockingQueue<>();
 
     @BeforeEach
     void setUp() throws IOException {
@@ -89,6 +96,32 @@ class EditorControllerTest {
 
         controller.selectEditorTab(false);
         assertEquals(normalized(project.resolve("src/Util.java")), activeFile());
+    }
+
+    @Test
+    void theExceptionBreakpointActionsToggleTheChoiceAndReportItsNewState() {
+        assertTrue(controller.handle(KeyActions.DEBUG_EXCEPTION_CAUGHT, () -> { }));
+        assertEquals("Break on caught exceptions: on", lastStatus());
+        assertTrue(controller.handle(KeyActions.DEBUG_EXCEPTION_UNCAUGHT, () -> { }));
+        assertEquals("Break on uncaught exceptions: off", lastStatus());
+        assertEquals(new DebugCapability.ExceptionBreakpoints(false, true), editor.exceptionBreakpoints());
+    }
+
+    @Test
+    void aProviderRefusalIsReportedOnTheRenderThreadNotOnTheSyncThread() throws Exception {
+        BuiltinEditor backed = DebugProviderFixture.editor(project, tempDir.resolve("editor.properties"),
+                new DebugProviderFixture.RecordingDebug(true));
+        ProjectTreeController projects = new ProjectTreeController(project, new ShellState(), null, null,
+                statuses::add, () -> { }, () -> { });
+        EditorController withRefusingProvider = new EditorController(project, backed, projects, host(), icons);
+
+        assertTrue(withRefusingProvider.handle(KeyActions.DEBUG_EXCEPTION_CAUGHT, () -> { }));
+        Runnable delivered = renderThreadWork.poll(5, TimeUnit.SECONDS);
+        assertNotNull(delivered, "the refusal arrives from the sync thread as a render-thread update");
+        assertFalse(statuses.contains("Exception breakpoints not applied: adapter refused"));
+
+        delivered.run();
+        assertEquals("Exception breakpoints not applied: adapter refused", lastStatus());
     }
 
     @Test
@@ -418,6 +451,11 @@ class EditorControllerTest {
             @Override
             public void status(String message) {
                 statuses.add(message);
+            }
+
+            @Override
+            public void deliverToRenderThread(Runnable update) {
+                renderThreadWork.add(update);
             }
 
             @Override

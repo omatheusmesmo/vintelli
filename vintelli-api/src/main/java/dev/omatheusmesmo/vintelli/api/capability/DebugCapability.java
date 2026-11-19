@@ -1,8 +1,10 @@
 package dev.omatheusmesmo.vintelli.api.capability;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
@@ -70,6 +72,16 @@ public interface DebugCapability extends ProviderDescriptor {
         return CapabilityResult.ok(Map.copyOf(result));
     }
 
+    /**
+     * Applies the exception breakpoint choice to every live session and keeps it for sessions
+     * started later, which send it before their configuration completes. Providers send only the
+     * filters the adapter advertises; the returned value holds the filters actually in effect, so
+     * a requested filter missing from it is unsupported.
+     */
+    default CapabilityResult<ExceptionBreakpoints> setExceptionBreakpoints(ExceptionBreakpoints breakpoints) {
+        return CapabilityResult.failed(new CapabilityFailure("Exception breakpoints are not supported", ""));
+    }
+
     enum State {
         STARTING,
         ATTACHING,
@@ -82,6 +94,50 @@ public interface DebugCapability extends ProviderDescriptor {
     }
 
     enum SteppingAction { RESUME, PAUSE, STEP_OVER, STEP_INTO, STEP_OUT }
+
+    /**
+     * Which exceptions suspend the debuggee: those no frame catches, those a frame catches, or both.
+     * Uncaught exceptions are on by default.
+     */
+    record ExceptionBreakpoints(boolean uncaught, boolean caught) {
+        public static final ExceptionBreakpoints DEFAULT = new ExceptionBreakpoints(true, false);
+
+        /**
+         * The message for a provider's answer to this request: the failure, or the requested filters the answer
+         * lacks. Empty when the answer puts every requested filter in effect.
+         */
+        public Optional<String> reportOf(CapabilityResult<ExceptionBreakpoints> answer) {
+            if (answer instanceof CapabilityResult.Failed<ExceptionBreakpoints> failed) {
+                return Optional.of("Exception breakpoints not applied: " + failed.failure().reason());
+            }
+            if (!(answer instanceof CapabilityResult.Ok<ExceptionBreakpoints> ok)) {
+                return Optional.empty();
+            }
+            List<String> unsupported = new ArrayList<>();
+            if (uncaught && !ok.value().uncaught()) unsupported.add("uncaught");
+            if (caught && !ok.value().caught()) unsupported.add("caught");
+            return unsupported.isEmpty() ? Optional.empty() : Optional.of(
+                    "The debug adapter does not support breaking on " + String.join(" or ", unsupported) + " exceptions");
+        }
+    }
+
+    /**
+     * The exception a session is suspended on.
+     *
+     * @param type the exception class, empty when the adapter reported only a description
+     * @param message the exception message or the adapter's description
+     */
+    record ExceptionStop(String type, String message) {
+        public ExceptionStop {
+            type = type == null ? "" : type.strip();
+            message = message == null ? "" : message.strip();
+        }
+
+        public String summary() {
+            String detail = type.isEmpty() ? message : message.isEmpty() ? type : type + ": " + message;
+            return detail.isEmpty() ? "Exception" : "Exception: " + detail;
+        }
+    }
 
     record DebugFrame(String name, String sourcePath, int line, int column, int frameId) {
         public DebugFrame {
@@ -359,6 +415,9 @@ public interface DebugCapability extends ProviderDescriptor {
                 long expectedInspectionGeneration) {
             return CapabilityResult.failed(new CapabilityFailure("Setting a value is not supported", ""));
         }
+
+        /** The exception the session is suspended on, empty while running or when the stop is not an exception. */
+        default Optional<ExceptionStop> exceptionStop() { return Optional.empty(); }
 
         default CapabilityResult<Boolean> resume() { return unsupported("Resume"); }
         default CapabilityResult<Boolean> pause() { return unsupported("Pause"); }

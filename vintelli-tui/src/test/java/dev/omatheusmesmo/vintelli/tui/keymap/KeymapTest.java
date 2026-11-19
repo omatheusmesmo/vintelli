@@ -180,6 +180,7 @@ class KeymapTest {
                 "shell_menu",
                 "run.debug", "run.execute", "run.refresh", "run.stop", "run.choose-configuration",
                 "debug.pause", "debug.resume", "debug.step-into", "debug.step-out", "debug.step-over", "debug.set-value",
+                "debug.exception-uncaught", "debug.exception-caught",
                 "terminal.execute",
                 "problems.navigate", "problems.refresh", "problems.select-next", "problems.select-previous",
                 "problems.filter-all", "problems.filter-errors", "problems.filter-warnings",

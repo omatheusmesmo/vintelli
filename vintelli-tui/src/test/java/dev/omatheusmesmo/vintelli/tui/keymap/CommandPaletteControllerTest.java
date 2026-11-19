@@ -49,6 +49,19 @@ class CommandPaletteControllerTest {
     }
 
     @Test
+    void aSuppliedCatalogIsReadAgainEachTimeThePaletteOpens() {
+        List<KeyAction> current = new ArrayList<>(List.of(new KeyAction("Toggle", "Toggle (off)")));
+        CommandPaletteController dynamic = new CommandPaletteController(() -> List.copyOf(current));
+        dynamic.openWith("");
+        assertEquals(Optional.of(new KeyAction("Toggle", "Toggle (off)")), dynamic.press(OverlayKey.ENTER, 0));
+
+        current.set(0, new KeyAction("Toggle", "Toggle (on)"));
+        dynamic.openWith("");
+
+        assertEquals(Optional.of(new KeyAction("Toggle", "Toggle (on)")), dynamic.press(OverlayKey.ENTER, 0));
+    }
+
+    @Test
     void anEmptyResultNeverConfirmsAnActionAndKeepsThePaletteOpen() {
         palette.openWith("");
         type("zzz");

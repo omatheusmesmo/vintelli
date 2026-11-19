@@ -93,6 +93,10 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     private Path project;
     private EditorSessionStore sessionStore;
     private BreakpointStore breakpointStore;
+    private ExceptionBreakpointStore exceptionBreakpointStore;
+    private final Object exceptionSyncLock = new Object();
+    private DebugCapability.ExceptionBreakpoints exceptionBreakpoints = DebugCapability.ExceptionBreakpoints.DEFAULT;
+    private boolean exceptionBreakpointsLoaded;
     private final Map<Path, Map<Integer, DebugCapability.SourceBreakpoint>> breakpoints = new HashMap<>();
     private final Map<Path, Integer> executionLines = new HashMap<>();
     private final Map<Path, Object> breakpointSyncLocks = new HashMap<>();
@@ -126,6 +130,8 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
             sessionStore = new EditorSessionStore(config.resolve("vintelli/editor-tabs").resolve(projectKey(project) + ".properties"));
             breakpointStore = new BreakpointStore(config.resolve("vintelli/editor-tabs")
                     .resolve(projectKey(project) + ".breakpoints.properties"));
+            exceptionBreakpointStore = new ExceptionBreakpointStore(config.resolve("vintelli/editor-tabs")
+                    .resolve(projectKey(project) + ".exceptions.properties"));
         }
     }
 
@@ -163,6 +169,8 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
         clipboard = new EditorClipboard(systemClipboard, terminal);
         breakpointStore = sessionFile == null ? null : new BreakpointStore(sessionFile.resolveSibling(
                 sessionFile.getFileName() + ".breakpoints"));
+        exceptionBreakpointStore = sessionFile == null ? null : new ExceptionBreakpointStore(
+                sessionFile.resolveSibling(sessionFile.getFileName() + ".exceptions"));
         element = new EditorElement(this);
     }
 
@@ -444,6 +452,82 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
         source.forEach((line, point) -> pending.put(line, point.withOutcome(DebugCapability.BreakpointState.PENDING,
                 reason, null, point.sourcePath())));
         breakpoints.put(file, pending);
+    }
+
+    /**
+     * The choice of which exceptions suspend the debuggee, restored from the project store on first use.
+     * Uncaught exceptions are on until the user chooses otherwise.
+     */
+    @Override
+    public synchronized DebugCapability.ExceptionBreakpoints exceptionBreakpoints() {
+        if (!exceptionBreakpointsLoaded) {
+            exceptionBreakpointsLoaded = true;
+            if (exceptionBreakpointStore != null) {
+                try {
+                    exceptionBreakpoints = exceptionBreakpointStore.load(project)
+                            .orElse(DebugCapability.ExceptionBreakpoints.DEFAULT);
+                } catch (IOException | RuntimeException unreadable) {
+                    exceptionBreakpoints = DebugCapability.ExceptionBreakpoints.DEFAULT;
+                }
+            }
+        }
+        return exceptionBreakpoints;
+    }
+
+    /**
+     * Flips the caught or the uncaught choice, stores it for the project and sends it to the debug
+     * provider in the background. A provider that cannot apply it is reported through {@code report}.
+     *
+     * @return the status message for the new choice
+     */
+    public synchronized String toggleExceptionBreakpoint(boolean caught, Consumer<String> report) {
+        DebugCapability.ExceptionBreakpoints current = exceptionBreakpoints();
+        exceptionBreakpoints = caught
+                ? new DebugCapability.ExceptionBreakpoints(current.uncaught(), !current.caught())
+                : new DebugCapability.ExceptionBreakpoints(!current.uncaught(), current.caught());
+        if (exceptionBreakpointStore != null) {
+            try {
+                exceptionBreakpointStore.save(project, exceptionBreakpoints);
+            } catch (IOException failure) {
+                status = "Cannot persist exception breakpoints: " + failure.getMessage();
+            }
+        }
+        syncExceptionBreakpoints(report);
+        boolean enabled = caught ? exceptionBreakpoints.caught() : exceptionBreakpoints.uncaught();
+        return "Break on " + (caught ? "caught" : "uncaught") + " exceptions: " + (enabled ? "on" : "off");
+    }
+
+    private void syncExceptionBreakpoints(Consumer<String> report) {
+        if (capabilities == null) {
+            return;
+        }
+        try {
+            if (!capabilities.isResolvable()) {
+                return;
+            }
+        } catch (RuntimeException unavailable) {
+            return;
+        }
+        Thread.ofVirtual().name("vintelli-exception-breakpoint-sync").start(() -> {
+            synchronized (exceptionSyncLock) {
+                try {
+                    if (!(capabilities.get().debug() instanceof CapabilitySelection.Selected<DebugCapability> available)) {
+                        return;
+                    }
+                    DebugCapability.ExceptionBreakpoints requested = exceptionBreakpoints();
+                    CapabilityResult<DebugCapability.ExceptionBreakpoints> result = available.provider()
+                            .setExceptionBreakpoints(requested);
+                    if (report != null) {
+                        requested.reportOf(result).ifPresent(report);
+                    }
+                } catch (RuntimeException failure) {
+                    if (report != null) {
+                        report.accept("Exception breakpoints not applied: " + (failure.getMessage() == null
+                                ? "Debug provider unavailable" : failure.getMessage()));
+                    }
+                }
+            }
+        });
     }
 
     private void persistBreakpoints() {
@@ -1267,6 +1351,7 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
                     syncBreakpoints(source);
                 }
             }
+            syncExceptionBreakpoints(null);
             EditorSessionStore.Session session = sessionStore.load(project);
             for (EditorSessionStore.Tab tab : session.tabs()) {
                 if (openFile(new OpenRequest(tab.file(), tab.row()), false).isFailure()) {

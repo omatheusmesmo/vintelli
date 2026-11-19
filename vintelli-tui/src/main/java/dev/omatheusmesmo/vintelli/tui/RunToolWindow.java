@@ -88,6 +88,7 @@ public final class RunToolWindow implements ToolWindow {
     private volatile String runIdentifier = "";
     private volatile DebugSession debugSession;
     private volatile EditorBridge debugEditorBridge;
+    private volatile Consumer<String> stopAnnouncement = message -> { };
     private int selectedIndex;
     private int configurationRowsStart = -1;
     private int visibleConfigurationStart;
@@ -498,6 +499,11 @@ public final class RunToolWindow implements ToolWindow {
         this.toolkitEffects = effects;
     }
 
+    /** Receives the exception a debug session stops on, so the shell can show it in its status line. */
+    void bindStopAnnouncement(Consumer<String> announcement) {
+        this.stopAnnouncement = announcement;
+    }
+
     private void applyPendingEffect() {
         ToolkitEffects effects = toolkitEffects;
         RunMotionState state = pendingEffect;
@@ -895,6 +901,13 @@ public final class RunToolWindow implements ToolWindow {
                     CapabilitySelection<EditorBridge> editorSelection = capabilities.editorBridge();
                     if (editorSelection instanceof CapabilitySelection.Selected<EditorBridge> editor) {
                         debugEditor = editor.provider();
+                        DebugCapability.ExceptionBreakpoints stored = debugEditor.exceptionBreakpoints();
+                        stored.reportOf(debugProvider.setExceptionBreakpoints(stored)).ifPresent(message ->
+                                uiWork.execute(() -> {
+                                    if (sequence == runSequence.get()) {
+                                        status = message;
+                                    }
+                                }));
                     }
                     CapabilityResult<Map<String, List<DebugCapability.SourceBreakpoint>>> synchronizedSources =
                             synchronizeBreakpoints(debugProvider, debugEditor);
@@ -1155,8 +1168,20 @@ public final class RunToolWindow implements ToolWindow {
     private void watchDebugSession(long sequence, DebugSession session, EditorBridge editor) {
         Thread.ofVirtual().name("vintelli-debug-state").start(() -> {
             DebugCapability.DebugFrame applied = null;
+            Optional<DebugCapability.ExceptionStop> announced = Optional.empty();
             while (sequence == runSequence.get() && debugSession == session) {
                 DebugCapability.DebugSessionSnapshot snapshot = session.snapshot();
+                Optional<DebugCapability.ExceptionStop> exception = snapshot.state() == DebugCapability.State.STOPPED
+                        ? session.exceptionStop() : Optional.empty();
+                if (!exception.equals(announced)) {
+                    announced = exception;
+                    exception.ifPresent(stop -> uiWork.execute(() -> {
+                        if (debugSession == session) {
+                            status = stop.summary();
+                            stopAnnouncement.accept(stop.summary());
+                        }
+                    }));
+                }
                 DebugCapability.DebugFrame frame = snapshot.state() == DebugCapability.State.STOPPED
                         ? snapshot.currentFrame() : null;
                 if (!Objects.equals(frame, applied)) {

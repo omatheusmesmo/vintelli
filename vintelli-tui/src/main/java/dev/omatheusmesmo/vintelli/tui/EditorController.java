@@ -38,6 +38,9 @@ final class EditorController {
 
         void status(String message);
 
+        /** Runs the update on the render thread, for work that finishes on a background thread. */
+        void deliverToRenderThread(Runnable update);
+
         NavigationCapability navigationProvider();
 
         void refreshVcs();
@@ -569,6 +572,15 @@ final class EditorController {
         host.status("Breakpoint toggled at line " + (editor.activeDocument().orElseThrow().line() + 1));
     }
 
+    private void toggleExceptionBreakpoint(boolean caught) {
+        if (editor == null) {
+            host.status("Built-in editor unavailable");
+            return;
+        }
+        host.status(editor.toggleExceptionBreakpoint(caught,
+                message -> host.deliverToRenderThread(() -> host.status(message))));
+    }
+
     /**
      * Runs an editor action of the global keymap. The overlays close before the
      * action, as every shell command does. Returns false for every other action.
@@ -658,6 +670,16 @@ final class EditorController {
             case KeyActions.TOGGLE_BREAKPOINT -> {
                 closeOverlays.run();
                 toggleBreakpoint();
+                yield true;
+            }
+            case KeyActions.DEBUG_EXCEPTION_UNCAUGHT -> {
+                closeOverlays.run();
+                toggleExceptionBreakpoint(false);
+                yield true;
+            }
+            case KeyActions.DEBUG_EXCEPTION_CAUGHT -> {
+                closeOverlays.run();
+                toggleExceptionBreakpoint(true);
                 yield true;
             }
             case KeyActions.NEXT_PROBLEM -> {
