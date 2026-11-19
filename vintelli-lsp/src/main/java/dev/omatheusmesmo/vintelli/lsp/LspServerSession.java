@@ -52,6 +52,10 @@ import org.eclipse.lsp4j.CompletionOptions;
 import org.eclipse.lsp4j.CompletionParams;
 import org.eclipse.lsp4j.DefinitionCapabilities;
 import org.eclipse.lsp4j.DefinitionParams;
+import org.eclipse.lsp4j.DocumentHighlight;
+import org.eclipse.lsp4j.DocumentHighlightCapabilities;
+import org.eclipse.lsp4j.DocumentHighlightOptions;
+import org.eclipse.lsp4j.DocumentHighlightParams;
 import org.eclipse.lsp4j.DocumentSymbol;
 import org.eclipse.lsp4j.DocumentFormattingOptions;
 import org.eclipse.lsp4j.DocumentFormattingParams;
@@ -314,6 +318,19 @@ final class LspServerSession implements AutoCloseable {
                 new ReferenceContext(includeDeclaration));
         return server.getTextDocumentService()
                 .references(params)
+                .get(REQUEST_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+    }
+
+    boolean documentHighlightAdvertised() {
+        Either<Boolean, DocumentHighlightOptions> provider = initializeResult.getCapabilities()
+                .getDocumentHighlightProvider();
+        return provider != null && (provider.isRight() || Boolean.TRUE.equals(provider.getLeft()));
+    }
+
+    List<? extends DocumentHighlight> documentHighlight(String uri, Position position)
+            throws ExecutionException, InterruptedException, TimeoutException {
+        return server.getTextDocumentService()
+                .documentHighlight(new DocumentHighlightParams(new TextDocumentIdentifier(uri), position))
                 .get(REQUEST_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
     }
 
@@ -589,6 +606,7 @@ final class LspServerSession implements AutoCloseable {
         textDocument.setHover(hover);
         textDocument.setDefinition(new DefinitionCapabilities());
         textDocument.setReferences(new ReferencesCapabilities());
+        textDocument.setDocumentHighlight(new DocumentHighlightCapabilities());
         textDocument.setCompletion(new CompletionCapabilities());
         textDocument.setCodeAction(codeActionCapabilities());
         ClientCapabilities capabilities = new ClientCapabilities();

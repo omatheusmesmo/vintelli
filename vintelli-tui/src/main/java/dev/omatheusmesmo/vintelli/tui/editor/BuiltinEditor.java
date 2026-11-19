@@ -112,6 +112,7 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
     private Supplier<Keymap> keymap;
     private CompletionController completion;
     private QuickDocumentationController quickDocumentation;
+    private UsageHighlightController usageHighlights;
 
     @Inject
     public BuiltinEditor(@ConfigProperty(name = "vintelli.local.project-root") Optional<String> configuredRoot,
@@ -1144,6 +1145,17 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
      */
     public synchronized void attachQuickDocumentation(QuickDocumentationController controller) {
         quickDocumentation = controller;
+    }
+
+    /**
+     * Connects the controller that marks the usages of the symbol at the caret, which the element asks for each frame.
+     */
+    public synchronized void attachUsageHighlights(UsageHighlightController controller) {
+        usageHighlights = controller;
+    }
+
+    synchronized UsageHighlightController usageHighlights() {
+        return usageHighlights;
     }
 
     synchronized boolean quickDocumentationTakesKey(KeyEvent key) {

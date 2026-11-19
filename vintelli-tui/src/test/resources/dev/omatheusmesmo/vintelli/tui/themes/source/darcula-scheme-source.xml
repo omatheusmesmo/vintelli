@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <scheme name="Darcula" version="1" parent_scheme="Default" default_scheme="true">
-  <!-- excerpt of the `colors` and `attributes` option blocks for TEXT, the keyword, string, comment, number and constant attributes, the selection color, the caret row color and the DIFF_CONFLICT, DIFF_DELETED, DIFF_INSERTED and DIFF_MODIFIED attributes; taken verbatim from DefaultColorSchemesManager.xml (the built in Darcula editor scheme) of IntelliJ IDEA Ultimate 2026.2.3 (build IU-262.10968.63), Apache License, Version 2.0 by JetBrains -->
+  <!-- excerpt of the `colors` and `attributes` option blocks for TEXT, the keyword, string, comment, number and constant attributes, the selection color, the caret row color, the DIFF_CONFLICT, DIFF_DELETED, DIFF_INSERTED and DIFF_MODIFIED attributes and the read and write identifier under caret attributes; taken verbatim from DefaultColorSchemesManager.xml (the built in Darcula editor scheme) of IntelliJ IDEA Ultimate 2026.2.3 (build IU-262.10968.63), Apache License, Version 2.0 by JetBrains -->
   <colors>
     <option name="SELECTION_BACKGROUND" value="214283" />
     <option name="CARET_ROW_COLOR" value="323232" />
@@ -44,5 +44,19 @@
 <option name="DIFF_DELETED"><value><option name="BACKGROUND" value="484a4a" /><option name="ERROR_STRIPE_COLOR" value="656e76" /></value></option>
 <option name="DIFF_INSERTED"><value><option name="BACKGROUND" value="294436" deuteranopia="29452e" protanopia="29452e"/><option name="ERROR_STRIPE_COLOR" value="447152" deuteranopia="468058" protanopia="468058"/></value></option>
 <option name="DIFF_MODIFIED"><value><option name="BACKGROUND" value="385570" deuteranopia="385570" protanopia="385570"/><option name="ERROR_STRIPE_COLOR" value="43698d" deuteranopia="1c5c99" protanopia="1c5c99"/></value></option>
+<option name="IDENTIFIER_UNDER_CARET_ATTRIBUTES">
+        <value>
+          <option name="BACKGROUND" value="344134" deuteranopia="32394c" protanopia="32394c"/>
+          <option name="ERROR_STRIPE_COLOR" value="036b13" deuteranopia="4b6f99" protanopia="4b6f99"/>
+          <option name="EFFECT_TYPE" value="1" />
+        </value>
+      </option>
+<option name="WRITE_IDENTIFIER_UNDER_CARET_ATTRIBUTES">
+        <value>
+          <option name="BACKGROUND" value="40332b" deuteranopia="253873" protanopia="253873"/>
+          <option name="ERROR_STRIPE_COLOR" value="b56277" deuteranopia="5fcc" protanopia="5fcc"/>
+          <option name="EFFECT_TYPE" value="1" />
+        </value>
+      </option>
   </attributes>
 </scheme>

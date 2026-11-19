@@ -4,6 +4,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
+import dev.omatheusmesmo.vintelli.api.capability.CodeActionCapability;
 import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability;
 import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import jakarta.inject.Inject;
@@ -46,6 +47,18 @@ public final class LspNavigationProvider implements NavigationCapability {
     }
 
     @Override
+    public CapabilityResult<List<DocumentHighlight>> documentHighlights(SourcePosition position) {
+        CapabilityResult<List<DocumentHighlightEntry>> result = client.documentHighlights(position.filePath(),
+                position.line(), position.column());
+        if (result instanceof CapabilityResult.Ok<List<DocumentHighlightEntry>> ok) {
+            return CapabilityResult.ok(ok.value().stream().map(LspNavigationProvider::map).toList());
+        }
+        CapabilityResult.Failed<List<DocumentHighlightEntry>> failed =
+                (CapabilityResult.Failed<List<DocumentHighlightEntry>>) result;
+        return CapabilityResult.failed(failed.failure());
+    }
+
+    @Override
     public CapabilityResult<List<NavigationCapability.DocumentSymbol>> documentSymbols(Path file) {
         CapabilityResult<List<dev.omatheusmesmo.vintelli.lsp.DocumentSymbol>> result = client.documentSymbols(file);
         if (result instanceof CapabilityResult.Ok<List<dev.omatheusmesmo.vintelli.lsp.DocumentSymbol>> ok) {
@@ -65,6 +78,16 @@ public final class LspNavigationProvider implements NavigationCapability {
         CapabilityResult.Failed<List<WorkspaceSymbolEntry>> failed =
                 (CapabilityResult.Failed<List<WorkspaceSymbolEntry>>) result;
         return CapabilityResult.failed(failed.failure());
+    }
+
+    private static DocumentHighlight map(DocumentHighlightEntry highlight) {
+        DocumentHighlight.Kind kind = switch (highlight.kind()) {
+            case 2 -> DocumentHighlight.Kind.READ;
+            case 3 -> DocumentHighlight.Kind.WRITE;
+            default -> DocumentHighlight.Kind.TEXT;
+        };
+        return new DocumentHighlight(new CodeActionCapability.SourceRange(highlight.startLine(),
+                highlight.startColumn(), highlight.endLine(), highlight.endColumn()), kind);
     }
 
     private static NavigationCapability.WorkspaceSymbol map(WorkspaceSymbolEntry symbol) {
