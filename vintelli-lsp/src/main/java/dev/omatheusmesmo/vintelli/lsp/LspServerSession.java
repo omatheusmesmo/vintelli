@@ -83,7 +83,12 @@ import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.ReferenceContext;
 import org.eclipse.lsp4j.ReferenceParams;
+import org.eclipse.lsp4j.PrepareRenameDefaultBehavior;
+import org.eclipse.lsp4j.PrepareRenameParams;
+import org.eclipse.lsp4j.PrepareRenameResult;
 import org.eclipse.lsp4j.ReferencesCapabilities;
+import org.eclipse.lsp4j.RenameCapabilities;
+import org.eclipse.lsp4j.RenameParams;
 import org.eclipse.lsp4j.ServerCapabilities;
 import org.eclipse.lsp4j.TextDocumentClientCapabilities;
 import org.eclipse.lsp4j.TextDocumentContentChangeEvent;
@@ -98,6 +103,7 @@ import org.eclipse.lsp4j.WorkspaceSymbol;
 import org.eclipse.lsp4j.WorkspaceSymbolParams;
 import org.eclipse.lsp4j.jsonrpc.Launcher;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
+import org.eclipse.lsp4j.jsonrpc.messages.Either3;
 import org.eclipse.lsp4j.launch.LSPLauncher;
 import org.eclipse.lsp4j.services.LanguageServer;
 import org.jboss.logging.Logger;
@@ -360,6 +366,25 @@ final class LspServerSession implements AutoCloseable {
                 .get(REQUEST_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
     }
 
+    Either3<Range, PrepareRenameResult, PrepareRenameDefaultBehavior> prepareRename(String uri, Position position)
+            throws ExecutionException, InterruptedException, TimeoutException {
+        return server.getTextDocumentService()
+                .prepareRename(new PrepareRenameParams(new TextDocumentIdentifier(uri), position))
+                .get(REQUEST_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+    }
+
+    /**
+     * @return the edits of the rename; an empty answer of the server is an edit without changes
+     */
+    CodeActionCapability.WorkspaceEdit rename(String uri, Position position, String newName)
+            throws ExecutionException, InterruptedException, TimeoutException {
+        WorkspaceEdit edit = server.getTextDocumentService()
+                .rename(new RenameParams(new TextDocumentIdentifier(uri), position, newName))
+                .get(REQUEST_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+        return edit == null ? new CodeActionCapability.WorkspaceEdit(List.of(), List.of())
+                : LspCodeActionMapper.editOf(edit);
+    }
+
     List<Either<SymbolInformation, DocumentSymbol>> documentSymbol(String uri)
             throws ExecutionException, InterruptedException, TimeoutException {
         DocumentSymbolParams params = new DocumentSymbolParams(new TextDocumentIdentifier(uri));
@@ -609,6 +634,7 @@ final class LspServerSession implements AutoCloseable {
         textDocument.setDocumentHighlight(new DocumentHighlightCapabilities());
         textDocument.setCompletion(new CompletionCapabilities());
         textDocument.setCodeAction(codeActionCapabilities());
+        textDocument.setRename(new RenameCapabilities(Boolean.TRUE, Boolean.FALSE));
         ClientCapabilities capabilities = new ClientCapabilities();
         capabilities.setWorkspace(workspace);
         capabilities.setTextDocument(textDocument);

@@ -192,6 +192,7 @@ class KeymapTest {
                 "editor_quickDocumentation", "editor_generate",
                 "editor_extractVariable", "editor_extractMethod", "editor_extractConstant",
                 "editor_reformatCode", "editor_optimizeImports",
+                "editor_rename",
                 "editor_toggleImportFold",
                 "editor_toggleBreakpoint", "editor_editBreakpointCondition",
                 "navigation_goToFile", "navigation_goToClass", "navigation_goToSymbol", "navigation_findInFiles",
@@ -500,6 +501,14 @@ class KeymapTest {
         assertTrue(keymap.matches(KeyEvent.ofKey(KeyCode.LEFT, KeyModifiers.ALT), KeyActions.PREVIOUS_TAB));
         assertTrue(keymap.matches(KeyEvent.ofKey(KeyCode.F1, KeyModifiers.ALT), KeyActions.PROJECT_SELECT_OPENED_FILE));
         assertTrue(keymap.matches(KeyEvent.ofKey(KeyCode.F6, KeyModifiers.SHIFT), KeyActions.PROJECT_RENAME));
+    }
+
+    @Test
+    void shiftF6RenamesTheProjectEntryAndTheEditorSymbolInTheIntellijProfile() {
+        Keymap keymap = Keymap.ofProfile(KeymapProfile.DEFAULT, WINDOWS);
+
+        assertEquals(Set.of(KeyActions.PROJECT_RENAME, KeyActions.EDITOR_RENAME),
+                answeringActions(keymap, KeyEvent.ofKey(KeyCode.F6, KeyModifiers.SHIFT)));
     }
 
     @Test

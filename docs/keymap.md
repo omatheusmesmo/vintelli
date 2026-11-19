@@ -286,6 +286,7 @@ keeps the chords these actions had before, and gains the chords marked new.
 | `editor_nextTab` (Next Editor Tab) | `Alt+Right` | `Alt+Right` | `Alt+]` |
 | `editor_previousTab` (Previous Editor Tab) | `Alt+Left` | `Alt+Left` | `Alt+[` |
 | `project_rename` (Rename Project Entry) | `Shift+F6` | `Shift+F6` | `F2` |
+| `editor_rename` (Rename Symbol) | `Shift+F6` | `Shift+F6` | none, `vim` binds nothing here |
 | `project_select_opened_file` (Select Opened File) | `Alt+F1` | `Alt+F1` | `F3` |
 | `editor_duplicateLine` (Duplicate Line) | `Ctrl+D` | `Ctrl+D` | none, the `vim` profile binds nothing here |
 | `navigation_goToLine` (Go to Line) | `Ctrl+G` | `Ctrl+G` | none, `vim` binds `Alt+G` (new) |
@@ -301,6 +302,12 @@ Decisions behind the table:
   well, so the Next Problem trigger refuses Shift (`UnshiftedKeyTrigger`) and
   `Shift+F2` reaches Previous Problem only. Both wrap around the file's
   problems like each other, and the palette lists both.
+- **`Shift+F6`**: the project pane renames the selected entry, and the editor
+  renames the symbol under the caret through the language server. Both use the
+  same chord, so the editor action claims it only while the editor has the
+  focus; the project pane keeps it otherwise. Rename Symbol opens an input
+  prefilled with the name the server suggests, and a position the server
+  rejects says `Cannot rename this element`.
 - **`vim` previous problem**: `vim` keeps `F8` for Next Problem, and binds
   `Shift+F8` to Previous Problem, which was free in the `vim` preset. The
   same Shift refusal keeps `F8` and `Shift+F8` apart there.
@@ -660,6 +667,7 @@ adding it to that test on purpose.
 | editor_generate | Alt+Insert | Alt+Insert | same | Generate from the language server's source actions for the class at the caret, in a popup beside the caret; the vim profile binds no chord (docs/keymap.md) |
 | editor_reformatCode | Ctrl+Alt+L | Ctrl+Alt+L | same | Reformats the file, or only the selected lines, with the language server's formatter (docs/keymap.md) |
 | editor_optimizeImports | Ctrl+Alt+O | Ctrl+Alt+O | same | Runs the language server's organize imports action, which removes unused imports and sorts the rest (docs/keymap.md) |
+| editor_rename | Shift+F6 | Shift+F6 | same | Rename Symbol in the editor: renames the symbol and its references through the language server; Shift+F6 keeps renaming the project entry while the project pane has focus (docs/keymap.md) |
 | moveWordLeft | Ctrl+Left | Ctrl+Left | same | Move Caret to Previous Word; the editor text area takes it under the Kitty keyboard protocol |
 | moveWordRight | Ctrl+Right | Ctrl+Right | same | Move Caret to Next Word; the editor text area takes it under the Kitty keyboard protocol |
 | deleteWordBackward | Ctrl+Backspace | - | vintelli-only | Deletes the word before the caret in the editor under the Kitty keyboard protocol; no IntelliJ chord is confirmed on the reference page for this action |

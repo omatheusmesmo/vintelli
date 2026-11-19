@@ -56,7 +56,8 @@ class IntellijKeymapTableTest {
             "mouse.scroll_down", Set.of("scroll", "scrollDown"),
             "mouse.scroll_left", Set.of("scroll", "scrollLeft"),
             "mouse.scroll_right", Set.of("scroll", "scrollRight"),
-            "f7", Set.of("project_new_file", "diff_nextHunk"));
+            "f7", Set.of("project_new_file", "diff_nextHunk"),
+            "shift+f6", Set.of("project_rename", "editor_rename"));
 
     private static List<ToolWindow> windowList() {
         ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);

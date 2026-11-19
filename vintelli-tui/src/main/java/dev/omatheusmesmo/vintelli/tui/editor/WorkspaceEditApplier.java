@@ -142,9 +142,9 @@ public final class WorkspaceEditApplier {
      * @return why the editor cannot apply the edit to the open file, or null when it can
      */
     static String refusal(Path open, WorkspaceEdit edit) {
-        if (!edit.unsupported().isEmpty()) {
-            UnsupportedChange change = edit.unsupported().getFirst();
-            return "the editor cannot apply the " + change.kind() + " change of '" + change.target() + "' yet";
+        String unsupported = unsupportedRefusal(edit);
+        if (unsupported != null) {
+            return unsupported;
         }
         Path normalized = open.toAbsolutePath().normalize();
         for (DocumentEdit documentEdit : edit.documents()) {
@@ -153,6 +153,18 @@ public final class WorkspaceEditApplier {
             }
         }
         return null;
+    }
+
+    /**
+     * @param edit the edit to check
+     * @return why the editor cannot apply one of the changes of the edit, or null when all of them are supported
+     */
+    static String unsupportedRefusal(WorkspaceEdit edit) {
+        if (edit.unsupported().isEmpty()) {
+            return null;
+        }
+        UnsupportedChange change = edit.unsupported().getFirst();
+        return "the editor cannot apply the " + change.kind() + " change of '" + change.target() + "' yet";
     }
 
     /**

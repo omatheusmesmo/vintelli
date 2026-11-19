@@ -15,6 +15,7 @@ public enum CapabilityType {
     CODE_ACTION("code-action"),
     COMPLETION("completion"),
     HOVER("hover"),
+    RENAME("rename"),
     DEBUG("debug"),
     EDITOR_BRIDGE("editor-bridge"),
     VERSION_CONTROL("vcs");

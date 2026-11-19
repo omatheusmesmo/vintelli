@@ -27,6 +27,7 @@ final class OverlayStack {
         SYMBOL_SEARCH(false),
         GO_TO_LINE(false),
         BREAKPOINT_EDITOR(false),
+        RENAME(false),
         QUICK_FIX(false),
         GENERATE(false),
         NAVIGATION_TARGETS(false),

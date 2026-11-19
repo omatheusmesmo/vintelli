@@ -363,6 +363,7 @@ public final class Keymap {
                 builder.bind(new UnshiftedKeyTrigger(KeyTrigger.key(KeyCode.F2)), KeyActions.NEXT_PROBLEM);
                 builder.bind(KeyTrigger.key(KeyCode.F2, false, false, true), KeyActions.PREVIOUS_PROBLEM);
                 builder.bind(KeyTrigger.key(KeyCode.F6, false, false, true), KeyActions.PROJECT_RENAME);
+                builder.bind(KeyTrigger.key(KeyCode.F6, false, false, true), KeyActions.EDITOR_RENAME);
                 builder.bind(KeyTrigger.key(KeyCode.F1, false, true, false), KeyActions.PROJECT_SELECT_OPENED_FILE);
                 builder.bind(KeyTrigger.key(KeyCode.F4, true, false, false), KeyActions.CLOSE_TAB);
                 builder.bind(KeyTrigger.key(KeyCode.RIGHT, false, true, false), KeyActions.NEXT_TAB);

@@ -50,12 +50,16 @@ import org.eclipse.lsp4j.DiagnosticSeverity;
 import org.eclipse.lsp4j.DiagnosticTag;
 import org.eclipse.lsp4j.Hover;
 import org.eclipse.lsp4j.Location;
+import org.eclipse.lsp4j.PrepareRenameDefaultBehavior;
+import org.eclipse.lsp4j.PrepareRenameResult;
 import org.eclipse.lsp4j.LocationLink;
 import org.eclipse.lsp4j.MarkedString;
 import org.eclipse.lsp4j.MarkupContent;
 import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.Range;
+import org.eclipse.lsp4j.jsonrpc.ResponseErrorException;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
+import org.eclipse.lsp4j.jsonrpc.messages.Either3;
 import org.jboss.logging.Logger;
 
 /**
@@ -555,6 +559,66 @@ public final class LspClient implements AutoCloseable, JavaDebugAdapterPort {
     }
 
     /**
+     * Asks whether the symbol at the position can be renamed, after the session has received {@code content} as the
+     * text of the document, so the server sees unsaved edits.
+     *
+     * @return the name the server suggests, empty when it suggests none and the range alone is the target; a failed
+     *         result with reason {@code not-resolvable} when the server rejects the position
+     */
+    public CapabilityResult<String> prepareRename(Path file, String content, int line, int column) {
+        Selection selection = requestSelection();
+        if (selection.failure() != null) {
+            return CapabilityResult.failed(new CapabilityFailure("unavailable", selection.failure()));
+        }
+        try {
+            LspServerSession current = ensureStarted(selection);
+            current.synchronizeDocument(file, content);
+            Either3<Range, PrepareRenameResult, PrepareRenameDefaultBehavior> answer = current.prepareRename(
+                    LspServerSession.uriFor(file), new Position(line, column));
+            if (answer == null) {
+                return notRenameable();
+            }
+            return CapabilityResult.ok(suggestedName(answer));
+        } catch (ExecutionException | IOException | InterruptedException | TimeoutException | RuntimeException failure) {
+            if (failure instanceof InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+            if (rejectedByServer(failure)) {
+                return notRenameable();
+            }
+            return CapabilityResult.failed(failureDetail(selection, failure));
+        }
+    }
+
+    /**
+     * Asks the server for the edits that rename the symbol at the position, after the session has received
+     * {@code content} as the text of the document.
+     *
+     * @return the edits of the rename, which may span several files
+     */
+    public CapabilityResult<CodeActionCapability.WorkspaceEdit> rename(Path file, String content, int line, int column,
+            String newName) {
+        Selection selection = requestSelection();
+        if (selection.failure() != null) {
+            return CapabilityResult.failed(new CapabilityFailure("unavailable", selection.failure()));
+        }
+        try {
+            LspServerSession current = ensureStarted(selection);
+            current.synchronizeDocument(file, content);
+            return CapabilityResult.ok(current.rename(LspServerSession.uriFor(file), new Position(line, column), newName));
+        } catch (LspCodeActionMapper.MalformedPayload malformed) {
+            return CapabilityResult.failed(new CapabilityFailure("malformed",
+                    "the language server of profile '" + selection.profile() + "' sent a malformed rename: "
+                            + malformed.getMessage()));
+        } catch (ExecutionException | IOException | InterruptedException | TimeoutException | RuntimeException failure) {
+            if (failure instanceof InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+            return CapabilityResult.failed(failureDetail(selection, failure));
+        }
+    }
+
+    /**
      * Runs a command of a code action through {@code workspace/executeCommand}. The server may ask for
      * workspace edits while the command runs; each one goes to the sink, and the sink's decision is the
      * answer the server receives. A command the server does not advertise is refused before the request;
@@ -703,6 +767,22 @@ public final class LspClient implements AutoCloseable, JavaDebugAdapterPort {
                 + LspServerSession.failureDetail(failure);
         LOG.debug(detail, failure);
         return new CapabilityFailure("unavailable", detail);
+    }
+
+    private static CapabilityResult<String> notRenameable() {
+        return CapabilityResult.failed(new CapabilityFailure("not-resolvable",
+                "the position does not name a symbol that can be renamed"));
+    }
+
+    private static boolean rejectedByServer(Throwable failure) {
+        return failure instanceof ExecutionException && failure.getCause() instanceof ResponseErrorException;
+    }
+
+    private static String suggestedName(Either3<Range, PrepareRenameResult, PrepareRenameDefaultBehavior> answer) {
+        if (answer.isSecond() && answer.getSecond().getPlaceholder() != null) {
+            return answer.getSecond().getPlaceholder();
+        }
+        return "";
     }
 
     private CapabilityFailure commandFailure(Selection selection, LspServerSession session, String command,
