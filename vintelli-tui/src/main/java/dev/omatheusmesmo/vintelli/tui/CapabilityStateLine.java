@@ -42,6 +42,7 @@ final class CapabilityStateLine {
             case CODE_ACTION -> "Code Actions";
             case COMPLETION -> "Completion";
             case HOVER -> "Hover";
+            case RENAME -> "Rename";
             case DEBUG -> "Debug";
             case EDITOR_BRIDGE -> "Editor";
             case VERSION_CONTROL -> "VCS";

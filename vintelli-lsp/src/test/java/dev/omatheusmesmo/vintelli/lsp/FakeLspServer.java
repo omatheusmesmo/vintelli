@@ -72,7 +72,14 @@ import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.PublishDiagnosticsParams;
 import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.ResourceOperation;
+import org.eclipse.lsp4j.PrepareRenameDefaultBehavior;
+import org.eclipse.lsp4j.PrepareRenameParams;
+import org.eclipse.lsp4j.PrepareRenameResult;
 import org.eclipse.lsp4j.ReferenceParams;
+import org.eclipse.lsp4j.RenameFile;
+import org.eclipse.lsp4j.RenameParams;
+import org.eclipse.lsp4j.VersionedTextDocumentIdentifier;
+import org.eclipse.lsp4j.jsonrpc.messages.Either3;
 import org.eclipse.lsp4j.ServerCapabilities;
 import org.eclipse.lsp4j.ServerInfo;
 import org.eclipse.lsp4j.SymbolInformation;
@@ -223,6 +230,7 @@ public final class FakeLspServer {
                 capabilities.setDocumentFormattingProvider(true);
                 capabilities.setDocumentRangeFormattingProvider(true);
             }
+            capabilities.setRenameProvider(true);
             capabilities.setExecuteCommandProvider(new ExecuteCommandOptions(advertisedCommands()));
             return CompletableFuture.completedFuture(new InitializeResult(capabilities,
                     new ServerInfo("fake-language-server", "1.0.0")));
@@ -329,6 +337,10 @@ public final class FakeLspServer {
     static final String RESOLVED_IMPORT = "import java.util.LinkedList;\n";
     static final String HANGING_DATA = "hang.";
     public static final String UNSAVED_MARKER = "unsaved-marker";
+    public static final int RENAME_LINE = 2;
+    public static final int NOT_RENAMEABLE_LINE = 0;
+    public static final String RENAMED_FILE = "RenamedFile";
+    public static final String CALLER_FILE = "Caller.java";
     public static final int RICH_HOVER_LINE = 3;
     public static final int EMPTY_HOVER_LINE = 4;
     public static final int BUFFER_HOVER_LINE = 5;
@@ -401,6 +413,40 @@ public final class FakeLspServer {
             }
             return CompletableFuture.completedFuture(new Hover(
                     new MarkupContent("markdown", "# fake hover " + server.marker())));
+        }
+
+        @Override
+        public CompletableFuture<Either3<Range, PrepareRenameResult, PrepareRenameDefaultBehavior>> prepareRename(
+                PrepareRenameParams params) {
+            server.trace("prepareRename");
+            if (params.getPosition().getLine() == RENAME_LINE) {
+                Range symbol = new Range(new Position(RENAME_LINE, 4), new Position(RENAME_LINE, 9));
+                return CompletableFuture.completedFuture(Either3.forSecond(new PrepareRenameResult(symbol, "greet")));
+            }
+            return CompletableFuture.failedFuture(new ResponseErrorException(new ResponseError(
+                    ResponseErrorCode.InvalidParams, "You cannot rename this element", null)));
+        }
+
+        @Override
+        public CompletableFuture<WorkspaceEdit> rename(RenameParams params) {
+            server.trace("rename");
+            String uri = params.getTextDocument().getUri();
+            List<Either<TextDocumentEdit, ResourceOperation>> changes = new ArrayList<>();
+            changes.add(Either.forLeft(new TextDocumentEdit(new VersionedTextDocumentIdentifier(uri, 1), List.of(
+                    Either.forLeft(new TextEdit(new Range(new Position(RENAME_LINE, 4),
+                            new Position(RENAME_LINE, 9)), params.getNewName()))))));
+            String caller = siblingUri(uri, CALLER_FILE);
+            changes.add(Either.forLeft(new TextDocumentEdit(new VersionedTextDocumentIdentifier(caller, 1), List.of(
+                    Either.forLeft(new TextEdit(new Range(new Position(0, 8), new Position(0, 13)),
+                            params.getNewName()))))));
+            if (RENAMED_FILE.equals(params.getNewName())) {
+                changes.add(Either.forRight(new RenameFile(uri, siblingUri(uri, RENAMED_FILE + ".java"))));
+            }
+            return CompletableFuture.completedFuture(new WorkspaceEdit(changes));
+        }
+
+        private static String siblingUri(String uri, String name) {
+            return uri.substring(0, uri.lastIndexOf('/') + 1) + name;
         }
 
         @Override

@@ -61,6 +61,13 @@ public interface CapabilityRegistry {
     }
 
     /**
+     * @return the current rename provider, or an explicit unavailable state
+     */
+    default CapabilitySelection<RenameCapability> rename() {
+        return CapabilitySelection.unavailable(CapabilityType.RENAME, "No rename provider is installed");
+    }
+
+    /**
      * @return the current debug provider, or an explicit unavailable state
      */
     default CapabilitySelection<DebugCapability> debug() {

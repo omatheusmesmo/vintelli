@@ -5,6 +5,8 @@ import dev.omatheusmesmo.vintelli.api.capability.CapabilityFailure;
 import dev.omatheusmesmo.vintelli.api.capability.CodeActionCapability.SourceRange;
 import dev.omatheusmesmo.vintelli.api.capability.CompletionCapability.Replacement;
 import dev.omatheusmesmo.vintelli.api.capability.CodeActionCapability.WorkspaceEdit;
+import dev.omatheusmesmo.vintelli.api.capability.CodeActionCapability.WorkspaceEdit.DocumentEdit;
+import dev.omatheusmesmo.vintelli.api.capability.CodeActionCapability.WorkspaceEdit.TextEdit;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityRegistry;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilitySelection;
@@ -59,6 +61,7 @@ import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.TreeMap;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -1052,6 +1055,101 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
             changed();
         }
         return result;
+    }
+
+    /**
+     * The rename request of the active document: its path, text, caret and the identifier under the caret. Empty
+     * when no file is open.
+     */
+    public synchronized Optional<RenameSite> renameSite() {
+        EditorDocument document = document();
+        if (document == null) {
+            return Optional.empty();
+        }
+        return Optional.of(RenameSite.at(document.file(), document.text(), document.row(), document.column()));
+    }
+
+    /**
+     * Applies the edit of a rename to every document it touches, as one undoable step per document. A file that is
+     * not open is opened and marked dirty, so the user reviews it before saving. Every document is checked before
+     * any of them changes: an edit with a file rename, a range the document does not have or a file the editor
+     * cannot read leaves all documents untouched.
+     *
+     * @return the number of text edits applied, or a rejection with the reason, the documents are unchanged then
+     */
+    public synchronized WorkspaceEditApplier.Result applyRename(WorkspaceEdit edit) {
+        String unsupported = WorkspaceEditApplier.unsupportedRefusal(edit);
+        if (unsupported != null) {
+            return new WorkspaceEditApplier.Rejected(unsupported + "; nothing was changed");
+        }
+        Map<Path, List<TextEdit>> byFile = new LinkedHashMap<>();
+        for (DocumentEdit documentEdit : edit.documents()) {
+            byFile.computeIfAbsent(documentEdit.file().toAbsolutePath().normalize(), file -> new ArrayList<>())
+                    .addAll(documentEdit.edits());
+        }
+        List<PlannedDocument> planned = new ArrayList<>();
+        for (Map.Entry<Path, List<TextEdit>> change : byFile.entrySet()) {
+            try {
+                planned.add(planRename(change.getKey(), change.getValue()));
+            } catch (IOException | IllegalArgumentException refused) {
+                return new WorkspaceEditApplier.Rejected(refused.getMessage() + "; nothing was changed");
+            }
+        }
+        int occurrences = 0;
+        for (PlannedDocument plan : planned) {
+            occurrences += plan.edits();
+            if (plan.document().text().equals(plan.text())) {
+                continue;
+            }
+            plan.document().replaceText(plan.text());
+            if (!plan.open()) {
+                documents.add(plan.document());
+            }
+        }
+        if (occurrences > 0) {
+            changed();
+        }
+        return new WorkspaceEditApplier.Applied(occurrences);
+    }
+
+    private PlannedDocument planRename(Path file, List<TextEdit> edits) throws IOException {
+        EditorDocument open = openDocumentAt(file);
+        EditorDocument document = open != null ? open : unopenedDocument(file);
+        String text = WorkspaceEditApplier.applyTo(document.text(), edits);
+        return new PlannedDocument(document, open != null, text, edits.size());
+    }
+
+    private EditorDocument openDocumentAt(Path file) {
+        for (EditorDocument document : documents) {
+            if (document.file().toAbsolutePath().normalize().equals(file)) {
+                return document;
+            }
+        }
+        return null;
+    }
+
+    private EditorDocument unopenedDocument(Path file) throws IOException {
+        if (!file.startsWith(project)) {
+            throw new IOException("the rename changes '" + file + "', which is outside the project");
+        }
+        if (!Files.isRegularFile(file) || Files.size(file) > MAX_FILE_BYTES) {
+            throw new IOException("the rename changes '" + project.relativize(file)
+                    + "', which is not a regular text file of up to 4 MiB");
+        }
+        String text = Files.readString(file, StandardCharsets.UTF_8);
+        if (text.indexOf('\0') >= 0) {
+            throw new IOException("the rename changes the binary file '" + project.relativize(file) + "'");
+        }
+        if (hasMixedLineEndings(text)) {
+            throw new IOException("the rename changes '" + project.relativize(file)
+                    + "', which has mixed line endings and cannot be edited safely");
+        }
+        EditorDocument document = new EditorDocument(file, text);
+        document.breakpoints(breakpointsOf(file));
+        return document;
+    }
+
+    private record PlannedDocument(EditorDocument document, boolean open, String text, int edits) {
     }
 
     /**

@@ -27,6 +27,9 @@ import dev.omatheusmesmo.vintelli.tui.editor.ExtractController;
 import dev.omatheusmesmo.vintelli.tui.editor.QuickFixController;
 import dev.omatheusmesmo.vintelli.tui.editor.QuickFixOverlay;
 import dev.omatheusmesmo.vintelli.tui.editor.QuickFixRequest;
+import dev.omatheusmesmo.vintelli.tui.editor.RenameController;
+import dev.omatheusmesmo.vintelli.tui.editor.RenameOverlay;
+import dev.omatheusmesmo.vintelli.tui.editor.RenameSite;
 import dev.omatheusmesmo.vintelli.tui.menu.MenuPopup;
 import dev.omatheusmesmo.vintelli.tui.OverlayStack.Kind;
 import dev.omatheusmesmo.vintelli.tui.layout.ShellLayout;
@@ -163,7 +166,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             MenuPopup menuPopup, ProjectSearchModel searchModel, ProjectSearchOverlay searchOverlay,
             SymbolSearchModel symbolSearch, SymbolSearchOverlay symbolSearchOverlay,
             OverlayStack stack, RunConfigurationChooser runConfigurations, GoToLineOverlay goToLine,
-            BreakpointEditorOverlay breakpointEditor) {
+            BreakpointEditorOverlay breakpointEditor, RenameOverlay rename) {
     }
 
     private final ShellThemes themes;
@@ -213,6 +216,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private final CompletionOverlay completionOverlay;
     private final QuickDocumentationController quickDocumentation;
     private final QuickDocumentationOverlay quickDocumentationOverlay;
+    private final RenameOverlay renameOverlay = new RenameOverlay();
+    private final RenameController renameController;
     private Column centerPanel;
     private Column paneSeparatorVertical;
     private Column paneSeparatorHorizontal;
@@ -335,6 +340,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         this.quickDocumentation = new QuickDocumentationController(capabilityRegistry, editor,
                 this::deliverToRenderThread);
         this.quickDocumentationOverlay = new QuickDocumentationOverlay(quickDocumentation);
+        this.renameController = new RenameController(capabilityRegistry, editor, renameOverlay,
+                this::deliverToRenderThread, message -> status = message);
         if (editor != null) {
             editor.attachCompletion(completion);
             editor.attachQuickDocumentation(quickDocumentation);
@@ -443,7 +450,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 () -> runWindow == null ? List.of() : runWindow.configurations());
         KeymapParts built = new KeymapParts(keymap, commandPalette, keymapHelp, menuPopup, searchModel,
                 searchOverlay, symbolSearch, symbolSearchOverlay, stack, runConfigurations, goToLine,
-                breakpointEditor);
+                breakpointEditor, renameOverlay);
         stack.registerOverlay(Kind.COMMAND_PALETTE, commandPalette::isOpen, commandPalette::close);
         stack.registerOverlay(Kind.KEYMAP_HELP, keymapHelp::isOpen, keymapHelp::close);
         stack.registerOverlay(Kind.MENU, menuPopup::isOpen, () -> closeMenu(built));
@@ -455,6 +462,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         stack.registerOverlay(Kind.GENERATE, generate::isOpen, this::releaseGenerate);
         stack.registerOverlay(Kind.NAVIGATION_TARGETS, editorController.navigationTargets()::isOpen,
                 this::releaseNavigationTargets);
+        stack.registerOverlay(Kind.RENAME, renameOverlay::isOpen, this::releaseRename);
         stack.registerOverlay(Kind.QUICK_DOCUMENTATION, quickDocumentation::isOpen, this::releaseQuickDocumentation);
         if (searchModel != null) {
             stack.registerOverlay(Kind.PROJECT_SEARCH, searchModel::isOpen, searchModel::close);
@@ -1198,6 +1206,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             case SYMBOL_SEARCH -> new OverlayElement("symbol-search", parts.symbolSearchOverlay()::render);
             case GO_TO_LINE -> new OverlayElement("go-to-line", parts.goToLine()::render);
             case BREAKPOINT_EDITOR -> new OverlayElement("breakpoint-editor", parts.breakpointEditor()::render);
+            case RENAME -> new OverlayElement("rename", parts.rename()::render);
             case QUICK_FIX -> new OverlayElement("quick-fix", (frame, area) -> quickFixOverlay.render(frame, area,
                     editor == null ? Optional.empty() : editor.caretCell()));
             case GENERATE -> new OverlayElement("generate", (frame, area) -> generateOverlay.render(frame, area,
@@ -1253,7 +1262,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             }
             return EventResult.HANDLED;
         }
-        if (top == Kind.GO_TO_LINE || top == Kind.BREAKPOINT_EDITOR || top == Kind.SYMBOL_SEARCH) {
+        if (top == Kind.GO_TO_LINE || top == Kind.BREAKPOINT_EDITOR || top == Kind.SYMBOL_SEARCH
+                || top == Kind.RENAME) {
             return EventResult.HANDLED;
         }
         if (top == Kind.QUICK_DOCUMENTATION) {
@@ -1436,6 +1446,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             case GENERATE -> handleGenerateKey(key);
             case NAVIGATION_TARGETS -> handleNavigationTargetsKey(key);
             case QUICK_DOCUMENTATION -> handleQuickDocumentationKey(key);
+            case RENAME -> handleRenameKey(parts, key);
             default -> throw new IllegalStateException("Not a drawn overlay: " + overlay);
         }
     }
@@ -1564,6 +1575,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 continue;
             }
             if (inputCaptured && KeyActions.OPEN_FILE.equals(action.id())) {
+                continue;
+            }
+            if (KeyActions.EDITOR_RENAME.equals(action.id()) && !editorHasFocus()) {
                 continue;
             }
             boolean matched = inputCaptured ? parts.keymap().matchesReserved(key, action.id())
@@ -1796,6 +1810,10 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 parts.stack().closeOverlays();
                 status = extract.run(ExtractController.Extraction.CONSTANT);
             }
+            case KeyActions.EDITOR_RENAME -> {
+                parts.stack().closeOverlays();
+                openRename(parts);
+            }
             case KeyActions.COMPLETION -> {
                 parts.stack().closeOverlays();
                 inputCaptured = false;
@@ -1992,6 +2010,60 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             generate.open(request.get());
         });
         status = generate.popup().loadingText();
+    }
+
+    private void openRename(KeymapParts parts) {
+        Optional<RenameSite> site = editor == null ? Optional.empty() : editor.renameSite();
+        if (site.isEmpty()) {
+            status = "Open a file to rename a symbol in";
+            return;
+        }
+        inputCaptured = false;
+        parts.stack().open(Kind.RENAME, () -> {
+            renameOverlay.open(site.get().word());
+            editor.overlayInputActive(true);
+            renameController.begin(site.get());
+        });
+        status = renameOverlay.status();
+    }
+
+    private void handleRenameKey(KeymapParts parts, KeyEvent key) {
+        RenameOverlay overlay = parts.rename();
+        Optional<String> name = overlay.handleKey(key);
+        if (overlay.isOpen()) {
+            status = overlay.status();
+            return;
+        }
+        editor.overlayInputActive(false);
+        editor.requestFocus();
+        inputCaptured = false;
+        if (name.isEmpty()) {
+            renameController.cancel();
+            status = "Rename cancelled";
+            return;
+        }
+        renameController.submit(name.get());
+    }
+
+    private void releaseRename() {
+        renameController.cancel();
+        renameOverlay.close();
+        if (editor != null) {
+            editor.overlayInputActive(false);
+        }
+    }
+
+    /**
+     * Shift+F6 renames the project entry while the project pane has focus and the symbol while the editor has it,
+     * so the editor action only claims the chord when the editor owns the focus.
+     */
+    private boolean editorHasFocus() {
+        FocusManager manager = focusManager;
+        if (manager == null) {
+            return true;
+        }
+        String focused = manager.focusedId();
+        return focused == null || focused.startsWith("editor");
     }
 
     private void deliverToRenderThread(Runnable update) {
