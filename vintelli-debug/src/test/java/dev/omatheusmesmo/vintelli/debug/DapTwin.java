@@ -46,6 +46,8 @@ import org.eclipse.lsp4j.debug.Source;
 import org.eclipse.lsp4j.debug.ScopesArguments;
 import org.eclipse.lsp4j.debug.ScopesResponse;
 import org.eclipse.lsp4j.debug.Scope;
+import org.eclipse.lsp4j.debug.SetVariableArguments;
+import org.eclipse.lsp4j.debug.SetVariableResponse;
 import org.eclipse.lsp4j.debug.VariablesArguments;
 import org.eclipse.lsp4j.debug.VariablesResponse;
 import org.eclipse.lsp4j.debug.Variable;
@@ -70,6 +72,8 @@ final class DapTwin implements AutoCloseable {
     private final AtomicInteger stackTraceCalls = new AtomicInteger();
     private final List<String> evaluations = new CopyOnWriteArrayList<>();
     private final AtomicInteger counter = new AtomicInteger();
+    private final List<String> assignments = new CopyOnWriteArrayList<>();
+    private volatile String answerValue = "42";
     private volatile List<String> breakpointConditions = List.of();
 
     DapTwin(Mode mode) throws IOException {
@@ -93,6 +97,7 @@ final class DapTwin implements AutoCloseable {
     List<String> executionActions() { return List.copyOf(executionActions); }
     List<String> evaluations() { return List.copyOf(evaluations); }
     List<String> breakpointConditions() { return breakpointConditions; }
+    List<String> assignments() { return List.copyOf(assignments); }
     int stackTraceCalls() { return stackTraceCalls.get(); }
     void releaseStaleStackTrace() { connections.forEach(Connection::releaseStaleStackTrace); }
 
@@ -155,12 +160,22 @@ final class DapTwin implements AutoCloseable {
         UNSUPPORTED_CONDITIONS,
         EVALUATE_UNSUPPORTED,
         EVALUATE_NO_RESPONSE,
-        EVALUATE_HOLD
+        EVALUATE_HOLD,
+        SET_VARIABLE_UNSUPPORTED,
+        SET_VARIABLE_HOLD
     }
 
     static EvaluateResponse evaluateResponse(String result, String type) {
         EvaluateResponse response = new EvaluateResponse();
         response.setResult(result);
+        response.setType(type);
+        response.setVariablesReference(0);
+        return response;
+    }
+
+    static SetVariableResponse setVariableResponse(String value, String type) {
+        SetVariableResponse response = new SetVariableResponse();
+        response.setValue(value);
         response.setType(type);
         response.setVariablesReference(0);
         return response;
@@ -193,6 +208,7 @@ final class DapTwin implements AutoCloseable {
         private volatile CompletableFuture<StackTraceResponse> staleStackTrace;
         private volatile Runnable delayedExecutionEvent;
         private volatile CompletableFuture<EvaluateResponse> heldEvaluation;
+        private volatile CompletableFuture<SetVariableResponse> heldAssignment;
 
         private Connection(Socket socket, int connectionNumber) {
             this.socket = socket;
@@ -278,6 +294,10 @@ final class DapTwin implements AutoCloseable {
             CompletableFuture<EvaluateResponse> held = heldEvaluation;
             if (held != null) held.complete(evaluateResponse("42", "int"));
         }
+        void releaseHeldAssignment() {
+            CompletableFuture<SetVariableResponse> held = heldAssignment;
+            if (held != null) held.complete(setVariableResponse("7", "int"));
+        }
         void releaseDelayedExecutionEvent() {
             Runnable event = delayedExecutionEvent;
             if (event != null) event.run();
@@ -290,6 +310,7 @@ final class DapTwin implements AutoCloseable {
                 Capabilities capabilities = new Capabilities();
                 capabilities.setSupportsConfigurationDoneRequest(mode != Mode.UNSUPPORTED);
                 capabilities.setSupportsConditionalBreakpoints(mode != Mode.UNSUPPORTED_CONDITIONS);
+                capabilities.setSupportsSetVariable(mode != Mode.SET_VARIABLE_UNSUPPORTED);
                 return CompletableFuture.completedFuture(capabilities);
             }
 
@@ -363,10 +384,26 @@ final class DapTwin implements AutoCloseable {
             }
 
             @Override public CompletableFuture<VariablesResponse> variables(VariablesArguments arguments) {
-                Variable variable = new Variable(); variable.setName("answer"); variable.setValue("42");
+                Variable variable = new Variable(); variable.setName("answer"); variable.setValue(answerValue);
                 variable.setType("int"); variable.setVariablesReference(0);
                 VariablesResponse response = new VariablesResponse(); response.setVariables(new Variable[] { variable });
                 return CompletableFuture.completedFuture(response);
+            }
+
+            @Override public CompletableFuture<SetVariableResponse> setVariable(SetVariableArguments arguments) {
+                assignments.add(arguments.getVariablesReference() + ":" + arguments.getName() + "="
+                        + arguments.getValue());
+                if (mode == Mode.SET_VARIABLE_HOLD) {
+                    heldAssignment = new CompletableFuture<>();
+                    return heldAssignment;
+                }
+                if (!arguments.getValue().matches("-?\\d+")) {
+                    return CompletableFuture.failedFuture(new ResponseErrorException(new ResponseError(
+                            ResponseErrorCode.InternalError, "Type mismatch: cannot convert " + arguments.getValue()
+                                    + " to int", null)));
+                }
+                answerValue = arguments.getValue();
+                return CompletableFuture.completedFuture(setVariableResponse(answerValue, "int"));
             }
 
             private StackTraceResponse stackTraceResponse(int line) {

@@ -73,6 +73,23 @@ timeouts appear as a failed line in the window. If the debuggee resumes before t
 answer arrives, the result is reported as discarded instead of being shown as
 current. Side effects of a confirmed expression stay in the debuggee.
 
+## Set the value of a variable
+
+With a variable row selected in the Debug tool window, press `F2` (Set Value in
+IntelliJ), edit the value and press Enter. The input opens prefilled with the
+value the row shows, Escape cancels, and an empty value cancels. The value is
+one line of Java source of at most 1000 characters (`42`, `"abc"`) and is sent
+to the adapter's `setVariable` request, so it works for locals, fields of `this`
+and the fields of an expanded object. Nothing asks for a second confirmation:
+as in IntelliJ, Enter assigns. After a successful assignment the expanded scopes
+and variables are read again, so values that depend on the new one update. An
+adapter error, for example a type mismatch, appears in the window status and the
+old value stays. `F2` is Next Problem in the editor and works as Set Value only
+while the Debug window holds the keyboard; **Set Value of Selected Variable** in
+the palette starts the same input. The request carries the stop it was typed
+for, so a resumed or advanced session never applies it. An adapter that does not
+advertise `supportsSetVariable` reports that setting a value is not supported.
+
 ## Conditional breakpoints
 
 Put the cursor on a breakpoint line and run **Edit Breakpoint Condition**

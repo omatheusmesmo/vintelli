@@ -101,6 +101,7 @@ public final class KeyActions {
     public static final String DEBUG_STEP_OVER = "debug.step-over";
     public static final String DEBUG_STEP_INTO = "debug.step-into";
     public static final String DEBUG_STEP_OUT = "debug.step-out";
+    public static final String DEBUG_SET_VALUE = "debug.set-value";
     public static final String RUN_REFRESH = "run.refresh";
     public static final String RUN_CHOOSE_CONFIGURATION = "run.choose-configuration";
     public static final String RUN_SELECT_NEXT = "run.select-next";
@@ -181,6 +182,7 @@ public final class KeyActions {
                 new KeyAction(DEBUG_STEP_OVER, "Step Over"),
                 new KeyAction(DEBUG_STEP_INTO, "Step Into"),
                 new KeyAction(DEBUG_STEP_OUT, "Step Out"),
+                new KeyAction(DEBUG_SET_VALUE, "Set Value of Selected Variable"),
                 new KeyAction(TERMINAL_EXECUTE, "Execute Terminal Command"),
                 new KeyAction(PROBLEMS_NAVIGATE, "Open Selected Problem"),
                 new KeyAction(PROBLEMS_REFRESH, "Refresh Problems"),

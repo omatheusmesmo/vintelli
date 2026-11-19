@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Callable;
@@ -25,6 +26,7 @@ import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugSession;
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.DebugSessionSnapshot;
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.EvaluationRequest;
 import dev.omatheusmesmo.vintelli.api.capability.DebugCapability.EvaluationResult;
+import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
 import dev.tamboui.layout.Rect;
 import dev.tamboui.style.Style;
 import dev.tamboui.terminal.Frame;
@@ -66,6 +68,8 @@ public final class DebugToolWindow implements ToolWindow {
     private volatile String evaluatedExpression;
     private volatile CapabilityResult<EvaluationResult> evaluationResult;
     private volatile long evaluationStop = -1;
+    private final DebugValuePrompt setValue = new DebugValuePrompt();
+    private int setValueParent;
 
     @Inject
     public DebugToolWindow(Provider<ShellThemes> themes, RunToolWindow run, UiWorkQueue uiWork) {
@@ -84,8 +88,24 @@ public final class DebugToolWindow implements ToolWindow {
 
     String statusMessage() { return status; }
 
+    @Override public boolean shouldHandleKeyBeforeShell(KeyEvent event) {
+        return isSetValueKey(event) || setValue.active() && Keys.is(event, KeyCode.ESCAPE);
+    }
+
+    private static boolean isSetValueKey(KeyEvent event) {
+        return Keys.is(event, KeyCode.F2) && !event.hasShift() && !event.hasCtrl() && !event.hasAlt();
+    }
+
+    @Override public boolean performAction(String actionId) {
+        if (!KeyActions.DEBUG_SET_VALUE.equals(actionId)) return false;
+        startSetValue();
+        return true;
+    }
+
     @Override public boolean handleKey(KeyEvent event) {
+        if (setValue.active()) { handleSetValueKey(event); return true; }
         if (evaluation.active()) { handleEvaluationKey(event); return true; }
+        if (isSetValueKey(event)) { startSetValue(); return true; }
         if (event.isCharIgnoreCase('e')) { startEvaluation(); return true; }
         List<String> rows = renderModel(Rect.ZERO).rows();
         if (Keys.is(event, KeyCode.UP) || event.isCharIgnoreCase('k')) { selection = Math.max(0, selection - 1); return true; }
@@ -113,6 +133,89 @@ public final class DebugToolWindow implements ToolWindow {
         selection = row;
         activateSelected(model.rows());
         return true;
+    }
+
+    private void startSetValue() {
+        DebugSession session = run.activeDebugSession();
+        DebugSessionSnapshot snapshot = session == null ? null : session.snapshot();
+        boolean inspectable = snapshot != null && snapshot.state() == DebugCapability.State.STOPPED
+                && snapshot.id().equals(selectedSessionId) && selectedInspectionGeneration == session.inspectionGeneration();
+        if (!inspectable) { status = "Stop at a breakpoint and inspect the variables before setting a value"; return; }
+        List<String> rows = renderModel(Rect.ZERO).rows();
+        int row = Math.clamp(selection, 0, Math.max(0, rows.size() - 1));
+        String id = rows.isEmpty() ? "" : rows.get(row);
+        DebugVariable variable = id.startsWith("variable:") ? variableOf(id) : null;
+        if (variable == null) { status = "Select a variable to set its value"; return; }
+        setValueParent = Integer.parseInt(id.split(":")[2]);
+        setValue.start(variable.name(), variable.value());
+        status = "Type the new value of " + variable.name() + "; Enter applies it, Esc cancels";
+    }
+
+    private DebugVariable variableOf(String rowId) {
+        String[] parts = rowId.split(":");
+        List<DebugVariable> siblings = variableCache.getOrDefault(Integer.parseInt(parts[2]), List.of());
+        int index = Integer.parseInt(parts[3]);
+        return index < siblings.size() ? siblings.get(index) : null;
+    }
+
+    private void handleSetValueKey(KeyEvent event) {
+        switch (OverlayInput.key(event)) {
+            case ESCAPE -> { setValue.cancel(); status = "Set value cancelled"; }
+            case ENTER -> applySetValue();
+            case BACKSPACE -> setValue.backspace();
+            case TEXT -> setValue.type(event.codePoint());
+            default -> { }
+        }
+    }
+
+    private void applySetValue() {
+        String name = setValue.variableName();
+        int parent = setValueParent;
+        Optional<String> value = setValue.submit();
+        if (value.isEmpty()) { status = "Set value cancelled: the value is empty"; return; }
+        DebugSession session = run.activeDebugSession();
+        if (session == null) { status = "Setting a value needs a stopped frame"; return; }
+        long inspectionGeneration = session.inspectionGeneration();
+        if (inspectionGeneration != selectedInspectionGeneration || session.snapshot().state() != DebugCapability.State.STOPPED) {
+            status = "The debug stop changed; press r to inspect again";
+            return;
+        }
+        status = "Setting " + name + "...";
+        long token = generation.incrementAndGet();
+        request(session, token, inspectionGeneration,
+                () -> session.setVariable(parent, name, value.get(), inspectionGeneration), result -> {
+                    if (result instanceof CapabilityResult.Ok<DebugVariable> ok) {
+                        reloadVariables(session, inspectionGeneration,
+                                "Set " + name + " = " + ok.value().value());
+                    } else {
+                        status = "Set value failed: "
+                                + ((CapabilityResult.Failed<DebugVariable>) result).failure().reason();
+                    }
+                });
+    }
+
+    private void reloadVariables(DebugSession session, long inspectionGeneration, String message) {
+        List<Integer> references = List.copyOf(expandedReferences);
+        long token = generation.incrementAndGet();
+        status = message;
+        request(session, token, inspectionGeneration, () -> loadAll(session, references), result -> {
+            if (result instanceof CapabilityResult.Ok<Map<Integer, List<DebugVariable>>> ok) {
+                variableCache.clear();
+                variableCache.putAll(ok.value());
+                expandedReferences.retainAll(ok.value().keySet());
+            }
+        });
+    }
+
+    private static CapabilityResult<Map<Integer, List<DebugVariable>>> loadAll(DebugSession session,
+            List<Integer> references) {
+        Map<Integer, List<DebugVariable>> loaded = new HashMap<>();
+        for (int reference : references) {
+            if (session.variables(reference) instanceof CapabilityResult.Ok<List<DebugVariable>> ok) {
+                loaded.put(reference, ok.value().stream().limit(MAX_VARIABLE_ROWS).toList());
+            }
+        }
+        return CapabilityResult.ok(loaded);
     }
 
     private void startEvaluation() {
@@ -317,7 +420,7 @@ public final class DebugToolWindow implements ToolWindow {
             int index = Integer.parseInt(row.substring(6));
             if (index < scopes.size()) toggleVariables(session, scopes.get(index).variablesReference());
         } else if (row.startsWith("variable:")) {
-            int reference = Integer.parseInt(row.substring(9));
+            int reference = Integer.parseInt(row.split(":")[1]);
             toggleVariables(session, reference);
         }
     }
@@ -391,11 +494,14 @@ public final class DebugToolWindow implements ToolWindow {
                     variableCache, expandedReferences, new HashSet<>(), remainingVariableRows);
         }
         if (session != null) lines.addAll(evaluationLines(inspectionGeneration));
-        lines.add("j/k select  Enter inspect  r refresh  e evaluate");
+        lines.add("j/k select  Enter inspect  r refresh  e evaluate  F2 set value");
         int currentSelection = Math.clamp(selection, 0, Math.max(0, rows.size() - 1));
         if (!rows.isEmpty()) {
             int selectedLine = selectableLines.get(currentSelection);
-            lines.set(selectedLine, "> " + lines.get(selectedLine).substring(2));
+            String marked = "> " + lines.get(selectedLine).substring(2);
+            int valueStart = marked.indexOf(" = ");
+            lines.set(selectedLine, setValue.active() && valueStart >= 0
+                    ? marked.substring(0, valueStart + 3) + setValue.text() + "_" : marked);
         }
         int viewport = Math.max(1, area.height());
         int selectedLine = currentSelection < selectableLines.size() ? selectableLines.get(currentSelection) : 0;
@@ -422,12 +528,14 @@ public final class DebugToolWindow implements ToolWindow {
             appendMarker(lines, depth, "cycle to reference " + reference, remainingRows);
             return;
         }
-        for (DebugVariable child : cache.getOrDefault(reference, List.of())) {
+        List<DebugVariable> children = cache.getOrDefault(reference, List.of());
+        for (int index = 0; index < children.size(); index++) {
+            DebugVariable child = children.get(index);
             if (remainingRows[0] <= 0) {
                 appendMarker(lines, depth, "variable limit reached", remainingRows);
                 break;
             }
-            rowIds.add("variable:" + child.variablesReference()); selectableLines.add(lines.size());
+            rowIds.add("variable:" + child.variablesReference() + ":" + reference + ":" + index); selectableLines.add(lines.size());
             lines.add("  " + "  ".repeat(depth + 1)
                     + (child.hasChildren() ? expanded.contains(child.variablesReference()) ? "[-] " : "[+] " : "    ")
                     + child.name() + " = " + child.value() + (child.type().isBlank() ? "" : " : " + child.type()));

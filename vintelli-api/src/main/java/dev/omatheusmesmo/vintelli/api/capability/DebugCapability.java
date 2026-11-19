@@ -215,6 +215,9 @@ public interface DebugCapability extends ProviderDescriptor {
         }
     }
 
+    /** Longest value a caller may assign to a variable while the debuggee is suspended. */
+    int MAX_SET_VALUE_LENGTH = 1000;
+
     record DebugRequest(RunCapability.RunRequest runRequest, String label) {
 
         public DebugRequest {
@@ -290,6 +293,22 @@ public interface DebugCapability extends ProviderDescriptor {
          */
         default CapabilityResult<EvaluationResult> evaluate(EvaluationRequest request) {
             return CapabilityResult.failed(new CapabilityFailure("Evaluation is not supported", ""));
+        }
+
+        /**
+         * Assigns a Java expression to one variable of the current stop and returns the value and type the
+         * debuggee reports afterwards. Providers reject an assignment for an earlier stop, one that the
+         * adapter does not support, and a result that arrives after the debuggee resumed; a refused
+         * assignment leaves the variable unchanged.
+         *
+         * @param variablesReference the container reported by {@link #scopes(int)} or {@link #variables(int)}
+         * @param name the variable name inside that container
+         * @param value one line of Java source, at most {@link #MAX_SET_VALUE_LENGTH} characters
+         * @param expectedInspectionGeneration the stop the variable was read from; a newer stop rejects the request
+         */
+        default CapabilityResult<DebugVariable> setVariable(int variablesReference, String name, String value,
+                long expectedInspectionGeneration) {
+            return CapabilityResult.failed(new CapabilityFailure("Setting a value is not supported", ""));
         }
 
         default CapabilityResult<Boolean> resume() { return unsupported("Resume"); }

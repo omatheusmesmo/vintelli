@@ -107,6 +107,7 @@ debug.pause,,,vintelli-only,Pause Program is not on the IntelliJ reference page;
 debug.step-over,,F8,different,Step Over is F8 in IntelliJ; F8 stays free for the debugger work (docs/keymap.md)
 debug.step-into,,F7,different,Step Into is F7 in IntelliJ; F7 is New Project File in the project pane
 debug.step-out,,Shift+F8,different,"Step Out is Shift+F8 in IntelliJ; unbound here, the debugger work decides"
+debug.set-value,,F2,different,"Set Value is F2 in IntelliJ; F2 sets the value only while the Debug window holds the keyboard (a window key like e for Evaluate), because the keymap keeps F2 on Next Problem, so the palette runs the action"
 terminal.execute,,,vintelli-only,Runs the typed command in the terminal window; IntelliJ has no chord for it
 problems.navigate,,,vintelli-only,Opens the selected problem; no IntelliJ chord confirmed on the reference page for the Problems window
 problems.refresh,,,vintelli-only,Refreshes the problems; no IntelliJ chord confirmed on the reference page for the Problems window
