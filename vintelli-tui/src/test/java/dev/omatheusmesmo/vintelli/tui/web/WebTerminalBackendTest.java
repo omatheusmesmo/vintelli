@@ -12,6 +12,7 @@ import dev.tamboui.buffer.Buffer;
 import dev.tamboui.buffer.Cell;
 import dev.tamboui.buffer.DiffResult;
 import dev.tamboui.layout.Rect;
+import dev.tamboui.style.Color;
 import dev.tamboui.style.Style;
 import org.junit.jupiter.api.Test;
 
@@ -48,6 +49,18 @@ class WebTerminalBackendTest {
         new WebTerminalBackend(chunks::add).draw(diff);
 
         assertTrue(String.join("", chunks).contains("plain"));
+    }
+
+    @Test
+    void underlineColorsReachTheClientInTheColonForm() throws Exception {
+        Buffer after = Buffer.empty(AREA);
+        after.set(0, 0, new Cell("x", Style.EMPTY.underlined().underlineColor(Color.rgb(1, 2, 3))));
+        List<String> chunks = new ArrayList<>();
+        new WebTerminalBackend(chunks::add).draw(diff(Buffer.empty(AREA), after));
+
+        String stream = String.join("", chunks);
+        assertTrue(stream.contains("58:2::1:2:3"), () -> stream);
+        assertFalse(stream.contains("58;2;"), () -> stream);
     }
 
     @Test

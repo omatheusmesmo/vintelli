@@ -10,6 +10,7 @@ import dev.tamboui.buffer.DiffResult;
 import dev.tamboui.layout.Position;
 import dev.tamboui.layout.Size;
 import dev.tamboui.terminal.AnsiCellWriter;
+import dev.omatheusmesmo.vintelli.tui.terminal.SgrCompatibility;
 import dev.tamboui.terminal.Backend;
 import org.jboss.logging.Logger;
 
@@ -176,7 +177,7 @@ final class WebTerminalBackend implements Backend {
             }
             String chunk = pending.toString();
             pending.setLength(0);
-            output.write(chunk);
+            output.write(SgrCompatibility.forTerminals(chunk));
         }
     }
 

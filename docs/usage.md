@@ -392,7 +392,9 @@ glyphs; otherwise the header uses the Unicode symbols when the tree does, and
 plain ASCII (`v`, `+`, `o`, `=`, `-`, `:`, `_`) when it does not.
 Panes have no frames and no separator lines: each one is an island of the editor
 tone on the frame tone, and starts with a header row that is underlined in the
-frame tone. The left strip, the toolbar, the right stripe and the status bar sit
+frame tone. Each color sequence stays within the 16 parameters terminals such as
+foot read, with underline colors in the colon form (`58:2::R:G:B`), so the header
+underlines keep their color. The left strip, the toolbar, the right stripe and the status bar sit
 on the frame. The project pane and the right tool stripe run from the toolbar
 down to the status bar. The bottom tool windows sit under the editor only, to
 the right of the project pane, and their tab row starts at the editor's left
