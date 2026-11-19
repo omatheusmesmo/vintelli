@@ -25,6 +25,8 @@ import com.agentclientprotocol.sdk.client.AcpSyncClient;
 import com.agentclientprotocol.sdk.spec.AcpSchema;
 import dev.omatheusmesmo.vintelli.api.acp.AcpChatPort;
 import dev.omatheusmesmo.vintelli.api.acp.AcpSessionIdsView;
+import dev.omatheusmesmo.vintelli.core.acp.AcpTerminalRegistry;
+import dev.omatheusmesmo.vintelli.core.acp.AcpWorkspace;
 import jakarta.annotation.PreDestroy;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -42,7 +44,7 @@ public final class AcpChatService implements AcpChatPort, AcpSessionIdsView {
     private final AcpAgentCatalog catalog;
     private final Path projectRoot;
     private final Map<String, Session> sessions = new ConcurrentHashMap<>();
-    private final Set<AcpSyncClient> clients = ConcurrentHashMap.newKeySet();
+    private final Map<AcpSyncClient, AcpTerminalRegistry> clients = new ConcurrentHashMap<>();
     private final Object lifecycleLock = new Object();
     private boolean shuttingDown;
 
@@ -150,12 +152,12 @@ public final class AcpChatService implements AcpChatPort, AcpSessionIdsView {
     @PreDestroy
     void shutdown() {
         List<Session> sessionsToClose;
-        List<AcpSyncClient> clientsToClose;
+        Map<AcpSyncClient, AcpTerminalRegistry> clientsToClose;
         synchronized (lifecycleLock) {
             shuttingDown = true;
             sessionsToClose = List.copyOf(sessions.values());
             sessions.clear();
-            clientsToClose = List.copyOf(clients);
+            clientsToClose = Map.copyOf(clients);
             clients.clear();
         }
         ExecutorService closeWorkers = Executors.newVirtualThreadPerTaskExecutor();
@@ -179,13 +181,16 @@ public final class AcpChatService implements AcpChatPort, AcpSessionIdsView {
                 shutdownStepFailed(sessionCloseSlow);
             }
         }
-        List<Future<?>> clientClosures = clientsToClose.stream().<Future<?>>map(client -> closeWorkers.submit(() -> {
-            try {
-                client.close();
-            } catch (RuntimeException transportCloseFailure) {
-                shutdownStepFailed(transportCloseFailure);
-            }
-        })).toList();
+        List<Future<?>> clientClosures = clientsToClose.entrySet().stream()
+                .<Future<?>>map(entry -> closeWorkers.submit(() -> {
+                    try {
+                        entry.getKey().close();
+                    } catch (RuntimeException transportCloseFailure) {
+                        shutdownStepFailed(transportCloseFailure);
+                    } finally {
+                        entry.getValue().releaseAll();
+                    }
+                })).toList();
         deadline = System.nanoTime() + CLIENT_CLOSE_TIMEOUT.toNanos();
         for (Future<?> clientClosure : clientClosures) {
             long remaining = deadline - System.nanoTime();
@@ -227,16 +232,23 @@ public final class AcpChatService implements AcpChatPort, AcpSessionIdsView {
         }
         Function<AcpSchema.RequestPermissionRequest, AcpSchema.RequestPermissionResponse> permission =
                 request -> answerPermission(request, permissionHandler);
-        AcpSyncClient client = agents.chatClient(agentId, notification -> forwardUpdate(notification, updates), permission);
+        AcpWorkspace workspace = new AcpWorkspace(projectRoot);
+        AcpTerminalRegistry terminals = new AcpTerminalRegistry(projectRoot);
+        AcpSyncClient client = agents.chatClient(agentId, workspace, terminals,
+                notification -> forwardUpdate(notification, updates), permission);
         boolean registered;
         synchronized (lifecycleLock) {
             registered = !shuttingDown;
             if (registered) {
-                clients.add(client);
+                clients.put(client, terminals);
             }
         }
         if (!registered) {
-            client.close();
+            try {
+                client.close();
+            } finally {
+                terminals.releaseAll();
+            }
             throw new IllegalStateException("ACP chat service is shutting down");
         }
         return client;
@@ -360,12 +372,16 @@ public final class AcpChatService implements AcpChatPort, AcpSessionIdsView {
     }
 
     private void closeClient(AcpSyncClient client) {
-        boolean owned;
+        AcpTerminalRegistry terminals;
         synchronized (lifecycleLock) {
-            owned = clients.remove(client);
+            terminals = clients.remove(client);
         }
-        if (owned) {
-            client.close();
+        if (terminals != null) {
+            try {
+                client.close();
+            } finally {
+                terminals.releaseAll();
+            }
         }
     }
 

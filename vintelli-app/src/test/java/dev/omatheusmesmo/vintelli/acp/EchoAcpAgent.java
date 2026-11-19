@@ -31,9 +31,9 @@ import java.util.stream.Collectors;
  * <p>Prompt directives: {@code echo:} streams the text back, {@code kinds}
  * streams agent thought, agent message, tool call, tool call update and plan updates, {@code permit}
  * asks for permission, {@code fs:<root>} reads, writes and probes a path outside
- * the root, {@code terminal} runs a command, {@code elicit} asks the user for a
- * URL and a form, {@code rich} streams thought chunks, a user prompt, image, resource
- * and plan updates, and {@code cancel-me} waits for a cancel notification.
+ * the root, {@code terminal} runs a command, {@code hold-terminal} starts one that keeps running,
+ * {@code elicit} asks the user for a URL and a form, {@code rich} streams thought chunks, a user
+ * prompt, image, resource and plan updates, and {@code cancel-me} waits for a cancel notification.
  */
 public final class EchoAcpAgent {
 
@@ -147,6 +147,8 @@ public final class EchoAcpAgent {
             context.sendMessage("result:permission=" + context.askPermission("write notes.txt", AcpSchema.ToolKind.EDIT));
         } else if (text.contains("fs:")) {
             exerciseFiles(context, text.substring(text.indexOf("fs:") + "fs:".length()).trim());
+        } else if (text.contains("hold-terminal")) {
+            holdTerminal(context);
         } else if (text.contains("terminal")) {
             exerciseTerminal(context);
         } else if (text.contains("elicit")) {
@@ -230,6 +232,17 @@ public final class EchoAcpAgent {
         AcpSchema.TerminalOutputResponse output = context.client().getTerminalOutput(
                 new AcpSchema.TerminalOutputRequest(context.getSessionId(), terminalId));
         context.sendMessage("result:terminal=exit:" + exit.exitCode() + ",version:" + output.output().contains("version"));
+    }
+
+    private static void holdTerminal(SyncPromptContext context) {
+        boolean windows = System.getProperty("os.name", "").toLowerCase().contains("win");
+        String command = windows ? "cmd" : "sh";
+        List<String> args = windows
+                ? List.of("/c", "ping -n 61 127.0.0.1 > nul")
+                : List.of("-c", "sleep 60");
+        context.client().createTerminal(
+                new AcpSchema.CreateTerminalRequest(context.getSessionId(), command, args, null, List.of(), null));
+        context.sendMessage("result:terminal-held=true");
     }
 
     private static void exerciseElicitation(SyncPromptContext context) {

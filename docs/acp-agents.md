@@ -95,6 +95,27 @@ with a clear error and no session is registered. A loaded session replays its
 history through the same updates as a live turn, and then accepts prompts like
 any other session. The TUI does not offer this yet.
 
+## File system and terminals
+
+Every chat session advertises file and terminal access to its agent. Each
+session has its own file workspace and terminal registry, both rooted at the
+project root (`vintelli.local.project-root`):
+
+- `fs/read_text_file` and `fs/write_text_file` resolve relative paths against
+  the project root. A path outside the root is refused, including a path that
+  reaches outside through a symbolic link.
+- `terminal/*` runs each command as a child process with its working directory
+  inside the project root. The child inherits only a short list of environment
+  variables from Vintelli.
+- Closing the session, or shutting the chat service down, kills the session's
+  running terminals and releases them.
+
+Reads and writes go to disk. The agent does not see unsaved editor buffers yet,
+and a write does not update a file that is open in the editor. Vintelli does not
+gate these calls itself: the agent asks for each permission through
+`session/request_permission`, and the TUI shows that request for an explicit
+choice.
+
 ## Validation
 
 The packaged-runner tests select an agent backed by the ACP twin, check streamed
