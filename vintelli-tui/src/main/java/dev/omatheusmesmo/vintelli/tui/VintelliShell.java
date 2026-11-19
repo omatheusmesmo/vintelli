@@ -37,6 +37,9 @@ import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
 import dev.omatheusmesmo.vintelli.tui.icons.JavaTypeKinds;
 import dev.omatheusmesmo.vintelli.tui.search.ProjectSearchModel;
 import dev.omatheusmesmo.vintelli.tui.search.ProjectSearchOverlay;
+import dev.omatheusmesmo.vintelli.tui.navigation.NavigationTarget;
+import dev.omatheusmesmo.vintelli.tui.navigation.NavigationTargetsOverlay;
+import dev.omatheusmesmo.vintelli.tui.navigation.UsageSearch;
 import dev.omatheusmesmo.vintelli.tui.symbol.SymbolSearchModel;
 import dev.omatheusmesmo.vintelli.tui.symbol.SymbolSearchOverlay;
 import dev.omatheusmesmo.vintelli.api.search.ProjectSearch;
@@ -49,6 +52,8 @@ import dev.omatheusmesmo.vintelli.api.dependencies.ProjectDependencyGraph;
 import dev.omatheusmesmo.vintelli.api.dependencies.ProjectDependencyGraphProvider;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityFailure;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
+import dev.omatheusmesmo.vintelli.api.capability.CapabilitySelection;
+import dev.omatheusmesmo.vintelli.api.capability.ReadFileCapability;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityStatus;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Diagnostic;
 import dev.omatheusmesmo.vintelli.api.statusbar.StatusBarWidgetContributor;
@@ -193,6 +198,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
     private final ProjectPanel projectPanel;
     private final EditorController editorController;
     private final EditorPanel editorPanel;
+    private final NavigationTargetsOverlay navigationTargetsOverlay;
+    private final FindToolWindow findWindow;
     private final QuickFixController quickFix;
     private final QuickFixOverlay quickFixOverlay;
     private final QuickFixController generate;
@@ -301,6 +308,12 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         this.fileIcons = FileIcons.resolve();
         this.editorController = new EditorController(this.projectRoot, editor, projects, editorHost(), fileIcons);
         this.editorPanel = new EditorPanel(editorController, editor, themes, () -> overlays().keymap(), this.projectRoot);
+        this.navigationTargetsOverlay = new NavigationTargetsOverlay(editorController.navigationTargets(), fileIcons);
+        this.findWindow = this.toolWindows.stream().filter(FindToolWindow.class::isInstance)
+                .map(FindToolWindow.class::cast).findFirst().orElse(null);
+        if (this.findWindow != null) {
+            this.findWindow.setOpener(this::openUsage);
+        }
         this.quickFix = new QuickFixController(capabilityRegistry, editor, this::deliverToRenderThread,
                 message -> status = message);
         this.quickFixOverlay = new QuickFixOverlay(quickFix);
@@ -324,7 +337,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 : layoutStoreOverride;
         Set<String> allWindowIds = this.toolWindows.stream().map(ToolWindow::id).collect(Collectors.toSet());
         Set<String> defaultVisibleWindowIds = this.toolWindows.stream()
-                .filter(window -> window.anchor() != ToolWindow.Anchor.RIGHT)
+                .filter(ToolWindow::visibleByDefault)
                 .map(ToolWindow::id)
                 .collect(Collectors.toSet());
         this.shellLayout = layoutStore.load(allWindowIds, defaultVisibleWindowIds);
@@ -431,6 +444,8 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 () -> closeBreakpointCondition(breakpointCondition));
         stack.registerOverlay(Kind.QUICK_FIX, quickFix::isOpen, this::releaseQuickFix);
         stack.registerOverlay(Kind.GENERATE, generate::isOpen, this::releaseGenerate);
+        stack.registerOverlay(Kind.NAVIGATION_TARGETS, editorController.navigationTargets()::isOpen,
+                this::releaseNavigationTargets);
         stack.registerOverlay(Kind.QUICK_DOCUMENTATION, quickDocumentation::isOpen, this::releaseQuickDocumentation);
         if (searchModel != null) {
             stack.registerOverlay(Kind.PROJECT_SEARCH, searchModel::isOpen, searchModel::close);
@@ -1021,6 +1036,27 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                     manager.setFocus(elementId);
                 }
             }
+
+            @Override
+            public Optional<String> readText(Path file) {
+                return VintelliShell.this.readText(file);
+            }
+
+            @Override
+            public void openNavigationTargets(Runnable opener) {
+                inputCaptured = false;
+                overlays().stack().open(Kind.NAVIGATION_TARGETS, () -> {
+                    if (editor != null) {
+                        editor.overlayInputActive(true);
+                    }
+                    opener.run();
+                });
+            }
+
+            @Override
+            public boolean showUsages(UsageSearch search) {
+                return VintelliShell.this.showUsages(search);
+            }
         };
     }
 
@@ -1152,6 +1188,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                     editor == null ? Optional.empty() : editor.caretCell()));
             case GENERATE -> new OverlayElement("generate", (frame, area) -> generateOverlay.render(frame, area,
                     editor == null ? Optional.empty() : editor.caretCell()));
+            case NAVIGATION_TARGETS -> new OverlayElement("navigation-targets",
+                    (frame, area) -> navigationTargetsOverlay.render(frame, area,
+                            editor == null ? Optional.empty() : editor.caretCell()));
             case QUICK_DOCUMENTATION -> new OverlayElement("quick-documentation",
                     (frame, area) -> quickDocumentationOverlay.render(frame, area,
                             editor == null ? Optional.empty() : editor.caretCell()));
@@ -1217,6 +1256,12 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         }
         if (top == Kind.GENERATE) {
             handleGeneratePointer(mouse);
+            return EventResult.HANDLED;
+        }
+        if (top == Kind.NAVIGATION_TARGETS) {
+            editorController.pointNavigationTargets(mouse.x(), mouse.y(), mouse.isClick(),
+                    OverlayInput.scrollDirection(mouse));
+            afterNavigationTargetsInput();
             return EventResult.HANDLED;
         }
         if (top == null && handleCompletionPointer(mouse)) {
@@ -1372,6 +1417,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             case BREAKPOINT_CONDITION -> handleBreakpointConditionKey(parts, key);
             case QUICK_FIX -> handleQuickFixKey(key);
             case GENERATE -> handleGenerateKey(key);
+            case NAVIGATION_TARGETS -> handleNavigationTargetsKey(key);
             case QUICK_DOCUMENTATION -> handleQuickDocumentationKey(key);
             default -> throw new IllegalStateException("Not a drawn overlay: " + overlay);
         }
@@ -1999,6 +2045,71 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
             inputCaptured = false;
             editor.requestFocus();
         }
+    }
+
+    private void handleNavigationTargetsKey(KeyEvent key) {
+        editorController.pressNavigationTargets(OverlayInput.key(key), key.codePoint());
+        afterNavigationTargetsInput();
+    }
+
+    private void afterNavigationTargetsInput() {
+        if (!editorController.navigationTargets().isOpen()) {
+            releaseNavigationTargets();
+            inputCaptured = false;
+            if (editor != null) {
+                editor.requestFocus();
+            }
+        }
+    }
+
+    private void releaseNavigationTargets() {
+        editorController.navigationTargets().close();
+        if (editor != null) {
+            editor.overlayInputActive(false);
+        }
+    }
+
+    /**
+     * Opens a usage chosen in the Find tool window. The list keeps the focus, except when the editor is asked to
+     * take it, as F4 does.
+     */
+    private void openUsage(NavigationTarget usage, boolean focusEditor) {
+        editorController.openRevealed(usage.file(), usage.line());
+        if (focusEditor && editor != null) {
+            inputCaptured = false;
+            capturedWindow = null;
+            toolWindowHost.clearFocus();
+            editor.requestFocus();
+            FocusManager manager = focusManager;
+            if (manager != null) {
+                manager.setFocus("editor-panel");
+            }
+        }
+    }
+
+    private boolean showUsages(UsageSearch search) {
+        if (findWindow == null) {
+            return false;
+        }
+        findWindow.show(search);
+        switchToToolWindow(toolWindows.indexOf(findWindow));
+        status = search.header();
+        return true;
+    }
+
+    private Optional<String> readText(Path file) {
+        if (capabilityRegistry == null) {
+            return Optional.empty();
+        }
+        try {
+            if (capabilityRegistry.readFile() instanceof CapabilitySelection.Selected<ReadFileCapability> selected
+                    && selected.provider().readText(file) instanceof CapabilityResult.Ok<String> ok) {
+                return Optional.of(ok.value());
+            }
+        } catch (RuntimeException unavailable) {
+            return Optional.empty();
+        }
+        return Optional.empty();
     }
 
     private void releaseGenerate() {

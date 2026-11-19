@@ -1,13 +1,18 @@
 package dev.omatheusmesmo.vintelli.tui;
 
+import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Diagnostic;
 import dev.omatheusmesmo.vintelli.api.capability.DiagnosticsCapability.Severity;
 import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability;
+import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability.Location;
+import dev.omatheusmesmo.vintelli.api.capability.ProviderHealth;
 import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIconsFixture;
 import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
+import dev.omatheusmesmo.vintelli.tui.navigation.NavigationTarget;
+import dev.omatheusmesmo.vintelli.tui.navigation.UsageSearch;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -16,7 +21,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -37,6 +45,10 @@ class EditorControllerTest {
     private final List<String> focusTargets = new ArrayList<>();
     private int vcsRefreshes;
     private int diagnosticsRefreshes;
+    private final Map<Path, String> readable = new HashMap<>();
+    private FakeNavigation navigation;
+    private boolean findWindowShown;
+    private final List<UsageSearch> usageSearches = new ArrayList<>();
 
     @BeforeEach
     void setUp() throws IOException {
@@ -208,6 +220,199 @@ class EditorControllerTest {
         assertEquals("Breakpoint toggled at line 1", lastStatus());
     }
 
+    @Test
+    void severalDefinitionsOpenThePopupInsteadOfTheFirstAndEnterOpensTheChosenOne() throws IOException {
+        Path caller = caretOnHelperCall();
+        Path first = project.resolve("src/Util.java").toRealPath();
+        Path second = Files.writeString(project.resolve("src/Other.java"), "one\ntwo\nvoid helper() {}\n").toRealPath();
+        navigation = new FakeNavigation(
+                List.of(new Location(first, 0, 6), new Location(second, 2, 5), new Location(caller, 4, 0)), List.of());
+
+        controller.navigateToSymbol(false);
+
+        assertTrue(controller.navigationTargets().isOpen());
+        assertEquals(3, controller.navigationTargets().view().rows().size());
+        assertEquals("Choose Declaration", controller.navigationTargets().view().title());
+        assertEquals(caller.toString(), editor.activeDocument().orElseThrow().file(),
+                "the first location is not opened while the popup lists the choices");
+
+        controller.pressNavigationTargets(OverlayKey.DOWN, 0);
+        controller.pressNavigationTargets(OverlayKey.ENTER, 0);
+
+        assertFalse(controller.navigationTargets().isOpen());
+        assertEquals(second.toString(), editor.activeDocument().orElseThrow().file());
+        assertEquals(2, caretLine());
+    }
+
+    @Test
+    void aSingleDefinitionStillJumpsWithoutThePopup() throws IOException {
+        caretOnHelperCall();
+        Path util = project.resolve("src/Util.java").toRealPath();
+        navigation = new FakeNavigation(List.of(new Location(util, 0, 6)), List.of());
+
+        controller.navigateToSymbol(false);
+
+        assertFalse(controller.navigationTargets().isOpen());
+        assertEquals(util.toString(), editor.activeDocument().orElseThrow().file());
+    }
+
+    @Test
+    void aDefinitionOnTheCaretListsTheUsagesOfTheDeclaration() throws IOException {
+        Path caller = caretOnHelperCall();
+        Path util = project.resolve("src/Util.java").toRealPath();
+        navigation = new FakeNavigation(List.of(new Location(caller, 1, 0)),
+                List.of(new Location(util, 0, 0), new Location(caller, 3, 0)));
+
+        controller.navigateToSymbol(false);
+
+        assertEquals(List.of(false), navigation.includeDeclaration, "the usages are asked without the declaration");
+        assertTrue(controller.navigationTargets().isOpen());
+        assertEquals("Usages of helper", controller.navigationTargets().view().title());
+        assertEquals(2, controller.navigationTargets().view().rows().size());
+        assertEquals(caller.toString(), editor.activeDocument().orElseThrow().file());
+    }
+
+    @Test
+    void aDefinitionLaterOnTheSameLineIsNotTheDeclarationItself() throws IOException {
+        Path caller = caretOnHelperCall();
+        Path util = project.resolve("src/Util.java").toRealPath();
+        navigation = new FakeNavigation(List.of(new Location(caller, 1, 20), new Location(util, 0, 6)), List.of());
+
+        controller.navigateToSymbol(false);
+
+        assertTrue(navigation.includeDeclaration.isEmpty(), "no usages are asked for a definition elsewhere");
+        assertEquals("Choose Declaration", controller.navigationTargets().view().title());
+    }
+
+    @Test
+    void aDeclarationWithoutUsagesSaysSo() throws IOException {
+        Path caller = caretOnHelperCall();
+        navigation = new FakeNavigation(List.of(new Location(caller, 1, 0)), List.of());
+
+        controller.navigateToSymbol(false);
+
+        assertFalse(controller.navigationTargets().isOpen());
+        assertEquals("No usages found", lastStatus());
+    }
+
+    @Test
+    void findUsagesHandsEveryUsageToTheFindWindowAndLeavesThePopupClosed() throws IOException {
+        Path caller = caretOnHelperCall();
+        Path util = project.resolve("src/Util.java").toRealPath();
+        findWindowShown = true;
+        navigation = new FakeNavigation(List.of(),
+                List.of(new Location(caller, 1, 0), new Location(caller, 3, 0), new Location(util, 0, 0)));
+
+        controller.navigateToSymbol(true);
+
+        assertFalse(controller.navigationTargets().isOpen());
+        assertEquals(1, usageSearches.size());
+        UsageSearch search = usageSearches.getFirst();
+        assertEquals("helper", search.symbol());
+        assertEquals(3, search.usages().size());
+        assertEquals("Usages of helper in 2 files (3)", search.header());
+        assertEquals("Usages of helper in 2 files (3)", lastStatus());
+    }
+
+    @Test
+    void findUsagesFallsBackToThePopupWhenThereIsNoFindWindow() throws IOException {
+        Path caller = caretOnHelperCall();
+        Path util = project.resolve("src/Util.java").toRealPath();
+        navigation = new FakeNavigation(List.of(), List.of(new Location(caller, 3, 0), new Location(util, 0, 0)));
+
+        controller.navigateToSymbol(true);
+
+        assertTrue(usageSearches.isEmpty());
+        assertEquals("Usages of helper", controller.navigationTargets().view().title());
+        assertEquals(2, controller.navigationTargets().view().rows().size());
+    }
+
+    @Test
+    void findUsagesWithoutResultsKeepsTheNoUsagesFoundStatus() throws IOException {
+        caretOnHelperCall();
+        findWindowShown = true;
+        navigation = new FakeNavigation(List.of(), List.of());
+
+        controller.navigateToSymbol(true);
+
+        assertTrue(usageSearches.isEmpty());
+        assertEquals("No usages found", lastStatus());
+    }
+
+    @Test
+    void theRowsPreviewTheSourceLineFromTheOpenDocumentOrFromTheHostAndMarkTheSymbol() throws IOException {
+        Path caller = caretOnHelperCall();
+        Path util = project.resolve("src/Util.java").toRealPath();
+        readable.put(util, "class Util {\n    int x = helper();\n}\n");
+        findWindowShown = true;
+        navigation = new FakeNavigation(List.of(), List.of(new Location(caller, 3, 0), new Location(util, 1, 12)));
+
+        controller.navigateToSymbol(true);
+
+        List<NavigationTarget> usages = usageSearches.getFirst().usages();
+        assertEquals("helper();", usages.get(0).preview());
+        assertEquals(0, usages.get(0).matchStart());
+        assertEquals("int x = helper();", usages.get(1).preview());
+        assertEquals(8, usages.get(1).matchStart(), "the range is moved by the trimmed indentation");
+        assertEquals(6, usages.get(1).matchLength());
+        assertEquals("src", usages.get(1).directory());
+    }
+
+    private Path caretOnHelperCall() throws IOException {
+        Path caller = Files.writeString(project.resolve("src/Caller.java"),
+                "class Caller {\nhelper();\n}\nhelper();\nhelper();\n").toRealPath();
+        controller.openFile(caller, 1);
+        return caller;
+    }
+
+    private static final class FakeNavigation implements NavigationCapability {
+
+        private final List<Location> definitions;
+        private final List<Location> usages;
+        private final List<Boolean> includeDeclaration = new ArrayList<>();
+
+        FakeNavigation(List<Location> definitions, List<Location> usages) {
+            this.definitions = definitions;
+            this.usages = usages;
+        }
+
+        @Override
+        public CapabilityResult<List<Location>> definition(SourcePosition position) {
+            return CapabilityResult.ok(definitions);
+        }
+
+        @Override
+        public CapabilityResult<List<Location>> references(SourcePosition position, boolean includeDeclaration) {
+            this.includeDeclaration.add(includeDeclaration);
+            return CapabilityResult.ok(usages);
+        }
+
+        @Override
+        public CapabilityResult<List<DocumentSymbol>> documentSymbols(Path file) {
+            return CapabilityResult.ok(List.of());
+        }
+
+        @Override
+        public CapabilityResult<List<WorkspaceSymbol>> workspaceSymbols(String query) {
+            return CapabilityResult.ok(List.of());
+        }
+
+        @Override
+        public String identifier() {
+            return "fake";
+        }
+
+        @Override
+        public ProviderHealth health() {
+            return ProviderHealth.available();
+        }
+
+        @Override
+        public String provenance() {
+            return "test";
+        }
+    }
+
     private EditorController.Host host() {
         return new EditorController.Host() {
             @Override
@@ -217,7 +422,7 @@ class EditorControllerTest {
 
             @Override
             public NavigationCapability navigationProvider() {
-                return null;
+                return navigation;
             }
 
             @Override
@@ -245,6 +450,24 @@ class EditorControllerTest {
             @Override
             public void takeFocus(String elementId) {
                 focusTargets.add(elementId);
+            }
+
+            @Override
+            public Optional<String> readText(Path file) {
+                return Optional.ofNullable(readable.get(file));
+            }
+
+            @Override
+            public void openNavigationTargets(Runnable opener) {
+                opener.run();
+            }
+
+            @Override
+            public boolean showUsages(UsageSearch search) {
+                if (findWindowShown) {
+                    usageSearches.add(search);
+                }
+                return findWindowShown;
             }
         };
     }

@@ -9,7 +9,7 @@ import java.util.function.BooleanSupplier;
 
 /**
  * Owns the modal order of the shell overlays. The command palette, the keymap
- * help, the menu popup and the project search are overlays: opening one closes
+ * help, the menu popup, the project search and the navigation targets popup are overlays: opening one closes
  * the others, and the most recently opened open overlay is the top overlay that
  * gets the keyboard and the pointer first. The confirmation prompts are
  * registered as prompts: they sit above every overlay and closing the overlays
@@ -29,6 +29,7 @@ final class OverlayStack {
         BREAKPOINT_CONDITION(false),
         QUICK_FIX(false),
         GENERATE(false),
+        NAVIGATION_TARGETS(false),
         QUICK_DOCUMENTATION(false),
         PROJECT_DELETE(true),
         EDITOR_CLOSE(true),

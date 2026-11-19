@@ -121,7 +121,11 @@ public final class QuickFixOverlay {
         return action.edit() != null || action.command() == null ? action.title() : action.title() + " (command)";
     }
 
-    private static Rect place(Rect area, int width, int height, Optional<Rect> caret) {
+    /**
+     * Places a popup of the given size beside the caret cell: below it when it fits, above it otherwise, kept inside
+     * the area, and centred when the caret is not on screen.
+     */
+    public static Rect place(Rect area, int width, int height, Optional<Rect> caret) {
         if (caret.isEmpty()) {
             return new Rect(area.x() + (area.width() - width) / 2, area.y() + (area.height() - height) / 2,
                     width, height);

@@ -562,6 +562,16 @@ public final class BuiltinEditor implements EditorBridge, ToolWindow {
                 EditorIndent.describe(document.text()), document.readOnly()));
     }
 
+    /**
+     * The text of the open document of the file, with the edits not yet saved, or empty when the file is not open.
+     */
+    public synchronized Optional<String> openText(Path file) {
+        ensureSession();
+        Path normalized = file.toAbsolutePath().normalize();
+        return documents.stream().filter(document -> document.file().equals(normalized)).findFirst()
+                .map(EditorDocument::text);
+    }
+
     public synchronized List<TabView> tabs() {
         ensureSession();
         List<TabView> result = new ArrayList<>();

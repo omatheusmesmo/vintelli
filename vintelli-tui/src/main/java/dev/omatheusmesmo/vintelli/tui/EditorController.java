@@ -9,6 +9,9 @@ import dev.omatheusmesmo.vintelli.api.capability.NavigationCapability;
 import dev.omatheusmesmo.vintelli.tui.editor.BuiltinEditor;
 import dev.omatheusmesmo.vintelli.tui.icons.FileIcons;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyActions;
+import dev.omatheusmesmo.vintelli.tui.navigation.NavigationTarget;
+import dev.omatheusmesmo.vintelli.tui.navigation.NavigationTargets;
+import dev.omatheusmesmo.vintelli.tui.navigation.UsageSearch;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -16,11 +19,13 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Owns the editor island: the open tabs and the commands on the active
  * document, the breadcrumb navigation with its document symbols, opening and
- * revealing files, the editor actions of the global keymap and the pushed
+ * revealing files, the navigation to a symbol with the popup that lists several
+ * targets, the editor actions of the global keymap and the pushed
  * highlight and diff. The shell hands the effects that leave the island
  * (status, focus, project tree, version control refresh) through {@link Host}.
  * It holds no TamboUI type: {@link EditorPanel} draws the state and forwards
@@ -46,6 +51,22 @@ final class EditorController {
         void releaseCapture();
 
         void takeFocus(String elementId);
+
+        /** The text of a file that is not open in the editor, empty when it cannot be read. */
+        Optional<String> readText(Path file);
+
+        /**
+         * Opens the popup of navigation targets: closes the other overlays, runs the opener and shows the popup
+         * as the top overlay.
+         */
+        void openNavigationTargets(Runnable opener);
+
+        /**
+         * Shows the usages in the Find tool window.
+         *
+         * @return false when the shell has no Find tool window, and the caller lists the usages in the popup
+         */
+        boolean showUsages(UsageSearch search);
     }
 
     private final Path projectRoot;
@@ -53,6 +74,8 @@ final class EditorController {
     private final ProjectTreeController projects;
     private final Host host;
     private final FileIcons icons;
+    private final NavigationTargets navigationTargets = new NavigationTargets();
+    private final NavigationTargetBuilder targetBuilder;
     private volatile ShellHighlightTarget highlight;
     private volatile ShellUnifiedDiff diff;
     private boolean navigationBarFocused;
@@ -69,6 +92,32 @@ final class EditorController {
         this.projects = projects;
         this.host = host;
         this.icons = icons;
+        this.targetBuilder = new NavigationTargetBuilder(projectRoot, this::sourceText);
+    }
+
+    /** The popup that lists several targets; the shell draws it and routes its keys and clicks here. */
+    NavigationTargets navigationTargets() {
+        return navigationTargets;
+    }
+
+    /**
+     * Routes a key to the open navigation popup: Enter opens the selected target in the editor.
+     */
+    void pressNavigationTargets(OverlayKey key, int codePoint) {
+        navigationTargets.press(key, codePoint).ifPresent(this::openTarget);
+    }
+
+    /** Routes a pointer event to the open navigation popup: a click on a row opens that target in the editor. */
+    void pointNavigationTargets(int x, int y, boolean click, int scroll) {
+        navigationTargets.pointer(x, y, click, scroll).ifPresent(this::openTarget);
+    }
+
+    void openTarget(NavigationTarget target) {
+        openRevealed(target.file(), target.line());
+    }
+
+    private Optional<String> sourceText(Path file) {
+        return editor == null ? host.readText(file) : editor.openText(file).or(() -> host.readText(file));
     }
 
     List<StatusBar.Breadcrumb> navigationSegments() {
@@ -313,6 +362,12 @@ final class EditorController {
         revealFile(Path.of(editor.activeDocument().orElseThrow().file()));
     }
 
+    /**
+     * Go to Definition ({@code references} false) and Find Usages ({@code references} true) for the symbol at the
+     * caret. One location is opened at once. Several are listed: the usages in the Find tool window, the targets of
+     * a definition in the popup at the caret. A definition that is the symbol under the caret itself lists the
+     * usages of the declaration instead.
+     */
     void navigateToSymbol(boolean references) {
         if (editor == null || editor.activeDocument().isEmpty()) {
             host.status("Open a project file first");
@@ -326,14 +381,83 @@ final class EditorController {
         BuiltinEditor.DocumentView document = editor.activeDocument().orElseThrow();
         NavigationCapability.SourcePosition position = new NavigationCapability.SourcePosition(
                 Path.of(document.file()), document.line(), document.column());
+        Identifier symbol = Identifier.at(document.text(), document.line(), document.column());
         CapabilityResult<List<NavigationCapability.Location>> result = references
                 ? provider.references(position, true) : provider.definition(position);
-        if (result instanceof CapabilityResult.Ok<List<NavigationCapability.Location>> ok && !ok.value().isEmpty()) {
-            NavigationCapability.Location location = ok.value().getFirst();
-            openRevealed(location.filePath(), location.line());
-        } else {
+        if (!(result instanceof CapabilityResult.Ok<List<NavigationCapability.Location>> ok) || ok.value().isEmpty()) {
             host.status(result.failureOf().map(failure -> failure.reason() + ": " + failure.detail())
                     .orElse(references ? "No usages found" : "No definition found"));
+            return;
+        }
+        if (references) {
+            listUsages(symbol.text(), ok.value(), true);
+        } else if (onSymbol(ok.value(), position, symbol)) {
+            navigateToUsages(provider, position, symbol.text());
+        } else if (ok.value().size() == 1) {
+            openTarget(targetBuilder.build(ok.value(), symbol.text()).getFirst());
+        } else {
+            listTargets("Choose Declaration", targetBuilder.build(ok.value(), symbol.text()));
+        }
+    }
+
+    private void navigateToUsages(NavigationCapability provider, NavigationCapability.SourcePosition position,
+            String symbol) {
+        CapabilityResult<List<NavigationCapability.Location>> usages = provider.references(position, false);
+        if (usages instanceof CapabilityResult.Ok<List<NavigationCapability.Location>> ok && !ok.value().isEmpty()) {
+            listUsages(symbol, ok.value(), false);
+        } else {
+            host.status(usages.failureOf().map(failure -> failure.reason() + ": " + failure.detail())
+                    .orElse("No usages found"));
+        }
+    }
+
+    private void listUsages(String symbol, List<NavigationCapability.Location> locations, boolean window) {
+        List<NavigationTarget> targets = targetBuilder.build(locations, symbol);
+        UsageSearch search = new UsageSearch(symbol, targets);
+        if (window && host.showUsages(search)) {
+            host.status(search.header());
+        } else if (targets.size() == 1) {
+            openTarget(targets.getFirst());
+        } else {
+            listTargets(usagesTitle(symbol), targets);
+        }
+    }
+
+    private void listTargets(String title, List<NavigationTarget> targets) {
+        host.openNavigationTargets(() -> navigationTargets.open(title, targets));
+        host.status(title + ": " + targets.size() + " targets");
+    }
+
+    private static String usagesTitle(String symbol) {
+        return symbol.isEmpty() ? "Usages" : "Usages of " + symbol;
+    }
+
+    private static boolean onSymbol(List<NavigationCapability.Location> found,
+            NavigationCapability.SourcePosition position, Identifier symbol) {
+        Path file = position.filePath().toAbsolutePath().normalize();
+        return found.stream().anyMatch(location -> location.filePath().toAbsolutePath().normalize().equals(file)
+                && location.line() == position.line() && location.column() >= symbol.start()
+                && location.column() <= symbol.end());
+    }
+
+    /**
+     * The identifier under the caret: the characters of a Java identifier that contain the column or end right
+     * before it, as IntelliJ resolves a caret placed after the last letter. An empty identifier is the caret column.
+     */
+    private record Identifier(String text, int start, int end) {
+
+        static Identifier at(String document, int line, int column) {
+            String text = document.lines().skip(line).findFirst().orElse("");
+            int caret = Math.clamp(column, 0, text.length());
+            int start = caret;
+            while (start > 0 && Character.isJavaIdentifierPart(text.charAt(start - 1))) {
+                start--;
+            }
+            int end = caret;
+            while (end < text.length() && Character.isJavaIdentifierPart(text.charAt(end))) {
+                end++;
+            }
+            return new Identifier(text.substring(start, end), start, end);
         }
     }
 
