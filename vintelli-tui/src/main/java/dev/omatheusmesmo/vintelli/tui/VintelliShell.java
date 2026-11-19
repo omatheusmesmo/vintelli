@@ -1493,6 +1493,9 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
                 return handleToolWindowKey(parts, active, key) ? EventResult.HANDLED : EventResult.UNHANDLED;
             }
         }
+        if (inputCaptured && capturedWindow != null && capturedWindow.shouldHandleKeyBeforeShell(key)) {
+            return handleToolWindowKey(parts, capturedWindow, key) ? EventResult.HANDLED : EventResult.UNHANDLED;
+        }
         for (KeyAction action : KeyActions.shellActions()) {
             if (KeyActions.QUIT.equals(action.id()) || KeyActions.MENU.equals(action.id())) {
                 continue;
@@ -2270,7 +2273,7 @@ public final class VintelliShell implements GlobalEventHandler, ShellHighlightPo
         return KeyActions.RUN_DEBUG.equals(actionId) || KeyActions.RUN_EXECUTE.equals(actionId) || KeyActions.RUN_STOP.equals(actionId)
                 || KeyActions.DEBUG_RESUME.equals(actionId) || KeyActions.DEBUG_PAUSE.equals(actionId)
                 || KeyActions.DEBUG_STEP_OVER.equals(actionId) || KeyActions.DEBUG_STEP_INTO.equals(actionId)
-                || KeyActions.DEBUG_STEP_OUT.equals(actionId)
+                || KeyActions.DEBUG_STEP_OUT.equals(actionId) || KeyActions.DEBUG_SET_VALUE.equals(actionId)
                 || KeyActions.MAVEN_ACTIVATE.equals(actionId) || KeyActions.TERMINAL_EXECUTE.equals(actionId)
                 || KeyActions.ACP_CHAT_NEW.equals(actionId) || KeyActions.ACP_CHAT_SEND.equals(actionId)
                 || KeyActions.ACP_CHAT_CANCEL.equals(actionId) || KeyActions.ACP_CHAT_PERMISSION.equals(actionId)

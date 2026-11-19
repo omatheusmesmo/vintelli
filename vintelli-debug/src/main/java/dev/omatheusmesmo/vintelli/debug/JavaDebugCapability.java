@@ -45,6 +45,8 @@ import org.eclipse.lsp4j.debug.EvaluateResponse;
 import org.eclipse.lsp4j.debug.ContinuedEventArguments;
 import org.eclipse.lsp4j.debug.DisconnectArguments;
 import org.eclipse.lsp4j.debug.InitializeRequestArguments;
+import org.eclipse.lsp4j.debug.SetVariableArguments;
+import org.eclipse.lsp4j.debug.SetVariableResponse;
 import org.eclipse.lsp4j.debug.OutputEventArguments;
 import org.eclipse.lsp4j.debug.StoppedEventArguments;
 import org.eclipse.lsp4j.debug.TerminatedEventArguments;
@@ -481,6 +483,7 @@ public final class JavaDebugCapability implements DebugCapability {
         private volatile boolean terminal;
         private volatile DebugCapabilities debugCapabilities = new DebugCapabilities(false, false, false, false, false);
         private volatile boolean conditionalBreakpoints;
+        private volatile boolean setVariableSupported;
         private final AtomicBoolean executionRequestPending = new AtomicBoolean();
         private long stopGeneration;
         private PendingExecution pendingExecution;
@@ -550,6 +553,7 @@ public final class JavaDebugCapability implements DebugCapability {
             }
             debugCapabilities = new DebugCapabilities(true, false, true, true, true, false);
             conditionalBreakpoints = Boolean.TRUE.equals(capabilities.getSupportsConditionalBreakpoints());
+            setVariableSupported = Boolean.TRUE.equals(capabilities.getSupportsSetVariable());
             if (isTerminal()) {
                 throw new IOException("The debug adapter ended during initialization");
             }
@@ -1262,6 +1266,62 @@ public final class JavaDebugCapability implements DebugCapability {
             } catch (Exception failure) {
                 if (isExplicitUnsupportedRequest(failure)) {
                     return CapabilityResult.failed(new CapabilityFailure("Evaluation is not supported by this adapter", ""));
+                }
+                return CapabilityResult.failed(new CapabilityFailure(failureReason(failure), ""));
+            }
+        }
+
+        @Override
+        public CapabilityResult<DebugVariable> setVariable(int variablesReference, String name, String value,
+                long expectedInspectionGeneration) {
+            IDebugProtocolServer protocol = server;
+            if (protocol == null || isTerminal()) {
+                return CapabilityResult.failed(new CapabilityFailure("The debug session is not active", ""));
+            }
+            String assigned = value == null ? "" : value.strip();
+            if (variablesReference <= 0 || name == null || name.isBlank()) {
+                return CapabilityResult.failed(new CapabilityFailure("A variable to set is required", ""));
+            }
+            if (assigned.isEmpty() || assigned.indexOf('\n') >= 0 || assigned.indexOf('\r') >= 0
+                    || assigned.length() > DebugCapability.MAX_SET_VALUE_LENGTH) {
+                return CapabilityResult.failed(new CapabilityFailure("A value must be one line of at most "
+                        + DebugCapability.MAX_SET_VALUE_LENGTH + " characters", ""));
+            }
+            if (snapshot().state() != State.STOPPED || inspectionGeneration() != expectedInspectionGeneration) {
+                return CapabilityResult.failed(new CapabilityFailure("The debug stop changed before the value was set", ""));
+            }
+            if (!setVariableSupported) {
+                return CapabilityResult.failed(new CapabilityFailure(
+                        "Setting a value is not supported by this adapter", ""));
+            }
+            SetVariableArguments arguments = new SetVariableArguments();
+            arguments.setVariablesReference(variablesReference);
+            arguments.setName(name);
+            arguments.setValue(assigned);
+            try {
+                SetVariableResponse response = awaitInspection(protocol.setVariable(arguments), requestTimeout);
+                if (isTerminal() || inspectionGeneration() != expectedInspectionGeneration) {
+                    return CapabilityResult.failed(new CapabilityFailure(
+                            "The debug stop changed while the value was set", ""));
+                }
+                String newValue = response == null || response.getValue() == null ? "" : response.getValue();
+                String newType = response == null || response.getType() == null ? "" : response.getType();
+                int reference = response == null || response.getVariablesReference() == null
+                        ? 0 : response.getVariablesReference();
+                return CapabilityResult.ok(new DebugVariable(name,
+                        newValue.length() > MAX_EVALUATION_VALUE_CHARS
+                                ? newValue.substring(0, MAX_EVALUATION_VALUE_CHARS) + "..." : newValue,
+                        newType.length() > MAX_EVALUATION_TYPE_CHARS
+                                ? newType.substring(0, MAX_EVALUATION_TYPE_CHARS) : newType,
+                        reference, reference > 0));
+            } catch (TimeoutException timedOut) {
+                return CapabilityResult.failed(new CapabilityFailure(
+                        "The debug adapter did not answer the assignment within " + requestTimeout.toSeconds()
+                                + " seconds", ""));
+            } catch (Exception failure) {
+                if (isExplicitUnsupportedRequest(failure)) {
+                    return CapabilityResult.failed(new CapabilityFailure(
+                            "Setting a value is not supported by this adapter", ""));
                 }
                 return CapabilityResult.failed(new CapabilityFailure(failureReason(failure), ""));
             }

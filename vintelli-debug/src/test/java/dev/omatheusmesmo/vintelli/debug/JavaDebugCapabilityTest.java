@@ -672,6 +672,112 @@ class JavaDebugCapabilityTest {
     }
 
     @Test
+    void setsAVariableThroughTheAdapterAndTheNextReadSeesTheNewValue() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.NORMAL)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "set value"), ignored -> { }));
+            awaitState(session, DebugCapability.State.STOPPED);
+
+            DebugCapability.DebugVariable changed = ok(session.setVariable(22, "answer", "  10 ",
+                    session.inspectionGeneration()));
+
+            assertEquals(List.of("22:answer=10"), twin.assignments(), "the adapter receives the stripped value");
+            assertEquals("answer", changed.name());
+            assertEquals("10", changed.value());
+            assertEquals("int", changed.type());
+            assertEquals("10", ok(session.variables(22)).getFirst().value());
+            session.disconnect();
+        }
+    }
+
+    @Test
+    void anAdapterErrorKeepsTheOldValueAndIsReportedVerbatim() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.NORMAL)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "invalid value"), ignored -> { }));
+            awaitState(session, DebugCapability.State.STOPPED);
+
+            CapabilityResult<DebugCapability.DebugVariable> rejected = session.setVariable(22, "answer", "\"abc\"",
+                    session.inspectionGeneration());
+
+            assertTrue(rejected.failureOf().orElseThrow().reason().contains("Type mismatch"));
+            assertEquals("42", ok(session.variables(22)).getFirst().value());
+            session.disconnect();
+        }
+    }
+
+    @Test
+    void rejectsAnAssignmentForAnEarlierStopOrAMalformedValueWithoutReachingTheAdapter() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.NORMAL)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "stale set value"), ignored -> { }));
+            awaitState(session, DebugCapability.State.STOPPED);
+            long generation = session.inspectionGeneration();
+
+            CapabilityResult<DebugCapability.DebugVariable> stale = session.setVariable(22, "answer", "10",
+                    generation - 1);
+            assertTrue(stale.failureOf().orElseThrow().reason().contains("changed before the value was set"));
+            assertTrue(session.setVariable(22, "answer", "1\n2", generation).isFailure());
+            assertTrue(session.setVariable(22, "answer", " ", generation).isFailure());
+            assertTrue(session.setVariable(0, "answer", "10", generation).isFailure());
+            assertEquals(List.of(), twin.assignments(), "rejected requests must never reach the debuggee");
+
+            assertTrue(session.resume() instanceof CapabilityResult.Ok<Boolean>);
+            awaitState(session, DebugCapability.State.RUNNING);
+            assertTrue(session.setVariable(22, "answer", "10", generation).isFailure(),
+                    "a resumed session never applies an edit");
+            assertEquals(List.of(), twin.assignments());
+            session.disconnect();
+        }
+    }
+
+    @Test
+    void anAdapterWithoutSetVariableIsReportedWithoutSendingTheRequest() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.SET_VARIABLE_UNSUPPORTED)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "unsupported set value"), ignored -> { }));
+            awaitState(session, DebugCapability.State.STOPPED);
+
+            CapabilityResult<DebugCapability.DebugVariable> result = session.setVariable(22, "answer", "10",
+                    session.inspectionGeneration());
+
+            assertEquals("Setting a value is not supported by this adapter", result.failureOf().orElseThrow().reason());
+            assertEquals(List.of(), twin.assignments());
+            session.disconnect();
+        }
+    }
+
+    @Test
+    void resumingDuringAnAssignmentDiscardsTheLateResult() throws Exception {
+        try (DapTwin twin = new DapTwin(DapTwin.Mode.SET_VARIABLE_HOLD)) {
+            JavaDebugCapability capability = enabled(twin.port(), new FakeRun());
+            DebugCapability.DebugSession session = ok(capability.attach(
+                    new DebugCapability.AttachRequest(5005, "stale assignment"), ignored -> { }));
+            awaitState(session, DebugCapability.State.STOPPED);
+            ExecutorService worker = Executors.newSingleThreadExecutor();
+            try {
+                Future<CapabilityResult<DebugCapability.DebugVariable>> pending = worker.submit(() ->
+                        session.setVariable(22, "answer", "7", session.inspectionGeneration()));
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+                while (twin.assignments().isEmpty() && System.nanoTime() < deadline) Thread.sleep(10);
+                assertTrue(session.resume() instanceof CapabilityResult.Ok<Boolean>);
+
+                twin.connection().releaseHeldAssignment();
+                CapabilityResult<DebugCapability.DebugVariable> late = pending.get(2, TimeUnit.SECONDS);
+                assertTrue(late.failureOf().orElseThrow().reason().contains("changed while the value was set"),
+                        "a result that arrives after the debuggee resumed must not be reported as current");
+            } finally {
+                worker.shutdownNow();
+                session.disconnect();
+            }
+        }
+    }
+
+    @Test
     void resumingDuringEvaluationDiscardsTheLateResult() throws Exception {
         try (DapTwin twin = new DapTwin(DapTwin.Mode.EVALUATE_HOLD)) {
             JavaDebugCapability capability = enabled(twin.port(), new FakeRun());

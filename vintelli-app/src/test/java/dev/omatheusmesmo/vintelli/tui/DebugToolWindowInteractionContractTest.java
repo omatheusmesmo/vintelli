@@ -2,12 +2,15 @@ package dev.omatheusmesmo.vintelli.tui;
 
 import static dev.omatheusmesmo.vintelli.tui.ToolWindowInteractionAssertions.assertActivationParity;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
@@ -47,6 +50,91 @@ class DebugToolWindowInteractionContractTest {
                     () -> newSession(unicode),
                     DebugToolWindowInteractionContractTest::expandWithPointer);
         }
+    }
+
+    @Test
+    void f2EditsTheSelectedVariableAppliesItOnEnterAndReadsTheScopeAgain() throws Exception {
+        try (ToolWindowInteractionAssertions.Session session = newSession(false)) {
+            ToolWindowPilotFixture fixture = session.fixture();
+            DebugContext context = session.context(DebugContext.class);
+            selectAnswerVariable(session);
+
+            fixture.press(KeyCode.F2);
+            assertTrue(fixture.renderedText().contains("answer = 42_"), fixture.renderedText());
+            assertEquals("Type the new value of answer; Enter applies it, Esc cancels", context.window().statusMessage());
+            fixture.press(KeyCode.BACKSPACE);
+            fixture.press(KeyCode.BACKSPACE);
+            fixture.press('1');
+            fixture.press('0');
+            fixture.press(KeyCode.ENTER);
+
+            awaitUi(context.uiWork(), () -> context.window().statusMessage().equals("Set answer = 10"));
+            assertEquals(List.of("22:answer=10@1"), context.provider().assignments);
+            awaitUi(context.uiWork(), () -> fixture.renderedText().contains("answer = 10 : int"));
+            assertFalse(fixture.renderedText().contains("answer = 10_"), "the input closes once applied");
+        }
+    }
+
+    @Test
+    void anAdapterErrorShowsInTheStatusAndKeepsTheOldValue() throws Exception {
+        try (ToolWindowInteractionAssertions.Session session = newSession(false)) {
+            ToolWindowPilotFixture fixture = session.fixture();
+            DebugContext context = session.context(DebugContext.class);
+            selectAnswerVariable(session);
+
+            fixture.press(KeyCode.F2);
+            fixture.press(KeyCode.BACKSPACE);
+            fixture.press(KeyCode.BACKSPACE);
+            fixture.press('x');
+            fixture.press(KeyCode.ENTER);
+
+            awaitUi(context.uiWork(), () -> context.window().statusMessage().startsWith("Set value failed:"));
+            assertTrue(context.window().statusMessage().contains("Type mismatch"), context.window().statusMessage());
+            assertEquals(List.of("22:answer=x@1"), context.provider().assignments);
+            assertTrue(fixture.renderedText().contains("answer = 42 : int"), fixture.renderedText());
+        }
+    }
+
+    @Test
+    void escapeCancelsTheInputWithoutAssigningAndAStaleStopIsNeverApplied() throws Exception {
+        try (ToolWindowInteractionAssertions.Session session = newSession(false)) {
+            ToolWindowPilotFixture fixture = session.fixture();
+            DebugContext context = session.context(DebugContext.class);
+            selectAnswerVariable(session);
+
+            fixture.press(KeyCode.F2);
+            fixture.press(KeyCode.ESCAPE);
+            assertEquals("Set value cancelled", context.window().statusMessage());
+            assertEquals("tool-debug", fixture.testRunner().runner().focusManager().focusedId(),
+                    "Escape closes the input and leaves the Debug window focused");
+            assertFalse(fixture.renderedText().contains("answer = 42_"), fixture.renderedText());
+
+            fixture.press(KeyCode.F2);
+            context.provider().generation.incrementAndGet();
+            fixture.press(KeyCode.ENTER);
+            assertEquals("The debug stop changed; press r to inspect again", context.window().statusMessage());
+            assertEquals(List.of(), context.provider().assignments);
+        }
+    }
+
+    @Test
+    void f2OutsideAVariableRowAsksForOne() throws Exception {
+        try (ToolWindowInteractionAssertions.Session session = newSession(false)) {
+            ToolWindowPilotFixture fixture = session.fixture();
+            DebugContext context = session.context(DebugContext.class);
+            focusAndLoad(session);
+
+            fixture.press(KeyCode.F2);
+
+            assertEquals("Select a variable to set its value", context.window().statusMessage());
+            assertEquals(List.of(), context.provider().assignments);
+        }
+    }
+
+    private static void selectAnswerVariable(ToolWindowInteractionAssertions.Session session) {
+        expandWithKeyboard(session);
+        String screen = session.fixture().renderedText();
+        assertTrue(screen.lines().anyMatch(line -> line.contains("> ") && line.contains("answer = 42 : int")), screen);
     }
 
     private ToolWindowInteractionAssertions.Session newSession(boolean unicode) throws Exception {
@@ -172,6 +260,9 @@ class DebugToolWindowInteractionContractTest {
     private static final class RecordingDebugProvider implements DebugCapability {
         private final AtomicInteger variableRequests = new AtomicInteger();
         private final AtomicInteger variableReference = new AtomicInteger(-1);
+        private final AtomicLong generation = new AtomicLong(1);
+        private final List<String> assignments = new CopyOnWriteArrayList<>();
+        private volatile String answer = "42";
         private volatile DebugSessionSnapshot snapshot;
 
         @Override public String identifier() { return "interaction-dap"; }
@@ -207,9 +298,18 @@ class DebugToolWindowInteractionContractTest {
                     if (reference != 22) {
                         return CapabilityResult.failed(new CapabilityFailure("Unexpected variables reference", ""));
                     }
-                    return CapabilityResult.ok(List.of(new DebugVariable("answer", "42", "int", 0, false)));
+                    return CapabilityResult.ok(List.of(new DebugVariable("answer", answer, "int", 0, false)));
                 }
-                @Override public long inspectionGeneration() { return 1; }
+                @Override public CapabilityResult<DebugVariable> setVariable(int reference, String name, String value,
+                        long expectedGeneration) {
+                    assignments.add(reference + ":" + name + "=" + value + "@" + expectedGeneration);
+                    if (!value.matches("-?\\d+")) {
+                        return CapabilityResult.failed(new CapabilityFailure("Type mismatch: " + value, ""));
+                    }
+                    answer = value;
+                    return CapabilityResult.ok(new DebugVariable(name, value, "int", 0, false));
+                }
+                @Override public long inspectionGeneration() { return generation.get(); }
                 @Override public CapabilityResult<Boolean> disconnect() { return CapabilityResult.ok(true); }
                 @Override public void cancel() { }
             });
