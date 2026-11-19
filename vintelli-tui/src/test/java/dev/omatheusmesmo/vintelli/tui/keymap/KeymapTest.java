@@ -1,6 +1,7 @@
 package dev.omatheusmesmo.vintelli.tui.keymap;
 
 import dev.omatheusmesmo.vintelli.tui.AcpAgentsToolWindow;
+import dev.omatheusmesmo.vintelli.tui.FindToolWindow;
 import dev.omatheusmesmo.vintelli.tui.ShellThemes;
 import dev.omatheusmesmo.vintelli.tui.ProblemsToolWindow;
 import dev.omatheusmesmo.vintelli.tui.RunToolWindow;
@@ -49,6 +50,16 @@ class KeymapTest {
 
     private static ShellThemes themes() {
         return new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
+    }
+
+    @Test
+    void aToolWindowWithoutAShortcutGetsNoChordAndLeavesTheNulCharacterUnbound() {
+        FindToolWindow find = new FindToolWindow(() -> themes());
+        Keymap keymap = Keymap.ofProfile(KeymapProfile.DEFAULT, List.of(find));
+
+        assertFalse(keymap.isBound(KeyActions.activateToolWindow("find")));
+        assertFalse(keymap.matches(KeyEvent.ofChar('\0', KeyModifiers.ALT), KeyActions.activateToolWindow("find")));
+        assertFalse(keymap.matches(KeyEvent.ofChar('\0'), KeyActions.activateToolWindow("find")));
     }
 
     @Test

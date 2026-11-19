@@ -68,6 +68,16 @@ class ToolWindowRegistryTest {
         }
     }
 
+    @Test
+    void windowsWithoutAShortcutNeverCollideAndTheirNulCharacterIsNotRejected() {
+        ToolWindowRegistry registry = new ToolWindowRegistry(List.of(
+                new FakeToolWindow("first", "First", ToolWindow.NO_SHORTCUT, 0, "a"),
+                new FakeToolWindow("second", "Second", ToolWindow.NO_SHORTCUT, 1, "b"),
+                new FakeToolWindow("notes", "Notes", '5', 2, "c")));
+
+        assertEquals(List.of("first", "second", "notes"), ids(registry));
+    }
+
     private static List<String> ids(ToolWindowRegistry registry) {
         return registry.toolWindows().stream().map(ToolWindow::id).toList();
     }

@@ -1591,6 +1591,102 @@ class VintelliShellTest {
         assertEquals("", editor.pointerState().orElseThrow().selectedText(), "a Ctrl+click does not select text");
     }
 
+    @Test
+    void ctrlClickWithSeveralDefinitionsListsThemInAPopupAndEnterOpensTheChosenOne() throws IOException {
+        Path main = project.resolve("src/Main.java");
+        Path first = project.resolve("src/First.java");
+        Path second = project.resolve("src/Second.java");
+        Files.createDirectories(main.getParent());
+        Files.writeString(main, "class Main { Util helper; }\n");
+        Files.writeString(first, "class First {}\n");
+        Files.writeString(second, "interface Second {\n    void act();\n}\n");
+        ShellThemes themes = defaultThemes();
+        BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
+        List<ToolWindow> windows = new ArrayList<>(defaultWindows());
+        windows.add(editor);
+        NavigationCapability navigation = navigationAnswering(
+                List.of(new NavigationCapability.Location(first.toRealPath(), 0, 6),
+                        new NavigationCapability.Location(second.toRealPath(), 1, 9)), List.of());
+        VintelliShell shell = new VintelliShell(ShellConfig.of(new ToolWindowRegistry(windows).toolWindows(),
+                new ShellState(), themes).withNavigationProviders(List.of(navigation)));
+        editor.open(new OpenRequest(main.toRealPath(), 0));
+        int[] symbol = findText(offlineFrame(shell), "Util helper");
+
+        shell.handle(new MouseEvent(MouseEventKind.PRESS, MouseButton.LEFT, symbol[0] + 1, symbol[1], KeyModifiers.CTRL));
+        shell.handle(new MouseEvent(MouseEventKind.RELEASE, MouseButton.LEFT, symbol[0] + 1, symbol[1], KeyModifiers.CTRL));
+
+        String popup = bufferText(offlineFrame(shell));
+        assertTrue(popup.contains("Choose Declaration (2)"), popup);
+        assertTrue(popup.contains("First.java") && popup.contains("Second.java"), popup);
+        assertEquals(main.toRealPath().toString(), editor.activeDocument().orElseThrow().file(),
+                "nothing opens until a row is chosen");
+
+        shell.handle(KeyEvent.ofKey(KeyCode.DOWN));
+        shell.handle(KeyEvent.ofKey(KeyCode.ENTER));
+
+        assertEquals(second.toRealPath().toString(), editor.activeDocument().orElseThrow().file());
+        assertEquals(1, editor.activeDocument().orElseThrow().line());
+        assertFalse(bufferText(offlineFrame(shell)).contains("Choose Declaration"), "the popup closes");
+    }
+
+    @Test
+    void altF7ShowsEveryUsageInTheFindToolWindowAndEnterOpensTheSelectedOne() throws IOException {
+        Path main = project.resolve("src/Main.java");
+        Path other = project.resolve("src/Other.java");
+        Files.createDirectories(main.getParent());
+        Files.writeString(main, "class Main {\nhelper() {}\n}\n");
+        Files.writeString(other, "class Other {\n    void run() { helper(); }\n}\n");
+        ShellThemes themes = defaultThemes();
+        BuiltinEditor editor = new BuiltinEditor(project, null, themes::editorPalette);
+        List<ToolWindow> windows = new ArrayList<>(defaultWindows());
+        windows.add(editor);
+        windows.add(new FindToolWindow(() -> themes));
+        NavigationCapability navigation = navigationAnswering(List.of(),
+                List.of(new NavigationCapability.Location(main.toRealPath(), 1, 0),
+                        new NavigationCapability.Location(other.toRealPath(), 1, 15)));
+        VintelliShell shell = new VintelliShell(ShellConfig.of(new ToolWindowRegistry(windows).toolWindows(),
+                new ShellState(), themes).withNavigationProviders(List.of(navigation)));
+        editor.open(new OpenRequest(main.toRealPath(), 1));
+        offlineFrame(shell);
+
+        shell.handle(KeyEvent.ofKey(KeyCode.F7, KeyModifiers.ALT));
+
+        String screen = bufferText(offlineFrame(shell));
+        assertTrue(screen.contains("Usages of helper in 2 files (2)"), screen);
+        assertTrue(screen.contains("helper() {}"), "the open file previews its line:\n" + screen);
+
+        shell.handle(KeyEvent.ofKey(KeyCode.ENTER));
+
+        assertEquals(main.toRealPath().toString(), editor.activeDocument().orElseThrow().file());
+        assertEquals(1, editor.activeDocument().orElseThrow().line());
+        assertTrue(bufferText(offlineFrame(shell)).contains("Usages of helper in 2 files (2)"),
+                "Enter keeps the Find window open and focused");
+    }
+
+    private static NavigationCapability navigationAnswering(List<NavigationCapability.Location> definitions,
+            List<NavigationCapability.Location> usages) {
+        return new NavigationCapability() {
+            @Override public CapabilityResult<List<NavigationCapability.Location>> definition(
+                    NavigationCapability.SourcePosition position) {
+                return CapabilityResult.ok(definitions);
+            }
+            @Override public CapabilityResult<List<NavigationCapability.Location>> references(
+                    NavigationCapability.SourcePosition position, boolean includeDeclaration) {
+                return CapabilityResult.ok(usages);
+            }
+            @Override public CapabilityResult<List<DocumentSymbol>> documentSymbols(Path file) {
+                return CapabilityResult.ok(List.of());
+            }
+            @Override public CapabilityResult<List<NavigationCapability.WorkspaceSymbol>> workspaceSymbols(
+                    String query) {
+                return CapabilityResult.ok(List.of());
+            }
+            @Override public String identifier() { return "navigation-answering-test"; }
+            @Override public ProviderHealth health() { return ProviderHealth.available(); }
+            @Override public String provenance() { return "temporary navigation test provider"; }
+        };
+    }
+
     private static int[] findText(Buffer buffer, String text) {
         for (int row = 0; row < buffer.height(); row++) {
             for (int x = 0; x + text.length() <= buffer.width(); x++) {

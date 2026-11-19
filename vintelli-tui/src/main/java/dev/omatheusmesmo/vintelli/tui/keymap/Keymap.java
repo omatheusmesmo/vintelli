@@ -305,8 +305,10 @@ public final class Keymap {
         }
         for (ToolWindow toolWindow : toolWindows) {
             String activation = activateToolWindow(toolWindow.id());
-            builder.bind(KeyTrigger.alt(toolWindow.shortcut()), activation);
-            builder.bind(KeyTrigger.ch(toolWindow.shortcut()), activation);
+            if (toolWindow.shortcut() != ToolWindow.NO_SHORTCUT) {
+                builder.bind(KeyTrigger.alt(toolWindow.shortcut()), activation);
+                builder.bind(KeyTrigger.ch(toolWindow.shortcut()), activation);
+            }
             toolWindow.extraChord().ifPresent(chord -> builder.bind(chord, activation));
         }
         return builder.build();

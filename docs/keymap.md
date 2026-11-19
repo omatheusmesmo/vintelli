@@ -57,6 +57,31 @@ own column. Both stay reachable while an input has focus. Bare
 are reserved for the `vim` profile and the registry never assigns them as
 tool window shortcuts.
 
+### Go to Definition and Find Usages results
+
+`Ctrl+B` and `Ctrl+click` jump straight to the declaration when the provider
+answers with one place. With two or more, a popup at the caret lists every
+place as `File.java  relative/dir  line:col  source line`; `Enter` or a click
+opens the selected row, `Escape` closes the popup, typing filters the rows by
+name, directory, position or source line, and the arrow and page keys move the
+selection. On a declaration, where the provider answers with the caret's own
+position, the same chords list the usages of the symbol in a popup titled
+`Usages of <symbol>`. The source lines are read from the open document when
+the file is open and through the read file capability otherwise, and are
+capped at 200 characters.
+
+`Alt+F7` (`editor_usages`) fills the Find tool window in the bottom area with
+every usage: the header reads `Usages of <symbol> in N files (M)`, the rows are
+grouped by file with their counts, and each usage row shows `line:col` and the
+source line with the symbol highlighted. `Up` and `Down` move the selection,
+`Enter` opens the usage and keeps the focus in the list, `F4` opens it and moves
+the focus to the editor, and a double click opens it as well. The window has no
+`Alt+<digit>` chord because every digit is already taken by another tool
+window, and the registry binds one digit per window; it opens with
+`Alt+F7` and starts hidden in a new layout. Jumping between the occurrences
+of a symbol in the file with `Ctrl+Alt+Up` and `Ctrl+Alt+Down` is not part of
+this change.
+
 ### Code completion
 
 `Ctrl+Space` (and `Ctrl+@`, the same key in terminals that send it as `@`)

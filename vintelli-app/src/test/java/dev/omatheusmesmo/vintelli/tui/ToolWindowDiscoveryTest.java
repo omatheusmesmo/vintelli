@@ -36,6 +36,7 @@ class ToolWindowDiscoveryTest {
                         "acp.agents",
                         "structure",
                         "maven",
+                        "find",
                         "editor"),
                 registry.toolWindows().stream()
                         .map(ToolWindow::id)

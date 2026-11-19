@@ -91,6 +91,9 @@ public final class ToolWindowRegistry {
         Set<Character> registered = new HashSet<>();
         for (ToolWindow toolWindow : sorted) {
             char shortcut = toolWindow.shortcut();
+            if (shortcut == ToolWindow.NO_SHORTCUT) {
+                continue;
+            }
             if (Character.isISOControl(shortcut)) {
                 throw new IllegalStateException("tool window '" + toolWindow.id()
                         + "' declares a control character as its shortcut");

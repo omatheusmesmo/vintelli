@@ -84,8 +84,22 @@ public interface ToolWindow extends StatusBarWidgetContributor {
     /**
      * Character that selects this tool window directly, for example {@code '4'}.
      * The keymap binds it as {@code Alt+<char>} and as the bare character.
+     * {@link #NO_SHORTCUT} gives the window no direct chord: it is opened by the
+     * action that fills it, the tab row, its strip icon and the command palette.
      */
     char shortcut();
+
+    /** The {@link #shortcut()} of a window that has no direct chord. */
+    char NO_SHORTCUT = '\0';
+
+    /**
+     * Whether a layout that has no stored visibility shows this window. The
+     * windows anchored right start hidden, and so does a window that only holds
+     * the result of an action.
+     */
+    default boolean visibleByDefault() {
+        return anchor() != Anchor.RIGHT;
+    }
 
     /**
      * Second chord that activates this window besides {@code Alt+<shortcut>},

@@ -157,6 +157,9 @@ final class ToolWindowPanel {
         if (window instanceof RunToolWindow run && run.runState() != RunMotionState.IDLE) {
             return run.stateGlyph(mode == IconMode.ASCII);
         }
+        if (window.shortcut() == ToolWindow.NO_SHORTCUT) {
+            return ToolStripes.glyph(window, mode);
+        }
         return ToolStripes.nerdIcon(window, mode).orElseGet(() -> String.valueOf(window.shortcut()));
     }
 
