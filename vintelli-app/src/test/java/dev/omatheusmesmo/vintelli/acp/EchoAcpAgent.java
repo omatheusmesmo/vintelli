@@ -26,14 +26,17 @@ import java.util.stream.Collectors;
  * MCP transports it advertises (default {@code http}). A session asking for an
  * MCP transport that is not advertised is refused with a protocol error.
  * {@code --sessions} advertises session listing and loading, and then lists and
- * replays the one stored session {@link #STORED_SESSION_ID}.
+ * replays the one stored session {@link #STORED_SESSION_ID}. {@code --modes} offers
+ * the plan and edit session modes when a session opens or loads, and confirms every
+ * {@code session/set_mode} with a current mode update.
  *
  * <p>Prompt directives: {@code echo:} streams the text back, {@code kinds}
  * streams agent thought, agent message, tool call, tool call update and plan updates, {@code permit}
  * asks for permission, {@code fs:<root>} reads, writes and probes a path outside
  * the root, {@code terminal} runs a command, {@code hold-terminal} starts one that keeps running,
  * {@code elicit} asks the user for a URL and a form, {@code rich} streams thought chunks, a user
- * prompt, image, resource and plan updates, and {@code cancel-me} waits for a cancel notification.
+ * prompt, image, resource and plan updates, {@code commands} streams an available commands update
+ * and the current mode, and {@code cancel-me} waits for a cancel notification.
  */
 public final class EchoAcpAgent {
 
@@ -41,12 +44,16 @@ public final class EchoAcpAgent {
     public static final String STORED_SESSION_ID = "stored-session-1";
     static final String STORED_SESSION_TITLE = "Earlier refactor";
     static final String STORED_SESSION_UPDATED_AT = "2026-01-02T03:04:05Z";
+    static final String PLAN_MODE = "plan";
+    static final String EDIT_MODE = "edit";
     private static final long CANCEL_DEADLINE_MILLIS = 15_000;
 
     private static int protocolVersion = 1;
     private static boolean mcpHttp = true;
     private static boolean mcpSse;
     private static boolean sessionsAdvertised;
+    private static boolean modesAdvertised;
+    private static String currentMode = PLAN_MODE;
     private static Path lifecycleLog;
     private static AcpSyncAgent running;
 
@@ -60,6 +67,7 @@ public final class EchoAcpAgent {
                 .initializeHandler(request -> new AcpSchema.InitializeResponse(protocolVersion, capabilities(), List.of()))
                 .newSessionHandler(EchoAcpAgent::newSession)
                 .promptHandler(EchoAcpAgent::prompt)
+                .setSessionModeHandler(EchoAcpAgent::setSessionMode)
                 .listSessionsHandler(request -> new AcpSchema.ListSessionsResponse(List.of(
                         new AcpSchema.SessionInfo(STORED_SESSION_ID, request.cwd(), STORED_SESSION_TITLE,
                                 STORED_SESSION_UPDATED_AT, null, null))))
@@ -81,7 +89,22 @@ public final class EchoAcpAgent {
                 new AcpSchema.UserMessageChunk(new AcpSchema.TextContent("replayed-user:" + request.sessionId())));
         running.sendSessionUpdate(request.sessionId(),
                 new AcpSchema.AgentMessageChunk(new AcpSchema.TextContent("replayed:" + request.sessionId())));
-        return new AcpSchema.LoadSessionResponse((AcpSchema.SessionModeState) null);
+        return new AcpSchema.LoadSessionResponse(modeState());
+    }
+
+    private static AcpSchema.SetSessionModeResponse setSessionMode(AcpSchema.SetSessionModeRequest request) {
+        currentMode = request.modeId();
+        running.sendSessionUpdate(request.sessionId(), new AcpSchema.CurrentModeUpdate(currentMode));
+        return new AcpSchema.SetSessionModeResponse();
+    }
+
+    private static AcpSchema.SessionModeState modeState() {
+        if (!modesAdvertised) {
+            return null;
+        }
+        return new AcpSchema.SessionModeState(currentMode, List.of(
+                new AcpSchema.SessionMode(PLAN_MODE, "Plan", "Plans the change without editing files"),
+                new AcpSchema.SessionMode(EDIT_MODE, "Edit", "Edits files")));
     }
 
     static void configure(String[] args) {
@@ -94,6 +117,8 @@ public final class EchoAcpAgent {
                 mcpSse = transports.contains("sse");
             } else if (arg.equals("--sessions")) {
                 sessionsAdvertised = true;
+            } else if (arg.equals("--modes")) {
+                modesAdvertised = true;
             } else if (arg.startsWith("--lifecycle-log=")) {
                 lifecycleLog = Path.of(arg.substring("--lifecycle-log=".length()));
             }
@@ -126,7 +151,8 @@ public final class EchoAcpAgent {
         if (unadvertised) {
             throw new AcpProtocolException(AcpErrorCodes.INVALID_PARAMS, "the echo agent did not advertise that MCP transport");
         }
-        return new AcpSchema.NewSessionResponse(UUID.randomUUID().toString());
+        currentMode = PLAN_MODE;
+        return new AcpSchema.NewSessionResponse(UUID.randomUUID().toString(), modeState());
     }
 
     private static AcpSchema.PromptResponse prompt(AcpSchema.PromptRequest request, SyncPromptContext context) {
@@ -155,6 +181,8 @@ public final class EchoAcpAgent {
             exerciseTerminal(context);
         } else if (text.contains("elicit")) {
             exerciseElicitation(context);
+        } else if (text.contains("commands")) {
+            streamCommands(context);
         } else {
             context.sendMessage("chunk:" + text);
         }
@@ -188,6 +216,13 @@ public final class EchoAcpAgent {
                 AcpSchema.ToolKind.EXECUTE, AcpSchema.ToolCallStatus.COMPLETED, List.of(), List.of(), null, null, Map.of()));
         context.sendSessionUpdate(new AcpSchema.Plan(List.of(
                 new AcpSchema.PlanEntry("read the notes", AcpSchema.PlanEntryPriority.HIGH, AcpSchema.PlanEntryStatus.COMPLETED))));
+    }
+
+    private static void streamCommands(SyncPromptContext context) {
+        context.sendSessionUpdate(new AcpSchema.AvailableCommandsUpdate(List.of(
+                new AcpSchema.AvailableCommand("plan", "Draft a plan", new AcpSchema.AvailableCommandInput("task to plan")),
+                new AcpSchema.AvailableCommand("review", "Review the diff", null))));
+        context.sendSessionUpdate(new AcpSchema.CurrentModeUpdate(currentMode));
     }
 
     private static void streamRichContent(SyncPromptContext context) {

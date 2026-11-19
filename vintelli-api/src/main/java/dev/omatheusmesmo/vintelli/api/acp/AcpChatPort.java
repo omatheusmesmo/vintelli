@@ -62,10 +62,61 @@ public interface AcpChatPort {
     /** Requests cancellation of an in-flight turn. */
     void cancel(String sessionId);
 
+    /**
+     * Asks the agent to switch the session to one of the modes it offered. The agent confirms the
+     * switch with a {@link CurrentMode} update. Ports without session modes reject the call.
+     */
+    default void setMode(String sessionId, String modeId) {
+        throw new UnsupportedOperationException("ACP session modes are not supported by this chat port");
+    }
+
     /** Closes the remote session and its transport. */
     void close(String sessionId);
 
-    sealed interface Update permits Message, Thought, Plan, UserMessage, ToolCall, TurnStopped, Failure {
+    sealed interface Update permits Message, Thought, Plan, UserMessage, ToolCall, TurnStopped, Failure,
+            AvailableCommands, AvailableModes, CurrentMode {
+    }
+
+    /**
+     * The agent's slash commands as they stand now. A newer list replaces the previous one, so the TUI
+     * offers a single completion list per conversation.
+     */
+    record AvailableCommands(List<Command> commands) implements Update {
+        public AvailableCommands {
+            commands = commands == null ? List.of() : List.copyOf(commands);
+        }
+    }
+
+    /** One slash command: its name without the slash, its description and the hint for its argument. */
+    record Command(String name, String description, String inputHint) {
+        public Command {
+            name = Objects.requireNonNullElse(name, "");
+            description = Objects.requireNonNullElse(description, "");
+            inputHint = Objects.requireNonNullElse(inputHint, "");
+        }
+    }
+
+    /** The session modes the agent offers, delivered when a session opens or loads. */
+    record AvailableModes(List<Mode> modes) implements Update {
+        public AvailableModes {
+            modes = modes == null ? List.of() : List.copyOf(modes);
+        }
+    }
+
+    /** One session mode: its id, its display name and its description. */
+    record Mode(String id, String name, String description) {
+        public Mode {
+            id = Objects.requireNonNullElse(id, "");
+            name = Objects.requireNonNullElse(name, id);
+            description = Objects.requireNonNullElse(description, "");
+        }
+    }
+
+    /** The id of the mode the session is in now, after the agent opened it or switched it. */
+    record CurrentMode(String modeId) implements Update {
+        public CurrentMode {
+            modeId = Objects.requireNonNullElse(modeId, "");
+        }
     }
 
     /** One streamed assistant markdown fragment. */

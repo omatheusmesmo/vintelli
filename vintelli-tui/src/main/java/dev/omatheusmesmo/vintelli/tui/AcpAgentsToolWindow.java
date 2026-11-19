@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -54,6 +55,7 @@ public final class AcpAgentsToolWindow implements ToolWindow {
     private static final int MAX_DIFF_LINES = 80;
     private static final int MAX_THOUGHT_LINES = 120;
     private static final int MAX_PROMPT_CHARS = 32_000;
+    private static final int MAX_COMMAND_ROWS = 8;
     private static final int TAB_ROW = 0;
     private static final int TRANSCRIPT_TOP = 1;
     private static final int CONTENT_INSET = 1;
@@ -65,6 +67,9 @@ public final class AcpAgentsToolWindow implements ToolWindow {
     private static final String ACP_CLOSE = KeyActions.ACP_CHAT_CLOSE;
     private static final String ACP_SELECT_TAB = KeyActions.ACP_CHAT_SELECT_TAB;
     private static final String ACP_THOUGHT_TOGGLE = "acp.chat.thought-toggle";
+    private static final String ACP_COMMAND_COMPLETE = "acp.chat.command-complete";
+    private static final String ACP_COMMAND_DISMISS = "acp.chat.command-dismiss";
+    private static final String ACP_MODE_CYCLE = "acp.chat.mode-cycle";
 
     private final Provider<ShellThemes> themes;
     private final AcpChatPort chat;
@@ -86,6 +91,8 @@ public final class AcpAgentsToolWindow implements ToolWindow {
     private int actionIndex = -1;
     private ThoughtBlock actionThought;
     private int promptRow = -1;
+    private int commandSelection;
+    private boolean commandPopupDismissed;
     private int permissionStartRow = -1;
     private List<Integer> permissionChoiceByVisibleRow = List.of();
     private String input = "";
@@ -157,6 +164,11 @@ public final class AcpAgentsToolWindow implements ToolWindow {
             }
             return null;
         }
+        if (commandPopupOpen(active)) {
+            if (Keys.is(event, KeyCode.ESCAPE)) return ACP_COMMAND_DISMISS;
+            if (!event.hasShift() && (Keys.is(event, KeyCode.ENTER) || Keys.is(event, KeyCode.TAB))) return ACP_COMMAND_COMPLETE;
+        }
+        if (Keys.is(event, KeyCode.TAB) && event.hasShift() && canCycleMode(active)) return ACP_MODE_CYCLE;
         if (Keys.is(event, KeyCode.ENTER)) {
             if (event.hasShift() && active != null && !active.prompting) return null;
             return active == null ? ACP_NEW : active.prompting ? ACP_CANCEL : ACP_SEND;
@@ -200,11 +212,22 @@ public final class AcpAgentsToolWindow implements ToolWindow {
             }
             return false;
         }
+        if (commandPopupOpen(active)) {
+            if (Keys.is(event, KeyCode.UP)) {
+                commandSelection = Math.max(0, commandSelection - 1);
+                return true;
+            }
+            if (Keys.is(event, KeyCode.DOWN)) {
+                commandSelection = Math.min(commandMatches(active).size() - 1, commandSelection + 1);
+                return true;
+            }
+        }
         if (active != null && !active.prompting) {
             if (Keys.is(event, KeyCode.BACKSPACE)) {
                 if (!input.isEmpty()) {
                     int end = input.offsetByCodePoints(input.length(), -1);
                     input = input.substring(0, end);
+                    resetCommandPopup();
                 }
                 return true;
             }
@@ -214,6 +237,7 @@ public final class AcpAgentsToolWindow implements ToolWindow {
             }
             if (event.isTyping()) {
                 input = appendPrompt(input, new String(Character.toChars(event.codePoint())));
+                resetCommandPopup();
                 return true;
             }
         }
@@ -310,6 +334,18 @@ public final class AcpAgentsToolWindow implements ToolWindow {
             actionThought = null;
             return true;
         }
+        if (ACP_COMMAND_COMPLETE.equals(actionId)) {
+            completeCommand();
+            return true;
+        }
+        if (ACP_COMMAND_DISMISS.equals(actionId)) {
+            commandPopupDismissed = true;
+            return true;
+        }
+        if (ACP_MODE_CYCLE.equals(actionId)) {
+            cycleMode();
+            return true;
+        }
         return false;
     }
 
@@ -353,6 +389,7 @@ public final class AcpAgentsToolWindow implements ToolWindow {
         }
         renderTranscript(frame, area, session, active);
         renderPermission(frame, area, session, active);
+        renderCommandPopup(frame, area, session, active);
         renderPrompt(frame, area, session, active);
     }
 
@@ -367,6 +404,11 @@ public final class AcpAgentsToolWindow implements ToolWindow {
             int width = label.length();
             renderedTabs.add(new TabHit(index, x, x + width));
             x += width;
+        }
+        String mode = modeLabel(activeSession());
+        if (!mode.isEmpty()) {
+            spans.add(Span.styled(mode + "   ", active.resolver("tool-window-title").toStyle()));
+            x += mode.length() + 3;
         }
         String actions = "+ New    x Close";
         int actionX = area.x() + Math.max(1, area.width() - actions.length() - 1);
@@ -389,7 +431,7 @@ public final class AcpAgentsToolWindow implements ToolWindow {
         } else {
             lines.add(notice);
         }
-        frame.renderWidget(Paragraph.builder().text(Text.from(String.join("\n", lines))).build(),
+        frame.renderWidget(Paragraph.builder().text(Text.from(String.join("\n", lines))).overflow(Overflow.WRAP_WORD).build(),
                 new Rect(area.x() + CONTENT_INSET, area.y() + TRANSCRIPT_TOP + 1,
                         area.width() - 2 * CONTENT_INSET, Math.max(1, promptRow - TRANSCRIPT_TOP - 1)));
     }
@@ -607,8 +649,76 @@ public final class AcpAgentsToolWindow implements ToolWindow {
                 new Rect(area.x() + CONTENT_INSET, area.y() + promptRow, area.width() - 2 * CONTENT_INSET, 1));
     }
 
+    private void renderCommandPopup(Frame frame, Rect area, ChatSession session, ShellThemes active) {
+        if (!commandPopupOpen(session)) return;
+        List<AcpChatPort.Command> matches = commandMatches(session);
+        int rows = Math.min(Math.min(matches.size(), MAX_COMMAND_ROWS), promptRow - TRANSCRIPT_TOP);
+        if (rows <= 0) return;
+        int selected = Math.min(commandSelection, matches.size() - 1);
+        int first = Math.max(0, selected - rows + 1);
+        List<Line> lines = new ArrayList<>(rows);
+        for (int index = first; index < first + rows; index++) {
+            AcpChatPort.Command command = matches.get(index);
+            boolean current = index == selected;
+            String hint = command.inputHint().isEmpty() ? "" : " " + command.inputHint();
+            String description = command.description().isEmpty() ? "" : "  " + command.description();
+            lines.add(Line.styled((current ? "› " : "  ") + "/" + command.name() + hint + description,
+                    active.resolver(current ? "tool-window-title" : "tool-window").toStyle()));
+        }
+        frame.renderWidget(Paragraph.builder().text(Text.from(lines)).build(),
+                new Rect(area.x() + CONTENT_INSET, area.y() + promptRow - rows, area.width() - 2 * CONTENT_INSET, rows));
+    }
+
     private static boolean inside(Rect area, int x, int y) {
         return x >= area.x() && x < area.x() + area.width() && y >= area.y() && y < area.y() + area.height();
+    }
+
+    private List<AcpChatPort.Command> commandMatches(ChatSession session) {
+        if (session == null || !input.startsWith("/")) return List.of();
+        String prefix = input.substring(1).toLowerCase(Locale.ROOT);
+        return session.commands.stream()
+                .filter(command -> command.name().toLowerCase(Locale.ROOT).startsWith(prefix))
+                .toList();
+    }
+
+    private boolean commandPopupOpen(ChatSession session) {
+        return session != null && session.permission == null && !session.prompting && !commandPopupDismissed
+                && !commandMatches(session).isEmpty();
+    }
+
+    private void resetCommandPopup() {
+        commandSelection = 0;
+        commandPopupDismissed = false;
+    }
+
+    private void completeCommand() {
+        List<AcpChatPort.Command> matches = commandMatches(activeSession());
+        if (matches.isEmpty()) return;
+        input = "/" + matches.get(Math.min(commandSelection, matches.size() - 1)).name() + " ";
+        resetCommandPopup();
+    }
+
+    private boolean canCycleMode(ChatSession session) {
+        return session != null && !session.opening && session.modes.size() > 1;
+    }
+
+    private void cycleMode() {
+        ChatSession session = activeSession();
+        if (!canCycleMode(session)) return;
+        String next = session.modes.get((session.modeIndex() + 1) % session.modes.size()).id();
+        worker.submit(() -> {
+            try {
+                chat.setMode(session.id, next);
+            } catch (RuntimeException failure) {
+                String message = detail(failure);
+                uiWork.execute(() -> session.addNotice("Could not change mode: " + message));
+            }
+        });
+    }
+
+    private static String modeLabel(ChatSession session) {
+        if (session == null || session.modeIndex() < 0) return "";
+        return "Mode: " + session.modes.get(session.modeIndex()).name();
     }
 
     private ChatSession activeSession() {
@@ -623,7 +733,7 @@ public final class AcpAgentsToolWindow implements ToolWindow {
         if (!agentPickerOpen) {
             agentChoices = chat.agents();
             if (agentChoices.isEmpty()) {
-                notice = "No ACP agent is configured. Enable vintelli.acp.enabled and configure an agent.";
+                notice = "No ACP agent is available. Install a supported agent on the PATH and restart Vintelli (docs/acp-agents.md).";
                 return;
             }
             selectedAgent = 0;
@@ -814,6 +924,12 @@ public final class AcpAgentsToolWindow implements ToolWindow {
             session.addThought(thought.text());
         } else if (update instanceof AcpChatPort.Plan plan) {
             session.updatePlan(plan.entries());
+        } else if (update instanceof AcpChatPort.AvailableCommands commands) {
+            session.updateCommands(commands.commands());
+        } else if (update instanceof AcpChatPort.AvailableModes modes) {
+            session.updateModes(modes.modes());
+        } else if (update instanceof AcpChatPort.CurrentMode mode) {
+            session.currentModeId = plainText(mode.modeId());
         } else if (update instanceof ToolCall toolCall) {
             session.updateTool(toolCall);
         } else if (update instanceof AcpChatPort.TurnStopped stopped) {
@@ -843,6 +959,9 @@ public final class AcpAgentsToolWindow implements ToolWindow {
         private final List<ChatBlock> blocks = new ArrayList<>();
         private final Map<String, ToolBlock> tools = new HashMap<>();
         private PlanBlock plan;
+        private List<AcpChatPort.Command> commands = List.of();
+        private List<AcpChatPort.Mode> modes = List.of();
+        private volatile String currentModeId = "";
         private volatile PendingPermission permission;
         private final Deque<PendingPermission> queuedPermissions = new ArrayDeque<>();
         private volatile boolean opening = true;
@@ -922,6 +1041,27 @@ public final class AcpAgentsToolWindow implements ToolWindow {
             }
             plan.entries = sanitized;
             trim();
+        }
+
+        private void updateCommands(List<AcpChatPort.Command> sourceCommands) {
+            commands = sourceCommands.stream()
+                    .map(command -> new AcpChatPort.Command(plainText(command.name()), plainText(command.description()),
+                            plainText(command.inputHint())))
+                    .toList();
+        }
+
+        private void updateModes(List<AcpChatPort.Mode> sourceModes) {
+            modes = sourceModes.stream()
+                    .map(mode -> new AcpChatPort.Mode(plainText(mode.id()), plainText(mode.name()),
+                            plainText(mode.description())))
+                    .toList();
+        }
+
+        private int modeIndex() {
+            for (int index = 0; index < modes.size(); index++) {
+                if (modes.get(index).id().equals(currentModeId)) return index;
+            }
+            return -1;
         }
 
         private ThoughtBlock latestThought() {

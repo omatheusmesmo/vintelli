@@ -2,6 +2,7 @@ package dev.omatheusmesmo.vintelli.tui;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Path;
@@ -27,6 +28,7 @@ import dev.omatheusmesmo.vintelli.api.acp.AcpChatPort.PermissionRequest;
 import dev.omatheusmesmo.vintelli.api.acp.AcpChatPort.Update;
 import dev.omatheusmesmo.vintelli.tui.icons.IconMode;
 import dev.tamboui.buffer.Buffer;
+import dev.tamboui.layout.Rect;
 import dev.tamboui.layout.Size;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
@@ -627,6 +629,170 @@ class AcpAgentsToolWindowTest {
         }
     }
 
+    @Test
+    void slashOpensTheCommandPopupFiltersAndEnterInsertsTheCommandWithoutSending() throws Exception {
+        ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
+        UiWorkQueue uiWork = new UiWorkQueue();
+        ScriptedChat chat = new ScriptedChat(List.of(new AcpChatPort.AvailableCommands(List.of(
+                new AcpChatPort.Command("plan", "Draft a plan", "task to plan"),
+                new AcpChatPort.Command("review", "Review the diff", "")))), List.of());
+        AcpAgentsToolWindow window = new AcpAgentsToolWindow(() -> themes, chat, uiWork, IconMode.NERD);
+        AtomicReference<Buffer> rendered = new AtomicReference<>();
+        window.observeRenderedBuffer(buffer -> rendered.set(buffer.copy()));
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window), new ShellState(), themes));
+        shell.useUiWorkQueue(uiWork);
+        Size size = new Size(120, 42);
+        try (ToolkitTestRunner test = runShell(shell, size)) {
+            Pilot pilot = test.pilot();
+            pilot.press('8', KeyModifiers.ALT);
+            pilot.press(KeyCode.ENTER);
+            assertTrue(chat.opened.await(5, TimeUnit.SECONDS));
+            pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("ACP session ready"));
+
+            pilot.press('/');
+            pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("› /plan task to plan")
+                    && screen(rendered).contains("/review"));
+            pilot.press(KeyCode.DOWN);
+            pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("› /review"));
+            pilot.press(KeyCode.UP);
+            pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("› /plan task to plan"));
+
+            pilot.press('r');
+            pilot.press('e');
+            pauseUntil(pilot, rendered, size, () -> !screen(rendered).contains("/plan"));
+            assertTrue(screen(rendered).contains("› /review  Review the diff"), screen(rendered));
+
+            pilot.press(KeyCode.ENTER);
+            pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("> /review  [Enter] Send"));
+            assertFalse(screen(rendered).contains("Review the diff"), "the popup must close after the insert\n" + screen(rendered));
+            assertFalse(screen(rendered).contains("You /review"), "Enter on the popup must insert, not send\n" + screen(rendered));
+        }
+    }
+
+    @Test
+    void escapeClosesTheCommandPopupAndTabInsertsTheCommand() throws Exception {
+        ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
+        UiWorkQueue uiWork = new UiWorkQueue();
+        ScriptedChat chat = new ScriptedChat(List.of(new AcpChatPort.AvailableCommands(List.of(
+                new AcpChatPort.Command("plan", "Draft a plan", "task to plan")))), List.of());
+        AcpAgentsToolWindow window = new AcpAgentsToolWindow(() -> themes, chat, uiWork, IconMode.NERD);
+        AtomicReference<Buffer> rendered = new AtomicReference<>();
+        window.observeRenderedBuffer(buffer -> rendered.set(buffer.copy()));
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window), new ShellState(), themes));
+        shell.useUiWorkQueue(uiWork);
+        Size size = new Size(120, 42);
+        try (ToolkitTestRunner test = runShell(shell, size)) {
+            Pilot pilot = test.pilot();
+            pilot.press('8', KeyModifiers.ALT);
+            pilot.press(KeyCode.ENTER);
+            assertTrue(chat.opened.await(5, TimeUnit.SECONDS));
+            pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("ACP session ready"));
+
+            pilot.press('/');
+            pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("› /plan task to plan"));
+            pilot.press(KeyCode.ESCAPE);
+            pauseUntil(pilot, rendered, size, () -> !screen(rendered).contains("› /plan task to plan"));
+            assertTrue(screen(rendered).contains("> / [Enter] Send"), screen(rendered));
+            assertTrue(screen(rendered).contains("[ Chat 1 ]"), "Escape must close the popup, not the conversation\n" + screen(rendered));
+
+            pilot.press('p');
+            pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("› /plan task to plan"));
+            pilot.press(KeyCode.TAB);
+            pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("> /plan  [Enter] Send"));
+            assertFalse(screen(rendered).contains("You /plan"), screen(rendered));
+        }
+    }
+
+    @Test
+    void aSlashIsPlainTextAndNoModeIsShownWhenTheAgentOffersNoCommandsOrModes() throws Exception {
+        ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
+        UiWorkQueue uiWork = new UiWorkQueue();
+        ScriptedChat chat = new ScriptedChat(List.of(), List.of());
+        AcpAgentsToolWindow window = new AcpAgentsToolWindow(() -> themes, chat, uiWork, IconMode.NERD);
+        AtomicReference<Buffer> rendered = new AtomicReference<>();
+        window.observeRenderedBuffer(buffer -> rendered.set(buffer.copy()));
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window), new ShellState(), themes));
+        shell.useUiWorkQueue(uiWork);
+        Size size = new Size(120, 42);
+        try (ToolkitTestRunner test = runShell(shell, size)) {
+            Pilot pilot = test.pilot();
+            pilot.press('8', KeyModifiers.ALT);
+            pilot.press(KeyCode.ENTER);
+            assertTrue(chat.opened.await(5, TimeUnit.SECONDS));
+            pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("ACP session ready"));
+
+            pilot.press('/');
+            pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("> / [Enter] Send"));
+            assertFalse(screen(rendered).contains("›"), "no popup without commands\n" + screen(rendered));
+            assertFalse(screen(rendered).contains("Mode:"), screen(rendered));
+            pilot.press(KeyCode.TAB, KeyModifiers.SHIFT);
+            assertNull(chat.modeChanges.poll(300, TimeUnit.MILLISECONDS), "Shift+Tab must not switch modes without modes");
+        }
+    }
+
+    @Test
+    void shiftTabCyclesTheModeShownInTheHeaderAndCallsSetMode() throws Exception {
+        ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
+        UiWorkQueue uiWork = new UiWorkQueue();
+        ScriptedChat chat = new ScriptedChat(List.of(
+                new AcpChatPort.AvailableModes(List.of(
+                        new AcpChatPort.Mode("plan", "Plan", "Plans the change"),
+                        new AcpChatPort.Mode("edit", "Edit", "Edits files"))),
+                new AcpChatPort.CurrentMode("plan")), List.of());
+        AcpAgentsToolWindow window = new AcpAgentsToolWindow(() -> themes, chat, uiWork, IconMode.NERD);
+        AtomicReference<Buffer> rendered = new AtomicReference<>();
+        window.observeRenderedBuffer(buffer -> rendered.set(buffer.copy()));
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window), new ShellState(), themes));
+        shell.useUiWorkQueue(uiWork);
+        Size size = new Size(120, 42);
+        try (ToolkitTestRunner test = runShell(shell, size)) {
+            Pilot pilot = test.pilot();
+            pilot.press('8', KeyModifiers.ALT);
+            pilot.press(KeyCode.ENTER);
+            assertTrue(chat.opened.await(5, TimeUnit.SECONDS));
+            pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("Mode: Plan"));
+
+            pilot.press(KeyCode.TAB, KeyModifiers.SHIFT);
+            assertEquals("edit", chat.modeChanges.poll(5, TimeUnit.SECONDS));
+            pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("Mode: Edit"));
+
+            pilot.press(KeyCode.TAB, KeyModifiers.SHIFT);
+            assertEquals("plan", chat.modeChanges.poll(5, TimeUnit.SECONDS), "the cycle must wrap to the first mode");
+            pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("Mode: Plan"));
+        }
+    }
+
+    @Test
+    void theEmptyCatalogNoticeNamesTheInstalledAgentRequirement() throws Exception {
+        ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
+        UiWorkQueue uiWork = new UiWorkQueue();
+        AcpAgentsToolWindow window = new AcpAgentsToolWindow(() -> themes, new NoAgentChat(), uiWork);
+        AtomicReference<Buffer> rendered = new AtomicReference<>();
+        window.observeRenderedBuffer(buffer -> rendered.set(buffer.copy()));
+        VintelliShell shell = new VintelliShell(ShellConfig.of(List.of(window), new ShellState(), themes));
+        shell.useUiWorkQueue(uiWork);
+        Size size = new Size(120, 42);
+        try (ToolkitTestRunner test = runShell(shell, size)) {
+            Pilot pilot = test.pilot();
+            pilot.press('8', KeyModifiers.ALT);
+            pilot.press(KeyCode.ENTER);
+            pauseUntil(pilot, rendered, size, () -> screen(rendered).contains("No ACP agent is available."));
+            var area = pilot.findElement("tool-acp.agents");
+            String notice = "No ACP agent is available. Install a supported agent on the PATH and restart Vintelli (docs/acp-agents.md).";
+            assertTrue(paneText(rendered.get(), area).contains(notice), paneText(rendered.get(), area));
+            assertFalse(screen(rendered).contains("vintelli.acp.enabled"), screen(rendered));
+        }
+    }
+
+    private static String paneText(Buffer buffer, Rect area) {
+        StringBuilder text = new StringBuilder();
+        for (int row = area.y(); row < area.y() + area.height(); row++) {
+            for (int column = area.x(); column < area.x() + area.width(); column++) text.append(buffer.get(column, row).symbol());
+            text.append(' ');
+        }
+        return text.toString().replaceAll("\\s+", " ");
+    }
+
     private static int occurrences(String text, String needle) {
         int count = 0;
         for (int index = text.indexOf(needle); index >= 0; index = text.indexOf(needle, index + needle.length())) {
@@ -803,6 +969,7 @@ class AcpAgentsToolWindowTest {
 
     private static final class ScriptedChat implements AcpChatPort {
         private final CountDownLatch opened = new CountDownLatch(1);
+        private final LinkedBlockingQueue<String> modeChanges = new LinkedBlockingQueue<>();
         private final List<Update> replayed;
         private final List<Update> turn;
         private Consumer<Update> updates;
@@ -828,6 +995,27 @@ class AcpAgentsToolWindowTest {
             return "end_turn";
         }
 
+        @Override public void cancel(String sessionId) { }
+
+        @Override
+        public void setMode(String sessionId, String modeId) {
+            modeChanges.offer(modeId);
+            updates.accept(new AcpChatPort.CurrentMode(modeId));
+        }
+
+        @Override public void close(String sessionId) { }
+    }
+
+    private static final class NoAgentChat implements AcpChatPort {
+        @Override public boolean isConfigured() { return false; }
+        @Override public List<Agent> agents() { return List.of(); }
+
+        @Override
+        public String openSession(Consumer<Update> updates, Function<PermissionRequest, PermissionChoice> permissionHandler) {
+            throw new IllegalStateException("no agent is available");
+        }
+
+        @Override public String prompt(String sessionId, String text) { throw new IllegalStateException("no session"); }
         @Override public void cancel(String sessionId) { }
         @Override public void close(String sessionId) { }
     }
