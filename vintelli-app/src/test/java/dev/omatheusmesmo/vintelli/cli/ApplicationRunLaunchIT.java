@@ -33,4 +33,13 @@ class ApplicationRunLaunchIT {
         assertTrue(run.stdout().contains("start:test"), run.describe());
         assertTrue(run.stdout().contains("Run finished with exit code 7"), run.describe());
     }
+
+    @Test
+    void undeclaredPluginGoalIsRejectedByThePackagedRunner() throws Exception {
+        var run = VintelliCliCommandsIT.run(
+                Map.of("vintelli.local.project-root", ApplicationRunProjectResource.projectRoot().toString()),
+                null, "run", "maven:exec:exec");
+        assertEquals(1, run.exitCode(), run.describe());
+        assertTrue(run.stdout().contains("Unknown run configuration 'maven:exec:exec'"), run.describe());
+    }
 }

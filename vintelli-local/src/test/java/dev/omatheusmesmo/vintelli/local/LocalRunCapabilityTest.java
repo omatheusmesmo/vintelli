@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.time.Duration;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -24,6 +25,7 @@ import org.junit.jupiter.api.io.TempDir;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityFailure;
 import dev.omatheusmesmo.vintelli.api.capability.CapabilityResult;
 import dev.omatheusmesmo.vintelli.api.capability.RunCapability;
+import dev.omatheusmesmo.vintelli.api.maven.MavenLifecycle;
 
 /**
  * The run provider drives real short builds through real wrapper scripts
@@ -214,16 +216,123 @@ class LocalRunCapabilityTest {
     }
 
     @Test
-    void refusesPluginGoalsEvenWhenTheyAreNamedLikeAMavenRun() throws IOException {
+    void runsAConfiguredGoalWithProfilesAndSkipTests() throws IOException {
         mavenProject("args");
 
         LocalRunCapability capability = LocalRunCapability.of(root(), GENEROUS);
+        List<String> observed = new CopyOnWriteArrayList<>();
+        assertOk(capability.start(new RunCapability.RunRequest("maven:test", temp, Map.of(),
+                List.of("-Pci,fast", "-DskipTests")), observed::add));
+
+        awaitSummary(observed);
+        assertTrue(observed.contains("args:test -Pci,fast -DskipTests"), observed.toString());
+    }
+
+    @Test
+    void runsPluginGoalsDiscoveredFromTheMavenWindow() throws IOException {
+        mavenProject("plugin");
+
+        LocalRunCapability capability = LocalRunCapability.of(root(), GENEROUS);
+        List<String> observed = new CopyOnWriteArrayList<>();
 
         CapabilityResult<RunCapability.RunHandle> result = capability.start(
-                new RunCapability.RunRequest("maven:dependency:tree", temp, Map.of()), line -> {
-                });
-        assertTrue(result.isFailure());
-        assertEquals("Unknown run configuration 'maven:dependency:tree'", failureReason(result));
+                new RunCapability.RunRequest("maven:org.apache.maven.plugins:maven-dependency-plugin:tree", temp,
+                        Map.of(), List.of()), observed::add);
+        assertOk(result);
+        awaitSummary(observed);
+        assertTrue(observed.contains("args:org.apache.maven.plugins:maven-dependency-plugin:tree"), observed.toString());
+    }
+
+    @Test
+    void refusesPluginGoalsThatWereNotDiscoveredFromTheMavenWindow() throws IOException {
+        mavenProject("plugin");
+        LocalRunCapability capability = LocalRunCapability.of(root(), GENEROUS);
+
+        CapabilityFailure failure = assertInstanceOf(CapabilityResult.Failed.class, capability.start(
+                new RunCapability.RunRequest("maven:exec:exec", temp, Map.of()), line -> {
+                })).failure();
+
+        assertEquals("Unknown run configuration 'maven:exec:exec'", failure.reason());
+    }
+
+    @Test
+    void runsADeclaredGoalOnlyForItsSelectedModule() throws IOException {
+        mavenProject("module");
+        LocalRunCapability capability = LocalRunCapability.of(root(), GENEROUS);
+        List<String> observed = new CopyOnWriteArrayList<>();
+
+        assertOk(capability.start(new RunCapability.RunRequest(
+                "maven:org.apache.maven.plugins:maven-dependency-plugin:tree", temp, Map.of(),
+                List.of("-pl", "child")), observed::add));
+
+        awaitSummary(observed);
+        assertTrue(observed.contains("args:org.apache.maven.plugins:maven-dependency-plugin:tree -pl child"),
+                observed.toString());
+    }
+
+    @Test
+    void refusesGoalsDeclaredOnlyInsideAProfile() throws IOException {
+        mavenProject("profile-plugin");
+        LocalRunCapability capability = LocalRunCapability.of(root(), GENEROUS);
+
+        CapabilityFailure failure = assertInstanceOf(CapabilityResult.Failed.class, capability.start(
+                new RunCapability.RunRequest("maven:org.apache.maven.plugins:maven-dependency-plugin:tree", temp,
+                        Map.of()), line -> {
+                        })).failure();
+
+        assertEquals("Unknown run configuration 'maven:org.apache.maven.plugins:maven-dependency-plugin:tree'",
+                failure.reason());
+    }
+
+    @Test
+    void pluginGoalSyntaxRequiresNonemptyLiteralSegments() {
+        assertTrue(MavenLifecycle.isPluginGoal("dev.example:sample-plugin:check_2"));
+        for (String invalid : List.of("a::b", "x&y:a:g", "a:b:", "dev.example:sample-plugin:ch%eck")) {
+            assertFalse(MavenLifecycle.isPluginGoal(invalid), invalid);
+        }
+    }
+
+    @Test
+    void refusesPluginCoordinatesWithShellCharactersOrEmptySegments() throws IOException {
+        mavenProject("plugin");
+        Files.writeString(temp.resolve("pom.xml"), pluginPom().replace("<goal>tree</goal>", "<goal>tr%ee</goal>"));
+        LocalRunCapability capability = LocalRunCapability.of(root(), GENEROUS);
+
+        for (String goal : List.of("maven:a::b", "maven:x&calc:a:g", "maven:a:b:",
+                "maven:org.apache.maven.plugins:maven-dependency-plugin:tr%ee")) {
+            assertTrue(capability.start(new RunCapability.RunRequest(goal, temp, Map.of()), line -> {
+            }).isFailure(), goal);
+        }
+    }
+
+    @Test
+    void refusesAGoalDeclaredOnlyThroughASymlinkOutsideTheProject() throws IOException {
+        Path outside = Files.createTempDirectory("vintelli-maven-outside-");
+        try {
+            Files.writeString(outside.resolve("pom.xml"), pluginPom(), StandardCharsets.UTF_8);
+            Files.writeString(temp.resolve("pom.xml"), "<project><modules><module>link</module></modules></project>",
+                    StandardCharsets.UTF_8);
+            try {
+                Files.createSymbolicLink(temp.resolve("link"), outside);
+            } catch (IOException | UnsupportedOperationException | SecurityException denied) {
+                assumeTrue(false, "This runner cannot create symbolic links");
+            }
+            LocalRunCapability capability = LocalRunCapability.of(root(), GENEROUS);
+            assertTrue(capability.start(new RunCapability.RunRequest(
+                    "maven:org.apache.maven.plugins:maven-dependency-plugin:tree", temp, Map.of(),
+                    List.of("-pl", "link")), line -> {
+                    }).isFailure());
+        } finally {
+            deleteRecursively(outside);
+        }
+    }
+
+    private static void deleteRecursively(Path directory) throws IOException {
+        try (var paths = Files.walk(directory)) {
+            for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(path);
+            }
+        }
     }
 
     @Test
@@ -252,6 +361,9 @@ class LocalRunCapabilityTest {
         assertTrue(capability.start(new RunCapability.RunRequest("maven:validate", temp, Map.of(),
                 List.of("-pl", "--settings")), line -> {
                 }).isFailure());
+        assertTrue(capability.start(new RunCapability.RunRequest("maven:validate", temp, Map.of(),
+                List.of("-pl", "child&calc")), line -> {
+                }).isFailure());
     }
 
     private static String failureReason(CapabilityResult<?> result) {
@@ -274,11 +386,30 @@ class LocalRunCapabilityTest {
      */
     private void mavenProject(String flavor) {
         try {
-            Files.writeString(temp.resolve("pom.xml"), "<project/>", StandardCharsets.UTF_8);
+            String pom = switch (flavor) {
+                case "plugin" -> pluginPom();
+                case "profile-plugin" -> "<project><profiles><profile><id>ci</id><build><plugins>"
+                        + "<plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-dependency-plugin</artifactId>"
+                        + "<executions><execution><goals><goal>tree</goal></goals></execution></executions></plugin>"
+                        + "</plugins></build></profile></profiles></project>";
+                case "module" -> "<project><modules><module>child</module></modules></project>";
+                default -> "<project/>";
+            };
+            Files.writeString(temp.resolve("pom.xml"), pom, StandardCharsets.UTF_8);
+            if ("module".equals(flavor)) {
+                Files.createDirectories(temp.resolve("child"));
+                Files.writeString(temp.resolve("child/pom.xml"), pluginPom(), StandardCharsets.UTF_8);
+            }
             writeWrapper("mvnw", flavor);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+    }
+
+    private static String pluginPom() {
+        return "<project><build><plugins><plugin><groupId>org.apache.maven.plugins</groupId>"
+                + "<artifactId>maven-dependency-plugin</artifactId><executions><execution><goals>"
+                + "<goal>tree</goal></goals></execution></executions></plugin></plugins></build></project>";
     }
 
     private void gradleProjectWithoutWrapper() {
@@ -318,7 +449,8 @@ class LocalRunCapabilityTest {
     private static String shellScript(String flavor) {
         return "#!/bin/sh" + System.lineSeparator()
                 + "echo mvnw-wrapper-called-" + flavor + System.lineSeparator()
-                + ("args".equals(flavor) ? "echo args:$*" + System.lineSeparator() : "")
+                + (("args".equals(flavor) || "plugin".equals(flavor) || "module".equals(flavor))
+                        ? "echo args:$*" + System.lineSeparator() : "")
                 + ("cancel".equals(flavor)
                         ? "echo goal-pumping" + System.lineSeparator()
                                 + "echo still-going" + System.lineSeparator()
@@ -329,7 +461,8 @@ class LocalRunCapabilityTest {
     private static String batchScript(String flavor) {
         return "@echo off" + System.lineSeparator()
                 + "echo mvnw-wrapper-called-" + flavor + System.lineSeparator()
-                + ("args".equals(flavor) ? "echo args:%*" + System.lineSeparator() : "")
+                + (("args".equals(flavor) || "plugin".equals(flavor) || "module".equals(flavor))
+                        ? "echo args:%*" + System.lineSeparator() : "")
                 + ("cancel".equals(flavor)
                         ? "echo goal-pumping" + System.lineSeparator()
                                 + "echo still-going" + System.lineSeparator()

@@ -29,6 +29,7 @@ class VintelliMavenInspectTest {
                 .then()
                 .statusCode(200)
                 .body("state", is("loaded"),
-                        "selectors", hasItem(""));
+                        "selectors", hasItem(""),
+                        "plugins", hasItem("quarkus-maven-plugin"));
     }
 }

@@ -20,6 +20,19 @@ class MavenProjectReaderTest {
     Path root;
 
     @Test
+    void unresolvedPluginCoordinatesDoNotCreateRunnableRows() throws IOException {
+        pom(root, """
+                <build><plugins><plugin><artifactId>${plugin.artifactId}</artifactId>
+                <executions><execution><goals><goal>compile</goal></goals></execution></executions>
+                </plugin></plugins></build>
+                """);
+        MavenProjectController controller = new MavenProjectController();
+        controller.finishLoading(MavenProjectReader.read(root));
+        assertTrue(controller.rows().stream().anyMatch(row -> row.kind() == MavenProjectController.RowKind.PLUGIN));
+        assertFalse(controller.rows().stream().anyMatch(row -> row.kind() == MavenProjectController.RowKind.GOAL));
+    }
+
+    @Test
     void readsTheModuleTreeRecursivelyWithSelectorsRelativeToTheRoot() throws IOException {
         pom(root, "<artifactId>parent</artifactId><modules><module>api</module><module>core</module></modules>");
         pom(root.resolve("api"), "<artifactId>vintelli-api</artifactId>");
@@ -57,6 +70,19 @@ class MavenProjectReaderTest {
 
         assertEquals(List.of("release", "fast"), tree.profiles());
         assertEquals(List.of("native"), tree.modules().getFirst().profiles());
+    }
+
+    @Test
+    void listsDeclaredPluginGoalsInPomOrder() throws IOException {
+        pom(root, "<artifactId>single</artifactId><build><plugins>"
+                + "<plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId>"
+                + "<executions><execution><goals><goal>compile</goal><goal>testCompile</goal></goals></execution></executions>"
+                + "</plugin></plugins></build>");
+
+        MavenPlugin plugin = loaded(MavenProjectReader.read(root)).plugins().getFirst();
+
+        assertEquals("maven-compiler-plugin", plugin.artifactId());
+        assertEquals(List.of("compile", "testCompile"), plugin.goals());
     }
 
     @Test

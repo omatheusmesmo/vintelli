@@ -64,6 +64,54 @@ class MavenToolWindowMarqueeTest {
         assertTrue(render(window).startsWith("› ▾ short"), render(window));
     }
 
+    @Test
+    void refreshesTheTreeAfterAPomChanges() throws Exception {
+        Path pom = root.resolve("pom.xml");
+        Files.writeString(pom, pom("before"));
+        ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
+        MavenToolWindow window = new MavenToolWindow(() -> themes, root);
+        window.load();
+        awaitLoaded(window);
+        assertTrue(render(window).contains("before"), render(window));
+
+        Files.writeString(pom, pom("after"));
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (System.nanoTime() < deadline) {
+            window.refreshIfChanged();
+            if (render(window).contains("after")) {
+                break;
+            }
+            Thread.sleep(10);
+        }
+        assertTrue(render(window).contains("after"), render(window));
+    }
+
+    @Test
+    void watcherRecoversWhenABrokenModulePomIsRepaired() throws Exception {
+        Files.writeString(root.resolve("pom.xml"), pom("parent").replace("</project>",
+                "<modules><module>child</module></modules></project>"));
+        Path childPom = Files.createDirectory(root.resolve("child")).resolve("pom.xml");
+        Files.writeString(childPom, "<project>");
+        ShellThemes themes = new ShellThemes(ShellThemes.DEFAULT_THEME, (Path) null);
+        MavenToolWindow window = new MavenToolWindow(() -> themes, root);
+        window.initialize();
+        try {
+            awaitScreen(window, "Cannot read");
+            Files.writeString(childPom, pom("repaired"));
+            awaitScreen(window, "parent");
+        } finally {
+            window.dispose();
+        }
+    }
+
+    private static void awaitScreen(MavenToolWindow window, String marker) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (!render(window).contains(marker) && System.nanoTime() < deadline) {
+            Thread.sleep(10);
+        }
+        assertTrue(render(window).contains(marker), render(window));
+    }
+
     private static void awaitLoaded(MavenToolWindow window) throws InterruptedException {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
         while (!render(window).contains("▾") && System.nanoTime() < deadline) {
