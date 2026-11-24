@@ -42,4 +42,9 @@ class VintelliInspectDisabledTest {
     void answers404ForProcessProbeUnlessTheInspectEndpointIsEnabled() {
         given().post("/tui/process-probe").then().statusCode(404);
     }
+
+    @Test
+    void answers404ForMouseBackendUnlessTheInspectEndpointIsEnabled() {
+        given().get("/tui/mouse-backend").then().statusCode(404);
+    }
 }

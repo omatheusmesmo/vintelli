@@ -2,25 +2,49 @@ package dev.omatheusmesmo.vintelli;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 
 import dev.omatheusmesmo.vintelli.tui.keymap.KeyboardMode;
-import dev.omatheusmesmo.vintelli.tui.terminal.UnderlineColorBackend;
-import dev.tamboui.terminal.Backend;
 import dev.tamboui.terminal.KeyboardProtocol;
 import org.junit.jupiter.api.Test;
 
 class VintelliMainTest {
 
     @Test
-    void theShellDrawsThroughTheBackendThatWritesUnderlineColorsInTheColonForm() throws Exception {
-        try (Backend backend = VintelliMain.shellBackend()) {
-            assertInstanceOf(UnderlineColorBackend.class, backend);
-        }
+    void selectsVintelliJLine3ByDefaultWhenNoBackendIsConfigured() {
+        Map<String, String> properties = new HashMap<>();
+        VintelliMain.selectDefaultBackend(properties::get, ignored -> null, properties::put);
+        assertEquals("vintelli-jline3", properties.get(VintelliMain.BACKEND_PROPERTY));
+    }
+
+    @Test
+    void keepsConfiguredSystemPropertyBackend() {
+        Map<String, String> properties = new HashMap<>();
+        properties.put(VintelliMain.BACKEND_PROPERTY, "jline3");
+        VintelliMain.selectDefaultBackend(properties::get, ignored -> null, properties::put);
+        assertEquals("jline3", properties.get(VintelliMain.BACKEND_PROPERTY));
+    }
+
+    @Test
+    void keepsConfiguredEnvironmentBackend() {
+        Map<String, String> properties = new HashMap<>();
+        VintelliMain.selectDefaultBackend(properties::get,
+                name -> VintelliMain.BACKEND_ENV.equals(name) ? "jline3" : null, properties::put);
+        assertNull(properties.get(VintelliMain.BACKEND_PROPERTY));
+    }
+
+    @Test
+    void shellConfigEnablesMouseCaptureAndMotionTracking() {
+        var config = VintelliMain.shellConfig(KeyboardMode.DEFAULT);
+        assertTrue(config.mouseCapture());
+        assertTrue(config.mouseMotion());
+        assertNull(config.backend());
     }
 
     @Test

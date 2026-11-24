@@ -1,11 +1,11 @@
 package dev.omatheusmesmo.vintelli;
 
-import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.BiConsumer;
+import java.util.function.Function;
 
 import dev.omatheusmesmo.vintelli.cli.VintelliCliCommands;
 import dev.omatheusmesmo.vintelli.cli.VintelliCliRepl;
@@ -16,8 +16,7 @@ import dev.omatheusmesmo.vintelli.tui.keymap.KeyboardMode;
 import dev.omatheusmesmo.vintelli.tui.keymap.Keymap;
 import dev.omatheusmesmo.vintelli.tui.keymap.KeymapRegistry;
 import dev.omatheusmesmo.vintelli.tui.terminal.TerminalBackground;
-import dev.omatheusmesmo.vintelli.tui.terminal.UnderlineColorBackend;
-import dev.tamboui.terminal.Backend;
+import dev.omatheusmesmo.vintelli.tui.terminal.TrackingJLineBackendProvider;
 import dev.tamboui.tfx.toolkit.ToolkitEffects;
 import dev.tamboui.toolkit.app.ToolkitPostRenderProcessor;
 import dev.tamboui.toolkit.app.ToolkitRunner;
@@ -75,20 +74,35 @@ public final class VintelliMain implements QuarkusApplication {
                 TerminalBackground.consoleAttached() || TerminalBackground.recordedSession());
     }
 
+    static final String BACKEND_PROPERTY = "tamboui.backend";
+    static final String BACKEND_ENV = "TAMBOUI_BACKEND";
+    static final String DEFAULT_BACKEND = TrackingJLineBackendProvider.NAME;
+
     static TuiConfig shellConfig(KeyboardMode keyboardMode) {
         return TuiConfig.defaults().toBuilder()
                 .tickRate(IDLE_TICK)
                 .resizeGracePeriod(RESIZE_CHECK)
                 .keyboardProtocol(keyboardMode.protocol())
+                .mouseCapture(true)
+                .mouseMotion(true)
                 .build();
     }
 
-    static Backend shellBackend() {
-        try {
-            return new UnderlineColorBackend();
-        } catch (IOException failure) {
-            throw new UncheckedIOException("the terminal cannot be opened", failure);
+    static void selectDefaultBackend() {
+        selectDefaultBackend(System::getProperty, System::getenv, System::setProperty);
+    }
+
+    static void selectDefaultBackend(Function<String, String> propertyReader,
+            Function<String, String> envReader, BiConsumer<String, String> propertyWriter) {
+        String configuredProperty = propertyReader.apply(BACKEND_PROPERTY);
+        if (configuredProperty != null && !configuredProperty.isEmpty()) {
+            return;
         }
+        String configuredEnv = envReader.apply(BACKEND_ENV);
+        if (configuredEnv != null && !configuredEnv.isEmpty()) {
+            return;
+        }
+        propertyWriter.accept(BACKEND_PROPERTY, DEFAULT_BACKEND);
     }
 
     static String tuiFailure(String message, boolean fileLogging, Optional<String> logFile) {
@@ -105,6 +119,7 @@ public final class VintelliMain implements QuarkusApplication {
         RunMode mode = RunMode.of(arguments);
         if (mode == RunMode.TUI) {
             try {
+                selectDefaultBackend();
                 ShellThemes shellThemes = themes.get();
                 VintelliShell tuiShell = shell.get();
                 ToolkitEffects motionEffects = new ToolkitEffects();
@@ -117,7 +132,7 @@ public final class VintelliMain implements QuarkusApplication {
                                 processMotionEffects.process(frame, elements, styledAreas, focus, elapsed);
                             }
                         })
-                        .config(shellConfig(keymap.keyboardMode()).toBuilder().backend(shellBackend()).build())
+                        .config(shellConfig(keymap.keyboardMode()))
                         .bindings(keymap.bindings())
                         .styleEngine(shellThemes.engine())
                         .mouseCapture(true)

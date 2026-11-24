@@ -33,13 +33,22 @@ import dev.omatheusmesmo.vintelli.tui.maven.MavenModule;
 import dev.omatheusmesmo.vintelli.tui.maven.MavenPlugin;
 import dev.omatheusmesmo.vintelli.tui.maven.MavenProjectLoad;
 import dev.omatheusmesmo.vintelli.tui.maven.MavenProjectReader;
+import dev.omatheusmesmo.vintelli.tui.terminal.TrackingJLineBackend;
+import dev.omatheusmesmo.vintelli.tui.terminal.TrackingJLineBackendProvider;
+import dev.tamboui.terminal.BackendProvider;
+import org.jline.terminal.Terminal.MouseTracking;
+import org.jline.terminal.impl.DumbTerminal;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.ServiceLoader;
 
 /**
  * REST anchor for inspecting the TUI shell from outside the process. Renders
@@ -350,6 +359,45 @@ public final class ShellInspectResource {
         return DependencyGraphInspection.read(projectRoot, dependencyGraphProviders);
     }
 
+    /**
+     * Verifies that {@code vintelli-jline3} is packaged for {@link ServiceLoader}
+     * discovery in the running artifact (including the native image) and drives
+     * JLine {@code trackMouse} transitions through {@link TrackingJLineBackend}.
+     */
+    @GET
+    @Path("/mouse-backend")
+    @Produces(MediaType.APPLICATION_JSON)
+    public MouseBackendView mouseBackend() throws IOException {
+        if (!enabled) {
+            throw new NotFoundException();
+        }
+        List<String> providers = new ArrayList<>();
+        String resolvedProvider = null;
+        for (BackendProvider provider : ServiceLoader.load(BackendProvider.class)) {
+            providers.add(provider.name());
+            if (TrackingJLineBackendProvider.NAME.equals(provider.name())) {
+                resolvedProvider = provider.getClass().getName();
+            }
+        }
+        try (RecordingMouseTerminal terminal = new RecordingMouseTerminal()) {
+            try (TrackingJLineBackend backend = new TrackingJLineBackend(terminal)) {
+                backend.enableMouseCapture(false);
+                backend.enableMouseCapture(true);
+                backend.disableMouseCapture();
+                backend.enableMouseCapture(true);
+            }
+            List<String> transitions = terminal.transitions().stream()
+                    .map(Enum::name)
+                    .toList();
+            return new MouseBackendView(
+                    TrackingJLineBackendProvider.NAME,
+                    resolvedProvider != null,
+                    resolvedProvider == null ? "" : resolvedProvider,
+                    providers,
+                    transitions);
+        }
+    }
+
     private static List<String> selectors(MavenModule module) {
         List<String> found = new ArrayList<>();
         found.add(module.selector());
@@ -470,5 +518,34 @@ public final class ShellInspectResource {
      * selectors in tree order with the empty root selector first.
      */
     record MavenView(String state, String reason, List<String> selectors, List<String> plugins) {
+    }
+
+    /**
+     * Payload of the mouse backend inspection: whether {@code vintelli-jline3}
+     * was discovered through {@link ServiceLoader}, the resolved provider class,
+     * all discovered provider names and the recorded {@link MouseTracking}
+     * transitions.
+     */
+    record MouseBackendView(String defaultBackend, boolean discovered, String providerClass,
+            List<String> providers, List<String> transitions) {
+    }
+
+    private static final class RecordingMouseTerminal extends DumbTerminal {
+
+        private final List<MouseTracking> transitions = new ArrayList<>();
+
+        RecordingMouseTerminal() throws IOException {
+            super(InputStream.nullInputStream(), OutputStream.nullOutputStream());
+        }
+
+        @Override
+        public boolean trackMouse(MouseTracking tracking) {
+            transitions.add(tracking);
+            return true;
+        }
+
+        List<MouseTracking> transitions() {
+            return List.copyOf(transitions);
+        }
     }
 }
